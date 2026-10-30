@@ -126,9 +126,9 @@ const startServer = async () => {
     if (conn) {
       await ensureSuperAdmin();
     }
-        server.on('error', (err) => {
+    server.on('error', (err) => {
       if (err.code === 'EADDRINUSE') {
-        console.error([Server] Port ${PORT} is already in use.);
+        console.error(`[Server] Port ${PORT} is already in use.`);
       } else {
         console.error('[Server] Server error:', err);
       }

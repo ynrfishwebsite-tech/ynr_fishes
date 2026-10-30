@@ -61,3 +61,4 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: npm run prebuild && npx electron-builder --win -p always
+
