@@ -1071,6 +1071,21 @@ app.on('ready', async () => {
     return true;
   });
 
+  const frontendDir = path.join(__dirname, 'frontend');
+  session.defaultSession.webRequest.onBeforeRequest((details, callback) => {
+    const fileAssetsMatch = details.url.match(/^file:\/\/\/(assets\/.*)$/i);
+    const fileImagesMatch = details.url.match(/^file:\/\/\/(images\/.*)$/i);
+    const fileRootAssetMatch = details.url.match(/^file:\/\/\/([a-zA-Z0-9_\- ]+\.(png|jpg|jpeg|svg|webp|ico))$/i);
+    const matchedRel = fileAssetsMatch ? fileAssetsMatch[1] : (fileImagesMatch ? fileImagesMatch[1] : (fileRootAssetMatch ? fileRootAssetMatch[1] : null));
+    if (matchedRel) {
+      const targetPath = path.join(frontendDir, decodeURIComponent(matchedRel));
+      if (fs.existsSync(targetPath)) {
+        return callback({ redirectURL: 'file:///' + targetPath.replace(/\\/g, '/') });
+      }
+    }
+    callback({});
+  });
+
   // Wait a little bit for the backend to initialize
   setTimeout(() => {
     createMenu();

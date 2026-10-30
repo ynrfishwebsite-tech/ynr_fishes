@@ -2,6 +2,7 @@ import React from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useCart } from '../../context/CartContext';
 import { useAuth } from '../../context/AuthContext';
+import ynrLogo from '../../assets/ynr_logo_hd.jpg';
 
 export default function Navbar({ style }) {
   const { cartCount, setIsCartOpen } = useCart();
@@ -47,7 +48,7 @@ export default function Navbar({ style }) {
       <Link to="/" className="nav-brand" aria-label="YNR Fishes Home">
         <div className="brand-icon-wrapper">
           <img 
-            src="/assets/ynr_logo_hd.jpg" 
+            src={ynrLogo} 
             alt="YNR Fishes Logo" 
             className="brand-logo-img"
           />

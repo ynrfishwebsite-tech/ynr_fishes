@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import ynrLogo from '../assets/ynr_logo_hd.jpg';
 
 export default function LoginPage() {
   const [identifier, setIdentifier] = useState('');
@@ -49,9 +50,13 @@ export default function LoginPage() {
         {/* Brand Header */}
         <div className="login-brand-header">
           <img
-            src="/assets/ynr_logo_hd.jpg"
+            src={ynrLogo}
             alt="YNR Fishes"
             className="login-brand-logo"
+            onError={(e) => {
+              e.target.onerror = null;
+              e.target.src = ynrLogo;
+            }}
           />
           <h1 className="login-brand-title">YNR Fishes Staff Portal</h1>
           <p className="login-brand-subtitle">

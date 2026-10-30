@@ -11,16 +11,15 @@ const desktopFrontend = path.join(__dirname, 'frontend');
 const desktopBackend = path.join(__dirname, 'backend');
 
 // Helper to copy recursively
-function copySync(src, dest, ignore = []) {
-  if (ignore.some(i => src.includes(i))) return;
-  
+function copySync(src, dest, ignoreRootNames = []) {
   const stat = fs.statSync(src);
   if (stat.isDirectory()) {
     if (!fs.existsSync(dest)) {
       fs.mkdirSync(dest, { recursive: true });
     }
     fs.readdirSync(src).forEach(child => {
-      copySync(path.join(src, child), path.join(dest, child), ignore);
+      if (ignoreRootNames.includes(child)) return;
+      copySync(path.join(src, child), path.join(dest, child), []);
     });
   } else {
     fs.copyFileSync(src, dest);
@@ -37,12 +36,12 @@ const npmCmd = process.platform === 'win32' ? 'npm.cmd' : 'npm';
 execSync(`${npmCmd} run build`, { 
   cwd: path.join(__dirname, '../frontend'), 
   stdio: 'inherit',
-  env: { ...process.env, NODE_OPTIONS: '--max-old-space-size=4096' }
+  env: { ...process.env, VITE_BASE: './', NODE_OPTIONS: '--max-old-space-size=4096' }
 });
 
 // Copy Backend
 console.log('Copying Backend (with pre-installed node_modules for maximum speed)...');
-copySync(backendSrc, desktopBackend, ['.git', 'auth_info_baileys', 'reports', 'uploads', 'dist', 'logs']);
+copySync(backendSrc, desktopBackend, ['.git', 'auth_info_baileys', 'reports', 'uploads', 'logs']);
 
 // Explicitly ensure .env is bundled for packaged Desktop builds (.exe)
 const envSrc = path.join(backendSrc, '.env');

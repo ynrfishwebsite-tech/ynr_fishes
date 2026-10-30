@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import ynrLogo from '../../assets/ynr_logo_hd.jpg';
 import { useAuth } from '../../context/AuthContext';
 import {
   ShoppingCart,
@@ -267,11 +268,11 @@ export default function AdminDashboard() {
             }}
           >
             <img
-              src="/assets/ynr_logo_hd.jpg"
+              src={ynrLogo}
               alt="YNR Fishes"
               onError={(e) => {
                 e.target.onerror = null;
-                e.target.src = "/ynr_logo.png";
+                e.target.src = ynrLogo;
               }}
               style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '50%' }}
             />

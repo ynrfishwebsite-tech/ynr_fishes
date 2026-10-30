@@ -1,5 +1,6 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
+import ynrLogo from '../../assets/ynr_logo_hd.jpg';
 
 export default function EnterpriseFooter() {
   return (
@@ -24,7 +25,7 @@ export default function EnterpriseFooter() {
         <div style={{ display: 'flex', flexDirection: 'column' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1.5rem' }}>
             <img 
-              src="/assets/ynr_logo_hd.jpg" 
+              src={ynrLogo} 
               alt="YNR Fishes" 
               style={{ 
                 width: '56px', height: '56px', borderRadius: '50%', objectFit: 'cover', 

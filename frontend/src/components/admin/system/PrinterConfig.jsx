@@ -1,4 +1,5 @@
 import { getApiUrl } from "../../../config.js";
+import ynrLogo from "../../../assets/ynr_logo_hd.jpg";
 import { useLanguage } from "../../../context/LanguageContext";
 import React, { useState, useEffect, useMemo } from 'react';
 import axios from 'axios';
@@ -1765,7 +1766,7 @@ const PrinterConfig = ({ onNavigate, onGoBack, user }) => {
                     receiptFontFamily: 'arial',
                     receiptFontSize: 'medium',
                     restaurantName: 'YNR FISHES',
-                    logo: '/assets/ynr_logo_hd.jpg',
+                    logo: ynrLogo,
                     upiId: 'ynrfishes@upi'
                   }}
                   previewTab="receipt"
