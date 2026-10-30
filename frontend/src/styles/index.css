@@ -2326,8 +2326,34 @@ input:-webkit-autofill:focus {
   position: absolute;
   right: 0;
   top: calc(100% + 8px);
-  width: 380px;
+  width: 390px;
   max-width: calc(100vw - 20px);
+  animation: notifDropdownIn 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes notifDropdownIn {
+  from {
+    opacity: 0;
+    transform: translateY(-8px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.admin-notif-list::-webkit-scrollbar {
+  width: 5px;
+}
+.admin-notif-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+.admin-notif-list::-webkit-scrollbar-thumb {
+  background: #E8DCCB;
+  border-radius: 999px;
+}
+.admin-notif-list::-webkit-scrollbar-thumb:hover {
+  background: #d4c2ab;
 }
 
 @media (max-width: 640px) {

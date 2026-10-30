@@ -96,7 +96,8 @@ export default function NotificationPanel({
           position: 'fixed',
           inset: 0,
           zIndex: 99998,
-          background: 'rgba(15, 23, 42, 0.25)'
+          background: 'rgba(15, 23, 42, 0.35)',
+          backdropFilter: 'blur(1.5px)'
         }}
       />
 
@@ -107,7 +108,7 @@ export default function NotificationPanel({
           background: '#FDFBF7',
           border: '1.5px solid #E8DCCB',
           borderRadius: '18px',
-          boxShadow: '0 20px 45px rgba(0, 0, 0, 0.15)',
+          boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
           zIndex: 99999,
           overflow: 'hidden',
           display: 'flex',
@@ -242,14 +243,17 @@ export default function NotificationPanel({
 
         {/* Notifications List */}
         <div
+          className="admin-notif-list"
           style={{
-            maxHeight: '340px',
+            maxHeight: 'min(390px, calc(100vh - 220px))',
             overflowY: 'auto',
-            padding: '8px',
+            padding: '10px 10px 14px 10px',
             display: 'flex',
             flexDirection: 'column',
-            gap: '6px',
-            background: '#FDFBF7'
+            gap: '8px',
+            background: '#FDFBF7',
+            scrollbarWidth: 'thin',
+            scrollbarColor: '#E8DCCB transparent'
           }}
         >
           {filteredNotifications.length === 0 ? (
@@ -289,8 +293,8 @@ export default function NotificationPanel({
                   key={notif.id || notif._id || Math.random()}
                   onClick={() => handleNotificationClick(notif)}
                   style={{
-                    padding: '9px 12px',
-                    borderRadius: '10px',
+                    padding: '10px 12px',
+                    borderRadius: '12px',
                     background: '#FAF3E8',
                     border: '1px solid #E8DCCB',
                     display: 'flex',
@@ -359,7 +363,7 @@ export default function NotificationPanel({
 
                     <p
                       style={{
-                        margin: '2px 0 0 0',
+                        margin: '3px 0 0 0',
                         fontSize: '0.74rem',
                         color: '#475569',
                         lineHeight: 1.4,
@@ -384,13 +388,17 @@ export default function NotificationPanel({
                       background: 'transparent',
                       border: 'none',
                       color: '#94a3b8',
-                      padding: '2px',
+                      padding: '4px',
                       cursor: 'pointer',
-                      borderRadius: '4px',
-                      alignSelf: 'center'
+                      borderRadius: '6px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      shrink: 0,
+                      marginTop: '1px'
                     }}
-                    onMouseEnter={(e) => { e.currentTarget.style.color = '#ef4444'; }}
-                    onMouseLeave={(e) => { e.currentTarget.style.color = '#94a3b8'; }}
+                    onMouseEnter={(e) => { e.currentTarget.style.color = '#ef4444'; e.currentTarget.style.background = '#fee2e2'; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.color = '#94a3b8'; e.currentTarget.style.background = 'transparent'; }}
                   >
                     <X size={14} />
                   </button>

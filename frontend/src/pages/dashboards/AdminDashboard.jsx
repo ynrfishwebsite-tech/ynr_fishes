@@ -230,7 +230,7 @@ export default function AdminDashboard() {
           borderBottom: '1px solid #E8DCCB',
           background: '#FDFBF7',
           boxShadow: '0 1px 6px rgba(0, 0, 0, 0.02)',
-          zIndex: 30
+          zIndex: showNotifications ? 99999 : 45
         }}
       >
         {/* Left: Brand Logo & Title with Hamburger on Mobile */}

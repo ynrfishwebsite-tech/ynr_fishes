@@ -1493,7 +1493,7 @@ const Settings = ({ user, setUser, onNavigate, onGoBack }) => {
 
       {/* WhatsApp Settings Modal */}
       {showWhatsappSettingsModal && (
-        <div className="fixed inset-0 z-[99999] bg-black/40 backdrop-blur-sm flex items-center justify-center p-3 sm:p-6 md:p-8">
+        <div className="fixed inset-0 z-[99990] bg-black/40 backdrop-blur-sm flex items-center justify-center p-3 sm:p-6 md:p-8">
           <div className="bg-white w-full max-w-2xl max-h-[92vh] rounded-2xl sm:rounded-3xl shadow-2xl flex flex-col overflow-hidden border border-slate-200 animate-in zoom-in-95 duration-200">
             <div className="flex items-center justify-between px-4 sm:px-6 py-3.5 sm:py-4 border-b border-slate-200 bg-white shrink-0">
               <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">

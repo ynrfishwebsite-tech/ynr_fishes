@@ -162,25 +162,26 @@ const Dashboard = ({ onNavigate, onGoBack }) => {
     <div style={{ width: '100%', display: 'flex', flexDirection: 'column', padding: isMobile ? '12px 0px 32px 0px' : '20px 24px', boxSizing: 'border-box' }}>
 
       {/* Compact Header Card with Neutral Border (no harsh colored borders) */}
-      <div className="bg-[#FDFBF7] border border-[#E8DCCB] rounded-xl px-3.5 sm:px-4 py-2 sm:py-2.5 shadow-xs mb-3 sm:mb-4 flex items-center justify-between flex-wrap gap-2.5">
-        <div className="flex items-center gap-2.5">
+      <div className="bg-[#FDFBF7] border border-[#E8DCCB] rounded-xl px-3 sm:px-4 py-2 sm:py-2.5 shadow-xs mb-3 sm:mb-4 flex items-center justify-between flex-nowrap gap-2">
+        <div className="flex items-center gap-2 sm:gap-2.5 min-w-0">
           <div className="p-1.5 sm:p-2 rounded-xl bg-orange-100 text-[#ea580c] border border-orange-200 shadow-2xs shrink-0 flex items-center justify-center">
             <LayoutDashboard size={18} strokeWidth={2.5} />
           </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <h1 className="text-sm sm:text-base font-black text-slate-800 tracking-tight leading-none m-0">Dashboard</h1>
+          <div className="min-w-0">
+            <div className="flex items-center gap-1.5 sm:gap-2">
+              <h1 className="text-sm sm:text-base font-black text-slate-800 tracking-tight leading-none m-0 whitespace-nowrap">Dashboard</h1>
               <span className="hidden sm:inline-flex text-[10px] px-2 py-0.5 rounded-full bg-[#FAF0E4] text-slate-600 font-bold border border-[#E8DCCB]">
                 Overview
               </span>
             </div>
-            <p className="text-[11px] text-slate-500 font-semibold m-0 mt-0.5">Monitor your fish business operations at a glance</p>
+            <p className="text-[10px] sm:text-[11px] text-slate-500 font-semibold m-0 mt-0.5 truncate hidden sm:block">Monitor your fish business operations at a glance</p>
           </div>
         </div>
 
-        <div className="flex items-center gap-2 relative">
+        <div className="flex items-center gap-1.5 sm:gap-2 shrink-0 relative">
           <div className="relative">
             <button
+              type="button"
               onClick={() => setIsFilterDropdownOpen(!isFilterDropdownOpen)}
               className="inline-flex items-center gap-1.5 bg-white border border-[#E8DCCB] hover:border-slate-300 rounded-lg px-2.5 sm:px-3 py-1 sm:py-1.5 font-bold text-xs text-slate-700 cursor-pointer shadow-2xs transition-colors"
             >
@@ -189,25 +190,32 @@ const Dashboard = ({ onNavigate, onGoBack }) => {
               <ChevronDown size={13} className="text-slate-400" />
             </button>
             {isFilterDropdownOpen && (
-              <div className="absolute right-0 top-full mt-1.5 w-36 bg-[#FDFBF7] border border-[#E8DCCB] rounded-xl shadow-xl z-50 py-1 overflow-hidden animate-in fade-in zoom-in-95 duration-150">
-                {['Today', 'Last 7 Days', '1 Month', '3 Months', '6 Months', '1 Year', 'Custom'].map(filter => (
-                  <button
-                    key={filter}
-                    onClick={() => {
-                      if (filter === 'Custom') { setShowCustomDateModal(true); setIsFilterDropdownOpen(false); }
-                      else { setDateFilter(filter); setIsFilterDropdownOpen(false); }
-                    }}
-                    className={`w-full text-left px-3.5 py-1.5 text-xs font-bold transition-colors cursor-pointer ${
-                      dateFilter === filter ? 'bg-orange-50 text-[#ea580c]' : 'text-slate-700 hover:bg-[#F5E8D8]'
-                    }`}
-                  >
-                    {t(filter)}
-                  </button>
-                ))}
-              </div>
+              <>
+                <div 
+                  className="fixed inset-0 z-40" 
+                  onClick={() => setIsFilterDropdownOpen(false)} 
+                />
+                <div className="absolute right-0 top-full mt-1.5 w-36 bg-[#FDFBF7] border border-[#E8DCCB] rounded-xl shadow-xl z-50 py-1 overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+                  {['Today', 'Last 7 Days', '1 Month', '3 Months', '6 Months', '1 Year', 'Custom'].map(filter => (
+                    <button
+                      key={filter}
+                      type="button"
+                      onClick={() => {
+                        if (filter === 'Custom') { setShowCustomDateModal(true); setIsFilterDropdownOpen(false); }
+                        else { setDateFilter(filter); setIsFilterDropdownOpen(false); }
+                      }}
+                      className={`w-full text-left px-3.5 py-1.5 text-xs font-bold transition-colors cursor-pointer ${
+                        dateFilter === filter ? 'bg-orange-50 text-[#ea580c]' : 'text-slate-700 hover:bg-[#F5E8D8]'
+                      }`}
+                    >
+                      {t(filter)}
+                    </button>
+                  ))}
+                </div>
+              </>
             )}
           </div>
-          <div className="hidden xs:inline-flex items-center gap-1.5 text-slate-500 text-xs font-bold bg-white/70 px-2.5 py-1 rounded-lg border border-[#E8DCCB]/60">
+          <div className="hidden md:inline-flex items-center gap-1.5 text-slate-500 text-xs font-bold bg-white/70 px-2.5 py-1 rounded-lg border border-[#E8DCCB]/60">
             <Clock size={12} />
             <span>{currentDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true })}</span>
           </div>

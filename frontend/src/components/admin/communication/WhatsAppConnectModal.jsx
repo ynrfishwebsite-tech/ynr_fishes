@@ -296,7 +296,7 @@ const WhatsAppConnectModal = ({ isOpen, onClose }) => {
   const currentDeviceName = statusData?.deviceName || `${activeRestaurantName} Gateway`;
 
   const modalContent = (
-    <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[9999] flex items-center justify-center p-2.5 sm:p-4 overflow-y-auto overscroll-contain">
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100005] flex items-center justify-center p-2.5 sm:p-4 overflow-y-auto overscroll-contain">
       <div className="bg-white border border-[#e2e8f0] rounded-2xl sm:rounded-3xl p-4 sm:p-6 w-full max-w-lg shadow-[0_20px_60px_rgba(0,0,0,0.15)] text-[#1e293b] animate-in zoom-in-95 duration-150 relative overflow-hidden flex flex-col max-h-[94dvh] sm:max-h-[90vh] my-auto">
         {/* Decorative glow */}
         <div className="absolute top-0 right-0 w-48 sm:w-60 h-48 sm:h-60 bg-[#25D366]/5 rounded-full blur-3xl pointer-events-none"></div>
