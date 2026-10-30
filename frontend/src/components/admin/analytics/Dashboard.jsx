@@ -11,6 +11,7 @@ import {
 
 import Toast from '../system/Toast';
 import Invoice from '../billing/Invoice';
+import defaultFishLogo from '../../../assets/ynr_logo_hd.jpg';
 import EditHistoryModal from '../billing/EditHistoryModal';
 import { formatTime12 } from '../../../utils/formatters/timeFormat';
 
@@ -63,7 +64,7 @@ const Dashboard = ({ onNavigate, onGoBack }) => {
     if (matched && matched.image) {
       return matched.image;
     }
-    return '/assets/cards/sidebar_fish_crate.png';
+    return defaultFishLogo;
   };
 
   const fetchTodayStats = useCallback(async () => {
@@ -539,7 +540,7 @@ const Dashboard = ({ onNavigate, onGoBack }) => {
                         }}
                         onError={(e) => {
                           e.target.onerror = null;
-                          e.target.src = '/assets/cards/sidebar_fish_crate.png';
+                          e.target.src = defaultFishLogo;
                         }}
                       />
                       <div style={{ minWidth: 0, flex: 1 }}>
@@ -584,7 +585,7 @@ const Dashboard = ({ onNavigate, onGoBack }) => {
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center', padding: '30px 10px', margin: 'auto 0' }}>
                 <img
-                  src="/assets/cards/sidebar_fish_crate.png"
+                  src={defaultFishLogo}
                   alt="No sales"
                   style={{ width: '64px', height: '64px', borderRadius: '12px', objectFit: 'cover', marginBottom: '10px', opacity: 0.7 }}
                 />
@@ -684,3 +685,4 @@ const Dashboard = ({ onNavigate, onGoBack }) => {
 };
 
 export default Dashboard;
+

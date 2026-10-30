@@ -1,26 +1,24 @@
-name: Build and Release Auto-Updater
+name: Build Android APK (.apk)
 
 on:
   push:
     branches:
       - main
     paths:
-      - 'Desktop/**'
       - 'frontend/**'
-      - 'backend/**'
-      - '.github/workflows/**'
+      - '.github/workflows/build-apk.yml'
   workflow_dispatch:
 
 concurrency:
-  group: build-release-${{ github.ref }}
+  group: build-apk-${{ github.ref }}
   cancel-in-progress: true
 
 permissions:
   contents: write
 
 jobs:
-  build-and-release:
-    name: Build & Release (.EXE and .APK)
+  build-apk:
+    name: Build & Release Android APK
     runs-on: windows-latest
     
     steps:
@@ -45,24 +43,8 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: 📝 Inject Backend .env File
-        working-directory: ./backend
-        shell: pwsh
-        run: |
-          Set-Content -Path .env -Value $env:BACKEND_ENV_SECRET
-        env:
-          BACKEND_ENV_SECRET: ${{ secrets.BACKEND_ENV }}
-
-      - name: 📦 Install Backend Dependencies
-        working-directory: ./backend
-        run: npm install --omit=dev
-
       - name: 📦 Install Frontend Dependencies
         working-directory: ./frontend
-        run: npm install
-
-      - name: 📦 Install Desktop Dependencies
-        working-directory: ./Desktop
         run: npm install
 
       - name: 🏗️ Build Frontend Web Assets
@@ -78,8 +60,8 @@ jobs:
         shell: pwsh
         run: |
           if (-not (Test-Path keystore.jks)) {
-            Write-Host "Generating fresh keystore.jks..."
-            & "$env:JAVA_HOME\bin\keytool" -genkeypair -v -keystore keystore.jks -alias msbilling -keyalg RSA -keysize 2048 -validity 10000 -storepass "msbilling2026" -keypass "msbilling2026" -dname "CN=YNR Fishes, OU=POS, O=YNR Fishes, L=City, ST=State, C=IN"
+            Write-Host "Generating fresh keystore.jks with ynrfishes alias..."
+            & "$env:JAVA_HOME\bin\keytool" -genkeypair -v -keystore keystore.jks -alias ynrfishes -keyalg RSA -keysize 2048 -validity 10000 -storepass "ynrfishes2026" -keypass "ynrfishes2026" -dname "CN=YNR Fishes, OU=POS, O=YNR Fishes, L=Kadapa, ST=Andhra Pradesh, C=IN"
           } else {
             Write-Host "Using existing repository keystore.jks."
           }
@@ -87,16 +69,10 @@ jobs:
       - name: 🔨 Build Android APK (.apk)
         working-directory: ./frontend/android
         env:
-          KEYSTORE_PASSWORD: "msbilling2026"
-          KEY_ALIAS: "msbilling"
-          KEY_PASSWORD: "msbilling2026"
+          KEYSTORE_PASSWORD: "ynrfishes2026"
+          KEY_ALIAS: "ynrfishes"
+          KEY_PASSWORD: "ynrfishes2026"
         run: .\gradlew.bat assembleRelease assembleDebug
-
-      - name: 🚀 Build and Publish Desktop App (.exe)
-        working-directory: ./Desktop
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: npm run prebuild && npx electron-builder --win -p always
 
       - name: 📱 Upload APK Assets to GitHub Release
         uses: softprops/action-gh-release@v2
@@ -108,4 +84,3 @@ jobs:
             frontend/android/app/build/outputs/apk/debug/*.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-

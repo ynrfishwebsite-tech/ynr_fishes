@@ -44,8 +44,8 @@ public class MainActivity extends BridgeActivity {
                     runOnUiThread(() -> {
                         PrintManager printManager = (PrintManager) getSystemService(Context.PRINT_SERVICE);
                         if (printManager != null) {
-                            PrintDocumentAdapter printAdapter = webView.createPrintDocumentAdapter("MSBilling_Receipt");
-                            String jobName = "MSBilling_Document";
+                            PrintDocumentAdapter printAdapter = webView.createPrintDocumentAdapter("YNRFishes_Receipt");
+                            String jobName = "YNRFishes_Document";
                             printManager.print(jobName, printAdapter, new PrintAttributes.Builder().build());
                         }
                     });
@@ -105,4 +105,5 @@ public class MainActivity extends BridgeActivity {
         }
     }
 }
+
 

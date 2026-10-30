@@ -165,7 +165,7 @@ class RealtimeService {
 
     try {
       const endpoint = eventName === 'relayPrintKOT' ? '/printer-configs/print-kot' : '/printer-configs/print-bill';
-      const localBackend = 'http://127.0.0.1:5002/api';
+      const localBackend = 'http://127.0.0.1:5000/api';
       const token = localStorage.getItem('accessToken') || localStorage.getItem('token');
       
       const payload = eventName === 'relayPrintKOT' ? {
@@ -356,3 +356,4 @@ class RealtimeService {
 
 const realtimeService = new RealtimeService();
 export default realtimeService;
+

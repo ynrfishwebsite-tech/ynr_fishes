@@ -54,6 +54,7 @@ import EditedBills from '../../components/admin/billing/EditedBills';
 import NotificationPanel from '../../components/admin/communication/NotificationPanel';
 import NotificationsPage from '../../components/admin/communication/NotificationsPage';
 import useNotifications from '../../hooks/useNotifications';
+import useServerStatus from '../../hooks/useServerStatus';
 import { getOpenOrders } from '../../api/billing/billing';
 import { getCachedOpenOrders } from '../../db/offlineDb';
 import realtimeService from '../../services/realtimeService';
@@ -85,6 +86,7 @@ export default function AdminDashboard() {
   ];
 
   const { notifications, unreadCount, markAllAsRead, clearNotification } = useNotifications(user?.role || 'Admin');
+  const { isServerConnected } = useServerStatus(4000);
   const [showNotifications, setShowNotifications] = useState(false);
 
   const isFullAdmin = !user?.role || ['super-admin', 'admin'].includes(user.role.toLowerCase());
@@ -327,22 +329,24 @@ export default function AdminDashboard() {
 
         {/* Center: Live Status & Date/Time (Hidden on Mobile) */}
         {!isMobile && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-            <span style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '6px',
-              background: '#dcfce7',
-              border: '1px solid #86efac',
-              color: '#15803d',
-              padding: '4px 12px',
-              borderRadius: '999px',
-              fontSize: '0.76rem',
-              fontWeight: 700
-            }}>
-              <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: '#16a34a', boxShadow: '0 0 6px #22c55e' }} />
-              <span>Online</span>
-            </span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+            {/* 3D Status Ball - Green when connected, Red when disconnected (no text) */}
+            <div
+              title={isServerConnected ? "Server Connected" : "Server Disconnected"}
+              style={{
+                width: '18px',
+                height: '18px',
+                borderRadius: '50%',
+                background: isServerConnected
+                  ? 'radial-gradient(circle at 35% 35%, #86efac 0%, #22c55e 40%, #15803d 75%, #052e16 100%)'
+                  : 'radial-gradient(circle at 35% 35%, #fca5a5 0%, #ef4444 40%, #b91c1c 75%, #450a0a 100%)',
+                boxShadow: isServerConnected
+                  ? '0 0 10px rgba(34, 197, 94, 0.7), inset -2px -2px 4px rgba(0, 0, 0, 0.4), inset 2px 2px 3px rgba(255, 255, 255, 0.8)'
+                  : '0 0 10px rgba(239, 68, 68, 0.7), inset -2px -2px 4px rgba(0, 0, 0, 0.4), inset 2px 2px 3px rgba(255, 255, 255, 0.8)',
+                flexShrink: 0,
+                cursor: 'pointer'
+              }}
+            />
 
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', lineHeight: 1.15 }}>
               <span style={{ fontSize: '0.88rem', fontWeight: 800, color: '#1e293b' }}>
@@ -356,7 +360,25 @@ export default function AdminDashboard() {
         )}
 
         {/* Right Action Buttons - Icons only on mobile, text on desktop */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? '6px' : '10px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? '6px' : '10px' }}>
+          {isMobile && (
+            <div
+              title={isServerConnected ? "Server Connected" : "Server Disconnected"}
+              style={{
+                width: '14px',
+                height: '14px',
+                borderRadius: '50%',
+                background: isServerConnected
+                  ? 'radial-gradient(circle at 35% 35%, #86efac 0%, #22c55e 40%, #15803d 75%, #052e16 100%)'
+                  : 'radial-gradient(circle at 35% 35%, #fca5a5 0%, #ef4444 40%, #b91c1c 75%, #450a0a 100%)',
+                boxShadow: isServerConnected
+                  ? '0 0 8px rgba(34, 197, 94, 0.7), inset -1.5px -1.5px 3px rgba(0, 0, 0, 0.4), inset 1.5px 1.5px 2px rgba(255, 255, 255, 0.8)'
+                  : '0 0 8px rgba(239, 68, 68, 0.7), inset -1.5px -1.5px 3px rgba(0, 0, 0, 0.4), inset 1.5px 1.5px 2px rgba(255, 255, 255, 0.8)',
+                flexShrink: 0,
+                marginRight: '2px'
+              }}
+            />
+          )}
           {/* New Order Button - Only + on mobile */}
           <button
             onClick={() => setCurrentView('billing')}
@@ -913,3 +935,4 @@ export default function AdminDashboard() {
     </div>
   );
 }
+

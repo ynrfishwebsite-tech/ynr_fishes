@@ -18,9 +18,9 @@ android {
     }
     signingConfigs {
         release {
-            def ksPassword = "msbilling2026"
-            def kAlias = "msbilling"
-            def kPassword = "msbilling2026"
+            def ksPassword = "ynrfishes2026"
+            def kAlias = "ynrfishes"
+            def kPassword = "ynrfishes2026"
 
             def keystorePropertiesFile = rootProject.file("keystore.properties")
             if (keystorePropertiesFile.exists()) {

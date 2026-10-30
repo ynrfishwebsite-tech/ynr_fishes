@@ -1,0 +1,63 @@
+name: Build Desktop Installer (.exe)
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'Desktop/**'
+      - 'frontend/**'
+      - 'backend/**'
+      - '.github/workflows/build-desktop.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: build-desktop-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  build-desktop:
+    name: Build & Release Desktop (.exe)
+    runs-on: windows-latest
+    
+    steps:
+      - name: 📥 Checkout Code
+        uses: actions/checkout@v4
+
+      - name: ⚙️ Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: 📝 Inject Backend .env File
+        working-directory: ./backend
+        shell: pwsh
+        run: |
+          Set-Content -Path .env -Value $env:BACKEND_ENV_SECRET
+        env:
+          BACKEND_ENV_SECRET: ${{ secrets.BACKEND_ENV }}
+
+      - name: 📦 Install Backend Dependencies
+        working-directory: ./backend
+        run: npm install --omit=dev
+
+      - name: 📦 Install Frontend Dependencies
+        working-directory: ./frontend
+        run: npm install
+
+      - name: 📦 Install Desktop Dependencies
+        working-directory: ./Desktop
+        run: npm install
+
+      - name: 🏗️ Build Frontend Web Assets
+        working-directory: ./frontend
+        run: npm run build
+
+      - name: 🚀 Build and Publish Desktop App (.exe)
+        working-directory: ./Desktop
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npm run prebuild && npx electron-builder --win -p always

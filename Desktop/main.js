@@ -44,7 +44,7 @@ function createMenu() {
           click: async () => {
             const { session } = require('electron');
             try {
-              const ses = session.fromPartition('persist:msbillings');
+              const ses = session.fromPartition('persist:ynrfishes');
               await ses.clearCache();
               await ses.clearStorageData({ storages: ['serviceworkers', 'cachestorage'] });
             } catch (_) {}
@@ -242,9 +242,9 @@ function createMenu() {
 
 function createWindow() {
   const { session } = require('electron');
-  // Clean up any stale service workers/cache from persist:msbillings that could cause white screen freezes
+  // Clean up any stale service workers/cache from persist:ynrfishes that could cause white screen freezes
   try {
-    const ses = session.fromPartition('persist:msbillings');
+    const ses = session.fromPartition('persist:ynrfishes');
     ses.clearStorageData({ storages: ['serviceworkers', 'cachestorage'] }).catch(() => {});
   } catch (_) {}
 
@@ -257,7 +257,7 @@ function createWindow() {
       nodeIntegration: false,
       contextIsolation: true,
       webSecurity: false,
-      partition: 'persist:msbillings',
+      partition: 'persist:ynrfishes',
       preload: path.join(__dirname, 'preload.js')
     },
     title: "YNR Fishes POS",
@@ -298,11 +298,32 @@ function createWindow() {
   });
 }
 
+function killPortProcess(port) {
+  try {
+    if (process.platform === 'win32') {
+      const { execSync } = require('child_process');
+      const output = execSync(`netstat -ano | findstr :${port}`, { encoding: 'utf8', stdio: ['pipe', 'pipe', 'ignore'] });
+      const lines = output.trim().split('\n');
+      for (const line of lines) {
+        if (line.includes('LISTENING') || line.includes('0.0.0.0:' + port) || line.includes('127.0.0.1:' + port)) {
+          const parts = line.trim().split(/\s+/);
+          const pid = parts[parts.length - 1];
+          if (pid && pid !== '0' && pid !== String(process.pid)) {
+            console.log(`[Backend] Freeing port ${port}: terminating stale PID ${pid}`);
+            try { execSync(`taskkill /F /PID ${pid}`, { stdio: 'ignore' }); } catch (_) {}
+          }
+        }
+      }
+    }
+  } catch (_) {}
+}
+
 let backendRestartCount = 0;
 const MAX_BACKEND_RESTARTS = 3;
 
 function startBackend() {
   const { fork } = require('child_process');
+  killPortProcess(5000);
 
   // Check if app is packaged
   const isPackaged = app.isPackaged;
@@ -342,7 +363,8 @@ function startBackend() {
       ...process.env,
       ELECTRON_RUN_AS_NODE: '1',
       APP_USER_DATA_PATH: app.getPath('userData'),
-      NODE_PATH: nodeModulesPath
+      NODE_PATH: nodeModulesPath,
+      PORT: '5000'
     },
     stdio: 'pipe'
   });
@@ -556,7 +578,7 @@ ipcMain.handle('print-raw', async (event, { base64Data, printerName, correlation
       const numCopies = Math.max(1, parseInt(copies, 10) || 1);
       console.log(`[PrintRaw][${correlationId}] Native RAW print to queue: '${targetQueue}' (Copies: ${numCopies}, Exe: ${exePath}, PS: ${psScriptPath})`);
 
-      const tempDir = path.join(os.tmpdir(), 'msbillings_print');
+      const tempDir = path.join(os.tmpdir(), 'ynrfishes_print');
       if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir, { recursive: true });
       const tempBin = path.join(tempDir, `raw_${Date.now()}_${Math.random().toString(36).slice(2, 7)}.bin`);
       const singleBuf = Buffer.from(base64Data, 'base64');
@@ -736,7 +758,7 @@ ipcMain.handle('silent-print', async (event, { htmlContent, printerName, silent 
   `;
 
     // Write HTML to a temp file to avoid data: URL size limits
-    const tempPath = path.join(app.getPath('temp'), 'msbilling-print.html');
+    const tempPath = path.join(app.getPath('temp'), 'ynrfishes-print.html');
     try {
       console.log(`[PRINT-PERF][${correlationId}] EVENT=TEMP_FILE_WRITE_START TIME=${performance.now()}`);
       fs.writeFileSync(tempPath, fullHtml, 'utf8');
@@ -1125,3 +1147,5 @@ app.on('activate', () => {
     createWindow();
   }
 });
+
+

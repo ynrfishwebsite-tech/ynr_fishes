@@ -1,7 +1,7 @@
 {
   "name": "ynr-fishes-pos",
   "productName": "YNR Fishes POS",
-  "version": "6.0.111",
+  "version": "6.0.112",
   "description": "YNR Fishes Desktop POS Application",
   "main": "main.js",
   "scripts": {
@@ -46,7 +46,7 @@
       "target": "dmg",
       "icon": "icon.png",
       "identity": null,
-      "artifactName": "MS-Billings-${version}.${ext}"
+      "artifactName": "YNR-Fishes-${version}.${ext}"
     },
     "win": {
       "compression": "store",
@@ -81,3 +81,4 @@
     "electron-updater": "^6.8.9"
   }
 }
+

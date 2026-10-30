@@ -103,7 +103,7 @@ console.log('Patching API URLs for Desktop (localhost)...');
         const filePath = path.join(assetsDir, file);
         try {
           let content = fs.readFileSync(filePath, 'utf8');
-          content = content.replace(/http:\/\/localhost:5002/g, 'http://127.0.0.1:5002');
+          content = content.replace(/http:\/\/localhost:5000/g, 'http://127.0.0.1:5000');
           fs.writeFileSync(filePath, content);
         } catch (err) {}
       }
@@ -128,3 +128,4 @@ if (!fs.existsSync(destModules) || fs.readdirSync(destModules).length === 0) {
 }
 
 console.log('All files prepared and verified for electron-builder packaging!');
+

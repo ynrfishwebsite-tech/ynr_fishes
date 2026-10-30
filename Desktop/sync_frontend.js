@@ -81,9 +81,9 @@ console.log('Patching API URLs for Desktop (localhost)...');
         const filePath = path.join(assetsDir, file);
         try {
           let content = fs.readFileSync(filePath, 'utf8');
-          content = content.replace(/https:\/\/msbillings-backend-x9qw\.onrender\.com\/api/g, 'http://127.0.0.1:5002/api');
-          content = content.replace(/http:\/\/192\.168\.\d+\.\d+:5002/g, 'http://127.0.0.1:5002');
-          content = content.replace(/http:\/\/localhost:5002/g, 'http://127.0.0.1:5002');
+          content = content.replace(/https:\/\/msbillings-backend-x9qw\.onrender\.com\/api/g, 'http://127.0.0.1:5000/api');
+          content = content.replace(/http:\/\/192\.168\.\d+\.\d+:5000/g, 'http://127.0.0.1:5000');
+          content = content.replace(/http:\/\/localhost:5000/g, 'http://127.0.0.1:5000');
           fs.writeFileSync(filePath, content);
         } catch (err) {
           console.warn(`[Build] Warning patching ${file}:`, err.message);
@@ -94,3 +94,4 @@ console.log('Patching API URLs for Desktop (localhost)...');
 });
 
 console.log('Frontend successfully synced to Desktop!');
+

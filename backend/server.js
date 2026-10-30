@@ -126,6 +126,13 @@ const startServer = async () => {
     if (conn) {
       await ensureSuperAdmin();
     }
+        server.on('error', (err) => {
+      if (err.code === 'EADDRINUSE') {
+        console.error([Server] Port ${PORT} is already in use.);
+      } else {
+        console.error('[Server] Server error:', err);
+      }
+    });
     server.listen(PORT, "0.0.0.0", () => {
       console.log(`[Server] YNR Fishes API running on port ${PORT}`);
     });
@@ -135,3 +142,4 @@ const startServer = async () => {
 };
 
 startServer();
+
