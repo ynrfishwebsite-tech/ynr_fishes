@@ -9,10 +9,14 @@ export default function BroadcastsTab({
     <div className="dash-section-card">
       <div className="dash-section-header">
         <h2 className="dash-section-title">
-          <span>📢</span> Enterprise Announcements & System Bulletins
+          <span>📢</span>
+          <span className="section-title-full">Enterprise Announcements & System Bulletins</span>
+          <span className="section-title-short">Announcements</span>
         </h2>
         <button onClick={onOpenCreateModal} className="sa-primary-btn">
-          ➕ Send Network Broadcast
+          <span>➕</span>
+          <span className="sa-btn-full">Send Network Broadcast</span>
+          <span className="sa-btn-short">Broadcast</span>
         </button>
       </div>
 

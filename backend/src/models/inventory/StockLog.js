@@ -63,6 +63,15 @@ const stockLogSchema = new mongoose.Schema({
     type: String,
     default: 'kg'
   },
+  supplierName: {
+    type: String,
+    default: '',
+    index: true
+  },
+  crateReference: {
+    type: String,
+    default: ''
+  },
   notes: {
     type: String,
     default: ''

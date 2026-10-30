@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { Navigate } from 'react-router-dom';
 import ynrLogo from '../../assets/ynr_logo_hd.jpg';
 import { useAuth } from '../../context/AuthContext';
 import {
@@ -71,6 +72,11 @@ export default function AdminDashboard() {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
   const { user, logout } = useAuth();
+
+  // Super-admin has a dedicated enterprise dashboard at /dashboard/super-admin
+  if (user?.role === 'super-admin') {
+    return <Navigate to="/dashboard/super-admin" replace />;
+  }
   const VALID_VIEWS = [
     'dashboard', 'billing', 'active-orders', 'bill-history', 'edited-bills',
     'menu', 'inventory', 'day-book', 'khata', 'expenses', 'vehicles', 'analytics',

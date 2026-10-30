@@ -280,7 +280,7 @@ export default function SuperAdminDashboard() {
   };
 
   return (
-    <div className="dashboard-container">
+    <div className="dashboard-container superadmin-dashboard-container">
       {/* Central Reusable Portal Header */}
       <PortalHeader
         title="YNR Fishes — Super Administrator Control Node"
@@ -293,17 +293,11 @@ export default function SuperAdminDashboard() {
       {/* Global Action Notification Banner */}
       {notice.text && (
         <div
+          className="sa-notice-banner"
           style={{
             background: notice.type === 'warning' ? 'rgba(245, 193, 68, 0.15)' : 'rgba(78, 225, 160, 0.15)',
             border: `1px solid ${notice.type === 'warning' ? '#f5c144' : '#4ee1a0'}`,
             color: notice.type === 'warning' ? '#f5c144' : '#4ee1a0',
-            padding: '12px 18px',
-            borderRadius: '12px',
-            marginBottom: '20px',
-            fontWeight: 600,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between'
           }}
         >
           <span>✨ {notice.text}</span>
@@ -322,34 +316,43 @@ export default function SuperAdminDashboard() {
           onClick={() => handleTabChange('telemetry')}
           className={`sa-tab-btn ${activeTab === 'telemetry' ? 'active' : ''}`}
         >
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" style={{ marginRight: '6px', verticalAlign: 'text-bottom' }}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" style={{ marginRight: '5px', verticalAlign: 'middle', flexShrink: 0 }}>
             <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
           </svg>
-          REALTIME TELEMETRY
+          <span className="sa-tab-full">REALTIME TELEMETRY</span>
+          <span className="sa-tab-mobile">Telemetry</span>
         </button>
         <button
           onClick={() => handleTabChange('overview')}
           className={`sa-tab-btn ${activeTab === 'overview' ? 'active' : ''}`}
         >
-          📊 Network Overview
+          <span className="sa-tab-icon">📊</span>
+          <span className="sa-tab-full">Network Overview</span>
+          <span className="sa-tab-mobile">Overview</span>
         </button>
         <button
           onClick={() => handleTabChange('branches')}
           className={`sa-tab-btn ${activeTab === 'branches' ? 'active' : ''}`}
         >
-          🏢 Regional Branches ({branches.length})
+          <span className="sa-tab-icon">🏢</span>
+          <span className="sa-tab-full">Regional Branches ({branches.length})</span>
+          <span className="sa-tab-mobile">Branches ({branches.length})</span>
         </button>
         <button
           onClick={() => handleTabChange('staff')}
           className={`sa-tab-btn ${activeTab === 'staff' ? 'active' : ''}`}
         >
-          👥 Staff & RBAC Access ({users.length})
+          <span className="sa-tab-icon">👥</span>
+          <span className="sa-tab-full">Staff & RBAC Access ({users.length})</span>
+          <span className="sa-tab-mobile">Staff ({users.length})</span>
         </button>
         <button
           onClick={() => handleTabChange('broadcasts')}
           className={`sa-tab-btn ${activeTab === 'broadcasts' ? 'active' : ''}`}
         >
-          📢 System Announcements ({broadcasts.length})
+          <span className="sa-tab-icon">📢</span>
+          <span className="sa-tab-full">System Announcements ({broadcasts.length})</span>
+          <span className="sa-tab-mobile">Bulletins ({broadcasts.length})</span>
         </button>
       </div>
 

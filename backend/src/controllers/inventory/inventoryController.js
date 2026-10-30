@@ -361,6 +361,10 @@ export const recordProcurement = async (req, res) => {
     if (purchasePricePerKg && Number(purchasePricePerKg) > 0) {
       fishDoc.purchasePrice = Number(purchasePricePerKg);
     }
+    if (supplierName && supplierName.trim()) {
+      fishDoc.lastSupplier = supplierName.trim();
+    }
+    fishDoc.lastProcurementDate = new Date();
     await fishDoc.save();
 
     const log = await StockLog.create({
@@ -372,7 +376,9 @@ export const recordProcurement = async (req, res) => {
       finalStock: newStock,
       balanceGrossKg: newStock,
       unit: 'kg',
-      notes: `Mandi/Harbor Catch Received: +${added}kg${supplierName ? ` from ${supplierName}` : ''}${notes ? ` (${notes})` : ''}`,
+      supplierName: supplierName ? supplierName.trim() : '',
+      crateReference: notes ? notes.trim() : '',
+      notes: `Mandi/Harbor Catch Received: +${added}kg${supplierName ? ` from ${supplierName.trim()}` : ''}${notes ? ` (${notes.trim()})` : ''}`,
       performedBy: req.user?.username || 'Procurement Manager'
     });
 

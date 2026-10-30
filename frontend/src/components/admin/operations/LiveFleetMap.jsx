@@ -706,7 +706,7 @@ export default function LiveFleetMap({ vehicles = [], onRefresh }) {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         {/* Map Column (2 spans on desktop) */}
         <div
-          className="lg:col-span-2 bg-white rounded-2xl border border-[#FED7AA] shadow-sm overflow-hidden flex flex-col h-[600px] relative isolate"
+          className="lg:col-span-2 bg-white rounded-2xl border border-[#FED7AA] shadow-sm overflow-hidden flex flex-col h-[400px] sm:h-[500px] lg:h-[600px] relative isolate"
           style={{ zIndex: 1 }}
         >
           {/* Map Header Status & Action Bar */}

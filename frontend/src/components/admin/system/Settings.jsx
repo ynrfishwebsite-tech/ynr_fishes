@@ -93,6 +93,7 @@ const Settings = ({ user, setUser, onNavigate, onGoBack }) => {
   const [fontCategoryFilter, setFontCategoryFilter] = useState('All');
   const [previewTab, setPreviewTab] = useState('receipt'); // 'receipt' | 'kot'
   const [menuPreviewItems, setMenuPreviewItems] = useState([]);
+  const [activeSection, setActiveSection] = useState('all'); // 'all' | 'store' | 'printer' | 'taxes' | 'profile'
 
   useEffect(() => {
     let isMounted = true;
@@ -609,17 +610,46 @@ const Settings = ({ user, setUser, onNavigate, onGoBack }) => {
   return (
     <div className="h-full overflow-y-auto p-1.5 sm:p-2.5 md:p-3">
       <div className="w-full space-y-2.5 sm:space-y-3">
-        {/* Header */}
-        <div className="bg-gradient-to-r from-[#ffffff] via-[#fff7ed] to-[#fff8f0] rounded-2xl p-2 sm:p-3 border border-slate-300 shadow-[0_4px_20px_rgba(2,13,26,0.6)]">
+        {/* Header with Categorized Section Navigation Buttons */}
+        <div className="bg-[#FDFBF7] rounded-2xl p-2.5 sm:p-3.5 border border-[#E8DCCB] shadow-xs flex flex-col gap-2.5">
           <div className="flex items-center gap-3 sm:gap-4">
             <BackButton onClick={onGoBack} className="shrink-0" />
-            <div className="w-10 h-10 sm:w-12 sm:h-12 bg-primary/20 rounded-xl flex items-center justify-center shrink-0">
+            <div className="w-10 h-10 sm:w-11 sm:h-11 bg-primary/10 rounded-xl flex items-center justify-center shrink-0 border border-primary/20">
               <SettingsIcon className="text-primary" size={22} />
             </div>
-            <div>
-              <h1 className="text-lg sm:text-2xl font-bold text-text-main">{t("Store Settings")}</h1>
-              <p className="text-xs sm:text-sm text-text-muted">{t("Configure your store information and billing preferences")}</p>
+            <div className="flex-1 min-w-0">
+              <h1 className="text-base sm:text-xl font-bold text-text-main m-0 leading-tight">{t("Store Settings")}</h1>
+              <p className="text-xs text-text-muted m-0 mt-0.5">{t("Configure your store information and billing preferences")}</p>
             </div>
+          </div>
+
+          {/* Categorized Section Buttons */}
+          <div className="flex items-center gap-1.5 sm:gap-2 overflow-x-auto no-scrollbar pt-2 border-t border-[#E8DCCB]/60">
+            {[
+              { id: 'all', label: t('All Settings'), icon: SettingsIcon },
+              { id: 'store', label: t('Store & Depot'), icon: Building },
+              { id: 'printer', label: t('Printers & Thermal'), icon: Printer },
+              { id: 'taxes', label: t('Taxes & Security'), icon: Lock },
+              { id: 'profile', label: t('User Profile'), icon: User },
+            ].map((cat) => {
+              const Icon = cat.icon;
+              const isActive = activeSection === cat.id;
+              return (
+                <button
+                  key={cat.id}
+                  type="button"
+                  onClick={() => setActiveSection(cat.id)}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap cursor-pointer shadow-2xs active:scale-95 ${
+                    isActive
+                      ? 'bg-[#ea580c] text-white shadow-xs font-bold border border-[#c2410c]'
+                      : 'bg-white text-slate-700 hover:bg-[#F5E8D8] border border-[#E8DCCB]'
+                  }`}
+                >
+                  <Icon size={13} className={isActive ? 'text-white' : 'text-[#ea580c]'} />
+                  <span>{cat.label}</span>
+                </button>
+              );
+            })}
           </div>
         </div>
 
@@ -627,6 +657,7 @@ const Settings = ({ user, setUser, onNavigate, onGoBack }) => {
 
           <div className="flex flex-col gap-4">
             {/* Profile Information */}
+            {(activeSection === 'all' || activeSection === 'profile') && (
             <div className="bg-surface rounded-2xl p-4 border border-border shadow-lg">
               <div className="flex items-center gap-3 mb-6">
                 <div className="w-10 h-10 bg-primary/10 rounded-xl flex items-center justify-center">
@@ -649,8 +680,10 @@ const Settings = ({ user, setUser, onNavigate, onGoBack }) => {
 
               </div>
             </div>
+            )}
 
             {/* Printer Configuration */}
+            {(activeSection === 'all' || activeSection === 'printer') && (
             <div className="bg-surface rounded-2xl p-4 border border-border shadow-lg">
               <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center gap-3">
@@ -789,19 +822,24 @@ const Settings = ({ user, setUser, onNavigate, onGoBack }) => {
                 )}
               </div>
             </div>
+            )}
 
 
 
-            {/* Restaurant Information */}
+            {/* Fish Depot & Store Information */}
+            {(activeSection === 'all' || activeSection === 'store') && (
             <div className="bg-surface rounded-2xl p-4 border border-border shadow-lg">
               <div className="flex items-center gap-3 mb-6">
                 <div className="w-10 h-10 bg-primary/10 rounded-xl flex items-center justify-center">
                   <Building className="text-primary" size={20} />
                 </div>
-                <h2 className="text-xl font-bold text-text-main">{t("Fish Depot & Store Information")}</h2>
+                <div>
+                  <h2 className="text-xl font-bold text-text-main">{t("Fish Depot & Store Information")}</h2>
+                  <p className="text-xs text-text-muted mt-0.5">{t("Store branding, contact details & legal registration")}</p>
+                </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="flex flex-col gap-5">
                 {/* Restaurant Logo */}
                 <div className="md:col-span-2 space-y-2 pb-2">
                   <label className="text-sm font-semibold text-text-main flex items-center gap-2">
@@ -1106,9 +1144,24 @@ const Settings = ({ user, setUser, onNavigate, onGoBack }) => {
                   </div>
 
                 </div>
+              </div>
+            </div>
+            )}
 
-                {/* Right Column Settings */}
-                <div className="flex flex-col gap-6">
+            {/* Taxes & Security Configuration */}
+            {(activeSection === 'all' || activeSection === 'taxes') && (
+            <div className="bg-surface rounded-2xl p-4 border border-border shadow-lg">
+              <div className="flex items-center gap-3 mb-6">
+                <div className="w-10 h-10 bg-primary/10 rounded-xl flex items-center justify-center">
+                  <Lock className="text-primary" size={20} />
+                </div>
+                <div>
+                  <h2 className="text-xl font-bold text-text-main">{t("Taxes & Security Configuration")}</h2>
+                  <p className="text-xs text-text-muted mt-0.5">{t("GST rates, Dynamic QR payment, Owner PIN & live notifications")}</p>
+                </div>
+              </div>
+
+              <div className="flex flex-col gap-6">
                   {/* Individual Tax Configuration */}
                   <div className="space-y-3 p-4 bg-[#FDFBF7] rounded-xl border border-slate-200 shadow-md">
                     <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
@@ -1240,7 +1293,6 @@ const Settings = ({ user, setUser, onNavigate, onGoBack }) => {
                       </button>
                     </div>
                   </div>
-                </div>
 
                 {/* Global Notifications Security */}
                 <div className="space-y-4 md:col-span-2 mt-4 pt-4 border-t border-slate-200">
@@ -1263,6 +1315,7 @@ const Settings = ({ user, setUser, onNavigate, onGoBack }) => {
                 </div>
               </div>
             </div>
+            )}
           </div>
 
           {/* Preview Section */}

@@ -33,13 +33,16 @@ export default function OverviewTab({ stats, branches, onTabChange }) {
       <div className="dash-section-card">
         <div className="dash-section-header">
           <h2 className="dash-section-title">
-            <span>🌐</span> YNR Fishes Regional Network Status
+            <span>🌐</span>
+            <span className="section-title-full">YNR Fishes Regional Network Status</span>
+            <span className="section-title-short">Regional Network</span>
           </h2>
           <button
             onClick={() => onTabChange('branches')}
-            className="dash-pill-btn"
+            className="dash-pill-btn sa-header-btn"
           >
-            Manage All Branches →
+            <span className="dash-btn-text-full">Manage All Branches →</span>
+            <span className="dash-btn-text-short">Branches →</span>
           </button>
         </div>
 

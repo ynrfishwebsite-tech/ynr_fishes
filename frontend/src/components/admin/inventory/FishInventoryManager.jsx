@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import Toast from '../system/Toast';
 import axios from 'axios';
 import { getApiUrl } from '../../../config.js';
 import realtimeService from '../../../services/realtimeService';
@@ -263,15 +264,14 @@ export default function FishInventoryManager({ user }) {
         )}
       </div>
 
-      {/* Feedback Message */}
+      {/* Toast Notification */}
       {message.text && (
-        <div className={`px-3 py-1.5 rounded-lg text-xs font-bold border animate-in fade-in ${
-          message.type === 'success' 
-            ? 'bg-emerald-950/80 border-emerald-500/50 text-emerald-300' 
-            : 'bg-red-950/80 border-red-500/50 text-red-300'
-        }`}>
-          {message.text}
-        </div>
+        <Toast
+          message={message.text}
+          type={message.type === 'error' ? 'error' : 'success'}
+          duration={3000}
+          onClose={() => setMessage({ text: '', type: '' })}
+        />
       )}
 
       {/* TAB 1: Stock Overview (Compact Table) */}
@@ -302,8 +302,11 @@ export default function FishInventoryManager({ user }) {
                     <tr key={fish._id} className="hover:bg-[#FAF3E8] transition-colors">
                       <td className="py-2 px-3">
                         <div className="font-bold text-slate-800 text-xs">{fish.name}</div>
+                        {fish.lastSupplier && (
+                          <div className="text-[10px] text-sky-700 font-bold">🚢 Supplier: {fish.lastSupplier}</div>
+                        )}
                         {fish.scientificName && (
-                          <div className="text-[10px] text-sky-700 italic font-medium">{fish.scientificName}</div>
+                          <div className="text-[10px] text-slate-500 italic font-medium">{fish.scientificName}</div>
                         )}
                       </td>
                       <td className="py-2 px-3 font-mono text-xs font-black text-slate-800">
@@ -551,7 +554,7 @@ export default function FishInventoryManager({ user }) {
                   <th className="p-3">Transaction Type</th>
                   <th className="p-3">Weight Change (Kg)</th>
                   <th className="p-3">Balance Stock (Kg)</th>
-                  <th className="p-3">Cut / Bill Ref</th>
+                  <th className="p-3">Supplier / Ref</th>
                   <th className="p-3">Performed By</th>
                 </tr>
               </thead>
@@ -588,9 +591,23 @@ export default function FishInventoryManager({ user }) {
                       <td className="p-3 font-mono text-slate-800 font-bold">
                         {log.finalStock !== undefined ? `${log.finalStock} kg` : '-'}
                       </td>
-                      <td className="p-3 text-slate-600 text-[11px]">
-                        {log.cutType ? <span className="text-sky-800 font-bold">{log.cutType} </span> : null}
-                        {log.billNumber ? `(Bill #${log.billNumber})` : log.notes || '-'}
+                      <td className="p-3 text-slate-700 text-[11px]">
+                        {log.supplierName ? (
+                          <div className="flex flex-col gap-0.5">
+                            <span className="inline-flex items-center gap-1 font-bold text-sky-800 bg-sky-50 border border-sky-200 px-2 py-0.5 rounded-md w-fit text-[10px]">
+                              🚢 {log.supplierName}
+                            </span>
+                            {log.crateReference ? (
+                              <span className="text-[10px] text-slate-500 font-medium">{log.crateReference}</span>
+                            ) : null}
+                          </div>
+                        ) : log.cutType ? (
+                          <span className="text-sky-800 font-bold">{log.cutType} </span>
+                        ) : log.billNumber ? (
+                          <span className="font-mono text-slate-800 font-bold">Bill #{log.billNumber}</span>
+                        ) : (
+                          <span className="text-slate-600">{log.notes || '-'}</span>
+                        )}
                       </td>
                       <td className="p-3 text-slate-600 text-[11px]">
                         {log.performedBy || 'System'}

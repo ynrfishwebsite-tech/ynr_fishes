@@ -1023,3 +1023,431 @@
   font-size: 0.74rem;
   font-weight: normal;
 }
+
+/* ==========================================================================
+   DESKTOP DEFAULT VISIBILITY (>= 769px)
+   ========================================================================== */
+@media (min-width: 769px) {
+  .heading-short,
+  .telemetry-sync-text-short,
+  .telemetry-subtab-short {
+    display: none !important;
+  }
+}
+
+/* ==========================================================================
+   MOBILE RESPONSIVE & ULTRA-COMPACT UI (<= 768px)
+   Zero paddings, small text, compact buttons, horizontally scrollable
+   ========================================================================== */
+@media (max-width: 768px) {
+  .telemetry-module-wrapper {
+    gap: 6px;
+  }
+
+  /* Telemetry Header Card */
+  .telemetry-header-card {
+    padding: 6px 8px;
+    border-radius: 8px;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  .telemetry-header-left {
+    gap: 8px;
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
+  .telemetry-icon-pulse {
+    width: 28px;
+    height: 28px;
+    border-radius: 6px;
+  }
+
+  .telemetry-icon-pulse svg {
+    width: 14px;
+    height: 14px;
+  }
+
+  .telemetry-title-block {
+    gap: 1px;
+    min-width: 0;
+  }
+
+  .telemetry-title-row {
+    gap: 6px;
+    flex-wrap: nowrap;
+    align-items: center;
+  }
+
+  .telemetry-heading {
+    font-size: 0.78rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .heading-full {
+    display: none;
+  }
+
+  .heading-short {
+    display: inline;
+  }
+
+  .live-pill-badge {
+    padding: 1px 5px;
+    font-size: 0.62rem;
+    border-radius: 10px;
+    gap: 4px;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+
+  .live-dot-pulse {
+    width: 5px;
+    height: 5px;
+  }
+
+  .telemetry-subtext {
+    display: none; /* Hide long explanatory text on mobile */
+  }
+
+  .telemetry-header-right {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin-left: auto;
+  }
+
+  .telemetry-clock {
+    padding: 2px 5px;
+    font-size: 0.65rem;
+    border-radius: 6px;
+  }
+
+  .telemetry-clock svg {
+    width: 11px;
+    height: 11px;
+  }
+
+  .telemetry-sync-btn {
+    padding: 3px 6px;
+    font-size: 0.68rem;
+    border-radius: 6px;
+    gap: 3px;
+    white-space: nowrap;
+  }
+
+  .telemetry-sync-btn svg {
+    width: 11px;
+    height: 11px;
+  }
+
+  .telemetry-sync-text-full {
+    display: none;
+  }
+
+  .telemetry-sync-text-short {
+    display: inline;
+  }
+
+  /* Sub Tabs Bar */
+  .telemetry-subtabs-bar {
+    display: flex;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    flex-wrap: nowrap;
+    gap: 4px;
+    padding: 2px 0;
+    margin-bottom: 4px;
+    scrollbar-width: none;
+  }
+
+  .telemetry-subtabs-bar::-webkit-scrollbar {
+    display: none;
+  }
+
+  .telemetry-subtab-btn {
+    padding: 4px 7px;
+    font-size: 0.7rem;
+    border-radius: 6px;
+    gap: 4px;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+
+  .telemetry-subtab-btn svg {
+    width: 12px;
+    height: 12px;
+  }
+
+  .telemetry-subtab-full {
+    display: none;
+  }
+
+  .telemetry-subtab-short {
+    display: inline;
+  }
+
+  /* 4 KPI Scorecards */
+  .telemetry-kpi-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 4px;
+    margin-bottom: 6px;
+  }
+
+  .telemetry-kpi-card {
+    padding: 6px 8px;
+    border-radius: 8px;
+  }
+
+  .telemetry-kpi-header {
+    margin-bottom: 2px;
+  }
+
+  .telemetry-kpi-title {
+    font-size: 0.6rem;
+    letter-spacing: 0.02em;
+  }
+
+  .kpi-icon-pill {
+    width: 20px;
+    height: 20px;
+    border-radius: 5px;
+  }
+
+  .kpi-icon-pill svg {
+    width: 11px;
+    height: 11px;
+  }
+
+  .telemetry-kpi-value {
+    font-size: 1.15rem;
+    margin: 1px 0;
+  }
+
+  .telemetry-kpi-unit {
+    font-size: 0.7rem;
+  }
+
+  .telemetry-kpi-sub {
+    font-size: 0.58rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .telemetry-kpi-sub svg {
+    width: 9px;
+    height: 9px;
+  }
+
+  /* Charts & Panels */
+  .telemetry-charts-grid {
+    grid-template-columns: 1fr;
+    gap: 6px;
+    margin-bottom: 6px;
+  }
+
+  .telemetry-panel-card {
+    padding: 6px 8px;
+    border-radius: 8px;
+  }
+
+  .panel-card-title {
+    font-size: 0.75rem;
+  }
+
+  .panel-card-subtitle {
+    font-size: 0.62rem;
+    display: none;
+  }
+
+  .rpm-pulse-badge,
+  .active-nodes-badge,
+  .nodes-tracked-badge {
+    padding: 2px 5px;
+    font-size: 0.62rem;
+    border-radius: 6px;
+  }
+
+  .traffic-chart-wrapper {
+    margin-top: 4px;
+  }
+
+  .traffic-svg-chart {
+    height: 90px;
+  }
+
+  .throughput-bars-container {
+    gap: 4px;
+    margin-top: 4px;
+  }
+
+  .throughput-bar-row {
+    gap: 6px;
+  }
+
+  .throughput-branch-name {
+    font-size: 0.68rem;
+    max-width: 90px;
+  }
+
+  .throughput-val-col span {
+    font-size: 0.65rem;
+  }
+
+  /* Tables: Horizontally scrollable and non-breaking */
+  .telemetry-table-responsive {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    width: 100%;
+    margin-top: 4px;
+  }
+
+  .telemetry-data-table {
+    min-width: 520px;
+  }
+
+  .telemetry-data-table th {
+    padding: 4px 6px;
+    font-size: 0.62rem;
+    white-space: nowrap;
+  }
+
+  .telemetry-data-table td {
+    padding: 5px 6px;
+    font-size: 0.68rem;
+    white-space: nowrap;
+  }
+
+  .node-icon {
+    width: 18px;
+    height: 18px;
+    border-radius: 4px;
+  }
+
+  .node-icon svg {
+    width: 11px;
+    height: 11px;
+  }
+
+  .node-title {
+    font-size: 0.68rem;
+  }
+
+  .status-pill {
+    padding: 1px 5px;
+    font-size: 0.62rem;
+    border-radius: 8px;
+  }
+
+  .status-dot {
+    width: 4px;
+    height: 4px;
+  }
+
+  /* Storage Services Tab */
+  .services-grid-2x2 {
+    grid-template-columns: 1fr;
+    gap: 6px;
+  }
+
+  .service-health-card {
+    padding: 8px 10px;
+    border-radius: 8px;
+  }
+
+  .service-card-top {
+    margin-bottom: 6px;
+  }
+
+  .service-brand {
+    gap: 8px;
+  }
+
+  .service-brand-icon {
+    width: 26px;
+    height: 26px;
+    border-radius: 6px;
+  }
+
+  .service-brand-icon svg {
+    width: 13px;
+    height: 13px;
+  }
+
+  .service-title {
+    font-size: 0.76rem;
+    margin: 0;
+  }
+
+  .service-subtitle {
+    font-size: 0.62rem;
+    margin: 0;
+  }
+
+  .service-status-pill {
+    padding: 2px 6px;
+    font-size: 0.62rem;
+    border-radius: 8px;
+  }
+
+  .progress-labels {
+    font-size: 0.65rem;
+    margin-bottom: 3px;
+  }
+
+  .progress-val-bold {
+    font-size: 0.68rem;
+  }
+
+  .service-meter-track {
+    height: 5px;
+    border-radius: 3px;
+  }
+
+  .progress-remaining-text {
+    font-size: 0.6rem;
+    margin-top: 3px;
+  }
+
+  .service-card-footer {
+    margin-top: 6px;
+    padding-top: 6px;
+    gap: 8px;
+  }
+
+  .service-stat-col .stat-label {
+    font-size: 0.58rem;
+  }
+
+  .service-stat-col .stat-val {
+    font-size: 0.72rem;
+  }
+
+  /* WhatsApp Matrix */
+  .wa-overview-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 4px;
+    margin-bottom: 6px;
+  }
+
+  .dept-boxes-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 4px;
+  }
+
+  .dept-pill-box {
+    padding: 6px 8px;
+    border-radius: 6px;
+    gap: 4px;
+  }
+
+  .dept-drawer-card {
+    padding: 8px 10px;
+    border-radius: 8px;
+  }
+}

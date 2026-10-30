@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { getApiUrl } from '../config.js';
+import { clearAllOfflineData } from '../db/offlineDb.js';
 
 const AuthContext = createContext();
 
@@ -121,23 +122,45 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  // Logout handler
+  // Logout handler - clears state, localStorage, and offline data
   const logout = () => {
     setToken(null);
     setUser(null);
-    localStorage.removeItem('ynr_token');
-    localStorage.removeItem('token');
-    localStorage.removeItem('accessToken');
-    localStorage.removeItem('ynr_auth_token');
-    localStorage.removeItem('refreshToken');
-    localStorage.removeItem('ynr_user');
-    localStorage.removeItem('user');
-    localStorage.removeItem('tenantDb');
-    localStorage.removeItem('resto_db_name');
-    localStorage.removeItem('branchCode');
-    localStorage.removeItem('branch');
-    localStorage.removeItem('branchName');
-    localStorage.removeItem('branchId');
+
+    const keysToRemove = [
+      'ynr_token', 'token', 'accessToken', 'ynr_auth_token', 'refreshToken',
+      'resto_token', 'admin_token',
+      'ynr_user', 'user', 'owner_pin',
+      'tenantDb', 'tenant_db', 'resto_db_name', 'branchCode', 'branch', 'branchName', 'branchId',
+      'admin_current_view', 'ynr_sa_active_tab',
+      'cached_vehicles', 'cached_trips', 'cached_fuel_logs', 'cached_maint_logs', 'cached_depot_config',
+      'ms_daily_stats_cache', 'resto_crm_cache', 'resto_discounts_cache',
+      'ynr_cart'
+    ];
+
+    for (const key of keysToRemove) {
+      try {
+        localStorage.removeItem(key);
+      } catch (_) {}
+    }
+
+    try {
+      for (let i = localStorage.length - 1; i >= 0; i--) {
+        const key = localStorage.key(i);
+        if (key && (
+          key.startsWith('realtime_') ||
+          key.startsWith('notified_') ||
+          key.startsWith('ms_perm_') ||
+          key.startsWith('cached_')
+        )) {
+          localStorage.removeItem(key);
+        }
+      }
+    } catch (_) {}
+
+    try {
+      clearAllOfflineData().catch(() => {});
+    } catch (_) {}
   };
 
   const getDashboardPath = (role) => {

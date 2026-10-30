@@ -26,7 +26,8 @@ export default function PortalHeader({ title, subtitle, icon = '🌊', onRefresh
             disabled={isRefreshing}
             title="Refresh live data"
           >
-            🔄 {isRefreshing ? 'Syncing...' : 'Refresh'}
+            🔄 <span className="dash-btn-text-full">{isRefreshing ? 'Syncing...' : 'Refresh'}</span>
+            <span className="dash-btn-text-short">{isRefreshing ? '...' : 'Refresh'}</span>
           </button>
         )}
         <button
@@ -34,7 +35,8 @@ export default function PortalHeader({ title, subtitle, icon = '🌊', onRefresh
           className="dash-pill-btn danger"
           title="Sign out of your session"
         >
-          🚪 Sign Out
+          🚪 <span className="dash-btn-text-full">Sign Out</span>
+          <span className="dash-btn-text-short">Out</span>
         </button>
       </div>
     </div>

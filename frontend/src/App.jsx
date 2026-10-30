@@ -1,6 +1,23 @@
 import React from 'react';
 import { BrowserRouter, MemoryRouter, Routes, Route, useLocation, Navigate } from 'react-router-dom';
 
+export const checkIsNativeApp = () => {
+  if (typeof window === 'undefined') return false;
+  return Boolean(
+    (window.Capacitor?.isNativePlatform && window.Capacitor.isNativePlatform()) ||
+    window.AndroidBluetooth ||
+    window.AndroidPrint ||
+    window.electronAPI ||
+    window.process?.versions?.electron ||
+    window.location.protocol === 'file:' ||
+    navigator.userAgent.toLowerCase().includes('electron') ||
+    navigator.userAgent.toLowerCase().includes('capacitor') ||
+    (window.location.hostname === 'localhost' && window.location.port === '')
+  );
+};
+
+const isNativeApp = checkIsNativeApp();
+
 const isElectronOrFile =
   typeof window !== 'undefined' &&
   (window.location.protocol === 'file:' ||
@@ -19,7 +36,7 @@ import ServicesSection from './components/landing/ServicesSection';
 import EnterpriseFooter from './components/landing/EnterpriseFooter';
 
 // Auth & Dashboard Imports
-import { AuthProvider } from './context/AuthContext';
+import { AuthProvider, useAuth } from './context/AuthContext';
 import ProtectedRoute from './components/common/ProtectedRoute';
 import LoginPage from './pages/LoginPage';
 import DriverGpsPortal from './pages/DriverGpsPortal';
@@ -38,6 +55,17 @@ const HomePage = () => (
     <GallerySection />
   </>
 );
+
+function RootRedirect() {
+  const { isAuthenticated, user, getDashboardPath } = useAuth();
+  if (isAuthenticated && user) {
+    return <Navigate to={getDashboardPath(user.role)} replace />;
+  }
+  if (checkIsNativeApp()) {
+    return <Navigate to="/login" replace />;
+  }
+  return <HomePage />;
+}
 
 function AppLayout() {
   const location = useLocation();
@@ -69,7 +97,7 @@ function AppLayout() {
       <div>
         <Routes>
           {/* Public Customer Routes */}
-          <Route path="/" element={isElectronOrFile ? <Navigate to="/login" replace /> : <HomePage />} />
+          <Route path="/" element={<RootRedirect />} />
           <Route path="/about" element={<div style={{ paddingTop: '100px' }}><AboutSection /></div>} />
           <Route path="/services" element={<div style={{ paddingTop: '100px' }}><ServicesSection /></div>} />
           <Route path="/products" element={<div style={{ paddingTop: '100px' }}><ProductsSection /></div>} />
@@ -95,7 +123,7 @@ function AppLayout() {
           <Route
             path="/dashboard/admin"
             element={
-              <ProtectedRoute allowedRoles={['super-admin', 'admin', 'manager', 'cashier', 'worker']}>
+              <ProtectedRoute allowedRoles={['admin', 'manager', 'cashier', 'worker']}>
                 <AdminDashboard />
               </ProtectedRoute>
             }

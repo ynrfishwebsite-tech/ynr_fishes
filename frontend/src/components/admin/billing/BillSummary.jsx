@@ -58,6 +58,8 @@ const BillSummary = ({
   reservations = [],
   onOpenCustomerModal,
   onNavigate,
+  onClearCart,
+  showToast,
   autoWhatsappEnabled = false,
   onToggleAutoWhatsapp,
   isWhatsAppConnected = false,
@@ -69,6 +71,128 @@ const BillSummary = ({
   const isCaptain = userRole === 'Captain';
 
   const cartEndRef = React.useRef(null);
+
+  const [directPrintOnSave, setDirectPrintOnSave] = useState(() => {
+    try {
+      return localStorage.getItem('msbillings_direct_save') === 'true';
+    } catch {
+      return false;
+    }
+  });
+
+  const [showClearConfirmModal, setShowClearConfirmModal] = useState(false);
+  const [showBilledEditModal, setShowBilledEditModal] = useState(false);
+
+  useEffect(() => {
+    const handleConfigChange = () => {
+      try {
+        setDirectPrintOnSave(localStorage.getItem('msbillings_direct_save') === 'true');
+      } catch {}
+    };
+    window.addEventListener('printConfigChanged', handleConfigChange);
+    return () => window.removeEventListener('printConfigChanged', handleConfigChange);
+  }, []);
+
+  const handleClearAllClick = () => {
+    if (!cart || cart.length === 0) return;
+
+    if (isBilledLocked) {
+      if (showToast) {
+        showToast(t("Order is saved & printed. Please click EDIT button to modify or clear items."), "warning");
+      }
+      setShowBilledEditModal(true);
+      return;
+    }
+
+    if (orderStatus === 'Paid') {
+      if (showToast) {
+        showToast(t("Paid order cannot be modified or cleared."), "error");
+      }
+      return;
+    }
+
+    setShowClearConfirmModal(true);
+  };
+
+  const confirmClearAll = () => {
+    setShowClearConfirmModal(false);
+    if (setDiscount) {
+      setDiscount({ type: 'flat', value: '', name: '' });
+    }
+    if (onClearCart) {
+      onClearCart();
+    } else if (cart && cart.length > 0) {
+      cart.forEach((item) => {
+        if (updateQuantity) {
+          updateQuantity(item.itemKey || item._id || item.name, -item.quantity);
+        }
+      });
+    }
+  };
+
+  // Keyboard Shortcuts F1 to F8 for POS
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      switch (e.key) {
+        case 'F1':
+          e.preventDefault();
+          if (cart.length > 0 && orderStatus !== 'Paid' && !isBilledLocked && !(!!orderId && !hasPendingChanges) && actionLoading === null) {
+            if (onSaveOrder) onSaveOrder();
+          }
+          break;
+        case 'F2':
+          e.preventDefault();
+          if (cart.length > 0 && orderStatus !== 'Paid' && actionLoading === null) {
+            if (onGenerateBill) onGenerateBill();
+          }
+          break;
+        case 'F3':
+          e.preventDefault();
+          if (actionLoading === null && orderStatus !== 'Open' && (orderId || cart.length > 0)) {
+            if (onReopenOrder) onReopenOrder();
+          }
+          break;
+        case 'F4':
+          e.preventDefault();
+          if (actionLoading === null && orderStatus !== 'Paid' && (orderId || cart.length > 0)) {
+            if (onCancelOrder) onCancelOrder();
+          }
+          break;
+        case 'F5':
+          e.preventDefault();
+          if (cart.length > 0 && orderStatus !== 'Paid' && !loading && actionLoading === null) {
+            setIsPaid(true);
+            if (onSettleBill) onSettleBill();
+          }
+          break;
+        case 'F6':
+          e.preventDefault();
+          if (!isLocked) {
+            handleOpenOffersModal();
+          }
+          break;
+        case 'F7':
+          e.preventDefault();
+          if (!isLocked) {
+            if (discount?.type === 'complimentary') {
+              setDiscount({ type: 'flat', value: '', name: '' });
+            } else {
+              setDiscount({ type: 'complimentary', value: '', name: 'Complimentary' });
+            }
+          }
+          break;
+        case 'F8':
+          e.preventDefault();
+          handleClearAllClick();
+          break;
+        default:
+          break;
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [cart, orderStatus, isBilledLocked, isLocked, orderId, hasPendingChanges, actionLoading, loading, discount, onSaveOrder, onGenerateBill, onReopenOrder, onCancelOrder, onSettleBill]);
 
   useEffect(() => {
     if (cartEndRef.current) {
@@ -544,8 +668,8 @@ const BillSummary = ({
       </div>
 
       {/* Info Bar - CRM & Notes */}
-      <div className="flex items-center gap-2 px-2.5 sm:px-3 py-1.5 border-b border-[#E8DCCB] bg-[#F7EFE2] overflow-x-auto no-scrollbar">
-        <div className="flex items-center gap-2 shrink-0">
+      <div className="flex items-center justify-between px-2.5 sm:px-3 py-1.5 border-b border-[#E8DCCB] bg-[#F7EFE2] overflow-x-auto no-scrollbar gap-2">
+        <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
           {/* Customer CRM Badge */}
           <div
             onClick={onOpenCustomerModal}
@@ -593,10 +717,28 @@ const BillSummary = ({
             </div>
           )}
         </div>
+
+        {/* Clear All Button with F8 shortcut */}
+        {cart.length > 0 && (
+          <button
+            type="button"
+            onClick={handleClearAllClick}
+            title={isBilledLocked ? t("Order is saved & printed. Click EDIT to modify.") : t("Clear all items (F8)")}
+            className={`flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] font-bold transition-all active:scale-95 shrink-0 shadow-2xs ${
+              isBilledLocked
+                ? 'bg-amber-100/80 hover:bg-amber-200 text-amber-900 border border-amber-300'
+                : 'bg-red-50 hover:bg-red-100 text-red-600 border border-red-200'
+            }`}
+          >
+            <kbd className="px-1.5 py-0.5 rounded bg-white text-slate-800 border border-slate-300 font-mono text-[9px] font-black shadow-2xs">F8</kbd>
+            <Trash2 size={11} className={isBilledLocked ? 'text-amber-700' : 'text-red-500'} />
+            <span>{t("Clear All")}</span>
+          </button>
+        )}
       </div>
 
       {/* Table Headers */}
-      <div className="flex items-center px-2 py-1.5 bg-[#F7EFE2] border-b border-[#E8DCCB] text-[#475569] text-[9px] font-bold uppercase tracking-wider shrink-0">
+      <div id="cart-items-header" className="flex items-center px-2 py-1.5 bg-[#F7EFE2] border-b border-[#E8DCCB] text-[#475569] text-[9px] font-bold uppercase tracking-wider shrink-0">
         <div className="w-[44%] flex items-center gap-1.5 min-w-0">
           <span className="shrink-0">{t("Items")}</span>
           {cart.length > 0 && (
@@ -614,7 +756,7 @@ const BillSummary = ({
       <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden bg-[#FDFBF7]">
 
         {/* Cart Items List */}
-        <div className="bg-[#FDFBF7] p-0.5 relative">
+        <div id="cart-items-container" data-billing-cart="true" className="counter-sale-cart bill-cart-items bg-[#FDFBF7] p-0.5 relative">
           {loading && (orderId || orderStatus === 'Billed' || cart.length > 0) ? (
             <div className="p-3 space-y-2.5 animate-in fade-in duration-150">
               {/* Dynamic Status Header */}
@@ -1085,8 +1227,9 @@ const BillSummary = ({
                   ? 'bg-emerald-600 text-white border-emerald-500 shadow-sm hover:bg-emerald-500'
                   : 'bg-sky-500/15 text-[#ea580c] border-[#E8DCCB] hover:bg-sky-500/25'
                   }`}
-                title={t("Browse & apply active discounts, percentage offers, and BOGO deals")}
+                title={t("Browse & apply active discounts, percentage offers, and BOGO deals (F6)")}
               >
+                <kbd className="px-1.5 py-0.5 rounded bg-white text-slate-800 border border-slate-300 font-mono text-[9px] font-black shadow-2xs">F6</kbd>
                 <Tags size={12} />
                 <span>{discount?.name ? `${discount.name}` : t("Offers")}</span>
               </button>
@@ -1100,9 +1243,24 @@ const BillSummary = ({
                     setDiscount({ type: 'complimentary', value: '', name: 'Complimentary' });
                   }
                 }}
-                className={`${discount?.type === 'complimentary' ? 'bg-rose-600 text-white border-rose-500 hover:bg-rose-500' : 'bg-[#fef2f2] text-[#dc2626] border-[#fecaca] hover:bg-[#fee2e2]'} px-2 py-0.5 rounded-md text-[11px] font-bold border transition-colors whitespace-nowrap disabled:opacity-50`}>
-                {t("Complimentary")}
+                className={`${discount?.type === 'complimentary' ? 'bg-rose-600 text-white border-rose-500 hover:bg-rose-500' : 'bg-[#fef2f2] text-[#dc2626] border-[#fecaca] hover:bg-[#fee2e2]'} px-2 py-0.5 rounded-md text-[11px] font-bold border transition-colors whitespace-nowrap disabled:opacity-50 flex items-center gap-1`}
+                title={t("100% Complimentary order (F7)")}
+              >
+                <kbd className="px-1.5 py-0.5 rounded bg-white text-slate-800 border border-slate-300 font-mono text-[9px] font-black shadow-2xs">F7</kbd>
+                <span>{t("Complimentary")}</span>
               </button>
+
+              {discount?.name && (
+                <button
+                  disabled={isLocked}
+                  onClick={() => setDiscount && setDiscount({ type: 'flat', value: '', name: '' })}
+                  className="px-1.5 py-0.5 rounded-md text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100 transition-colors whitespace-nowrap flex items-center gap-1"
+                  title="Clear applied offer"
+                >
+                  <X size={10} />
+                  <span>Clear Offer</span>
+                </button>
+              )}
             </div>
             <div className="flex items-center gap-1.5 shrink-0 ml-auto">
               <span className="text-text-muted text-[10px] sm:text-[11px] font-bold uppercase tracking-wider">{t("Total")}</span>
@@ -1143,7 +1301,10 @@ const BillSummary = ({
                     <span>{t("Settling...")}</span>
                   </>
                 ) : (
-                  t("Settle")
+                  <>
+                    <kbd className="px-1.5 py-0.5 rounded bg-white text-slate-800 border border-slate-300 font-mono text-[9px] font-black shadow-2xs">F5</kbd>
+                    <span>{t("Settle")}</span>
+                  </>
                 )}
               </button>
             </div>
@@ -1326,7 +1487,14 @@ const BillSummary = ({
               <span>{orderId ? t("Updating...") : t("Saving...")}</span>
             </>
           ) : (
-            orderId ? t("UPDATE") : t("SAVE")
+            <>
+              <kbd className="px-1.5 py-0.5 rounded bg-white text-slate-800 border border-slate-300 font-mono text-[9px] font-black mr-1 shadow-2xs">F1</kbd>
+              <span>
+                {orderId
+                  ? (directPrintOnSave ? t("UPDATE & PRINT") : t("UPDATE"))
+                  : (directPrintOnSave ? t("SAVE & PRINT") : t("SAVE"))}
+              </span>
+            </>
           )}
         </button>
         <button
@@ -1339,9 +1507,12 @@ const BillSummary = ({
               <span>{t("Printing...")}</span>
             </>
           ) : (
-            (orderStatus === 'Billed' && !hasPendingChanges)
-              ? <><span>🧾</span><span>{t("PRINT BILL")}</span></>
-              : t("SAVE & PRINT")
+            <>
+              <kbd className="px-1.5 py-0.5 rounded bg-white text-slate-800 border border-slate-300 font-mono text-[9px] font-black mr-1 shadow-2xs">F2</kbd>
+              {(orderStatus === 'Billed' && !hasPendingChanges)
+                ? <><span>🧾</span><span>{t("PRINT BILL")}</span></>
+                : <span>{t("SAVE & PRINT")}</span>}
+            </>
           )}
         </button>
         <button
@@ -1354,7 +1525,10 @@ const BillSummary = ({
               <span>{t("Editing...")}</span>
             </>
           ) : (
-            t("EDIT")
+            <>
+              <kbd className="px-1.5 py-0.5 rounded bg-white text-slate-800 border border-slate-300 font-mono text-[9px] font-black mr-1 shadow-2xs">F3</kbd>
+              <span>{t("EDIT")}</span>
+            </>
           )}
         </button>
         <button
@@ -1367,7 +1541,10 @@ const BillSummary = ({
               <span>{t("Cancelling...")}</span>
             </>
           ) : (
-            t("CANCEL")
+            <>
+              <kbd className="px-1.5 py-0.5 rounded bg-white text-slate-800 border border-slate-300 font-mono text-[9px] font-black mr-1 shadow-2xs">F4</kbd>
+              <span>{t("CANCEL")}</span>
+            </>
           )}
         </button>
       </div>
@@ -1403,6 +1580,7 @@ const BillSummary = ({
                 defaultChecked={localStorage.getItem('msbillings_direct_save') === 'true'}
                 onChange={(e) => {
                   localStorage.setItem('msbillings_direct_save', e.target.checked);
+                  setDirectPrintOnSave(e.target.checked);
                   window.dispatchEvent(new CustomEvent('printConfigChanged'));
                 }}
               />
@@ -1902,6 +2080,91 @@ const BillSummary = ({
           </div>,
           document.body
         )}
+      {/* Safety Modal: Billed & Printed Order Warning */}
+      {showBilledEditModal && typeof document !== 'undefined' && createPortal(
+        <div
+          className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-[99999] p-4 animate-fade-in"
+          onClick={() => setShowBilledEditModal(false)}
+        >
+          <div
+            className="bg-white border border-[#E8DCCB] w-full max-w-sm rounded-2xl shadow-2xl overflow-hidden p-5 text-center animate-slide-up"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="w-14 h-14 mx-auto mb-3 rounded-full bg-amber-100 border border-amber-200 flex items-center justify-center text-2xl text-amber-600">
+              🔒
+            </div>
+            <h3 className="font-black text-base text-slate-800 mb-1.5">
+              {t("Order is Saved & Printed")}
+            </h3>
+            <p className="text-xs text-slate-600 mb-5 leading-relaxed">
+              {t("This order is billed and locked for integrity. Click EDIT button to unlock before clearing or modifying items.")}
+            </p>
+            <div className="flex gap-2.5">
+              <button
+                type="button"
+                onClick={() => setShowBilledEditModal(false)}
+                className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl cursor-pointer transition-all"
+              >
+                {t("Close")}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowBilledEditModal(false);
+                  if (onReopenOrder) onReopenOrder();
+                }}
+                className="flex-1 py-2.5 bg-amber-600 hover:bg-amber-700 text-white font-black text-xs rounded-xl shadow-md cursor-pointer transition-all flex items-center justify-center gap-1.5 active:scale-95"
+              >
+                <span>✏️</span>
+                <span>{t("Click EDIT Now (F3)")}</span>
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* Confirmation Modal: Clear All Order Items */}
+      {showClearConfirmModal && typeof document !== 'undefined' && createPortal(
+        <div
+          className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-[99999] p-4 animate-fade-in"
+          onClick={() => setShowClearConfirmModal(false)}
+        >
+          <div
+            className="bg-white border border-[#E8DCCB] w-full max-w-sm rounded-2xl shadow-2xl overflow-hidden p-5 text-center animate-slide-up"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="w-14 h-14 mx-auto mb-3 rounded-full bg-rose-100 border border-rose-200 flex items-center justify-center text-2xl text-rose-600">
+              🗑️
+            </div>
+            <h3 className="font-black text-base text-slate-800 mb-1.5">
+              {t("Clear All Order Items?")}
+            </h3>
+            <p className="text-xs text-slate-600 mb-5 leading-relaxed">
+              {t("Are you sure you want to remove all items and applied discounts from the current counter order?")}
+            </p>
+            <div className="flex gap-2.5">
+              <button
+                type="button"
+                onClick={() => setShowClearConfirmModal(false)}
+                className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl cursor-pointer transition-all"
+              >
+                {t("Keep Order")}
+              </button>
+              <button
+                type="button"
+                onClick={confirmClearAll}
+                className="flex-1 py-2.5 bg-rose-600 hover:bg-rose-700 text-white font-black text-xs rounded-xl shadow-md cursor-pointer transition-all flex items-center justify-center gap-1.5 active:scale-95"
+              >
+                <span>🗑️</span>
+                <span>{t("Yes, Clear All (F8)")}</span>
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
     </div>
   );
 };

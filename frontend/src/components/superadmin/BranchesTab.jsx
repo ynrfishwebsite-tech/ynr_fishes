@@ -18,10 +18,14 @@ export default function BranchesTab({
     <div className="dash-section-card">
       <div className="dash-section-header">
         <h2 className="dash-section-title">
-          <span>🏢</span> Enterprise Branch Registry
+          <span>🏢</span>
+          <span className="section-title-full">Enterprise Branch Registry</span>
+          <span className="section-title-short">Branch Registry</span>
         </h2>
         <button onClick={onOpenCreateModal} className="sa-primary-btn">
-          ➕ Provision New Branch Node
+          <span>➕</span>
+          <span className="sa-btn-full">Provision New Branch Node</span>
+          <span className="sa-btn-short">Branch</span>
         </button>
       </div>
 

@@ -1664,6 +1664,13 @@ input:-webkit-autofill:focus {
   background: #F7EFE2;
 }
 
+.admin-cream-ui.fixed,
+.admin-cream-ui[class*="fixed"],
+.admin-cream-ui[class*="backdrop-blur"],
+.admin-cream-ui[class*="bg-black"] {
+  background: transparent !important;
+}
+
 .admin-cream-ui .bg-surface {
   background-color: #FDFBF7 !important;
   color: #1e293b !important;
@@ -2333,5 +2340,677 @@ input:-webkit-autofill:focus {
     max-width: calc(100vw - 16px) !important;
     max-height: calc(100vh - 80px) !important;
     border-radius: 14px !important;
+  }
+}
+
+
+/* ==========================================================================
+   SUPER ADMIN ONLY — DESKTOP DEFAULT VISIBILITY (>= 769px)
+   ========================================================================== */
+@media (min-width: 769px) {
+  .sa-tab-mobile,
+  .dash-btn-text-short,
+  .section-title-short,
+  .sa-btn-short {
+    display: none !important;
+  }
+}
+
+/* ==========================================================================
+   SUPER ADMIN ONLY — ULTRA COMPACT & MOBILE RESPONSIVE UI (<= 768px)
+   Strictly scoped to .superadmin-dashboard-container so branch roles are NOT disturbed.
+   ========================================================================== */
+@media (max-width: 768px) {
+  /* Desktop text hide */
+  .sa-tab-full,
+  .dash-btn-text-full,
+  .section-title-full,
+  .sa-btn-full,
+  .act-btn-full {
+    display: none !important;
+  }
+
+  .sa-tab-mobile,
+  .dash-btn-text-short,
+  .section-title-short,
+  .sa-btn-short {
+    display: inline !important;
+  }
+
+  /* 1. Main Page Container: zero/ultra-compact padding */
+  .superadmin-dashboard-container {
+    padding: 4px 4px 24px !important;
+    min-height: 100vh;
+  }
+
+  /* 2. Top Header Bar */
+  .superadmin-dashboard-container .dashboard-header-bar {
+    padding: 6px 8px !important;
+    margin-bottom: 6px !important;
+    border-radius: 8px !important;
+    gap: 6px !important;
+    flex-wrap: nowrap !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+  }
+
+  .superadmin-dashboard-container .dash-user-welcome {
+    display: flex !important;
+    align-items: center !important;
+    gap: 6px !important;
+    min-width: 0 !important;
+    flex: 1 1 auto !important;
+  }
+
+  .superadmin-dashboard-container .dash-avatar-badge {
+    width: 26px !important;
+    height: 26px !important;
+    min-width: 26px !important;
+    font-size: 0.95rem !important;
+    border-radius: 6px !important;
+  }
+
+  .superadmin-dashboard-container .dash-title-group {
+    min-width: 0 !important;
+    overflow: hidden !important;
+  }
+
+  .superadmin-dashboard-container .dash-title-group h1 {
+    font-size: 0.8rem !important;
+    line-height: 1.15 !important;
+    margin: 0 !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+  }
+
+  .superadmin-dashboard-container .dash-title-group p {
+    display: none !important; /* Hide long subtext on mobile */
+  }
+
+  .superadmin-dashboard-container .dash-quick-actions {
+    display: flex !important;
+    align-items: center !important;
+    gap: 4px !important;
+    flex-shrink: 0 !important;
+  }
+
+  .superadmin-dashboard-container .dash-pill-btn {
+    padding: 3px 6px !important;
+    font-size: 0.68rem !important;
+    border-radius: 6px !important;
+    gap: 3px !important;
+    white-space: nowrap !important;
+  }
+
+  /* 3. Action Notification Banner */
+  .superadmin-dashboard-container .sa-notice-banner {
+    padding: 4px 8px !important;
+    font-size: 0.72rem !important;
+    border-radius: 6px !important;
+    margin-bottom: 6px !important;
+  }
+
+  /* 4. Top Navigation Tabs */
+  .superadmin-dashboard-container .superadmin-nav-tabs {
+    display: flex !important;
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+    flex-wrap: nowrap !important;
+    gap: 4px !important;
+    padding-bottom: 4px !important;
+    margin-bottom: 6px !important;
+    scrollbar-width: none !important;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08) !important;
+  }
+
+  .superadmin-dashboard-container .superadmin-nav-tabs::-webkit-scrollbar {
+    display: none !important;
+  }
+
+  .superadmin-dashboard-container .sa-tab-btn {
+    padding: 4px 8px !important;
+    font-size: 0.72rem !important;
+    border-radius: 6px !important;
+    gap: 4px !important;
+    white-space: nowrap !important;
+    flex-shrink: 0 !important;
+  }
+
+  /* 5. Stat Cards Grid (Overview Tab) */
+  .superadmin-dashboard-container .dash-stats-grid {
+    display: grid !important;
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 4px !important;
+    margin-bottom: 6px !important;
+  }
+
+  .superadmin-dashboard-container .dash-stat-card {
+    padding: 6px 8px !important;
+    border-radius: 8px !important;
+  }
+
+  .superadmin-dashboard-container .dash-stat-title {
+    font-size: 0.6rem !important;
+    letter-spacing: 0.02em !important;
+  }
+
+  .superadmin-dashboard-container .dash-stat-value {
+    font-size: 1.15rem !important;
+    font-weight: 800 !important;
+    margin: 2px 0 1px !important;
+  }
+
+  .superadmin-dashboard-container .dash-stat-sub {
+    font-size: 0.58rem !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+  }
+
+  /* 6. Section Cards & Headers */
+  .superadmin-dashboard-container .dash-section-card {
+    padding: 6px 8px !important;
+    border-radius: 8px !important;
+    margin-bottom: 6px !important;
+  }
+
+  .superadmin-dashboard-container .dash-section-header {
+    display: flex !important;
+    justify-content: space-between !important;
+    align-items: center !important;
+    margin-bottom: 6px !important;
+    gap: 6px !important;
+  }
+
+  .superadmin-dashboard-container .dash-section-title {
+    font-size: 0.78rem !important;
+    font-weight: 700 !important;
+    gap: 5px !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+  }
+
+  .superadmin-dashboard-container .sa-primary-btn {
+    padding: 3px 7px !important;
+    font-size: 0.7rem !important;
+    border-radius: 6px !important;
+    gap: 3px !important;
+    white-space: nowrap !important;
+    flex-shrink: 0 !important;
+  }
+
+  .superadmin-dashboard-container .sa-header-btn {
+    padding: 3px 6px !important;
+    font-size: 0.68rem !important;
+    border-radius: 6px !important;
+    white-space: nowrap !important;
+    flex-shrink: 0 !important;
+  }
+
+  /* 7. Control Filter Bar */
+  .superadmin-dashboard-container .sa-control-bar {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 4px !important;
+    margin-bottom: 6px !important;
+    align-items: stretch !important;
+  }
+
+  .superadmin-dashboard-container .sa-search-input {
+    min-width: 0 !important;
+    width: 100% !important;
+    padding: 5px 8px !important;
+    font-size: 0.75rem !important;
+    border-radius: 6px !important;
+    box-sizing: border-box !important;
+  }
+
+  .superadmin-dashboard-container .sa-select-filter {
+    padding: 5px 8px !important;
+    font-size: 0.75rem !important;
+    border-radius: 6px !important;
+    box-sizing: border-box !important;
+  }
+
+  /* 8. Tables: horizontally scrollable, zero text breaking, compact */
+  .superadmin-dashboard-container .enterprise-table-wrapper {
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+    width: 100% !important;
+    margin-top: 4px !important;
+    border-radius: 6px !important;
+  }
+
+  .superadmin-dashboard-container .enterprise-table {
+    width: 100% !important;
+    min-width: 580px !important;
+    font-size: 0.72rem !important;
+  }
+
+  .superadmin-dashboard-container .enterprise-table th {
+    padding: 4px 6px !important;
+    font-size: 0.62rem !important;
+    white-space: nowrap !important;
+    letter-spacing: 0.02em !important;
+  }
+
+  .superadmin-dashboard-container .enterprise-table td {
+    padding: 5px 6px !important;
+    font-size: 0.7rem !important;
+    white-space: nowrap !important;
+  }
+
+  .superadmin-dashboard-container .status-badge {
+    padding: 1px 5px !important;
+    font-size: 0.62rem !important;
+    border-radius: 6px !important;
+    gap: 3px !important;
+  }
+
+  .superadmin-dashboard-container .table-action-btn {
+    padding: 2px 5px !important;
+    font-size: 0.65rem !important;
+    border-radius: 4px !important;
+    margin-right: 3px !important;
+    gap: 2px !important;
+    white-space: nowrap !important;
+  }
+
+  /* 9. Modals in SuperAdmin */
+  .sa-modal-overlay {
+    padding: 8px !important;
+  }
+
+  .sa-modal-card {
+    padding: 10px 12px !important;
+    border-radius: 10px !important;
+    max-height: 94vh !important;
+    overflow-y: auto !important;
+  }
+
+  .sa-modal-header {
+    margin-bottom: 8px !important;
+    padding-bottom: 6px !important;
+  }
+
+  .sa-modal-header h3 {
+    font-size: 0.88rem !important;
+  }
+
+  .sa-modal-close-btn {
+    width: 24px !important;
+    height: 24px !important;
+    font-size: 0.8rem !important;
+  }
+
+  .sa-form-grid {
+    grid-template-columns: 1fr !important;
+    gap: 6px !important;
+  }
+
+  .sa-form-full {
+    grid-column: span 1 !important;
+  }
+
+  .sa-modal-card label {
+    font-size: 0.68rem !important;
+    margin-bottom: 2px !important;
+  }
+
+  .sa-modal-card .sa-search-input {
+    padding: 6px 8px !important;
+    font-size: 0.78rem !important;
+    border-radius: 6px !important;
+  }
+
+  .sa-modal-actions {
+    margin-top: 12px !important;
+    padding-top: 8px !important;
+    gap: 6px !important;
+  }
+
+  .sa-btn-cancel,
+  .sa-btn-save {
+    padding: 5px 12px !important;
+    font-size: 0.75rem !important;
+    border-radius: 6px !important;
+  }
+}
+
+
+/* ==========================================================================
+   SUPER ADMIN ONLY — DESKTOP DEFAULT VISIBILITY (>= 769px)
+   ========================================================================== */
+@media (min-width: 769px) {
+  .sa-tab-mobile,
+  .dash-btn-text-short,
+  .section-title-short,
+  .sa-btn-short {
+    display: none !important;
+  }
+}
+
+/* ==========================================================================
+   SUPER ADMIN ONLY — ULTRA COMPACT & MOBILE RESPONSIVE UI (<= 768px)
+   Strictly scoped to .superadmin-dashboard-container so branch roles are NOT disturbed.
+   ========================================================================== */
+@media (max-width: 768px) {
+  /* Desktop text hide */
+  .sa-tab-full,
+  .dash-btn-text-full,
+  .section-title-full,
+  .sa-btn-full,
+  .act-btn-full {
+    display: none !important;
+  }
+
+  .sa-tab-mobile,
+  .dash-btn-text-short,
+  .section-title-short,
+  .sa-btn-short {
+    display: inline !important;
+  }
+
+  /* 1. Main Page Container: zero/ultra-compact padding */
+  .superadmin-dashboard-container {
+    padding: 4px 4px 24px !important;
+    min-height: 100vh;
+  }
+
+  /* 2. Top Header Bar */
+  .superadmin-dashboard-container .dashboard-header-bar {
+    padding: 6px 8px !important;
+    margin-bottom: 6px !important;
+    border-radius: 8px !important;
+    gap: 6px !important;
+    flex-wrap: nowrap !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+  }
+
+  .superadmin-dashboard-container .dash-user-welcome {
+    display: flex !important;
+    align-items: center !important;
+    gap: 6px !important;
+    min-width: 0 !important;
+    flex: 1 1 auto !important;
+  }
+
+  .superadmin-dashboard-container .dash-avatar-badge {
+    width: 26px !important;
+    height: 26px !important;
+    min-width: 26px !important;
+    font-size: 0.95rem !important;
+    border-radius: 6px !important;
+  }
+
+  .superadmin-dashboard-container .dash-title-group {
+    min-width: 0 !important;
+    overflow: hidden !important;
+  }
+
+  .superadmin-dashboard-container .dash-title-group h1 {
+    font-size: 0.8rem !important;
+    line-height: 1.15 !important;
+    margin: 0 !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+  }
+
+  .superadmin-dashboard-container .dash-title-group p {
+    display: none !important; /* Hide long subtext on mobile */
+  }
+
+  .superadmin-dashboard-container .dash-quick-actions {
+    display: flex !important;
+    align-items: center !important;
+    gap: 4px !important;
+    flex-shrink: 0 !important;
+  }
+
+  .superadmin-dashboard-container .dash-pill-btn {
+    padding: 3px 6px !important;
+    font-size: 0.68rem !important;
+    border-radius: 6px !important;
+    gap: 3px !important;
+    white-space: nowrap !important;
+  }
+
+  /* 3. Action Notification Banner */
+  .superadmin-dashboard-container .sa-notice-banner {
+    padding: 4px 8px !important;
+    font-size: 0.72rem !important;
+    border-radius: 6px !important;
+    margin-bottom: 6px !important;
+  }
+
+  /* 4. Top Navigation Tabs */
+  .superadmin-dashboard-container .superadmin-nav-tabs {
+    display: flex !important;
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+    flex-wrap: nowrap !important;
+    gap: 4px !important;
+    padding-bottom: 4px !important;
+    margin-bottom: 6px !important;
+    scrollbar-width: none !important;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08) !important;
+  }
+
+  .superadmin-dashboard-container .superadmin-nav-tabs::-webkit-scrollbar {
+    display: none !important;
+  }
+
+  .superadmin-dashboard-container .sa-tab-btn {
+    padding: 4px 8px !important;
+    font-size: 0.72rem !important;
+    border-radius: 6px !important;
+    gap: 4px !important;
+    white-space: nowrap !important;
+    flex-shrink: 0 !important;
+  }
+
+  /* 5. Stat Cards Grid (Overview Tab) */
+  .superadmin-dashboard-container .dash-stats-grid {
+    display: grid !important;
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 4px !important;
+    margin-bottom: 6px !important;
+  }
+
+  .superadmin-dashboard-container .dash-stat-card {
+    padding: 6px 8px !important;
+    border-radius: 8px !important;
+  }
+
+  .superadmin-dashboard-container .dash-stat-title {
+    font-size: 0.6rem !important;
+    letter-spacing: 0.02em !important;
+  }
+
+  .superadmin-dashboard-container .dash-stat-value {
+    font-size: 1.15rem !important;
+    font-weight: 800 !important;
+    margin: 2px 0 1px !important;
+  }
+
+  .superadmin-dashboard-container .dash-stat-sub {
+    font-size: 0.58rem !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+  }
+
+  /* 6. Section Cards & Headers */
+  .superadmin-dashboard-container .dash-section-card {
+    padding: 6px 8px !important;
+    border-radius: 8px !important;
+    margin-bottom: 6px !important;
+  }
+
+  .superadmin-dashboard-container .dash-section-header {
+    display: flex !important;
+    justify-content: space-between !important;
+    align-items: center !important;
+    margin-bottom: 6px !important;
+    gap: 6px !important;
+  }
+
+  .superadmin-dashboard-container .dash-section-title {
+    font-size: 0.78rem !important;
+    font-weight: 700 !important;
+    gap: 5px !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+  }
+
+  .superadmin-dashboard-container .sa-primary-btn {
+    padding: 3px 7px !important;
+    font-size: 0.7rem !important;
+    border-radius: 6px !important;
+    gap: 3px !important;
+    white-space: nowrap !important;
+    flex-shrink: 0 !important;
+  }
+
+  .superadmin-dashboard-container .sa-header-btn {
+    padding: 3px 6px !important;
+    font-size: 0.68rem !important;
+    border-radius: 6px !important;
+    white-space: nowrap !important;
+    flex-shrink: 0 !important;
+  }
+
+  /* 7. Control Filter Bar */
+  .superadmin-dashboard-container .sa-control-bar {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 4px !important;
+    margin-bottom: 6px !important;
+    align-items: stretch !important;
+  }
+
+  .superadmin-dashboard-container .sa-search-input {
+    min-width: 0 !important;
+    width: 100% !important;
+    padding: 5px 8px !important;
+    font-size: 0.75rem !important;
+    border-radius: 6px !important;
+    box-sizing: border-box !important;
+  }
+
+  .superadmin-dashboard-container .sa-select-filter {
+    padding: 5px 8px !important;
+    font-size: 0.75rem !important;
+    border-radius: 6px !important;
+    box-sizing: border-box !important;
+  }
+
+  /* 8. Tables: horizontally scrollable, zero text breaking, compact */
+  .superadmin-dashboard-container .enterprise-table-wrapper {
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+    width: 100% !important;
+    margin-top: 4px !important;
+    border-radius: 6px !important;
+  }
+
+  .superadmin-dashboard-container .enterprise-table {
+    width: 100% !important;
+    min-width: 580px !important;
+    font-size: 0.72rem !important;
+  }
+
+  .superadmin-dashboard-container .enterprise-table th {
+    padding: 4px 6px !important;
+    font-size: 0.62rem !important;
+    white-space: nowrap !important;
+    letter-spacing: 0.02em !important;
+  }
+
+  .superadmin-dashboard-container .enterprise-table td {
+    padding: 5px 6px !important;
+    font-size: 0.7rem !important;
+    white-space: nowrap !important;
+  }
+
+  .superadmin-dashboard-container .status-badge {
+    padding: 1px 5px !important;
+    font-size: 0.62rem !important;
+    border-radius: 6px !important;
+    gap: 3px !important;
+  }
+
+  .superadmin-dashboard-container .table-action-btn {
+    padding: 2px 5px !important;
+    font-size: 0.65rem !important;
+    border-radius: 4px !important;
+    margin-right: 3px !important;
+    gap: 2px !important;
+    white-space: nowrap !important;
+  }
+
+  /* 9. Modals in SuperAdmin */
+  .sa-modal-overlay {
+    padding: 8px !important;
+  }
+
+  .sa-modal-card {
+    padding: 10px 12px !important;
+    border-radius: 10px !important;
+    max-height: 94vh !important;
+    overflow-y: auto !important;
+  }
+
+  .sa-modal-header {
+    margin-bottom: 8px !important;
+    padding-bottom: 6px !important;
+  }
+
+  .sa-modal-header h3 {
+    font-size: 0.88rem !important;
+  }
+
+  .sa-modal-close-btn {
+    width: 24px !important;
+    height: 24px !important;
+    font-size: 0.8rem !important;
+  }
+
+  .sa-form-grid {
+    grid-template-columns: 1fr !important;
+    gap: 6px !important;
+  }
+
+  .sa-form-full {
+    grid-column: span 1 !important;
+  }
+
+  .sa-modal-card label {
+    font-size: 0.68rem !important;
+    margin-bottom: 2px !important;
+  }
+
+  .sa-modal-card .sa-search-input {
+    padding: 6px 8px !important;
+    font-size: 0.78rem !important;
+    border-radius: 6px !important;
+  }
+
+  .sa-modal-actions {
+    margin-top: 12px !important;
+    padding-top: 8px !important;
+    gap: 6px !important;
+  }
+
+  .sa-btn-cancel,
+  .sa-btn-save {
+    padding: 5px 12px !important;
+    font-size: 0.75rem !important;
+    border-radius: 6px !important;
   }
 }

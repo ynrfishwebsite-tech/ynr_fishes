@@ -498,212 +498,216 @@ export default function VehicleManagement({ onNavigate, onGoBack }) {
       {/* Toast Notification */}
       {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
 
-      {/* Top Header Bar */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-6 border-b border-[#FED7AA]">
-        <div className="flex items-center gap-3">
-          <BackButton onClick={onGoBack || (() => onNavigate('dashboard'))} />
-          <div>
-            <div className="flex items-center gap-2">
-              <div className="p-2 bg-[#ea580c] text-white rounded-xl shadow-md">
-                <Truck size={22} />
-              </div>
-              <h1 className="text-2xl font-bold text-[#7c3f1d]">Vehicle & Fleet Management</h1>
-              <span className="text-xs px-2.5 py-0.5 rounded-full bg-[#ffedd5] text-[#c2410c] font-medium border border-[#fdba74]">
-                Kadapa Depot Fleet
-              </span>
-            </div>
-            <p className="text-xs sm:text-sm text-slate-600 mt-1">
-              Live trip logs, kilometer calculations, diesel fuel economy & maintenance servicing
-            </p>
+      {/* Top Header Bar - Compact Single Row */}
+      <div className="pb-3 border-b border-[#FED7AA] flex items-center justify-between gap-2 overflow-x-auto no-scrollbar">
+        {/* Left: Back + Title + Depot Pill */}
+        <div className="flex items-center gap-2 shrink-0">
+          <BackButton onClick={onGoBack || (() => onNavigate('dashboard'))} className="shrink-0" />
+          <div className="p-1.5 sm:p-2 bg-[#ea580c] text-white rounded-xl shadow-md shrink-0 flex items-center justify-center">
+            <Truck size={17} className="sm:w-5 sm:h-5" />
+          </div>
+          <div className="flex items-center gap-1.5 shrink-0">
+            <h1 className="text-base sm:text-lg font-black text-[#7c3f1d] leading-none m-0">Vehicle & Fleet</h1>
+            <span className="text-[10px] px-2 py-0.5 rounded-full bg-[#ffedd5] text-[#c2410c] font-bold border border-[#fdba74]">
+              Kadapa Depot
+            </span>
           </div>
         </div>
 
-        {/* Action Buttons */}
-        <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
-          <button
-            onClick={loadData}
-            title="Refresh Data"
-            className="p-2.5 bg-white text-slate-700 hover:text-[#ea580c] border border-[#FED7AA] rounded-xl shadow-sm hover:shadow transition-all"
-          >
-            <RefreshCw size={18} className={loading ? 'animate-spin' : ''} />
-          </button>
+        {/* Right: All Action Buttons in the SAME SINGLE ROW */}
+        <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
           <button
             onClick={() => handleOpenAddTrip()}
-            className="flex items-center gap-1.5 px-3.5 py-2.5 bg-white text-[#7c3f1d] hover:bg-orange-50 border border-[#ea580c] rounded-xl text-sm font-semibold shadow-sm transition-all"
+            className="flex items-center gap-1 px-2.5 sm:px-3 py-1.5 sm:py-2 bg-white text-[#7c3f1d] hover:bg-orange-50 border border-[#FED7AA] hover:border-[#ea580c] rounded-xl text-xs font-bold shadow-xs transition-all whitespace-nowrap shrink-0 cursor-pointer active:scale-95"
           >
-            <Navigation size={16} />
+            <Navigation size={13} className="text-[#ea580c]" />
             <span>+ Log Trip</span>
           </button>
           <button
             onClick={() => handleOpenAddFuel()}
-            className="flex items-center gap-1.5 px-3.5 py-2.5 bg-white text-[#7c3f1d] hover:bg-orange-50 border border-[#ea580c] rounded-xl text-sm font-semibold shadow-sm transition-all"
+            className="flex items-center gap-1 px-2.5 sm:px-3 py-1.5 sm:py-2 bg-white text-[#7c3f1d] hover:bg-orange-50 border border-[#FED7AA] hover:border-[#ea580c] rounded-xl text-xs font-bold shadow-xs transition-all whitespace-nowrap shrink-0 cursor-pointer active:scale-95"
           >
-            <Fuel size={16} />
+            <Fuel size={13} className="text-[#ea580c]" />
             <span>+ Add Fuel</span>
           </button>
           <button
             onClick={() => handleOpenAddMaintenance()}
-            className="flex items-center gap-1.5 px-3.5 py-2.5 bg-white text-[#7c3f1d] hover:bg-orange-50 border border-[#ea580c] rounded-xl text-sm font-semibold shadow-sm transition-all"
+            className="flex items-center gap-1 px-2.5 sm:px-3 py-1.5 sm:py-2 bg-white text-[#7c3f1d] hover:bg-orange-50 border border-[#FED7AA] hover:border-[#ea580c] rounded-xl text-xs font-bold shadow-xs transition-all whitespace-nowrap shrink-0 cursor-pointer active:scale-95"
           >
-            <Wrench size={16} />
+            <Wrench size={13} className="text-[#ea580c]" />
             <span>+ Service</span>
           </button>
           <button
             onClick={handleOpenAddVehicle}
-            className="flex items-center gap-2 px-4 py-2.5 bg-[#ea580c] hover:bg-[#c2410c] text-white rounded-xl text-sm font-bold shadow-md hover:shadow-lg transition-all"
+            className="flex items-center gap-1 px-3 sm:px-3.5 py-1.5 sm:py-2 bg-[#ea580c] hover:bg-[#c2410c] text-white rounded-xl text-xs font-black shadow-md hover:shadow-lg transition-all whitespace-nowrap shrink-0 cursor-pointer active:scale-95"
           >
-            <Plus size={18} />
+            <Plus size={14} />
             <span>+ New Vehicle</span>
+          </button>
+          <button
+            onClick={loadData}
+            title="Refresh Data"
+            className="p-1.5 sm:p-2 bg-white text-slate-700 hover:text-[#ea580c] border border-[#FED7AA] rounded-xl shadow-xs hover:shadow transition-all shrink-0 cursor-pointer"
+          >
+            <RefreshCw size={15} className={loading ? 'animate-spin' : ''} />
           </button>
         </div>
       </div>
 
       {/* KPI Overview Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4 my-6">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5 sm:gap-4 my-3 sm:my-6">
         {/* Card 1: Fleet Count */}
-        <div className="bg-white rounded-2xl p-4 border border-[#FED7AA] shadow-sm relative overflow-hidden">
-          <div className="flex items-center justify-between text-slate-500 mb-2">
-            <span className="text-xs font-semibold uppercase tracking-wider">Fleet Vehicles</span>
-            <div className="p-2 rounded-lg bg-orange-100 text-[#ea580c]">
-              <Truck size={18} />
+        <div className="bg-white rounded-xl sm:rounded-2xl p-3 sm:p-4 border border-[#FED7AA] shadow-sm relative overflow-hidden flex flex-col justify-between">
+          <div>
+            <div className="flex items-center justify-between text-slate-500 mb-1.5 sm:mb-2">
+              <span className="text-[10px] sm:text-xs font-semibold uppercase tracking-wider">Fleet Vehicles</span>
+              <div className="p-1.5 sm:p-2 rounded-lg bg-orange-100 text-[#ea580c]">
+                <Truck size={16} className="sm:w-[18px] sm:h-[18px]" />
+              </div>
             </div>
+            <div className="text-xl sm:text-3xl font-extrabold text-[#7c3f1d]">{vehicles.length}</div>
           </div>
-          <div className="text-2xl sm:text-3xl font-extrabold text-[#7c3f1d]">{vehicles.length}</div>
-          <div className="flex items-center gap-2 mt-2 text-xs">
+          <div className="flex items-center gap-2 mt-1.5 sm:mt-2 text-[10px] sm:text-xs flex-wrap">
             <span className="text-emerald-700 font-medium flex items-center gap-1">
-              <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
               {vehicles.filter((v) => v.status === 'Available').length} Available
             </span>
             <span className="text-blue-700 font-medium flex items-center gap-1">
-              <span className="w-2 h-2 rounded-full bg-blue-500"></span>
+              <span className="w-1.5 h-1.5 rounded-full bg-blue-500"></span>
               {vehicles.filter((v) => v.status === 'On Trip').length} On Road
             </span>
           </div>
         </div>
 
         {/* Card 2: Monthly Distance */}
-        <div className="bg-white rounded-2xl p-4 border border-[#FED7AA] shadow-sm relative overflow-hidden">
-          <div className="flex items-center justify-between text-slate-500 mb-2">
-            <span className="text-xs font-semibold uppercase tracking-wider">Monthly KMs Run</span>
-            <div className="p-2 rounded-lg bg-blue-100 text-blue-600">
-              <Gauge size={18} />
+        <div className="bg-white rounded-xl sm:rounded-2xl p-3 sm:p-4 border border-[#FED7AA] shadow-sm relative overflow-hidden flex flex-col justify-between">
+          <div>
+            <div className="flex items-center justify-between text-slate-500 mb-1.5 sm:mb-2">
+              <span className="text-[10px] sm:text-xs font-semibold uppercase tracking-wider">Monthly KMs</span>
+              <div className="p-1.5 sm:p-2 rounded-lg bg-blue-100 text-blue-600">
+                <Gauge size={16} className="sm:w-[18px] sm:h-[18px]" />
+              </div>
+            </div>
+            <div className="text-xl sm:text-3xl font-extrabold text-blue-900">
+              {stats?.monthlyTotalKm ? stats.monthlyTotalKm.toLocaleString('en-IN') : '0'}{' '}
+              <span className="text-xs sm:text-sm font-semibold text-slate-500">KM</span>
             </div>
           </div>
-          <div className="text-2xl sm:text-3xl font-extrabold text-blue-900">
-            {stats?.monthlyTotalKm ? stats.monthlyTotalKm.toLocaleString('en-IN') : '0'}{' '}
-            <span className="text-sm font-semibold text-slate-500">KM</span>
-          </div>
-          <p className="text-xs text-slate-500 mt-2">Active supply and distribution routes</p>
+          <p className="text-[10px] sm:text-xs text-slate-500 mt-1 sm:mt-2 truncate">Active supply routes</p>
         </div>
 
         {/* Card 3: Fuel Expense */}
-        <div className="bg-white rounded-2xl p-4 border border-[#FED7AA] shadow-sm relative overflow-hidden">
-          <div className="flex items-center justify-between text-slate-500 mb-2">
-            <span className="text-xs font-semibold uppercase tracking-wider">Monthly Fuel Cost</span>
-            <div className="p-2 rounded-lg bg-amber-100 text-amber-600">
-              <Fuel size={18} />
+        <div className="bg-white rounded-xl sm:rounded-2xl p-3 sm:p-4 border border-[#FED7AA] shadow-sm relative overflow-hidden flex flex-col justify-between">
+          <div>
+            <div className="flex items-center justify-between text-slate-500 mb-1.5 sm:mb-2">
+              <span className="text-[10px] sm:text-xs font-semibold uppercase tracking-wider">Fuel Cost</span>
+              <div className="p-1.5 sm:p-2 rounded-lg bg-amber-100 text-amber-600">
+                <Fuel size={16} className="sm:w-[18px] sm:h-[18px]" />
+              </div>
+            </div>
+            <div className="text-xl sm:text-3xl font-extrabold text-amber-900">
+              ₹{stats?.monthlyFuelCost ? stats.monthlyFuelCost.toLocaleString('en-IN') : '0'}
             </div>
           </div>
-          <div className="text-2xl sm:text-3xl font-extrabold text-amber-900">
-            ₹{stats?.monthlyFuelCost ? stats.monthlyFuelCost.toLocaleString('en-IN') : '0'}
-          </div>
-          <div className="flex items-center gap-2 mt-2 text-xs text-slate-600">
-            <span>{stats?.monthlyFuelLitres || 0} Litres</span>
-            <span className="text-emerald-700 font-bold bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">
-              Avg {stats?.avgMileage || 0} KM/L
+          <div className="flex items-center gap-1.5 mt-1 sm:mt-2 text-[10px] sm:text-xs text-slate-600 flex-wrap">
+            <span>{stats?.monthlyFuelLitres || 0} L</span>
+            <span className="text-emerald-700 font-bold bg-emerald-50 px-1 py-0.5 rounded border border-emerald-200 text-[10px]">
+              {stats?.avgMileage || 0} KM/L
             </span>
           </div>
         </div>
 
         {/* Card 4: Maintenance Expense */}
-        <div className="bg-white rounded-2xl p-4 border border-[#FED7AA] shadow-sm relative overflow-hidden">
-          <div className="flex items-center justify-between text-slate-500 mb-2">
-            <span className="text-xs font-semibold uppercase tracking-wider">Service & Repairs</span>
-            <div className="p-2 rounded-lg bg-rose-100 text-rose-600">
-              <Wrench size={18} />
+        <div className="bg-white rounded-xl sm:rounded-2xl p-3 sm:p-4 border border-[#FED7AA] shadow-sm relative overflow-hidden flex flex-col justify-between">
+          <div>
+            <div className="flex items-center justify-between text-slate-500 mb-1.5 sm:mb-2">
+              <span className="text-[10px] sm:text-xs font-semibold uppercase tracking-wider">Repairs & Upkeep</span>
+              <div className="p-1.5 sm:p-2 rounded-lg bg-rose-100 text-rose-600">
+                <Wrench size={16} className="sm:w-[18px] sm:h-[18px]" />
+              </div>
+            </div>
+            <div className="text-xl sm:text-3xl font-extrabold text-rose-900">
+              ₹{stats?.monthlyMaintCost ? stats.monthlyMaintCost.toLocaleString('en-IN') : '0'}
             </div>
           </div>
-          <div className="text-2xl sm:text-3xl font-extrabold text-rose-900">
-            ₹{stats?.monthlyMaintCost ? stats.monthlyMaintCost.toLocaleString('en-IN') : '0'}
-          </div>
-          <p className="text-xs text-slate-500 mt-2">Reefer box & mechanical upkeep</p>
+          <p className="text-[10px] sm:text-xs text-slate-500 mt-1 sm:mt-2 truncate">Reefer box & mechanical upkeep</p>
         </div>
       </div>
 
       {/* Tabs Header */}
-      <div className="flex items-center justify-between flex-wrap gap-3 mb-5 border-b border-[#fed7aa] pb-2">
-        <div className="flex items-center gap-2 overflow-x-auto">
+      <div className="flex items-center justify-between flex-wrap gap-2.5 sm:gap-3 mb-4 sm:mb-5 border-b border-[#fed7aa] pb-2">
+        <div className="flex items-center gap-1.5 sm:gap-2 w-full sm:w-auto overflow-x-auto no-scrollbar py-1 -mx-1 px-1 sm:mx-0 sm:px-0">
           <button
             onClick={() => setActiveTab('fleet')}
-            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold transition-all ${
+            className={`flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 sm:py-2.5 rounded-xl text-xs sm:text-sm font-bold whitespace-nowrap shrink-0 transition-all ${
               activeTab === 'fleet'
                 ? 'bg-[#7c3f1d] text-white shadow-md'
                 : 'bg-white text-slate-700 hover:bg-orange-50 border border-[#fed7aa]'
             }`}
           >
-            <Truck size={17} />
+            <Truck size={15} className="sm:w-[17px] sm:h-[17px]" />
             <span>Vehicles Fleet ({vehicles.length})</span>
           </button>
 
           <button
             onClick={() => setActiveTab('trips')}
-            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold transition-all ${
+            className={`flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 sm:py-2.5 rounded-xl text-xs sm:text-sm font-bold whitespace-nowrap shrink-0 transition-all ${
               activeTab === 'trips'
                 ? 'bg-[#7c3f1d] text-white shadow-md'
                 : 'bg-white text-slate-700 hover:bg-orange-50 border border-[#fed7aa]'
             }`}
           >
-            <Navigation size={17} />
+            <Navigation size={15} className="sm:w-[17px] sm:h-[17px]" />
             <span>Trips & KM Logs ({trips.length})</span>
           </button>
 
           <button
             onClick={() => setActiveTab('fuel')}
-            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold transition-all ${
+            className={`flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 sm:py-2.5 rounded-xl text-xs sm:text-sm font-bold whitespace-nowrap shrink-0 transition-all ${
               activeTab === 'fuel'
                 ? 'bg-[#7c3f1d] text-white shadow-md'
                 : 'bg-white text-slate-700 hover:bg-orange-50 border border-[#fed7aa]'
             }`}
           >
-            <Fuel size={17} />
+            <Fuel size={15} className="sm:w-[17px] sm:h-[17px]" />
             <span>Fuel Management ({fuelLogs.length})</span>
           </button>
 
           <button
             onClick={() => setActiveTab('maintenance')}
-            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold transition-all ${
+            className={`flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 sm:py-2.5 rounded-xl text-xs sm:text-sm font-bold whitespace-nowrap shrink-0 transition-all ${
               activeTab === 'maintenance'
                 ? 'bg-[#7c3f1d] text-white shadow-md'
                 : 'bg-white text-slate-700 hover:bg-orange-50 border border-[#fed7aa]'
             }`}
           >
-            <Wrench size={17} />
+            <Wrench size={15} className="sm:w-[17px] sm:h-[17px]" />
             <span>Service & Repairs ({maintenanceLogs.length})</span>
           </button>
 
           <button
             onClick={() => setActiveTab('map')}
-            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold transition-all ${
+            className={`flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 sm:py-2.5 rounded-xl text-xs sm:text-sm font-bold whitespace-nowrap shrink-0 transition-all ${
               activeTab === 'map'
                 ? 'bg-[#7c3f1d] text-white shadow-md'
                 : 'bg-white text-slate-700 hover:bg-orange-50 border border-[#fed7aa]'
             }`}
           >
-            <Radio size={17} className="text-emerald-500 animate-pulse" />
+            <Radio size={15} className="text-emerald-500 animate-pulse sm:w-[17px] sm:h-[17px]" />
             <span>Live Map Tracking</span>
-            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping"></span>
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping"></span>
           </button>
 
           <button
             onClick={() => setActiveTab('calculator')}
-            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold transition-all ${
+            className={`flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 sm:py-2.5 rounded-xl text-xs sm:text-sm font-bold whitespace-nowrap shrink-0 transition-all ${
               activeTab === 'calculator'
                 ? 'bg-[#7c3f1d] text-white shadow-md'
                 : 'bg-white text-slate-700 hover:bg-orange-50 border border-[#fed7aa]'
             }`}
           >
-            <Calculator size={17} />
-            <span>KM & Mileage Calculator</span>
+            <Calculator size={15} className="sm:w-[17px] sm:h-[17px]" />
+            <span>KM Calculator</span>
           </button>
         </div>
 
@@ -839,49 +843,49 @@ export default function VehicleManagement({ onNavigate, onGoBack }) {
                   </div>
 
                   {/* Actions Bar */}
-                  <div className="flex items-center justify-between gap-1.5 mt-4 pt-3 border-t border-slate-100">
-                    <div className="flex items-center gap-1.5">
+                  <div className="flex flex-wrap items-center justify-between gap-1.5 mt-3 pt-2.5 border-t border-slate-100">
+                    <div className="flex flex-wrap items-center gap-1.5 flex-1 min-w-0">
                       <button
                         onClick={() => handleOpenAddTrip(veh)}
-                        className="px-2.5 py-1.5 bg-orange-100 hover:bg-orange-200 text-[#7c3f1d] rounded-lg text-xs font-semibold flex items-center gap-1 transition-colors"
+                        className="px-2 sm:px-2.5 py-1.5 bg-orange-100 hover:bg-orange-200 text-[#7c3f1d] rounded-lg text-[11px] sm:text-xs font-semibold flex items-center gap-1 transition-colors"
                         title="Log a delivery trip"
                       >
                         <Navigation size={12} /> Trip
                       </button>
                       <button
                         onClick={() => handleOpenAddFuel(veh)}
-                        className="px-2.5 py-1.5 bg-amber-100 hover:bg-amber-200 text-amber-900 rounded-lg text-xs font-semibold flex items-center gap-1 transition-colors"
+                        className="px-2 sm:px-2.5 py-1.5 bg-amber-100 hover:bg-amber-200 text-amber-900 rounded-lg text-[11px] sm:text-xs font-semibold flex items-center gap-1 transition-colors"
                         title="Log fuel refill"
                       >
                         <Fuel size={12} /> Fuel
                       </button>
                       <button
                         onClick={() => handleOpenAddMaintenance(veh)}
-                        className="px-2.5 py-1.5 bg-rose-100 hover:bg-rose-200 text-rose-900 rounded-lg text-xs font-semibold flex items-center gap-1 transition-colors"
+                        className="px-2 sm:px-2.5 py-1.5 bg-rose-100 hover:bg-rose-200 text-rose-900 rounded-lg text-[11px] sm:text-xs font-semibold flex items-center gap-1 transition-colors"
                         title="Log repair or maintenance"
                       >
                         <Wrench size={12} /> Service
                       </button>
                       <button
                         onClick={() => setActiveTab('map')}
-                        className="px-2 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-lg text-xs font-semibold flex items-center gap-1 transition-colors"
+                        className="px-2 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-lg text-[11px] sm:text-xs font-semibold flex items-center gap-1 transition-colors"
                         title="View live position on map"
                       >
                         <Radio size={12} className="text-emerald-600 animate-pulse" /> Map
                       </button>
                     </div>
 
-                    <div className="flex items-center gap-1">
+                    <div className="flex items-center gap-1 shrink-0">
                       <button
                         onClick={() => handleOpenEditVehicle(veh)}
-                        className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                        className="p-1.5 text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
                         title="Edit vehicle details"
                       >
                         <Edit2 size={15} />
                       </button>
                       <button
                         onClick={() => handleDeleteVehicle(veh._id, veh.vehicleNumber)}
-                        className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
+                        className="p-1.5 text-slate-500 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
                         title="Remove vehicle"
                       >
                         <Trash2 size={15} />
@@ -909,21 +913,96 @@ export default function VehicleManagement({ onNavigate, onGoBack }) {
       {/* ======================================================== */}
       {activeTab === 'trips' && (
         <div className="bg-white rounded-2xl border border-[#FED7AA] shadow-sm overflow-hidden">
-          <div className="p-4 bg-[#fffaf5] border-b border-[#fed7aa] flex items-center justify-between">
-            <h3 className="font-bold text-[#7c3f1d] text-base flex items-center gap-2">
-              <Navigation size={18} className="text-[#ea580c]" />
-              Trip Distance & Kilometer Logs
+          <div className="p-3 sm:p-4 bg-[#fffaf5] border-b border-[#fed7aa] flex items-center justify-between gap-2">
+            <h3 className="font-bold text-[#7c3f1d] text-sm sm:text-base flex items-center gap-1.5 sm:gap-2">
+              <Navigation size={18} className="text-[#ea580c] shrink-0" />
+              <span>Trip Distance & KM Logs</span>
             </h3>
             <button
               onClick={() => handleOpenAddTrip()}
-              className="px-3.5 py-1.5 bg-[#ea580c] hover:bg-[#c2410c] text-white rounded-xl text-xs font-bold shadow flex items-center gap-1"
+              className="px-3 sm:px-3.5 py-1.5 bg-[#ea580c] hover:bg-[#c2410c] text-white rounded-xl text-xs font-bold shadow flex items-center gap-1 shrink-0"
             >
-              <Plus size={14} /> Log New Trip
+              <Plus size={14} /> <span>Log Trip</span>
             </button>
           </div>
 
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse text-xs sm:text-sm">
+          {/* Dynamic Mobile Cards (sm:hidden) */}
+          <div className="block sm:hidden p-3 space-y-3 bg-[#fffdfa]">
+            {filteredTrips.length === 0 ? (
+              <div className="py-8 text-center text-slate-400 text-xs px-4">
+                No trip records found. Tap "+ Log Trip" to register trip distance.
+              </div>
+            ) : (
+              filteredTrips.map((t) => (
+                <div key={t._id} className="bg-white rounded-xl p-3 border border-[#FED7AA] shadow-xs space-y-2.5">
+                  {/* Top: Plate + Date + Run + Delete */}
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono font-extrabold bg-amber-400 text-slate-900 px-2 py-0.5 rounded border border-slate-900 text-xs shadow-xs">
+                        {t.vehicleNumber}
+                      </span>
+                      <span className="text-[11px] font-semibold text-slate-500">
+                        {new Date(t.date).toLocaleDateString('en-IN', {
+                          day: '2-digit',
+                          month: 'short',
+                          year: 'numeric'
+                        })}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 font-extrabold rounded-full font-mono text-xs">
+                        +{t.distanceKm} KM
+                      </span>
+                      <button
+                        onClick={() => handleDeleteTrip(t._id)}
+                        className="p-1 text-slate-400 hover:text-rose-600 rounded transition-colors"
+                        title="Delete trip log"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Route & Purpose Box */}
+                  <div className="bg-[#FAF0E4]/40 p-2.5 rounded-lg border border-[#FED7AA]/60 space-y-1.5">
+                    <div className="text-xs font-bold text-slate-900 flex items-center gap-1.5 flex-wrap">
+                      <span>{t.routeFrom || 'Kadapa City Depot'}</span>
+                      <ArrowRight size={12} className="text-[#ea580c] shrink-0" />
+                      <span className="text-[#ea580c]">{t.routeTo || 'Local Market'}</span>
+                    </div>
+                    <div className="flex items-center justify-between gap-2 text-[11px] text-slate-600 flex-wrap">
+                      <span className="flex items-center gap-1 text-slate-700 font-medium">
+                        <User size={12} className="text-slate-400" /> {t.driverName || 'Driver Not Assigned'}
+                      </span>
+                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-orange-100 text-[#c2410c] font-semibold">
+                        {t.purpose}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Metrics Odometer Row */}
+                  <div className="grid grid-cols-3 gap-2 text-center text-xs">
+                    <div className="bg-slate-50 p-1.5 rounded-lg border border-slate-200/60">
+                      <div className="text-[10px] text-slate-400 font-medium">Start KM</div>
+                      <div className="font-mono font-bold text-slate-800">{t.startKm?.toLocaleString('en-IN') || 0}</div>
+                    </div>
+                    <div className="bg-slate-50 p-1.5 rounded-lg border border-slate-200/60">
+                      <div className="text-[10px] text-slate-400 font-medium">End KM</div>
+                      <div className="font-mono font-bold text-slate-800">{t.endKm?.toLocaleString('en-IN') || 0}</div>
+                    </div>
+                    <div className="bg-orange-50/70 p-1.5 rounded-lg border border-orange-200/60">
+                      <div className="text-[10px] text-[#c2410c] font-medium">Toll Fee</div>
+                      <div className="font-mono font-bold text-slate-800">₹{t.tollCharges || 0}</div>
+                    </div>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+
+          {/* Desktop Table View (hidden sm:block) */}
+          <div className="hidden sm:block overflow-x-auto">
+            <table className="w-full min-w-[850px] text-left border-collapse text-xs sm:text-sm">
               <thead>
                 <tr className="bg-[#FAF0E4] text-[#7c3f1d] font-bold border-b border-[#fed7aa]">
                   <th className="py-3 px-4">Date</th>
@@ -1003,21 +1082,92 @@ export default function VehicleManagement({ onNavigate, onGoBack }) {
       {/* ======================================================== */}
       {activeTab === 'fuel' && (
         <div className="bg-white rounded-2xl border border-[#FED7AA] shadow-sm overflow-hidden">
-          <div className="p-4 bg-[#fffaf5] border-b border-[#fed7aa] flex items-center justify-between">
-            <h3 className="font-bold text-[#7c3f1d] text-base flex items-center gap-2">
-              <Fuel size={18} className="text-[#ea580c]" />
-              Fuel Refill & Mileage Economy Logs
+          <div className="p-3 sm:p-4 bg-[#fffaf5] border-b border-[#fed7aa] flex items-center justify-between gap-2">
+            <h3 className="font-bold text-[#7c3f1d] text-sm sm:text-base flex items-center gap-1.5 sm:gap-2">
+              <Fuel size={18} className="text-[#ea580c] shrink-0" />
+              <span>Fuel Refill & Mileage Logs</span>
             </h3>
             <button
               onClick={() => handleOpenAddFuel()}
-              className="px-3.5 py-1.5 bg-[#ea580c] hover:bg-[#c2410c] text-white rounded-xl text-xs font-bold shadow flex items-center gap-1"
+              className="px-3 sm:px-3.5 py-1.5 bg-[#ea580c] hover:bg-[#c2410c] text-white rounded-xl text-xs font-bold shadow flex items-center gap-1 shrink-0"
             >
-              <Plus size={14} /> Add Fuel Entry
+              <Plus size={14} /> <span>Add Fuel</span>
             </button>
           </div>
 
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse text-xs sm:text-sm">
+          {/* Dynamic Mobile Cards (sm:hidden) */}
+          <div className="block sm:hidden p-3 space-y-3 bg-[#fffdfa]">
+            {filteredFuelLogs.length === 0 ? (
+              <div className="py-8 text-center text-slate-400 text-xs px-4">
+                No fuel logs recorded yet. Tap "+ Add Fuel" to log diesel/petrol fill-ups.
+              </div>
+            ) : (
+              filteredFuelLogs.map((f) => (
+                <div key={f._id} className="bg-white rounded-xl p-3 border border-[#FED7AA] shadow-xs space-y-2.5">
+                  {/* Top: Plate + Date + Mileage + Delete */}
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono font-extrabold bg-amber-400 text-slate-900 px-2 py-0.5 rounded border border-slate-900 text-xs shadow-xs">
+                        {f.vehicleNumber}
+                      </span>
+                      <span className="text-[11px] font-semibold text-slate-500">
+                        {new Date(f.date).toLocaleDateString('en-IN', {
+                          day: '2-digit',
+                          month: 'short',
+                          year: 'numeric'
+                        })}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      {f.calculatedMileage > 0 ? (
+                        <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 font-extrabold rounded-full text-xs">
+                          {f.calculatedMileage} KM/L
+                        </span>
+                      ) : (
+                        <span className="text-slate-400 text-xs">—</span>
+                      )}
+                      <button
+                        onClick={() => handleDeleteFuel(f._id)}
+                        className="p-1 text-slate-400 hover:text-rose-600 rounded transition-colors"
+                        title="Delete fuel log"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Amount & Volume Details */}
+                  <div className="bg-[#FAF0E4]/40 p-2.5 rounded-lg border border-[#FED7AA]/60 flex items-center justify-between">
+                    <div>
+                      <div className="text-[10px] text-slate-500 uppercase tracking-wide font-medium">Total Cost</div>
+                      <div className="text-lg font-black text-[#7c3f1d]">₹{f.totalAmount?.toLocaleString('en-IN')}</div>
+                      <div className="text-[11px] text-slate-600 font-medium">
+                        {f.litres} L @ ₹{f.ratePerLitre}/L
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-[10px] text-slate-500 uppercase tracking-wide font-medium">Odometer</div>
+                      <div className="font-mono font-bold text-slate-800 text-sm">
+                        {f.odometerKm?.toLocaleString('en-IN')} KM
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Station & Payment Row */}
+                  <div className="flex items-center justify-between gap-2 text-[11px] text-slate-600 px-1">
+                    <span className="font-medium text-slate-800 truncate">{f.fuelStation || 'Local Fuel Station'}</span>
+                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 font-medium shrink-0">
+                      {f.paymentMode} {f.syncedToExpenses && '• Synced'}
+                    </span>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+
+          {/* Desktop Table View (hidden sm:block) */}
+          <div className="hidden sm:block overflow-x-auto">
+            <table className="w-full min-w-[850px] text-left border-collapse text-xs sm:text-sm">
               <thead>
                 <tr className="bg-[#FAF0E4] text-[#7c3f1d] font-bold border-b border-[#fed7aa]">
                   <th className="py-3 px-4">Date</th>
@@ -1099,21 +1249,88 @@ export default function VehicleManagement({ onNavigate, onGoBack }) {
       {/* ======================================================== */}
       {activeTab === 'maintenance' && (
         <div className="bg-white rounded-2xl border border-[#FED7AA] shadow-sm overflow-hidden">
-          <div className="p-4 bg-[#fffaf5] border-b border-[#fed7aa] flex items-center justify-between">
-            <h3 className="font-bold text-[#7c3f1d] text-base flex items-center gap-2">
-              <Wrench size={18} className="text-[#ea580c]" />
-              Vehicle Repairs, Servicing & Upkeep
+          <div className="p-3 sm:p-4 bg-[#fffaf5] border-b border-[#fed7aa] flex items-center justify-between gap-2">
+            <h3 className="font-bold text-[#7c3f1d] text-sm sm:text-base flex items-center gap-1.5 sm:gap-2">
+              <Wrench size={18} className="text-[#ea580c] shrink-0" />
+              <span>Vehicle Repairs & Upkeep</span>
             </h3>
             <button
               onClick={() => handleOpenAddMaintenance()}
-              className="px-3.5 py-1.5 bg-[#ea580c] hover:bg-[#c2410c] text-white rounded-xl text-xs font-bold shadow flex items-center gap-1"
+              className="px-3 sm:px-3.5 py-1.5 bg-[#ea580c] hover:bg-[#c2410c] text-white rounded-xl text-xs font-bold shadow flex items-center gap-1 shrink-0"
             >
-              <Plus size={14} /> Log Maintenance
+              <Plus size={14} /> <span>Log Service</span>
             </button>
           </div>
 
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse text-xs sm:text-sm">
+          {/* Dynamic Mobile Cards (sm:hidden) */}
+          <div className="block sm:hidden p-3 space-y-3 bg-[#fffdfa]">
+            {filteredMaintenanceLogs.length === 0 ? (
+              <div className="py-8 text-center text-slate-400 text-xs px-4">
+                No repair or maintenance logs found. Tap "+ Log Service" to record vehicle upkeep.
+              </div>
+            ) : (
+              filteredMaintenanceLogs.map((m) => (
+                <div key={m._id} className="bg-white rounded-xl p-3 border border-[#FED7AA] shadow-xs space-y-2.5">
+                  {/* Top: Plate + Date + Cost + Delete */}
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono font-extrabold bg-amber-400 text-slate-900 px-2 py-0.5 rounded border border-slate-900 text-xs shadow-xs">
+                        {m.vehicleNumber}
+                      </span>
+                      <span className="text-[11px] font-semibold text-slate-500">
+                        {new Date(m.date).toLocaleDateString('en-IN', {
+                          day: '2-digit',
+                          month: 'short',
+                          year: 'numeric'
+                        })}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <span className="font-black text-rose-800 text-sm">
+                        ₹{m.totalCost?.toLocaleString('en-IN')}
+                      </span>
+                      <button
+                        onClick={() => handleDeleteMaintenance(m._id)}
+                        className="p-1 text-slate-400 hover:text-rose-600 rounded transition-colors"
+                        title="Delete service record"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Service Details Box */}
+                  <div className="bg-[#FAF0E4]/40 p-2.5 rounded-lg border border-[#FED7AA]/60 space-y-1">
+                    <div className="text-xs font-bold text-slate-900">{m.serviceType}</div>
+                    {m.partsReplaced && (
+                      <div className="text-[11px] text-slate-600 italic">Parts: {m.partsReplaced}</div>
+                    )}
+                    <div className="text-[11px] text-slate-700 font-medium pt-0.5">
+                      {m.garageName || 'Local Garage'} {m.invoiceNumber && `• Inv #${m.invoiceNumber}`}
+                    </div>
+                  </div>
+
+                  {/* Odometer & Next Alert */}
+                  <div className="flex items-center justify-between gap-2 text-xs text-slate-600 px-1">
+                    <span className="font-mono text-[11px]">
+                      Odo: {m.odometerKm ? `${m.odometerKm.toLocaleString('en-IN')} KM` : '—'}
+                    </span>
+                    {m.nextServiceDueKm ? (
+                      <span className="px-2 py-0.5 bg-blue-50 text-blue-800 rounded font-mono font-semibold text-[10px] border border-blue-200">
+                        Due @ {m.nextServiceDueKm.toLocaleString('en-IN')} KM
+                      </span>
+                    ) : (
+                      <span className="text-slate-400 text-[10px]">No next alert</span>
+                    )}
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+
+          {/* Desktop Table View (hidden sm:block) */}
+          <div className="hidden sm:block overflow-x-auto">
+            <table className="w-full min-w-[850px] text-left border-collapse text-xs sm:text-sm">
               <thead>
                 <tr className="bg-[#FAF0E4] text-[#7c3f1d] font-bold border-b border-[#fed7aa]">
                   <th className="py-3 px-4">Date</th>
@@ -1321,7 +1538,7 @@ export default function VehicleManagement({ onNavigate, onGoBack }) {
       {/* ======================================================== */}
       {showVehicleModal && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-[#FED7AA] max-h-[90vh] overflow-y-auto">
+          <div className="bg-white rounded-2xl max-w-lg w-full p-4 sm:p-6 shadow-2xl border border-[#FED7AA] max-h-[92vh] overflow-y-auto my-auto">
             <div className="flex items-center justify-between pb-4 border-b border-slate-100">
               <h3 className="text-lg font-bold text-[#7c3f1d] flex items-center gap-2">
                 <Truck size={20} className="text-[#ea580c]" />
@@ -1505,7 +1722,7 @@ export default function VehicleManagement({ onNavigate, onGoBack }) {
       {/* ======================================================== */}
       {showTripModal && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-[#FED7AA]">
+          <div className="bg-white rounded-2xl max-w-lg w-full p-4 sm:p-6 shadow-2xl border border-[#FED7AA] max-h-[92vh] overflow-y-auto my-auto">
             <div className="flex items-center justify-between pb-4 border-b border-slate-100">
               <h3 className="text-lg font-bold text-[#7c3f1d] flex items-center gap-2">
                 <Navigation size={20} className="text-[#ea580c]" />
@@ -1665,7 +1882,7 @@ export default function VehicleManagement({ onNavigate, onGoBack }) {
       {/* ======================================================== */}
       {showFuelModal && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-[#FED7AA]">
+          <div className="bg-white rounded-2xl max-w-lg w-full p-4 sm:p-6 shadow-2xl border border-[#FED7AA] max-h-[92vh] overflow-y-auto my-auto">
             <div className="flex items-center justify-between pb-4 border-b border-slate-100">
               <h3 className="text-lg font-bold text-[#7c3f1d] flex items-center gap-2">
                 <Fuel size={20} className="text-[#ea580c]" />
@@ -1828,7 +2045,7 @@ export default function VehicleManagement({ onNavigate, onGoBack }) {
       {/* ======================================================== */}
       {showMaintenanceModal && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-[#FED7AA] max-h-[90vh] overflow-y-auto">
+          <div className="bg-white rounded-2xl max-w-lg w-full p-4 sm:p-6 shadow-2xl border border-[#FED7AA] max-h-[92vh] overflow-y-auto my-auto">
             <div className="flex items-center justify-between pb-4 border-b border-slate-100">
               <h3 className="text-lg font-bold text-[#7c3f1d] flex items-center gap-2">
                 <Wrench size={20} className="text-[#ea580c]" />

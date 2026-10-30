@@ -27,10 +27,14 @@ export default function StaffTab({
     <div className="dash-section-card">
       <div className="dash-section-header">
         <h2 className="dash-section-title">
-          <span>👥</span> Enterprise Staff & Access Management
+          <span>👥</span>
+          <span className="section-title-full">Enterprise Staff & Access Management</span>
+          <span className="section-title-short">Staff & Access</span>
         </h2>
         <button onClick={onOpenCreateModal} className="sa-primary-btn">
-          ➕ Create Staff User
+          <span>➕</span>
+          <span className="sa-btn-full">Create Staff User</span>
+          <span className="sa-btn-short">Staff</span>
         </button>
       </div>
 
@@ -106,21 +110,22 @@ export default function StaffTab({
                       title="Edit staff details"
                       style={{ color: '#38bdf8', borderColor: 'rgba(56, 189, 248, 0.3)' }}
                     >
-                      ✏️ Edit
+                      <span>✏️</span><span className="act-btn-full"> Edit</span>
                     </button>
                     <button
                       onClick={() => onToggleUserActive(u._id, u.isActive)}
                       className={`table-action-btn ${u.isActive ? 'warning' : ''}`}
                       title={u.isActive ? 'Deactivate account' : 'Activate account'}
                     >
-                      {u.isActive ? '⏸️ Disable' : '▶️ Enable'}
+                      <span>{u.isActive ? '⏸️' : '▶️'}</span>
+                      <span className="act-btn-full">{u.isActive ? ' Disable' : ' Enable'}</span>
                     </button>
                     <button
                       onClick={() => onResetPassword(u._id, u.name)}
                       className="table-action-btn"
                       title="Reset staff password"
                     >
-                      🔑 Reset Key
+                      <span>🔑</span><span className="act-btn-full"> Reset Key</span>
                     </button>
                     {u.role !== 'super-admin' && (
                       <button

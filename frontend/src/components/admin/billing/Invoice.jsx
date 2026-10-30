@@ -282,11 +282,18 @@ const Invoice = ({ bill, onClose, onSave, whatsappBillSentIds, onWhatsAppSent, a
 
   const activeReceiptPrinter = useMemo(() => {
     const list = Array.isArray(printerConfigs) ? printerConfigs : [];
-    return list.find(c => c.isActive && (c.type === 'receipt' || c.type === 'general' || c.type === 'both') && (
+    let p = list.find(c => c.isActive && (c.type === 'receipt' || c.type === 'general' || c.type === 'both' || c.type === 'Bill & KOT') && (
       (c.connectionType === 'usb' && (c.usbPort || c.deviceName || c.name)) ||
       (c.connectionType === 'network' && c.ipAddress) ||
       (c.connectionType === 'bluetooth' && (c.bluetoothAddress || c.deviceName || c.name))
-    )) || null;
+    ));
+    if (!p) {
+      p = list.find(c => c.isActive && c.connectionType === 'bluetooth' && (c.bluetoothAddress || c.deviceName || c.name));
+    }
+    if (!p) {
+      p = list.find(c => c.isActive);
+    }
+    return p || null;
   }, [printerConfigs]);
 
   const handlePrint = async (forceBrowserPrint = false) => {
@@ -377,22 +384,45 @@ const Invoice = ({ bill, onClose, onSave, whatsappBillSentIds, onWhatsAppSent, a
         return;
       }
 
-      // 3. Android APK (Bluetooth)
-      if (window.AndroidBluetooth && (currentActivePrinter?.connectionType === 'bluetooth' || (!currentActivePrinter && (activeSettings.billingPrinter || '').match(/([0-9A-Fa-f]{2}[:-]?){5}[0-9A-Fa-f]{2}/i)))) {
+      // 3. Android APK (Native Bluetooth Thermal Printer)
+      if (window.AndroidBluetooth) {
         const MAC_RE = /([0-9A-Fa-f]{2}[:-]?){5}[0-9A-Fa-f]{2}/i;
         const tryMac = (raw) => { const m = (raw || '').match(MAC_RE); return m ? m[0] : null; };
 
         let macAddress = tryMac(activeSettings.billingPrinter || '');
 
-        // Check live printer configs from database
-        if (!macAddress && Array.isArray(printerConfigs)) {
-          const receiptStation = printerConfigs.find(c => c.isActive && (c.type === 'receipt' || c.type === 'general' || c.type === 'both') && tryMac(c.bluetoothAddress || c.deviceName || ''));
-          if (receiptStation) macAddress = tryMac(receiptStation.bluetoothAddress || receiptStation.deviceName || receiptStation.name || '');
+        // 1. Check currentActivePrinter
+        if (!macAddress && currentActivePrinter) {
+          macAddress = tryMac(currentActivePrinter.bluetoothAddress || currentActivePrinter.deviceName || currentActivePrinter.name || '');
+        }
+
+        // 2. Check ANY active Bluetooth printer in printerConfigs (including KOT / Cutting Station!)
+        if (!macAddress && Array.isArray(list)) {
+          const btPrinter = list.find(c => c.isActive && c.connectionType === 'bluetooth' && tryMac(c.bluetoothAddress || c.deviceName || c.name || ''));
+          if (btPrinter) {
+            macAddress = tryMac(btPrinter.bluetoothAddress || btPrinter.deviceName || btPrinter.name || '');
+          }
+        }
+
+        // 3. Check ANY printer in printerConfigs with a MAC address
+        if (!macAddress && Array.isArray(list)) {
+          const anyMacPrinter = list.find(c => tryMac(c.bluetoothAddress || c.deviceName || c.name || ''));
+          if (anyMacPrinter) {
+            macAddress = tryMac(anyMacPrinter.bluetoothAddress || anyMacPrinter.deviceName || anyMacPrinter.name || '');
+          }
+        }
+
+        // 4. Check localStorage
+        if (!macAddress) {
+          try {
+            const savedSettings = JSON.parse(localStorage.getItem('restaurantSettings') || '{}');
+            macAddress = tryMac(savedSettings.billingPrinter || '');
+          } catch (_) {}
         }
 
         if (!macAddress) {
           setPrintStatus('not_connected');
-          setToast({ message: t('Printer not connected. Please pair a Bluetooth printer in Printer & Cutting Station Routing settings.'), type: 'error' });
+          setToast({ message: t('No Bluetooth printer address found. Please select your Bluetooth printer in Printer Stations.'), type: 'error' });
           resetPrintStatus(4000);
           return;
         }
@@ -438,7 +468,7 @@ const Invoice = ({ bill, onClose, onSave, whatsappBillSentIds, onWhatsAppSent, a
         }
       }
 
-        if (window.AndroidPrint && typeof window.AndroidPrint.print === 'function') {
+        if (!window.AndroidBluetooth && window.AndroidPrint && typeof window.AndroidPrint.print === 'function') {
           window.AndroidPrint.print();
           setPrintStatus('success');
           resetPrintStatus(3000);

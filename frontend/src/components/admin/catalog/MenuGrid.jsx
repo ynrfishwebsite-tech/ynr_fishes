@@ -164,7 +164,10 @@ const MenuGrid = ({
   onFoodTypeFilterChange,
   fishOrderMode = 'individual',
   onFilterCounts,
-  isLocked = false
+  isLocked = false,
+  orderStatus = '',
+  hasPendingChanges = false,
+  showToast
 }) => {
   const { t, language } = useLanguage();
   const [items, setItems] = useState([]);
@@ -195,16 +198,46 @@ const MenuGrid = ({
   const [flyingItems, setFlyingItems] = useState([]);
   const scrollContainerRef = useRef(null);
   const searchInputRef = useRef(null);
+  const lastClickedCardPos = useRef(null);
 
   const triggerFlyAnimation = (sourceX, sourceY, name, image) => {
     if (!showAnimation) return;
+    if (isLocked || (orderStatus === 'Billed' && !hasPendingChanges)) return;
     const id = Date.now() + Math.random();
-    const targetEl = document.querySelector('.counter-sale-cart, .bill-cart-items, [data-billing-cart="true"]') || {
-      getBoundingClientRect: () => ({ left: window.innerWidth - 200, top: 120, width: 40, height: 40 })
-    };
-    const rect = targetEl.getBoundingClientRect();
-    const targetX = rect.left + rect.width / 2;
-    const targetY = rect.top + rect.height / 2;
+
+    let targetX = window.innerWidth - 180;
+    let targetY = 180;
+
+    // 1. Mobile Detection: Target the visible [ 🛒 Current Order ] tab at top of screen
+    const mobileCartTab = document.getElementById('mobile-cart-tab') || document.querySelector('[data-mobile-cart-tab="true"]');
+    const isMobileMode = window.innerWidth < 1024 || (mobileCartTab && mobileCartTab.offsetParent !== null);
+
+    if (isMobileMode && mobileCartTab) {
+      const mRect = mobileCartTab.getBoundingClientRect();
+      targetX = mRect.left + mRect.width / 2;
+      targetY = mRect.top + mRect.height / 2;
+    } else {
+      // 2. Desktop Mode: Target the exact newly added item spot at top of the items list
+      const cartItemsContainer = document.getElementById('cart-items-container') || document.querySelector('.bill-cart-items, [data-billing-cart="true"]');
+      const cartHeader = document.getElementById('cart-items-header');
+      if (cartItemsContainer && cartItemsContainer.offsetParent !== null) {
+        const cRect = cartItemsContainer.getBoundingClientRect();
+        targetX = cRect.left + cRect.width / 2;
+        // Exact top of cart items list under the table headers
+        targetY = cRect.top + 32;
+      } else if (cartHeader && cartHeader.offsetParent !== null) {
+        const hRect = cartHeader.getBoundingClientRect();
+        targetX = hRect.left + hRect.width / 2;
+        targetY = hRect.bottom + 22;
+      } else {
+        const panel = document.querySelector('.bill-summary-container');
+        if (panel && panel.offsetParent !== null) {
+          const pRect = panel.getBoundingClientRect();
+          targetX = pRect.left + pRect.width / 2;
+          targetY = pRect.top + 160;
+        }
+      }
+    }
 
     const newItem = {
       id,
@@ -219,7 +252,7 @@ const MenuGrid = ({
     setFlyingItems((prev) => [...prev, newItem]);
     setTimeout(() => {
       setFlyingItems((prev) => prev.filter((item) => item.id !== id));
-    }, 750);
+    }, 850);
   };
 
   // ── Mobile Infinite Scroll ──────────────────────────────────────────────
@@ -641,20 +674,28 @@ const MenuGrid = ({
         }
         @keyframes flyToCartAnim {
           0% {
-            opacity: 1;
-            transform: translate3d(var(--start-x), var(--start-y), 0) scale(1) rotate(0deg);
+            opacity: 0;
+            transform: translate3d(var(--start-x), var(--start-y), 0) translate(-50%, -50%) scale(0.6) perspective(1000px) rotateX(0deg) rotateY(0deg) rotateZ(0deg);
           }
-          40% {
+          14% {
             opacity: 1;
-            transform: translate3d(calc(var(--start-x) + (var(--target-x) - var(--start-x)) * 0.45), calc(var(--start-y) - 90px), 0) scale(1.2) rotate(12deg);
+            transform: translate3d(var(--start-x), var(--start-y), 70px) translate(-50%, -50%) scale(1.15) perspective(1000px) rotateX(12deg) rotateY(-18deg) rotateZ(6deg);
           }
-          85% {
-            opacity: 0.9;
-            transform: translate3d(calc(var(--target-x) - 15px), calc(var(--target-y) - 10px), 0) scale(0.6) rotate(-8deg);
+          48% {
+            opacity: 1;
+            transform: translate3d(calc(var(--start-x) + (var(--target-x) - var(--start-x)) * 0.52), calc(var(--start-y) + (var(--target-y) - var(--start-y)) * 0.4 - 70px), 85px) translate(-50%, -50%) scale(0.98) perspective(1000px) rotateX(16deg) rotateY(-22deg) rotateZ(10deg);
+          }
+          80% {
+            opacity: 0.95;
+            transform: translate3d(calc(var(--target-x) - 10px), calc(var(--target-y) - 10px), 25px) translate(-50%, -50%) scale(0.65) perspective(1000px) rotateX(6deg) rotateY(-8deg) rotateZ(-4deg);
+          }
+          94% {
+            opacity: 0.8;
+            transform: translate3d(var(--target-x), var(--target-y), 0) translate(-50%, -50%) scale(0.25) perspective(1000px) rotateX(0deg) rotateY(0deg) rotateZ(0deg);
           }
           100% {
             opacity: 0;
-            transform: translate3d(var(--target-x), var(--target-y), 0) scale(0.15) rotate(0deg);
+            transform: translate3d(var(--target-x), var(--target-y), 0) translate(-50%, -50%) scale(0.05) perspective(1000px) rotateX(0deg) rotateY(0deg) rotateZ(0deg);
           }
         }
         .menu-card-anim-enabled {
@@ -668,9 +709,11 @@ const MenuGrid = ({
           position: fixed;
           left: 0;
           top: 0;
-          z-index: 99999;
+          z-index: 999999;
           pointer-events: none;
-          animation: flyToCartAnim 0.75s cubic-bezier(0.2, 0.8, 0.25, 1) forwards;
+          animation: flyToCartAnim 0.82s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+          transform-origin: center center;
+          will-change: transform, opacity;
         }
       `}</style>
       {/* Mobile & Tablet Top Category Scrollbar (Visible on screens < 1024px) */}
@@ -898,10 +941,23 @@ const MenuGrid = ({
                 return (
                   <div
                     key={item._id}
+                    data-fish-card-id={item._id}
                     style={{ animationDelay: showAnimation ? `${Math.min(idx * 30, 400)}ms` : '0ms' }}
                     className={`menu-card-item ${showAnimation ? 'menu-card-anim-enabled' : ''} bg-[#FDFBF7] transition-all border flex flex-col justify-between overflow-hidden relative rounded-2xl ${isAvailable ? 'cursor-pointer hover:shadow-lg hover:border-orange-300 hover:shadow-orange-500/10 hover:-translate-y-1 border-orange-100 shadow-md' : 'cursor-not-allowed opacity-50 bg-[#F7EFE2] border-orange-100'} ${showImages ? 'min-h-48 sm:min-h-52' : 'h-30 p-3'}`}
                     onClick={(e) => {
                       if (!isAvailable) return;
+                      if (isLocked || (orderStatus === 'Billed' && !hasPendingChanges)) {
+                        if (showToast) {
+                          showToast(t("Order is billed. Click EDIT to modify."), 'warning');
+                        }
+                        return;
+                      }
+                      const rect = e.currentTarget.getBoundingClientRect();
+                      lastClickedCardPos.current = {
+                        cardId: item._id,
+                        x: rect.left + rect.width / 2,
+                        y: rect.top + (showImages ? 65 : rect.height / 2)
+                      };
                       // Open Fish Weight / Box selection modal for dynamic entered kg/grams or boxes
                       setSelectedFishItem(item);
                       setFishWeightGrams('1000');
@@ -1185,9 +1241,14 @@ const MenuGrid = ({
 
                     // 2. Play 3D flying animation simultaneously as visual feedback
                     if (!isDineInWithoutTable && !isLocked) {
-                      const targetElement = document.querySelector('.bill-summary-container');
-                      const imgUrl = formatImageUrl(selectedItemVariants.image);
-                      flyItemToCart(e.currentTarget, targetElement, imgUrl);
+                      const btnRect = e.currentTarget.getBoundingClientRect();
+                      triggerFlyAnimation(
+                        btnRect.left + btnRect.width / 2,
+                        btnRect.top + btnRect.height / 2,
+                        itemToAdd.name,
+                        formatImageUrl(selectedItemVariants.image),
+                        `₹${itemToAdd.price}`
+                      );
                     }
                     setSelectedItemVariants(null);
                   }}
@@ -1210,7 +1271,8 @@ const MenuGrid = ({
           onClick={() => setSelectedFishItem(null)}
         >
           <div
-            className="bg-white w-full max-w-[490px] rounded-2xl shadow-2xl border border-slate-200 flex flex-col overflow-hidden text-slate-800"
+            data-fish-modal="true"
+            className="bg-white w-full max-w-[490px] max-h-[92vh] rounded-2xl shadow-2xl border border-slate-200 flex flex-col overflow-hidden text-slate-800 my-auto"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Header */}
@@ -1233,7 +1295,7 @@ const MenuGrid = ({
               </button>
             </div>
 
-            <div className="p-4 space-y-4">
+            <div className="p-3.5 sm:p-4 space-y-3.5 overflow-y-auto flex-1">
               {fishOrderMode === 'bulk' ? (
                 /* 📦 Wholesale Bulk Boxes */
                 <div className="space-y-3">
@@ -1243,11 +1305,11 @@ const MenuGrid = ({
                       <span className="text-[11px] text-slate-400">1 Box = {selectedFishItem.boxPackingKg || 60} Kg</span>
                     </div>
 
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 w-full">
                       <button
                         type="button"
                         onClick={() => setBoxCountInput(prev => Math.max(1, (parseInt(prev) || 1) - 1).toString())}
-                        className="w-10 h-10 rounded-xl bg-white hover:bg-slate-100 text-slate-800 font-black text-2xl flex items-center justify-center cursor-pointer border border-[#E8DCCB] shadow-xs transition-all active:scale-95"
+                        className="w-10 h-10 shrink-0 rounded-xl bg-white hover:bg-slate-100 text-slate-800 font-black text-2xl flex items-center justify-center cursor-pointer border border-[#E8DCCB] shadow-xs transition-all active:scale-95"
                       >
                         -
                       </button>
@@ -1266,12 +1328,12 @@ const MenuGrid = ({
                           const sanitized = e.target.value.replace(/[^0-9]/g, '');
                           setBoxCountInput(sanitized);
                         }}
-                        className="flex-1 bg-white border-2 border-amber-500/70 rounded-xl px-3 py-2 text-center text-2xl font-black text-slate-900 focus:outline-none focus:border-amber-600 shadow-inner font-mono"
+                        className="flex-1 min-w-0 w-full bg-white border-2 border-amber-500/70 rounded-xl px-3 py-2 text-center text-2xl font-black text-slate-900 focus:outline-none focus:border-amber-600 shadow-inner font-mono"
                       />
                       <button
                         type="button"
                         onClick={() => setBoxCountInput(prev => ((parseInt(prev) || 0) + 1).toString())}
-                        className="w-10 h-10 rounded-xl bg-white hover:bg-slate-100 text-slate-800 font-black text-2xl flex items-center justify-center cursor-pointer border border-[#E8DCCB] shadow-xs transition-all active:scale-95"
+                        className="w-10 h-10 shrink-0 rounded-xl bg-white hover:bg-slate-100 text-slate-800 font-black text-2xl flex items-center justify-center cursor-pointer border border-[#E8DCCB] shadow-xs transition-all active:scale-95"
                       >
                         +
                       </button>
@@ -1333,6 +1395,27 @@ const MenuGrid = ({
                         grossWeightKg: totalKg,
                         boxCount: boxes
                       };
+
+                      // Retrieve the original card's position on the screen
+                      let startX = window.innerWidth / 2;
+                      let startY = window.innerHeight * 0.4;
+                      const cardEl = document.querySelector(`[data-fish-card-id="${selectedFishItem._id}"]`);
+                      if (cardEl) {
+                        const cRect = cardEl.getBoundingClientRect();
+                        startX = cRect.left + cRect.width / 2;
+                        startY = cRect.top + (showImages ? 65 : cRect.height / 2);
+                      } else if (lastClickedCardPos.current && lastClickedCardPos.current.cardId === selectedFishItem._id) {
+                        startX = lastClickedCardPos.current.x;
+                        startY = lastClickedCardPos.current.y;
+                      }
+
+                      triggerFlyAnimation(
+                        startX,
+                        startY,
+                        selectedFishItem.name,
+                        formatImageUrl(selectedFishItem.image)
+                      );
+
                       onSelectItem(itemToAdd);
                       setSelectedFishItem(null);
                     }}
@@ -1522,10 +1605,22 @@ const MenuGrid = ({
                         tareWeightKg: (tareGrams / 1000)
                       };
 
-                      const btnRect = e.currentTarget.getBoundingClientRect();
+                      // Retrieve the original card's position on the screen
+                      let startX = window.innerWidth / 2;
+                      let startY = window.innerHeight * 0.4;
+                      const cardEl = document.querySelector(`[data-fish-card-id="${selectedFishItem._id}"]`);
+                      if (cardEl) {
+                        const cRect = cardEl.getBoundingClientRect();
+                        startX = cRect.left + cRect.width / 2;
+                        startY = cRect.top + (showImages ? 65 : cRect.height / 2);
+                      } else if (lastClickedCardPos.current && lastClickedCardPos.current.cardId === selectedFishItem._id) {
+                        startX = lastClickedCardPos.current.x;
+                        startY = lastClickedCardPos.current.y;
+                      }
+
                       triggerFlyAnimation(
-                        btnRect.left + btnRect.width / 2,
-                        btnRect.top,
+                        startX,
+                        startY,
                         selectedFishItem.name,
                         formatImageUrl(selectedFishItem.image)
                       );
@@ -1592,12 +1687,12 @@ const MenuGrid = ({
               '--target-y': `${fItem.targetY}px`,
             }}
           >
-            <div className="relative w-16 h-16 rounded-2xl overflow-hidden shadow-2xl border-2 border-sky-400 bg-[#FDFBF7] flex items-center justify-center p-1">
+            <div className="relative w-28 h-20 sm:w-32 sm:h-24 flex items-center justify-center pointer-events-none filter drop-shadow-[0_18px_30px_rgba(0,0,0,0.5)]">
               {fItem.image ? (
                 <img
                   src={fItem.image}
                   alt={fItem.name}
-                  className="w-full h-full object-cover rounded-xl"
+                  className="w-full h-full object-contain pointer-events-none"
                   onError={(e) => {
                     e.currentTarget.style.display = 'none';
                     if (e.currentTarget.nextSibling) {
@@ -1606,8 +1701,7 @@ const MenuGrid = ({
                   }}
                 />
               ) : null}
-              <span className={`text-2xl ${fItem.image ? 'hidden' : 'flex'}`}>🐟</span>
-              <div className="absolute inset-0 bg-gradient-to-t from-sky-500/20 to-transparent pointer-events-none rounded-xl" />
+              <span className={`text-5xl ${fItem.image ? 'hidden' : 'flex'} filter drop-shadow-lg`}>🐟</span>
             </div>
           </div>,
           document.body

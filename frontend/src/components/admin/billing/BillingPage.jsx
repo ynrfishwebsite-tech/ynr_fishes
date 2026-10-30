@@ -2355,6 +2355,10 @@ const BillingPage = ({ initialTable, onOrderUpdate, onNavigate, onGoBack, userRo
   };
 
   const completeSettlement = async (paymentData) => {
+    if (orderStatus === 'Billed' && !hasPendingLocalChanges.current) {
+      showToast(t('Order is saved & printed. Click EDIT to modify or cancel.', { defaultValue: 'Order is saved & printed. Click EDIT to modify or cancel.' }), 'warning');
+      return;
+    }
     if (orderStatus === 'Paid') {
       showToast(t('billAlreadySettled'), 'info');
       setShowPayment(false);
@@ -2774,7 +2778,30 @@ const BillingPage = ({ initialTable, onOrderUpdate, onNavigate, onGoBack, userRo
 
 
 
+  const handleClearCart = () => {
+    if (orderStatus === 'Paid') {
+      showToast(t('Paid order cannot be modified or cleared.', { defaultValue: 'Paid order cannot be modified or cleared.' }), 'error');
+      return false;
+    }
+
+    if (orderStatus === 'Billed' && !hasPendingLocalChanges.current) {
+      showToast(t('Order is saved & printed. Please click EDIT button to modify or clear items.', { defaultValue: 'Order is saved & printed. Please click EDIT button to modify or clear items.' }), 'warning');
+      return false;
+    }
+
+    setCart([]);
+    cartRef.current = [];
+    hasPendingLocalChanges.current = true;
+    lastLocalEditTime.current = Date.now();
+    showToast(t('All cart items cleared', { defaultValue: 'All cart items cleared' }), 'info');
+    return true;
+  };
+
   const handleCancelOrder = () => {
+    if (orderStatus === 'Billed' && !hasPendingLocalChanges.current) {
+      showToast(t('Order is saved & printed. Click EDIT to modify or cancel.', { defaultValue: 'Order is saved & printed. Click EDIT to modify or cancel.' }), 'warning');
+      return;
+    }
     if (orderStatus === 'Paid') {
       showToast(t('Paid order cannot be cancelled. Use Refund in Bill History.', { defaultValue: 'Paid order cannot be cancelled. Use Refund in Bill History.' }), 'warning');
       return;
@@ -2941,7 +2968,8 @@ const BillingPage = ({ initialTable, onOrderUpdate, onNavigate, onGoBack, userRo
                 }`}
             >
               <span>🐟</span>
-              <span>Individual (Kg / Grams)</span>
+              <span className="hidden sm:inline">Individual (Kg / Grams)</span>
+              <span className="sm:hidden">Individual</span>
             </button>
             <button
               type="button"
@@ -2952,7 +2980,8 @@ const BillingPage = ({ initialTable, onOrderUpdate, onNavigate, onGoBack, userRo
                 }`}
             >
               <span>📦</span>
-              <span>Bulk (Wholesale Boxes)</span>
+              <span className="hidden sm:inline">Bulk (Wholesale Boxes)</span>
+              <span className="sm:hidden">Bulk</span>
             </button>
           </div>
 
@@ -3084,8 +3113,10 @@ const BillingPage = ({ initialTable, onOrderUpdate, onNavigate, onGoBack, userRo
               isLayoutLocked={isLayoutLocked}
               onNavigate={onNavigate}
               userRole={userRole}
-              isLocked={orderStatus === 'Paid' || orderStatus === 'Cancelled'}
+              isLocked={orderStatus === 'Paid' || orderStatus === 'Cancelled' || (orderStatus === 'Billed' && !hasPendingLocalChanges.current)}
               orderStatus={orderStatus}
+              hasPendingChanges={hasPendingLocalChanges.current}
+              showToast={showToast}
             />
           </div>
 
@@ -3140,6 +3171,8 @@ const BillingPage = ({ initialTable, onOrderUpdate, onNavigate, onGoBack, userRo
                 onPrintBill={() => setShowInvoice(true)}
                 onReopenOrder={handleReopenOrder}
                 onCancelOrder={handleCancelOrder}
+                onClearCart={handleClearCart}
+                showToast={showToast}
                 onSelectTable={setActiveTable}
 
                 discount={discount}

@@ -14,12 +14,35 @@ export default function LoginPage() {
   const navigate = useNavigate();
   const location = useLocation();
 
+  const resolveDestination = (targetUser) => {
+    if (!targetUser) return '/';
+    const role = (targetUser.role || '').toLowerCase();
+    const defaultPath = getDashboardPath(role);
+
+    // Check if there was an intended deep link redirect
+    const fromPath = location.state?.from?.pathname;
+    if (fromPath && fromPath !== '/login' && fromPath !== '/') {
+      if (role === 'super-admin') {
+        // Super-admin only redirects to super-admin dashboard, never to branch admin
+        if (fromPath.startsWith('/dashboard/super-admin')) {
+          return fromPath;
+        }
+        return '/dashboard/super-admin';
+      }
+      // Non-super-admins cannot access super-admin dashboard
+      if (!fromPath.startsWith('/dashboard/super-admin')) {
+        return fromPath;
+      }
+    }
+
+    return defaultPath;
+  };
+
   useEffect(() => {
     if (isAuthenticated && user) {
-      const dest = location.state?.from?.pathname || getDashboardPath(user.role);
-      navigate(dest, { replace: true });
+      navigate(resolveDestination(user), { replace: true });
     }
-  }, [isAuthenticated, user, navigate, location, getDashboardPath]);
+  }, [isAuthenticated, user]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -33,9 +56,8 @@ export default function LoginPage() {
 
     try {
       const res = await login(identifier, password);
-      if (res.success) {
-        const dest = getDashboardPath(res.user.role);
-        navigate(dest, { replace: true });
+      if (res.success && res.user) {
+        navigate(resolveDestination(res.user), { replace: true });
       }
     } catch (err) {
       setErrorMsg(err.message || 'Invalid username/email or password');

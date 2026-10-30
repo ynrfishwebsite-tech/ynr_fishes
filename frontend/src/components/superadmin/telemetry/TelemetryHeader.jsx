@@ -16,7 +16,10 @@ export default function TelemetryHeader({
         </div>
         <div className="telemetry-title-block">
           <div className="telemetry-title-row">
-            <h2 className="telemetry-heading">Real-Time Telemetry &amp; SaaS Health</h2>
+            <h2 className="telemetry-heading">
+              <span className="heading-full">Real-Time Telemetry &amp; SaaS Health</span>
+              <span className="heading-short">Telemetry &amp; Health</span>
+            </h2>
             <span className="live-pill-badge">
               <span className="live-dot-pulse"></span>
               LIVE ({autoRefreshInterval}s)
@@ -58,7 +61,8 @@ export default function TelemetryHeader({
             <polyline points="1 20 1 14 7 14"></polyline>
             <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
           </svg>
-          <span>{isSyncing ? 'Syncing...' : 'Sync Now'}</span>
+          <span className="telemetry-sync-text-full">{isSyncing ? 'Syncing...' : 'Sync Now'}</span>
+          <span className="telemetry-sync-text-short">{isSyncing ? '...' : 'Sync'}</span>
         </button>
       </div>
     </div>
