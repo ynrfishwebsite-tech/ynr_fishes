@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
+import { getApiUrl } from '../config.js';
 
 const AuthContext = createContext();
 
@@ -63,7 +64,8 @@ export const AuthProvider = ({ children }) => {
     setLoading(true);
     try {
       // Point to backend API
-      const response = await fetch('http://localhost:5000/api/auth/login', {
+      const apiBase = getApiUrl().replace(/\/+$/, '');
+      const response = await fetch(`${apiBase}/auth/login`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

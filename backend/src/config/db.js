@@ -13,7 +13,7 @@ const DIRECT_REPLICA_URI =
   "mongodb://mstechhived1_db_user:bcZdeggKnDHgdpmx@ac-0mpy1zk-shard-00-00.lyywyv4.mongodb.net:27017,ac-0mpy1zk-shard-00-01.lyywyv4.mongodb.net:27017,ac-0mpy1zk-shard-00-02.lyywyv4.mongodb.net:27017/fishes?ssl=true&authSource=admin&retryWrites=true&w=majority";
 
 export const connectDB = async () => {
-  const primaryUri = process.env.MONGO_URI;
+  const primaryUri = process.env.MONGO_URI || DIRECT_REPLICA_URI;
 
   try {
     console.log("[MongoDB] Attempting connection to Atlas cluster...");

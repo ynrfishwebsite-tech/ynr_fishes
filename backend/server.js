@@ -65,7 +65,10 @@ io.on("connection", (socket) => {
 import { telemetryMiddleware } from './src/middleware/telemetryMiddleware.js';
 
 // Middleware
-app.use(cors());
+app.use(cors({
+  origin: true,
+  credentials: true,
+}));
 app.use(telemetryMiddleware);
 app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ extended: true, limit: "50mb" }));
@@ -123,8 +126,8 @@ const startServer = async () => {
     if (conn) {
       await ensureSuperAdmin();
     }
-    server.listen(PORT, () => {
-      console.log(`[Server] YNR Fishes API running on http://localhost:${PORT}`);
+    server.listen(PORT, "0.0.0.0", () => {
+      console.log(`[Server] YNR Fishes API running on port ${PORT}`);
     });
   } catch (err) {
     console.error("[Server] Startup failed:", err);
