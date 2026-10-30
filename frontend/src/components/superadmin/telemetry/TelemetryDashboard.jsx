@@ -4,8 +4,9 @@ import TelemetrySubTabs from './TelemetrySubTabs';
 import NetworkTrafficTab from './NetworkTrafficTab';
 import StorageServicesTab from './StorageServicesTab';
 import WhatsAppMatrixTab from './WhatsAppMatrixTab';
+import { getSuperadminApiUrl } from '../../../config.js';
 
-const API_ROOT = 'http://localhost:5000/api/superadmin/telemetry';
+const API_ROOT = `${getSuperadminApiUrl()}/telemetry`;
 
 export default function TelemetryDashboard({ authHeaders }) {
   const [activeSubTab, setActiveSubTab] = useState('network');

@@ -307,7 +307,7 @@ api.interceptors.response.use(
 
     if (isNetworkOrTimeout && isLanDeviceIp && !originalRequest._fallbackToCloud && !isWhatsAppEndpoint) {
       originalRequest._fallbackToCloud = true;
-      originalRequest.baseURL = 'https://msbillings-backend-x9qw.onrender.com/api';
+      originalRequest.baseURL = 'https://ynr-fishes-backend.onrender.com/api';
       return api(originalRequest);
     }
 

@@ -6,8 +6,9 @@ import BranchesTab from '../../components/superadmin/BranchesTab';
 import StaffTab from '../../components/superadmin/StaffTab';
 import BroadcastsTab from '../../components/superadmin/BroadcastsTab';
 import TelemetryDashboard from '../../components/superadmin/telemetry/TelemetryDashboard';
+import { getSuperadminApiUrl } from '../../config.js';
 
-const API_BASE = 'http://localhost:5000/api/superadmin';
+const API_BASE = getSuperadminApiUrl();
 
 export default function SuperAdminDashboard() {
   const { token } = useAuth();
