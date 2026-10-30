@@ -1,7 +1,7 @@
 {
   "name": "ynr-fishes-pos",
   "productName": "YNR Fishes POS",
-  "version": "6.0.114",
+  "version": "6.0.115",
   "description": "YNR Fishes Desktop POS Application",
   "main": "main.js",
   "scripts": {

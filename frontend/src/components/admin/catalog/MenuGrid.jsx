@@ -78,6 +78,23 @@ const formatImageUrl = (url) => {
 // In-memory set of already loaded/cached image URLs to render instantly with 0ms delay
 const loadedImageCache = new Set();
 
+const getFoodCategoryVisual = (name = '', cat = '') => {
+  const lower = (name + ' ' + cat).toLowerCase();
+  if (lower.includes('prawn') || lower.includes('shrimp')) {
+    return { icon: '🦐', label: 'Prawns', cardBg: 'from-orange-500/20 to-rose-500/10', textAccent: 'text-orange-700' };
+  }
+  if (lower.includes('crab')) {
+    return { icon: '🦀', label: 'Crab', cardBg: 'from-red-500/20 to-orange-500/10', textAccent: 'text-red-700' };
+  }
+  if (lower.includes('pomfret') || lower.includes('vavval')) {
+    return { icon: '🐟', label: 'Pomfret', cardBg: 'from-blue-500/20 to-cyan-500/10', textAccent: 'text-blue-700' };
+  }
+  if (lower.includes('dry') || lower.includes('karuvadu')) {
+    return { icon: '📦', label: 'Dry Fish', cardBg: 'from-amber-500/20 to-yellow-500/10', textAccent: 'text-amber-800' };
+  }
+  return { icon: '🐟', label: 'Seafood', cardBg: 'from-sky-500/20 to-teal-500/10', textAccent: 'text-sky-800' };
+};
+
 // Instant & Lazy Menu Image Component with zero-delay cached display & complete check
 const LazyMenuImage = ({ src, alt, className, index = 999 }) => {
   const isCached = Boolean(src && loadedImageCache.has(src));

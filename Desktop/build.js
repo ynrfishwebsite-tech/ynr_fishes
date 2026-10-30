@@ -27,8 +27,16 @@ function copySync(src, dest, ignoreRootNames = []) {
 }
 
 // Clean old folders
-if (fs.existsSync(desktopFrontend)) fs.rmSync(desktopFrontend, { recursive: true, force: true });
-if (fs.existsSync(desktopBackend)) fs.rmSync(desktopBackend, { recursive: true, force: true });
+try {
+  if (fs.existsSync(desktopFrontend)) fs.rmSync(desktopFrontend, { recursive: true, force: true, maxRetries: 3, retryDelay: 300 });
+} catch (e) {
+  console.warn('[Desktop Build] Notice on desktopFrontend cleanup:', e.message);
+}
+try {
+  if (fs.existsSync(desktopBackend)) fs.rmSync(desktopBackend, { recursive: true, force: true, maxRetries: 3, retryDelay: 300 });
+} catch (e) {
+  console.warn('[Desktop Build] Could not fully remove old desktopBackend directory, will overwrite in-place:', e.message);
+}
 
 // Build Frontend
 console.log('Building Frontend...');
