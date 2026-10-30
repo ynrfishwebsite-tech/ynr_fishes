@@ -1,9 +1,9 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import {
   Search, ChevronLeft, ChevronRight, Star, X, ChevronDown, Image as ImageIcon,
   Fish, Waves, Anchor, Droplets, Box, Package, Flame, Gift, Menu as MenuIcon,
-  Plus, Loader2, RefreshCw, Sparkles, Scale, UtensilsCrossed
+  Plus, Minus, Loader2, RefreshCw, Sparkles, Scale, UtensilsCrossed
 } from 'lucide-react';
 import api from '../../../api/system/axios';
 import { getMenuItems, updateMenuItem } from '../../../api/catalog/menu';
@@ -167,7 +167,9 @@ const MenuGrid = ({
   isLocked = false,
   orderStatus = '',
   hasPendingChanges = false,
-  showToast
+  showToast,
+  cart = [],
+  onAddBox
 }) => {
   const { t, language } = useLanguage();
   const [items, setItems] = useState([]);
@@ -183,6 +185,159 @@ const MenuGrid = ({
   const [selectedCutType, setSelectedCutType] = useState('Whole');
   const [tareGrams, setTareGrams] = useState(0);
   const [boxCountInput, setBoxCountInput] = useState('1');
+
+  // Wholesale Multi-Item Box Builder State
+  const [showBoxPacker, setShowBoxPacker] = useState(false);
+  const [boxSlotCount, setBoxSlotCount] = useState(3);
+  const [boxSlots, setBoxSlots] = useState([]);
+
+  // Calculate current box number (Box #1, Box #2, etc.) based on existing boxes in cart
+  const currentBoxNumber = useMemo(() => {
+    const maxNum = (cart || []).reduce((max, it) => Math.max(max, Number(it.boxNumber || 0)), 0);
+    return maxNum + 1;
+  }, [cart]);
+
+  // Open the Wholesale Box Builder
+  const openBoxPackerModal = useCallback((initialFish = null) => {
+    const defaultCount = 3;
+    setBoxSlotCount(defaultCount);
+    const availableFishes = items.filter(it => it.isAvailable !== false);
+    const initialSlots = [];
+    for (let i = 0; i < defaultCount; i++) {
+      let chosenFish = null;
+      if (i === 0 && initialFish) {
+        chosenFish = initialFish;
+      } else {
+        chosenFish = availableFishes[i] || items[i % (items.length || 1)] || null;
+      }
+      initialSlots.push({
+        id: `slot_${i}_${Date.now()}_${Math.random()}`,
+        fishId: chosenFish?._id || '',
+        fish: chosenFish,
+        weightKg: '10',
+        pricePerKg: chosenFish?.price ? String(chosenFish.price) : '200'
+      });
+    }
+    setBoxSlots(initialSlots);
+    setShowBoxPacker(true);
+  }, [items]);
+
+  // Handle changing the number of items in this box (1 to 10)
+  const handleSlotCountChange = (newCount) => {
+    const clamped = Math.max(1, Math.min(10, parseInt(newCount, 10) || 1));
+    setBoxSlotCount(clamped);
+    setBoxSlots(prevSlots => {
+      const updated = [...prevSlots];
+      const availableFishes = items.filter(it => it.isAvailable !== false);
+      if (clamped > updated.length) {
+        for (let i = updated.length; i < clamped; i++) {
+          const chosen = availableFishes[i] || items[i % (items.length || 1)] || null;
+          updated.push({
+            id: `slot_${i}_${Date.now()}_${Math.random()}`,
+            fishId: chosen?._id || '',
+            fish: chosen,
+            weightKg: '10',
+            pricePerKg: chosen?.price ? String(chosen.price) : '200'
+          });
+        }
+      } else if (clamped < updated.length) {
+        return updated.slice(0, clamped);
+      }
+      return updated;
+    });
+  };
+
+  const handleSlotFishChange = (index, selectedFishId) => {
+    const chosen = items.find(it => String(it._id) === String(selectedFishId));
+    setBoxSlots(prev => prev.map((slot, idx) => {
+      if (idx !== index) return slot;
+      return {
+        ...slot,
+        fishId: selectedFishId,
+        fish: chosen || null,
+        pricePerKg: chosen?.price ? String(chosen.price) : slot.pricePerKg
+      };
+    }));
+  };
+
+  const handleSlotWeightChange = (index, weightVal) => {
+    setBoxSlots(prev => prev.map((slot, idx) => {
+      if (idx !== index) return slot;
+      return { ...slot, weightKg: weightVal };
+    }));
+  };
+
+  const handleSlotPriceChange = (index, priceVal) => {
+    setBoxSlots(prev => prev.map((slot, idx) => {
+      if (idx !== index) return slot;
+      return { ...slot, pricePerKg: priceVal };
+    }));
+  };
+
+  const handleRemoveSlot = (index) => {
+    if (boxSlots.length <= 1) return;
+    setBoxSlots(prev => prev.filter((_, idx) => idx !== index));
+    setBoxSlotCount(prev => Math.max(1, prev - 1));
+  };
+
+  const handleAddSlot = () => {
+    if (boxSlots.length >= 10) return;
+    const nextIdx = boxSlots.length;
+    const availableFishes = items.filter(it => it.isAvailable !== false);
+    const chosen = availableFishes[nextIdx] || items[nextIdx % (items.length || 1)] || null;
+    setBoxSlots(prev => [
+      ...prev,
+      {
+        id: `slot_${nextIdx}_${Date.now()}_${Math.random()}`,
+        fishId: chosen?._id || '',
+        fish: chosen,
+        weightKg: '10',
+        pricePerKg: chosen?.price ? String(chosen.price) : '200'
+      }
+    ]);
+    setBoxSlotCount(prev => prev + 1);
+  };
+
+  const handleAddBoxToOrder = () => {
+    const validSlots = boxSlots.filter(s => s.fish && (parseFloat(s.weightKg) || 0) > 0);
+    if (validSlots.length === 0) {
+      if (showToast) showToast('Please select at least one fish with valid weight', 'error');
+      return;
+    }
+    const boxItems = validSlots.map((slot, idx) => {
+      const wt = parseFloat(slot.weightKg) || 0;
+      const rate = parseFloat(slot.pricePerKg) || 0;
+      const totalAmount = parseFloat((wt * rate).toFixed(2));
+      return {
+        ...slot.fish,
+        _id: slot.fish._id,
+        menuItem: slot.fish._id,
+        originalId: slot.fish._id,
+        originalFishName: slot.fish.name,
+        name: `${slot.fish.name}`,
+        boxNumber: currentBoxNumber,
+        boxLabel: `Box #${currentBoxNumber}`,
+        isWholesaleBox: true,
+        sellingUnit: 'Kg',
+        quantity: 1,
+        weightKg: wt,
+        enteredWeight: wt,
+        grossWeightKg: wt,
+        netWeightKg: wt,
+        pricePerKg: rate,
+        price: totalAmount,
+        total: totalAmount,
+        itemKey: `${slot.fish._id}_box${currentBoxNumber}_slot${idx}_${Date.now()}`
+      };
+    });
+
+    if (onAddBox) {
+      onAddBox(boxItems);
+    } else {
+      boxItems.forEach(it => onSelectItem(it));
+    }
+    setShowBoxPacker(false);
+  };
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(30);
   const debouncedSearchTerm = useDebounce(searchTerm, 300);
@@ -903,6 +1058,39 @@ const MenuGrid = ({
 
         {/* Scrollable Items Grid */}
         <div ref={gridContainerRef} className="flex-1 overflow-y-auto p-4 relative bg-[#f7f1ea] [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+          {/* Wholesale Box Packer Banner */}
+          {fishOrderMode === 'bulk' && (
+            <div className="bg-gradient-to-r from-amber-500/15 via-[#FAF0E4] to-amber-500/15 border-2 border-amber-500/50 rounded-2xl p-3.5 mb-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-amber-500 to-amber-600 text-white flex items-center justify-center font-black text-xl shadow-xs shrink-0">
+                  📦
+                </div>
+                <div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-[10px] font-black uppercase tracking-wider text-amber-900 bg-amber-200/90 px-2.5 py-0.5 rounded-full border border-amber-300">
+                      Wholesale Bulk Mode
+                    </span>
+                    <span className="text-xs font-black text-amber-950 bg-white border border-amber-300 px-2.5 py-0.5 rounded-lg shadow-2xs">
+                      Ready: Box #{currentBoxNumber}
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-700 mt-1 font-semibold">
+                    Pack mixed fish varieties (3 to 10 items) with custom weight & pricing into Box #{currentBoxNumber}.
+                  </p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => openBoxPackerModal(null)}
+                className="px-4 py-2.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white font-black text-xs rounded-xl shadow-md cursor-pointer transition-all active:scale-95 flex items-center justify-center gap-2 shrink-0 border border-amber-600"
+              >
+                <span>📦</span>
+                <span>Pack Wholesale Box (Box #{currentBoxNumber})</span>
+              </button>
+            </div>
+          )}
+
           {/* Dynamic Loading State with Animated Spinner & Pulse Skeletons */}
           {loading && items.length === 0 ? (
             <div className="flex flex-col items-center justify-center min-h-[360px] w-full">
@@ -958,12 +1146,16 @@ const MenuGrid = ({
                         x: rect.left + rect.width / 2,
                         y: rect.top + (showImages ? 65 : rect.height / 2)
                       };
-                      // Open Fish Weight / Box selection modal for dynamic entered kg/grams or boxes
-                      setSelectedFishItem(item);
-                      setFishWeightGrams('1000');
-                      setSelectedCutType('Whole');
-                      setTareGrams(0);
-                      setBoxCountInput('1');
+                      // Open Fish Weight / Box selection modal
+                      if (fishOrderMode === 'bulk') {
+                        openBoxPackerModal(item);
+                      } else {
+                        setSelectedFishItem(item);
+                        setFishWeightGrams('1000');
+                        setSelectedCutType('Whole');
+                        setTareGrams(0);
+                        setBoxCountInput('1');
+                      }
                     }}>
 
                     <div className={`flex items-start justify-between w-full h-4 z-[2] absolute ${showImages ? 'top-2.5 left-0 px-2.5' : 'top-3 left-0 px-3'}`}>
@@ -1279,11 +1471,11 @@ const MenuGrid = ({
             <div className="flex justify-between items-center p-4 border-b border-[#E8DCCB] bg-[#FAF0E4]">
               <div>
                 <span className="text-[10px] font-black uppercase tracking-wider text-[#c2410c] bg-[#FFF3E0] px-2.5 py-0.5 rounded-full border border-[#ffcc80]">
-                  {fishOrderMode === 'bulk' ? '📦 Wholesale Bulk Box' : '🐟 Retail Weight Selection'}
+                  🐟 Retail Weight Selection
                 </span>
                 <h2 className="text-base sm:text-lg font-black text-slate-900 mt-1 leading-tight">{selectedFishItem.name}</h2>
                 <p className="text-xs text-[#7c3f1d] font-bold mt-0.5">
-                  ₹{selectedFishItem.price} / Kg &bull; Box Rate: ₹{(selectedFishItem.boxPrice || (selectedFishItem.price * (selectedFishItem.boxPackingKg || 60))).toFixed(0)} ({selectedFishItem.boxPackingKg || 60}kg)
+                  ₹{selectedFishItem.price} / Kg
                 </p>
               </div>
               <button
@@ -1296,137 +1488,8 @@ const MenuGrid = ({
             </div>
 
             <div className="p-3.5 sm:p-4 space-y-3.5 overflow-y-auto flex-1">
-              {fishOrderMode === 'bulk' ? (
-                /* 📦 Wholesale Bulk Boxes */
-                <div className="space-y-3">
-                  <div className="bg-[#FAF3E8] border border-[#E8DCCB] rounded-2xl p-4 space-y-3.5 shadow-xs">
-                    <div className="flex justify-between items-center">
-                      <span className="text-xs font-black text-slate-800 uppercase tracking-wide">Box Quantity</span>
-                      <span className="text-[11px] text-slate-400">1 Box = {selectedFishItem.boxPackingKg || 60} Kg</span>
-                    </div>
-
-                    <div className="flex items-center gap-2 w-full">
-                      <button
-                        type="button"
-                        onClick={() => setBoxCountInput(prev => Math.max(1, (parseInt(prev) || 1) - 1).toString())}
-                        className="w-10 h-10 shrink-0 rounded-xl bg-white hover:bg-slate-100 text-slate-800 font-black text-2xl flex items-center justify-center cursor-pointer border border-[#E8DCCB] shadow-xs transition-all active:scale-95"
-                      >
-                        -
-                      </button>
-                      <input
-                        type="number"
-                        min="1"
-                        step="1"
-                        value={boxCountInput}
-                        onWheel={(e) => e.target.blur()}
-                        onKeyDown={(e) => {
-                          if (['-', '+', 'e', 'E', '.'].includes(e.key)) {
-                            e.preventDefault();
-                          }
-                        }}
-                        onChange={(e) => {
-                          const sanitized = e.target.value.replace(/[^0-9]/g, '');
-                          setBoxCountInput(sanitized);
-                        }}
-                        className="flex-1 min-w-0 w-full bg-white border-2 border-amber-500/70 rounded-xl px-3 py-2 text-center text-2xl font-black text-slate-900 focus:outline-none focus:border-amber-600 shadow-inner font-mono"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setBoxCountInput(prev => ((parseInt(prev) || 0) + 1).toString())}
-                        className="w-10 h-10 shrink-0 rounded-xl bg-white hover:bg-slate-100 text-slate-800 font-black text-2xl flex items-center justify-center cursor-pointer border border-[#E8DCCB] shadow-xs transition-all active:scale-95"
-                      >
-                        +
-                      </button>
-                    </div>
-
-                    {/* Quick Box Buttons */}
-                    <div className="grid grid-cols-4 gap-1.5">
-                      {['1', '2', '5', '10'].map((b) => (
-                        <button
-                          key={b}
-                          type="button"
-                          onClick={() => setBoxCountInput(b)}
-                          className={`py-1.5 rounded-lg text-xs font-bold border transition-colors cursor-pointer ${boxCountInput === b
-                              ? 'bg-amber-500 text-black border-amber-400 font-black'
-                              : 'bg-white text-slate-700 border-[#E8DCCB] hover:bg-amber-50 hover:border-amber-300 font-bold'
-                            }`}
-                        >
-                          {b} {b === '1' ? 'Box' : 'Boxes'}
-                        </button>
-                      ))}
-                    </div>
-
-                    {/* Calculated Price */}
-                    {(() => {
-                      const boxes = parseInt(boxCountInput) || 0;
-                      const boxRate = selectedFishItem.boxPrice || (selectedFishItem.price * (selectedFishItem.boxPackingKg || 60));
-                      const totalKg = boxes * (selectedFishItem.boxPackingKg || 60);
-                      const totalAmount = boxes * boxRate;
-                      return (
-                        <div className="flex justify-between items-center bg-white border border-[#E8DCCB] rounded-xl px-4 py-3 shadow-xs">
-                          <span className="text-xs text-slate-300 font-medium">Total: {totalKg} Kg ({boxes} Boxes)</span>
-                          <span className="text-xl font-black text-amber-700 font-mono">₹{totalAmount.toFixed(2)}</span>
-                        </div>
-                      );
-                    })()}
-                  </div>
-
-                  <button
-                    type="button"
-                    disabled={!boxCountInput || parseInt(boxCountInput) <= 0}
-                    onClick={() => {
-                      const boxes = parseInt(boxCountInput) || 1;
-                      if (boxes <= 0) return;
-                      const boxRate = selectedFishItem.boxPrice || (selectedFishItem.price * (selectedFishItem.boxPackingKg || 60));
-                      const totalKg = boxes * (selectedFishItem.boxPackingKg || 60);
-                      const totalAmount = boxes * boxRate;
-                      const itemToAdd = {
-                        ...selectedFishItem,
-                        itemKey: `${selectedFishItem._id}_bulk_${boxes}boxes`,
-                        menuItem: selectedFishItem._id,
-                        originalId: selectedFishItem._id,
-                        originalFishName: selectedFishItem.name,
-                        name: `${selectedFishItem.name} (${boxes} Box - ${totalKg}Kg)`,
-                        price: totalAmount,
-                        quantity: 1,
-                        sellingUnit: 'Box',
-                        enteredWeight: totalKg,
-                        netWeightKg: totalKg,
-                        grossWeightKg: totalKg,
-                        boxCount: boxes
-                      };
-
-                      // Retrieve the original card's position on the screen
-                      let startX = window.innerWidth / 2;
-                      let startY = window.innerHeight * 0.4;
-                      const cardEl = document.querySelector(`[data-fish-card-id="${selectedFishItem._id}"]`);
-                      if (cardEl) {
-                        const cRect = cardEl.getBoundingClientRect();
-                        startX = cRect.left + cRect.width / 2;
-                        startY = cRect.top + (showImages ? 65 : cRect.height / 2);
-                      } else if (lastClickedCardPos.current && lastClickedCardPos.current.cardId === selectedFishItem._id) {
-                        startX = lastClickedCardPos.current.x;
-                        startY = lastClickedCardPos.current.y;
-                      }
-
-                      triggerFlyAnimation(
-                        startX,
-                        startY,
-                        selectedFishItem.name,
-                        formatImageUrl(selectedFishItem.image)
-                      );
-
-                      onSelectItem(itemToAdd);
-                      setSelectedFishItem(null);
-                    }}
-                    className="w-full bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 disabled:opacity-40 disabled:cursor-not-allowed text-black font-black py-2.5 rounded-xl shadow-lg cursor-pointer transition-all active:scale-[0.98]"
-                  >
-                    Add Wholesale Box to Order
-                  </button>
-                </div>
-              ) : (
-                /* 🐟 Individual Retail Order (Kg / Grams / Cuts) */
-                <div className="space-y-3">
+              {/* 🐟 Individual Retail Order (Kg / Grams / Cuts) */}
+              <div className="space-y-3">
                   {/* Cut Type Selection (Balanced 5-Button Row) */}
                   <div className="bg-[#F7EFE2] border border-sky-500/30 rounded-xl p-3 space-y-2">
                     <div className="flex justify-between items-center">
@@ -1633,7 +1696,279 @@ const MenuGrid = ({
                     Add to Fish Order
                   </button>
                 </div>
-              )}
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* Wholesale Multi-Item Box Builder Modal */}
+      {showBoxPacker && typeof document !== 'undefined' && createPortal(
+        <div
+          className="fixed inset-0 bg-black/75 backdrop-blur-sm flex items-center justify-center z-[9999] p-3 sm:p-4 animate-in fade-in duration-200"
+          onClick={() => setShowBoxPacker(false)}
+        >
+          <div
+            data-box-packer-modal="true"
+            className="bg-[#FDFBF7] w-full max-w-[620px] max-h-[94vh] rounded-3xl shadow-2xl border-2 border-[#E8DCCB] flex flex-col overflow-hidden text-slate-800 my-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Modal Header */}
+            <div className="flex justify-between items-center px-5 py-4 border-b border-[#E8DCCB] bg-gradient-to-r from-[#FAF0E4] via-[#FFF8EE] to-[#FAF0E4]">
+              <div className="flex items-center gap-3">
+                <div className="w-11 h-11 rounded-2xl bg-amber-500 text-white flex items-center justify-center text-2xl shadow-sm border border-amber-400">
+                  📦
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] font-black uppercase tracking-wider text-amber-900 bg-amber-200/80 px-2.5 py-0.5 rounded-full border border-amber-300">
+                      WHOLESALE BOX PACKER
+                    </span>
+                    <span className="text-sm font-black text-amber-900 bg-amber-100 px-2 py-0.5 rounded-md">
+                      Box #{currentBoxNumber}
+                    </span>
+                  </div>
+                  <h2 className="text-base sm:text-lg font-black text-slate-900 mt-0.5">
+                    Packing Wholesale Box #{currentBoxNumber}
+                  </h2>
+                  <p className="text-[11px] text-slate-500 font-medium">
+                    Mix 1 to 10 fish items in this box with custom weights & prices
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowBoxPacker(false)}
+                className="text-slate-500 hover:text-slate-800 bg-white hover:bg-[#F5E8D8] border border-[#E8DCCB] rounded-full p-2 transition-all cursor-pointer shadow-xs"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-4 sm:p-5 space-y-4 overflow-y-auto flex-1">
+              {/* Step 1: Number of Items in this Box */}
+              <div className="bg-white border border-[#E8DCCB] rounded-2xl p-3.5 shadow-2xs">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-2.5">
+                  <div>
+                    <span className="text-xs font-black text-slate-800 uppercase tracking-wide flex items-center gap-1.5">
+                      <span>1️⃣</span> Number of Fish Items in this Box:
+                    </span>
+                    <span className="text-[11px] text-slate-500">
+                      Select how many different fish varieties will be packed into Box #{currentBoxNumber}
+                    </span>
+                  </div>
+                  
+                  {/* Stepper +/- */}
+                  <div className="flex items-center gap-1.5 self-start sm:self-auto bg-[#FAF0E4] p-1 rounded-xl border border-[#E8DCCB]">
+                    <button
+                      type="button"
+                      onClick={() => handleSlotCountChange(boxSlotCount - 1)}
+                      disabled={boxSlotCount <= 1}
+                      className="w-7 h-7 rounded-lg bg-white hover:bg-slate-100 disabled:opacity-40 text-slate-800 font-black text-base flex items-center justify-center border border-[#E8DCCB] shadow-2xs cursor-pointer"
+                    >
+                      -
+                    </button>
+                    <span className="w-8 text-center font-black text-sm text-amber-900 font-mono">
+                      {boxSlotCount}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => handleSlotCountChange(boxSlotCount + 1)}
+                      disabled={boxSlotCount >= 10}
+                      className="w-7 h-7 rounded-lg bg-white hover:bg-slate-100 disabled:opacity-40 text-slate-800 font-black text-base flex items-center justify-center border border-[#E8DCCB] shadow-2xs cursor-pointer"
+                    >
+                      +
+                    </button>
+                  </div>
+                </div>
+
+                {/* Quick Item Count Buttons 1..10 */}
+                <div className="grid grid-cols-5 sm:grid-cols-10 gap-1.5">
+                  {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(cnt => (
+                    <button
+                      key={cnt}
+                      type="button"
+                      onClick={() => handleSlotCountChange(cnt)}
+                      className={`py-1.5 rounded-xl text-xs font-bold border transition-all cursor-pointer ${
+                        boxSlotCount === cnt
+                          ? 'bg-amber-500 text-white border-amber-600 font-black shadow-xs scale-105'
+                          : 'bg-[#FAF0E4] hover:bg-[#F5E8D8] text-slate-700 border-[#E8DCCB]'
+                      }`}
+                    >
+                      {cnt} {cnt === 1 ? 'Item' : 'Items'}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Step 2: Fish Items Slots */}
+              <div className="space-y-2.5">
+                <div className="flex items-center justify-between px-1">
+                  <span className="text-xs font-black text-slate-800 uppercase tracking-wide flex items-center gap-1.5">
+                    <span>2️⃣</span> Fish Varieties & Weights for Box #{currentBoxNumber}:
+                  </span>
+                  <span className="text-[11px] text-amber-800 font-bold">
+                    {boxSlots.length} of {boxSlotCount} slots configured
+                  </span>
+                </div>
+
+                <div className="space-y-2 max-h-[38vh] overflow-y-auto pr-1">
+                  {boxSlots.map((slot, index) => {
+                    const itemTotal = (parseFloat(slot.weightKg) || 0) * (parseFloat(slot.pricePerKg) || 0);
+                    return (
+                      <div
+                        key={slot.id || index}
+                        className="bg-white border border-[#E8DCCB] hover:border-amber-400/80 rounded-2xl p-3 shadow-2xs transition-all space-y-2"
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-[11px] font-black text-amber-800 bg-[#FAF0E4] border border-[#E8DCCB] px-2 py-0.5 rounded-lg flex items-center gap-1">
+                            <span>🐟 Fish #{index + 1}</span>
+                          </span>
+                          {boxSlots.length > 1 && (
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveSlot(index)}
+                              className="text-slate-400 hover:text-red-600 hover:bg-red-50 p-1 rounded-lg transition-colors cursor-pointer"
+                              title="Remove this fish"
+                            >
+                              <X size={14} />
+                            </button>
+                          )}
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-12 gap-2 items-center">
+                          {/* Fish selector (sm:col-span-5) */}
+                          <div className="sm:col-span-5">
+                            <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">
+                              Select Fish Variety
+                            </label>
+                            <select
+                              value={slot.fishId || ''}
+                              onChange={(e) => handleSlotFishChange(index, e.target.value)}
+                              className="w-full bg-[#FAF0E4] border border-[#E8DCCB] rounded-xl px-2.5 py-1.5 text-xs font-bold text-slate-800 focus:outline-none focus:border-amber-500 truncate cursor-pointer"
+                            >
+                              <option value="" disabled>-- Choose a fish --</option>
+                              {items.map(fish => (
+                                <option key={fish._id} value={fish._id}>
+                                  {fish.name} (₹{fish.price}/Kg)
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+
+                          {/* Weight (Kg) (sm:col-span-3) */}
+                          <div className="sm:col-span-3">
+                            <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">
+                              Weight (Kg)
+                            </label>
+                            <div className="relative">
+                              <input
+                                type="number"
+                                min="0.1"
+                                step="0.5"
+                                value={slot.weightKg}
+                                onChange={(e) => handleSlotWeightChange(index, e.target.value)}
+                                placeholder="e.g. 10"
+                                className="w-full bg-white border border-[#E8DCCB] rounded-xl px-2.5 py-1.5 text-xs font-black text-slate-900 focus:outline-none focus:border-amber-500 font-mono text-center"
+                              />
+                              <span className="absolute right-2 top-1.5 text-[10px] text-slate-400 font-bold pointer-events-none">
+                                Kg
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* Rate / Price per Kg (sm:col-span-2) */}
+                          <div className="sm:col-span-2">
+                            <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">
+                              Rate (₹/Kg)
+                            </label>
+                            <div className="relative">
+                              <input
+                                type="number"
+                                min="0"
+                                step="1"
+                                value={slot.pricePerKg}
+                                onChange={(e) => handleSlotPriceChange(index, e.target.value)}
+                                placeholder="Rate"
+                                className="w-full bg-white border border-[#E8DCCB] rounded-xl px-2 py-1.5 text-xs font-black text-slate-900 focus:outline-none focus:border-amber-500 font-mono text-center"
+                              />
+                            </div>
+                          </div>
+
+                          {/* Total Amount (sm:col-span-2) */}
+                          <div className="sm:col-span-2 text-right">
+                            <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">
+                              Item Total
+                            </label>
+                            <div className="text-xs font-black text-amber-900 font-mono py-1.5">
+                              ₹{itemTotal.toFixed(2)}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {boxSlots.length < 10 && (
+                  <button
+                    type="button"
+                    onClick={handleAddSlot}
+                    className="w-full py-2 bg-white hover:bg-[#FAF0E4] border border-dashed border-[#E8DCCB] hover:border-amber-400 text-amber-800 text-xs font-bold rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1.5"
+                  >
+                    <span>+</span>
+                    <span>Add Another Fish to Box #{currentBoxNumber}</span>
+                  </button>
+                )}
+              </div>
+
+              {/* Step 3: Total Box Summary Card */}
+              {(() => {
+                const totalKg = boxSlots.reduce((acc, s) => acc + (parseFloat(s.weightKg) || 0), 0);
+                const totalAmt = boxSlots.reduce((acc, s) => acc + ((parseFloat(s.weightKg) || 0) * (parseFloat(s.pricePerKg) || 0)), 0);
+                const validCount = boxSlots.filter(s => s.fish && (parseFloat(s.weightKg) || 0) > 0).length;
+
+                return (
+                  <div className="bg-gradient-to-r from-amber-500/20 via-orange-500/15 to-amber-500/20 border-2 border-amber-500/50 rounded-2xl p-4 shadow-sm">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <span className="text-xs font-black text-amber-950 uppercase tracking-wider block">
+                          📦 Box #{currentBoxNumber} Summary
+                        </span>
+                        <span className="text-[11px] text-amber-800 font-bold">
+                          {validCount} Varieties &bull; Total Weight: <strong className="font-mono text-slate-900">{totalKg.toFixed(2)} Kg</strong>
+                        </span>
+                      </div>
+                      <div className="text-right">
+                        <span className="text-[10px] text-slate-500 uppercase font-bold block">Box Total Price</span>
+                        <span className="text-xl sm:text-2xl font-black text-amber-900 font-mono">
+                          ₹{totalAmt.toFixed(2)}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-4 border-t border-[#E8DCCB] bg-[#FAF0E4] flex items-center justify-between gap-3">
+              <button
+                type="button"
+                onClick={() => setShowBoxPacker(false)}
+                className="px-4 py-2.5 rounded-xl border border-slate-300 text-slate-700 bg-white hover:bg-slate-100 font-bold text-xs transition-all cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleAddBoxToOrder}
+                className="flex-1 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white font-black text-xs sm:text-sm shadow-md cursor-pointer transition-all active:scale-98 flex items-center justify-center gap-2"
+              >
+                <span>📦</span>
+                <span>Add Box #{currentBoxNumber} to Order</span>
+              </button>
             </div>
           </div>
         </div>,

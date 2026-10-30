@@ -1786,6 +1786,64 @@ const BillingPage = ({ initialTable, onOrderUpdate, onNavigate, onGoBack, userRo
     setLoading(false);
   };
 
+  const addBoxToCart = (boxItems) => {
+    let currentTable = activeTableRef.current || activeTable;
+    if (!currentTable) {
+      if (billType === 'Takeaway' || billType === 'Delivery') {
+        currentTable = generateSequentialOrderNo(billType);
+        newlyGeneratedTables.current.add(currentTable);
+        setActiveTable(currentTable);
+      } else {
+        showToast(t('pleaseSelectTable'), 'error');
+        return;
+      }
+    }
+    if (orderStatus === 'Paid' || orderStatus === 'Cancelled') {
+      showToast(t('orderLocked', { defaultValue: 'Order is locked' }), 'error');
+      return;
+    }
+    if (orderStatus === 'Billed' && !hasPendingLocalChanges.current) {
+      showToast(t('Order is billed. Click EDIT to modify.', { defaultValue: 'Order is billed. Click EDIT to modify.' }), 'warning');
+      return;
+    }
+    if (!Array.isArray(boxItems) || boxItems.length === 0) return;
+
+    const currentCart = cartRef.current || [];
+    const newItems = boxItems.map((item, idx) => {
+      const itemKey = item.itemKey || `${item._id || item.name}_box${item.boxNumber}_slot${idx}_${Date.now()}`;
+      return {
+        ...item,
+        itemKey,
+        quantity: 1,
+        specialNote: item.specialNote || '',
+        orderedAt: new Date().toISOString()
+      };
+    });
+
+    const updatedCart = [...currentCart, ...newItems];
+    cartRef.current = updatedCart;
+    setCart(updatedCart);
+    lastLocalEditTime.current = Date.now();
+    hasPendingLocalChanges.current = true;
+    if (currentTable) {
+      newlyGeneratedTables.current?.delete(currentTable);
+    }
+    setLoading(false);
+    const boxLabel = boxItems[0]?.boxLabel || `Box #${boxItems[0]?.boxNumber || 1}`;
+    showToast(`Added ${boxLabel} (${boxItems.length} items) to order!`, 'success');
+  };
+
+  const removeBoxFromCart = (boxNumber) => {
+    if (orderStatus === 'Paid' || orderStatus === 'Cancelled') return;
+    const currentCart = cartRef.current || [];
+    const updatedCart = currentCart.filter(i => Number(i.boxNumber) !== Number(boxNumber));
+    cartRef.current = updatedCart;
+    setCart(updatedCart);
+    lastLocalEditTime.current = Date.now();
+    hasPendingLocalChanges.current = true;
+    showToast(`Removed Box #${boxNumber}`, 'info');
+  };
+
   const updateQuantity = (id, delta) => {
     let currentTable = activeTableRef.current || activeTable;
     if (!currentTable) {
@@ -3100,6 +3158,8 @@ const BillingPage = ({ initialTable, onOrderUpdate, onNavigate, onGoBack, userRo
           }>
             <MenuGrid
               onSelectItem={addToCart}
+              onAddBox={addBoxToCart}
+              cart={cart}
               activeTable={activeTable}
               billType={billType}
               fishOrderMode={fishOrderMode}
@@ -3155,6 +3215,7 @@ const BillingPage = ({ initialTable, onOrderUpdate, onNavigate, onGoBack, userRo
                 cart={cart}
                 hasUnprintedItems={hasUnprintedItems}
                 updateQuantity={updateQuantity}
+                removeBoxFromCart={removeBoxFromCart}
                 updateItemNote={updateItemNote}
                 updateItemPrice={updateItemPrice}
                 subtotal={subtotal}

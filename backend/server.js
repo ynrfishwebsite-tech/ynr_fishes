@@ -21,6 +21,7 @@ import adminRoutes from './src/routes/system/adminRoutes.js';
 import inventoryRoutes from './src/routes/inventory/inventoryRoutes.js';
 import calculatorRoutes from './src/routes/finance/calculatorRoutes.js';
 import vehicleRoutes from './src/routes/operations/vehicleRoutes.js';
+import depotOperationRoutes from './src/routes/operations/depotOperationRoutes.js';
 import { ensureSuperAdmin } from './src/utils/database/seedSuperAdmin.js';
 
 import http from "http";
@@ -93,6 +94,8 @@ app.use("/api/credit-accounts", creditAccountRoutes);
 app.use("/api/customers", customerRoutes);
 app.use("/api/staff", staffRoutes);
 app.use("/api/vehicles", vehicleRoutes);
+app.use("/api/operations", depotOperationRoutes);
+app.use("/api/suppliers", depotOperationRoutes);
 app.use("/api/printer-config", printerConfigRoutes);
 app.use("/api/printer-configs", printerConfigRoutes);
 app.get("/api/discounts", (req, res) => res.json([]));
@@ -128,7 +131,11 @@ const startServer = async () => {
     }
     server.on('error', (err) => {
       if (err.code === 'EADDRINUSE') {
-        console.error(`[Server] Port ${PORT} is already in use.`);
+        console.error(`[Server] Port ${PORT} is busy/in-use, retrying in 2s...`);
+        setTimeout(() => {
+          server.close(() => {});
+          server.listen(PORT, "0.0.0.0");
+        }, 2000);
       } else {
         console.error('[Server] Server error:', err);
       }

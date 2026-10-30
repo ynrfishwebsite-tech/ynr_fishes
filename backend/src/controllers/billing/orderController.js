@@ -41,6 +41,41 @@ const toValidObjectId = (val) => {
   return undefined;
 };
 
+// Helper to calculate wholesale boxes summary from bill items
+export function computeBoxesSummary(items) {
+  const boxMap = new Map();
+  (items || []).forEach(item => {
+    if (item.isWholesaleBox || item.boxNumber) {
+      const bNum = Number(item.boxNumber || 1);
+      const bLabel = item.boxLabel || `Box #${bNum}`;
+      if (!boxMap.has(bNum)) {
+        boxMap.set(bNum, {
+          boxNumber: bNum,
+          boxLabel: bLabel,
+          totalWeightKg: 0,
+          totalPrice: 0,
+          itemCount: 0,
+          items: []
+        });
+      }
+      const b = boxMap.get(bNum);
+      const wt = Number(item.weightKg || item.netWeightKg || item.enteredWeight || 0);
+      const pr = Number(item.total !== undefined ? item.total : (Number(item.price || 0) * (item.quantity || 1)));
+      b.totalWeightKg = Number((b.totalWeightKg + wt).toFixed(2));
+      b.totalPrice = Number((b.totalPrice + pr).toFixed(2));
+      b.itemCount += 1;
+      b.items.push({
+        name: item.name,
+        weightKg: wt,
+        pricePerKg: Number(item.pricePerKg || item.price || 0),
+        total: pr
+      });
+    }
+  });
+  const boxes = Array.from(boxMap.values()).sort((a, b) => a.boxNumber - b.boxNumber);
+  return { boxes, totalBoxes: boxes.length };
+}
+
 export const generateUniqueBillNumber = async (BillModel) => {
   try {
     const result = await BillModel.aggregate([
@@ -249,6 +284,11 @@ export const getActiveOrder = asyncHandler(async (req, res, next) => {
       const dCharge = Number(order.deliveryCharge) || 0;
       const cCharge = Number(order.containerCharge) || 0;
       order.tax = taxRate;
+      const boxSummary = computeBoxesSummary(order.items);
+      order.boxes = boxSummary.boxes;
+      order.totalBoxes = boxSummary.totalBoxes;
+      order.markModified('boxes');
+
       order.subtotal = subtotal;
       order.discount = calculatedDiscount;
       order.deliveryCharge = dCharge;
@@ -390,7 +430,12 @@ export const saveOrder = async (req, res) => {
           yieldFactor: Number(item.yieldFactor || 1.0),
           tareWeightKg: Number(item.tareWeightKg || 0),
           boxCount: Number(item.boxCount || 0),
-          total: Number(item.price || 0) * activeQty,
+          boxNumber: Number(item.boxNumber || 0),
+          boxLabel: item.boxLabel || (item.boxNumber ? `Box #${item.boxNumber}` : ''),
+          isWholesaleBox: Boolean(item.isWholesaleBox || item.boxNumber),
+          pricePerKg: Number(item.pricePerKg || item.price || 0),
+          weightKg: Number(item.weightKg || netWeightKg || enteredWeight || 0),
+          total: Number(item.total !== undefined ? item.total : (Number(item.price || 0) * activeQty)),
           specialNote: item.specialNote !== undefined ? item.specialNote : undefined,
           status: item.status || 'Pending',
           isCancelled: isCancelled,
@@ -660,6 +705,11 @@ export const saveOrder = async (req, res) => {
 
       syncOrderKotsWithItems(order);
 
+      const boxSummary = computeBoxesSummary(updatedItems);
+      order.boxes = boxSummary.boxes;
+      order.totalBoxes = boxSummary.totalBoxes;
+      order.markModified('boxes');
+
       order.subtotal = subtotal;
       order.tax = tRate;
       order.taxBreakdown = {
@@ -775,9 +825,12 @@ export const saveOrder = async (req, res) => {
       } catch (e) { }
 
       const restSnapshot = await getRestaurantSnapshot(req, restaurantDetails);
+      const newBoxSummary = computeBoxesSummary(sanitizedItems);
       const orderData = {
         tableNo,
         items: sanitizedItems,
+        boxes: newBoxSummary.boxes,
+        totalBoxes: newBoxSummary.totalBoxes,
         restaurantDetails: restSnapshot,
         showLogo: showLogo !== undefined ? showLogo : true,
         subtotal,
@@ -904,7 +957,11 @@ export const generateBill = async (req, res) => {
     // Update items directly if sent in request (avoids redundant saveOrder round-trip!)
     if (items && Array.isArray(items) && items.length > 0) {
       order.items = items;
+      const genBoxSummary = computeBoxesSummary(items);
+      order.boxes = genBoxSummary.boxes;
+      order.totalBoxes = genBoxSummary.totalBoxes;
       order.markModified('items');
+      order.markModified('boxes');
     }
 
     if (!order.billedAt) {

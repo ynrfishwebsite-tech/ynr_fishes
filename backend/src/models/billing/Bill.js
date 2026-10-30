@@ -37,6 +37,11 @@ const billSchema = new mongoose.Schema({
     yieldFactor: { type: Number, default: 1.0 },
     tareWeightKg: { type: Number, default: 0 },
     boxCount: { type: Number, default: 0 },
+    boxNumber: { type: Number, default: 0 },
+    boxLabel: { type: String, default: '' },
+    isWholesaleBox: { type: Boolean, default: false },
+    pricePerKg: { type: Number, default: 0 },
+    weightKg: { type: Number, default: 0 },
     printedQuantity: {
       type: Number,
       default: 0,
@@ -296,7 +301,24 @@ const billSchema = new mongoose.Schema({
   restaurantDetails: {
     type: mongoose.Schema.Types.Mixed,
     default: null
-  }
+  },
+  totalBoxes: {
+    type: Number,
+    default: 0
+  },
+  boxes: [{
+    boxNumber: Number,
+    boxLabel: String,
+    totalWeightKg: { type: Number, default: 0 },
+    totalPrice: { type: Number, default: 0 },
+    itemCount: { type: Number, default: 0 },
+    items: [{
+      name: String,
+      weightKg: Number,
+      pricePerKg: Number,
+      total: Number
+    }]
+  }]
 }, {
   timestamps: true
 });

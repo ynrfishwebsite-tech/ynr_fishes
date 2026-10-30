@@ -26,7 +26,8 @@ import {
   BookMarked,
   Truck,
   Menu as MenuIcon,
-  X as XIcon
+  X as XIcon,
+  User
 } from 'lucide-react';
 
 // Imported Admin Components
@@ -117,6 +118,7 @@ export default function AdminDashboard() {
   const [showWhatsAppModal, setShowWhatsAppModal] = useState(false);
   const [showCalculator, setShowCalculator] = useState(false);
   const [showLogoutModal, setShowLogoutModal] = useState(false);
+  const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [currentTime, setCurrentTime] = useState(new Date());
   const [activeOrdersCount, setActiveOrdersCount] = useState(0);
   const [billingKey, setBillingKey] = useState(1);
@@ -232,7 +234,7 @@ export default function AdminDashboard() {
           borderBottom: '1px solid #E8DCCB',
           background: '#FDFBF7',
           boxShadow: '0 1px 6px rgba(0, 0, 0, 0.02)',
-          zIndex: showNotifications ? 99999 : 45
+          zIndex: (showNotifications || showProfileMenu) ? 99999 : 45
         }}
       >
         {/* Left: Brand Logo & Title with Hamburger on Mobile */}
@@ -286,35 +288,18 @@ export default function AdminDashboard() {
             />
           </div>
 
-          <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-              {!isMobile && (
-                <h2 style={{
-                  margin: 0,
-                  fontSize: '1.2rem',
-                  fontWeight: 900,
-                  color: '#0f2942',
-                  letterSpacing: '-0.02em',
-                  lineHeight: 1.1
-                }}>
-                  YNR FISHES
-                </h2>
-              )}
-              <span style={{
-                background: '#1d4ed8',
-                color: '#ffffff',
-                fontSize: '0.65rem',
-                fontWeight: 700,
-                padding: '1px 6px',
-                borderRadius: '5px',
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '2px'
+          {!isMobile && (
+            <div>
+              <h2 style={{
+                margin: 0,
+                fontSize: '1.2rem',
+                fontWeight: 900,
+                color: '#0f2942',
+                letterSpacing: '-0.02em',
+                lineHeight: 1.1
               }}>
-                {branchCode}
-              </span>
-            </div>
-            {!isMobile && (
+                YNR FISHES
+              </h2>
               <p style={{
                 margin: '2px 0 0 0',
                 fontSize: '0.74rem',
@@ -323,8 +308,8 @@ export default function AdminDashboard() {
               }}>
                 {branchName} | Admin Terminal
               </p>
-            )}
-          </div>
+            </div>
+          )}
         </div>
 
         {/* Center: Live Status & Date/Time (Hidden on Mobile) */}
@@ -359,8 +344,8 @@ export default function AdminDashboard() {
           </div>
         )}
 
-        {/* Right Action Buttons - Icons only on mobile, text on desktop */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? '6px' : '10px' }}>
+        {/* Right Action Buttons - Alerts Bell Only */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? '8px' : '12px' }}>
           {isMobile && (
             <div
               title={isServerConnected ? "Server Connected" : "Server Disconnected"}
@@ -374,80 +359,10 @@ export default function AdminDashboard() {
                 boxShadow: isServerConnected
                   ? '0 0 8px rgba(34, 197, 94, 0.7), inset -1.5px -1.5px 3px rgba(0, 0, 0, 0.4), inset 1.5px 1.5px 2px rgba(255, 255, 255, 0.8)'
                   : '0 0 8px rgba(239, 68, 68, 0.7), inset -1.5px -1.5px 3px rgba(0, 0, 0, 0.4), inset 1.5px 1.5px 2px rgba(255, 255, 255, 0.8)',
-                flexShrink: 0,
-                marginRight: '2px'
+                flexShrink: 0
               }}
             />
           )}
-          {/* New Order Button - Only + on mobile */}
-          <button
-            onClick={() => setCurrentView('billing')}
-            title="New Order"
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: '6px',
-              background: 'linear-gradient(135deg, #a0522d 0%, #7c3f1d 100%)',
-              color: '#ffffff',
-              border: 'none',
-              borderRadius: isMobile ? '10px' : '12px',
-              padding: isMobile ? '7px 9px' : '8px 16px',
-              fontSize: '0.82rem',
-              fontWeight: 800,
-              cursor: 'pointer',
-              boxShadow: '0 2px 8px rgba(124, 63, 29, 0.25)',
-              transition: 'all 0.15s ease'
-            }}
-          >
-            <Plus size={isMobile ? 18 : 15} strokeWidth={isMobile ? 3 : 2.5} />
-            {!isMobile && <span>New Order</span>}
-          </button>
-
-          {/* WhatsApp Button */}
-          <button
-            onClick={() => setShowWhatsAppModal(true)}
-            title="WhatsApp"
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: '6px',
-              background: '#FDFBF7',
-              color: '#1e293b',
-              border: '1.5px solid #E8DCCB',
-              borderRadius: isMobile ? '10px' : '12px',
-              padding: isMobile ? '6px 8px' : '7px 14px',
-              fontSize: '0.82rem',
-              fontWeight: 700,
-              cursor: 'pointer',
-              boxShadow: '0 1px 3px rgba(0, 0, 0, 0.04)',
-              transition: 'all 0.15s ease'
-            }}
-          >
-            <MessageSquare size={16} style={{ color: '#059669' }} />
-            {!isMobile && <span>WhatsApp</span>}
-          </button>
-
-          {/* Calculator Button */}
-          <button
-            onClick={() => setShowCalculator(true)}
-            title="Quick Calculator"
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              background: '#FDFBF7',
-              border: '1.5px solid #E8DCCB',
-              color: '#475569',
-              borderRadius: isMobile ? '10px' : '12px',
-              padding: isMobile ? '6px 8px' : '8px 11px',
-              cursor: 'pointer',
-              boxShadow: '0 1px 3px rgba(0, 0, 0, 0.04)'
-            }}
-          >
-            <Calculator size={16} strokeWidth={2.2} />
-          </button>
 
           {/* Alerts Bell Button */}
           <div style={{ position: 'relative' }}>
@@ -458,24 +373,26 @@ export default function AdminDashboard() {
                   markAllAsRead();
                 }
               }}
+              aria-label="Notifications"
               title="Alerts"
               style={{
                 display: 'inline-flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                gap: '4px',
+                gap: '6px',
                 background: '#FDFBF7',
                 border: '1.5px solid #E8DCCB',
                 color: '#475569',
                 borderRadius: isMobile ? '10px' : '12px',
-                padding: isMobile ? '6px 8px' : '7px 13px',
+                padding: isMobile ? '7px 9px' : '7px 14px',
                 fontSize: '0.8rem',
                 fontWeight: 700,
                 cursor: 'pointer',
-                boxShadow: '0 1px 3px rgba(0, 0, 0, 0.04)'
+                boxShadow: '0 1px 3px rgba(0, 0, 0, 0.04)',
+                transition: 'all 0.15s ease'
               }}
             >
-              <Bell size={16} strokeWidth={2.2} />
+              <Bell size={isMobile ? 18 : 16} strokeWidth={2.2} />
               {!isMobile && <span>Alerts</span>}
               {unreadCount > 0 && (
                 <span style={{
@@ -505,29 +422,158 @@ export default function AdminDashboard() {
             )}
           </div>
 
-          {/* Sign Out Button */}
-          <button
-            onClick={() => setShowLogoutModal(true)}
-            title="Sign Out"
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: '6px',
-              background: '#FDFBF7',
-              border: '1.5px solid #fecaca',
-              color: '#dc2626',
-              borderRadius: isMobile ? '10px' : '12px',
-              padding: isMobile ? '6px 8px' : '7px 13px',
-              fontSize: '0.8rem',
-              fontWeight: 700,
-              cursor: 'pointer',
-              boxShadow: '0 1px 3px rgba(0, 0, 0, 0.04)'
-            }}
-          >
-            <LogOut size={16} strokeWidth={2.2} />
-            {!isMobile && <span>Sign Out</span>}
-          </button>
+          {/* Profile Avatar Icon & Dropdown Menu */}
+          <div style={{ position: 'relative' }}>
+            <button
+              onClick={() => {
+                setShowProfileMenu(!showProfileMenu);
+                if (showNotifications) setShowNotifications(false);
+              }}
+              aria-label="Profile and account menu"
+              title="User Profile"
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                width: isMobile ? '34px' : '38px',
+                height: isMobile ? '34px' : '38px',
+                borderRadius: '50%',
+                background: 'linear-gradient(135deg, #FAF0E4 0%, #F5E8D8 100%)',
+                border: '1.5px solid #E8DCCB',
+                color: '#7c3f1d',
+                cursor: 'pointer',
+                boxShadow: '0 1px 3px rgba(0, 0, 0, 0.05)',
+                transition: 'all 0.15s ease'
+              }}
+            >
+              <User size={isMobile ? 18 : 19} strokeWidth={2.4} />
+            </button>
+
+            {/* Profile Dropdown Menu */}
+            {showProfileMenu && (
+              <>
+                <div
+                  onClick={() => setShowProfileMenu(false)}
+                  style={{
+                    position: 'fixed',
+                    inset: 0,
+                    zIndex: 99990
+                  }}
+                />
+                <div
+                  style={{
+                    position: 'absolute',
+                    top: 'calc(100% + 8px)',
+                    right: 0,
+                    width: '260px',
+                    maxWidth: '85vw',
+                    background: '#FDFBF7',
+                    borderRadius: '16px',
+                    border: '1.5px solid #E8DCCB',
+                    boxShadow: '0 12px 36px rgba(0, 0, 0, 0.15)',
+                    padding: '16px',
+                    zIndex: 99999,
+                    boxSizing: 'border-box'
+                  }}
+                >
+                  {/* User Profile Header */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px', paddingBottom: '12px', borderBottom: '1px solid #E8DCCB' }}>
+                    <div style={{
+                      width: '42px',
+                      height: '42px',
+                      borderRadius: '50%',
+                      background: 'linear-gradient(135deg, #a0522d 0%, #7c3f1d 100%)',
+                      color: '#ffffff',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      fontWeight: 800,
+                      fontSize: '1.1rem',
+                      boxShadow: '0 2px 8px rgba(124, 63, 29, 0.25)',
+                      flexShrink: 0
+                    }}>
+                      {(user?.name || user?.username || 'A')[0].toUpperCase()}
+                    </div>
+                    <div style={{ minWidth: 0, flex: 1 }}>
+                      <p style={{ margin: 0, fontWeight: 800, fontSize: '0.88rem', color: '#0f2942', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        {user?.name || user?.username || 'Admin User'}
+                      </p>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '3px' }}>
+                        <span style={{
+                          background: '#FAF0E4',
+                          border: '1px solid #eedecb',
+                          color: '#7c3f1d',
+                          fontSize: '0.65rem',
+                          fontWeight: 700,
+                          padding: '1px 6px',
+                          borderRadius: '6px',
+                          textTransform: 'uppercase'
+                        }}>
+                          {user?.role || 'Admin'}
+                        </span>
+                        <span style={{ fontSize: '0.7rem', color: '#64748b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          {branchName}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Profile Actions: Settings & Logout */}
+                  <div style={{ marginTop: '12px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    <button
+                      onClick={() => {
+                        setShowProfileMenu(false);
+                        setCurrentView('settings');
+                      }}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '10px',
+                        width: '100%',
+                        padding: '9px 12px',
+                        background: '#FAF0E4',
+                        border: '1px solid #E8DCCB',
+                        borderRadius: '10px',
+                        color: '#475569',
+                        fontSize: '0.82rem',
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                        transition: 'all 0.15s ease'
+                      }}
+                    >
+                      <SettingsIcon size={16} strokeWidth={2.2} style={{ color: '#7c3f1d' }} />
+                      <span>Account Settings</span>
+                    </button>
+
+                    <button
+                      onClick={() => {
+                        setShowProfileMenu(false);
+                        setShowLogoutModal(true);
+                      }}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '10px',
+                        width: '100%',
+                        padding: '9px 12px',
+                        background: '#fef2f2',
+                        border: '1.5px solid #fecaca',
+                        borderRadius: '10px',
+                        color: '#dc2626',
+                        fontSize: '0.82rem',
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                        transition: 'all 0.15s ease'
+                      }}
+                    >
+                      <LogOut size={16} strokeWidth={2.4} />
+                      <span>Sign Out</span>
+                    </button>
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
         </div>
       </header>
 
@@ -729,13 +775,16 @@ export default function AdminDashboard() {
               })}
             </div>
 
-            {/* Bottom Terminal Info */}
+            {/* Bottom Profile & Terminal Info */}
             <div style={{
               marginTop: '12px',
               padding: '10px 12px',
               background: '#FAF0E4',
               borderRadius: '12px',
-              border: '1px solid #E8DCCB'
+              border: '1px solid #E8DCCB',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '10px'
             }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 <div style={{ display: 'flex', flexDirection: 'column' }}>
@@ -748,6 +797,41 @@ export default function AdminDashboard() {
                 </div>
                 <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#16a34a', boxShadow: '0 0 6px #22c55e', flexShrink: 0 }} />
               </div>
+
+              {/* Sign Out Button inside Profile Section */}
+              <button
+                onClick={() => {
+                  if (isMobile) setMobileMenuOpen(false);
+                  setShowLogoutModal(true);
+                }}
+                title="Sign Out"
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '8px',
+                  width: '100%',
+                  padding: '7px 10px',
+                  background: '#FDFBF7',
+                  border: '1.5px solid #fecaca',
+                  color: '#dc2626',
+                  borderRadius: '10px',
+                  fontSize: '0.78rem',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  boxShadow: '0 1px 3px rgba(220, 38, 38, 0.08)',
+                  transition: 'all 0.15s ease'
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = '#fef2f2';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = '#FDFBF7';
+                }}
+              >
+                <LogOut size={15} strokeWidth={2.4} />
+                <span>Sign Out</span>
+              </button>
             </div>
           </aside>
         )}

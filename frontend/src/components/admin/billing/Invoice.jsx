@@ -92,6 +92,41 @@ const Invoice = ({ bill, onClose, onSave, whatsappBillSentIds, onWhatsAppSent, a
   };
   const isCapturingForWhatsApp = useRef(false);
 
+  const { invoiceGroupedBoxes, invoiceIndividualItems, totalBoxesCount, totalBoxesWeightKg, totalLooseQty } = useMemo(() => {
+    const boxes = {};
+    const individual = [];
+    const active = (bill?.items || []).filter(item => !item.isCancelled);
+    active.forEach(item => {
+      if (item.boxNumber) {
+        const k = String(item.boxNumber);
+        if (!boxes[k]) {
+          boxes[k] = {
+            boxNumber: item.boxNumber,
+            boxLabel: item.boxLabel || `Box #${item.boxNumber}`,
+            items: [],
+            totalWeightKg: 0,
+            totalPrice: 0
+          };
+        }
+        boxes[k].items.push(item);
+        boxes[k].totalWeightKg += Number(item.weightKg) || 0;
+        const q = (item.quantity || 1) - (item.cancelledQuantity || 0);
+        boxes[k].totalPrice += (Number(item.price) || 0) * q;
+      } else {
+        individual.push(item);
+      }
+    });
+    const boxKeys = Object.keys(boxes);
+    const boxKg = Object.values(boxes).reduce((s, b) => s + b.totalWeightKg, 0);
+    const loose = individual.reduce((s, i) => s + ((i.quantity || 1) - (i.cancelledQuantity || 0)), 0);
+    return {
+      invoiceGroupedBoxes: boxes,
+      invoiceIndividualItems: individual,
+      totalBoxesCount: boxKeys.length,
+      totalBoxesWeightKg: boxKg,
+      totalLooseQty: loose
+    };
+  }, [bill?.items]);
 
   const billIdentifier = bill?.billNumber || bill?._id;
   // IMPORTANT: Only consider a bill "already sent" if THIS session sent it
@@ -875,7 +910,7 @@ const Invoice = ({ bill, onClose, onSave, whatsappBillSentIds, onWhatsAppSent, a
     }
 
     if (!imageBase64) {
-      console.warn('[eBill] -ÂÅ’ Receipt image capture failed -â‚¬â€ ABORTING send to guarantee bill photo requirement.');
+      console.warn('[eBill]’ Receipt image capture failed -â‚¬â€ ABORTING send to guarantee bill photo requirement.');
       setToast({ message: t('Receipt photo capture failed. WhatsApp e-Bill requires bill receipt image.'), type: 'error' });
       setSendingAutomated(false);
       return;
@@ -1099,28 +1134,29 @@ const Invoice = ({ bill, onClose, onSave, whatsappBillSentIds, onWhatsAppSent, a
             </button>
           </div>
         )}
-        <div className="flex items-center bg-[#041628] border border-sky-500/40 shadow-2xl rounded-xl text-slate-100 shadow-md overflow-hidden">
+        <div className="flex items-center bg-[#FDFBF7] border border-[#E8DCCB] shadow-sm rounded-xl overflow-hidden">
           <button
             onClick={() => handlePrint(false)}
             disabled={isPrinting}
-            className={`flex items-center gap-1.5 px-3.5 py-2 font-bold text-xs sm:text-sm transition-colors duration-100 active:scale-95 cursor-pointer min-w-[110px] justify-center ${printStatus === 'success'
-              ? 'bg-emerald-950 text-emerald-300'
-              : printStatus === 'failed'
-                ? 'bg-red-950 text-red-300'
-                : printStatus === 'not_connected'
-                  ? 'bg-orange-950 text-orange-300'
-                  : printStatus === 'printing'
-                    ? 'bg-sky-950 text-sky-300 cursor-not-allowed'
-                    : 'text-slate-100 hover:bg-sky-900/60'
-              }`}
+            className={`flex items-center gap-1.5 px-4 py-2 font-black text-xs sm:text-sm transition-all duration-150 active:scale-95 cursor-pointer min-w-[110px] justify-center ${
+              printStatus === 'success'
+                ? 'bg-emerald-600 text-white shadow-xs'
+                : printStatus === 'failed'
+                  ? 'bg-red-600 text-white shadow-xs'
+                  : printStatus === 'not_connected'
+                    ? 'bg-amber-600 text-white shadow-xs'
+                    : printStatus === 'printing'
+                      ? 'bg-amber-500 text-white animate-pulse'
+                      : 'bg-gradient-to-r from-[#994d1c] to-[#7c3f1d] hover:from-[#884318] hover:to-[#6c3618] text-white shadow-xs'
+            }`}
             title={activeReceiptPrinter ? `${t("Print directly to")} ${activeReceiptPrinter.name} (${activeReceiptPrinter.connectionType === 'usb' ? activeReceiptPrinter.usbPort : activeReceiptPrinter.connectionType === 'bluetooth' ? (activeReceiptPrinter.bluetoothAddress || 'Bluetooth') : activeReceiptPrinter.ipAddress})` : t("Print Bill")}>
             {printStatus === 'printing' && (
-              <svg className="animate-spin shrink-0" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M21 12a9 9 0 1 1-6.219-8.56" /></svg>
+              <svg className="animate-spin shrink-0 text-white" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M21 12a9 9 0 1 1-6.219-8.56" /></svg>
             )}
-            {printStatus === 'success' && <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="text-emerald-400 shrink-0"><path d="M20 6L9 17l-5-5" /></svg>}
-            {printStatus === 'failed' && <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="text-red-400 shrink-0"><circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" /></svg>}
-            {printStatus === 'not_connected' && <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="text-orange-400 shrink-0"><line x1="1" y1="1" x2="23" y2="23" /><path d="M16.72 11.06A10.94 10.94 0 0 1 19 12.55" /><path d="M5 12.55a10.94 10.94 0 0 1 5.17-2.39" /><path d="M10.71 5.05A16 16 0 0 1 22.56 9" /><path d="M1.42 9a15.91 15.91 0 0 1 4.7-2.88" /><path d="M8.53 16.11a6 6 0 0 1 6.95 0" /><line x1="12" y1="20" x2="12.01" y2="20" /></svg>}
-            {!printStatus && <Printer size={16} className={activeReceiptPrinter ? "text-emerald-400 shrink-0" : "text-sky-300 shrink-0"} />}
+            {printStatus === 'success' && <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="text-white shrink-0"><path d="M20 6L9 17l-5-5" /></svg>}
+            {printStatus === 'failed' && <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="text-white shrink-0"><circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" /></svg>}
+            {printStatus === 'not_connected' && <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="text-white shrink-0"><line x1="1" y1="1" x2="23" y2="23" /><path d="M16.72 11.06A10.94 10.94 0 0 1 19 12.55" /><path d="M5 12.55a10.94 10.94 0 0 1 5.17-2.39" /><path d="M10.71 5.05A16 16 0 0 1 22.56 9" /><path d="M1.42 9a15.91 15.91 0 0 1 4.7-2.88" /><path d="M8.53 16.11a6 6 0 0 1 6.95 0" /><line x1="12" y1="20" x2="12.01" y2="20" /></svg>}
+            {!printStatus && <Printer size={16} className="text-white shrink-0" />}
             <span>
               {printStatus === 'printing' ? t('Printing...')
                 : printStatus === 'success' ? t('Printed! ✓')
@@ -1132,7 +1168,7 @@ const Invoice = ({ bill, onClose, onSave, whatsappBillSentIds, onWhatsAppSent, a
           {activeReceiptPrinter && (
             <button
               onClick={() => handlePrint(true)}
-              className="px-2.5 py-2 text-slate-300 hover:text-white hover:bg-sky-900/60 border-l border-sky-500/40 transition-colors cursor-pointer text-[11px] font-bold"
+              className="px-3 py-2 bg-white text-slate-700 hover:text-slate-900 hover:bg-slate-100 border-l border-[#E8DCCB] transition-colors cursor-pointer text-xs font-black"
               title={t("Open browser print dialog (PDF / Office Printer)")}>
               PDF
             </button>
@@ -1140,8 +1176,8 @@ const Invoice = ({ bill, onClose, onSave, whatsappBillSentIds, onWhatsAppSent, a
         </div>
         <button
           onClick={onClose}
-          className="flex items-center gap-1.5 px-3.5 py-2 bg-slate-800 hover:bg-slate-900 text-white rounded-xl transition-all shadow-md font-black text-xs sm:text-sm active:scale-95 cursor-pointer border border-slate-700">
-          <ArrowLeft size={16} />
+          className="flex items-center gap-1.5 px-4 py-2 bg-white hover:bg-slate-100 text-slate-700 rounded-xl transition-all shadow-sm font-black text-xs sm:text-sm active:scale-95 cursor-pointer border border-[#E8DCCB]">
+          <ArrowLeft size={16} className="text-slate-600" />
           <span>{t("Close")}</span>
         </button>
       </div>
@@ -1149,12 +1185,9 @@ const Invoice = ({ bill, onClose, onSave, whatsappBillSentIds, onWhatsAppSent, a
       {/* WhatsApp Quick Modal rendered via Portal */}
       {showWhatsAppModal && typeof document !== 'undefined' && createPortal(
         <div className="fixed inset-0 bg-black/70 backdrop-blur-md z-[9999] flex items-center justify-center p-4">
-          <div className="bg-[#041628] border border-sky-500/40 rounded-3xl p-6 w-full max-w-md shadow-2xl text-slate-100 animate-in zoom-in-95 duration-150 flex flex-col max-h-[90vh] overflow-hidden relative">
-            {/* Ambient background glow */}
-            <div className="absolute top-0 right-0 w-40 h-40 bg-[#25D366]/5 rounded-full blur-2xl pointer-events-none"></div>
-
+          <div className="bg-[#FDFBF7] border border-[#E8DCCB] rounded-3xl p-6 w-full max-w-md shadow-2xl text-slate-800 animate-in zoom-in-95 duration-150 flex flex-col max-h-[90vh] overflow-hidden relative">
             {/* Header */}
-            <div className="flex items-center justify-between pb-3 border-b border-sky-900/60 mb-4 shrink-0 relative z-10">
+            <div className="flex items-center justify-between pb-3 border-b border-[#E8DCCB] mb-4 shrink-0 relative z-10">
               <div className="flex items-center gap-2.5 text-[#25D366] font-bold text-base">
                 <div className="w-8 h-8 rounded-xl bg-[#25D366]/20 border border-[#25D366]/30 flex items-center justify-center text-[#25D366]">
                   <svg className="w-4 h-4 fill-current" viewBox="0 0 24 24">
@@ -1163,7 +1196,7 @@ const Invoice = ({ bill, onClose, onSave, whatsappBillSentIds, onWhatsAppSent, a
                 </div>
                 <span>{t("Send WhatsApp e-Bill")}</span>
               </div>
-              <button onClick={() => setShowWhatsAppModal(false)} className="text-slate-400 hover:text-white p-1.5 rounded-full hover:bg-slate-800 transition-colors cursor-pointer">
+              <button onClick={() => setShowWhatsAppModal(false)} className="text-slate-400 hover:text-slate-800 p-1.5 rounded-full hover:bg-[#FAF0E4] transition-colors cursor-pointer">
                 <X size={18} />
               </button>
             </div>
@@ -1512,27 +1545,68 @@ const Invoice = ({ bill, onClose, onSave, whatsappBillSentIds, onWhatsAppSent, a
             {/* Dashed Separator */}
             <div style={{ borderTop: '1px dashed #444', margin: '7px 0', width: '100%', height: '1px', clear: 'both' }}></div>
 
-            {/* Items List (Compact Zomato 2-line layout) */}
+            {/* Items List (Grouped by Box or Individual) */}
             <div style={{ marginBottom: '3px' }}>
               {bill.items && bill.items.length > 0 ? (
-                bill.items.filter(item => !item.isCancelled).map((item, idx) => {
-                  const activeQty = (item.quantity || 0) - (item.cancelledQuantity || 0);
-                  if (activeQty <= 0) return null;
-                  return (
-                    <div key={idx} style={{ marginBottom: '4px', paddingBottom: '3px', borderBottom: '1px dashed #e0e0e0' }}>
-                      <div style={{ fontWeight: 750, fontSize: fontMetrics.itemSize, textAlign: 'left', wordBreak: 'break-word', lineHeight: '1.2' }}>
-                        {item.name || 'Unknown Item'}
+                <>
+                  {/* Boxes */}
+                  {Object.values(invoiceGroupedBoxes).map((box) => (
+                    <div key={`inv-box-${box.boxNumber}`} style={{ marginBottom: '5px', border: '1px solid #111', borderRadius: '4px', padding: '3px 4px', background: '#fafafa' }}>
+                      {/* Box Header Banner */}
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px dashed #666', paddingBottom: '2px', marginBottom: '2px', fontWeight: 800, fontSize: fontMetrics.itemSize }}>
+                        <span>{box.boxLabel} ({box.items.length} items{box.totalWeightKg > 0 ? ` • ${box.totalWeightKg.toFixed(1).replace(/\.0$/, '')}Kg` : ''})</span>
+                        <span style={{ fontWeight: 800 }}>{box.totalPrice.toFixed(2)}</span>
                       </div>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: fontMetrics.detailSize, marginTop: '1.5px' }}>
-                        <span>[{Number(item.price || 0).toFixed(2)}] × {activeQty}</span>
-                        <span style={{ fontWeight: 750 }}>{(item.price * activeQty).toFixed(2)}</span>
-                      </div>
-                      {item.hsnCode && (
-                        <div style={{ fontSize: '9.5px', color: '#666' }}>HSN: {item.hsnCode}</div>
-                      )}
+                      {/* Items inside Box */}
+                      {box.items.map((item, idx) => {
+                        const activeQty = (item.quantity || 0) - (item.cancelledQuantity || 0);
+                        if (activeQty <= 0) return null;
+                        return (
+                          <div key={idx} style={{ padding: '2px 0 2px 4px', borderBottom: idx < box.items.length - 1 ? '1px dotted #ccc' : 'none' }}>
+                            <div style={{ fontWeight: 650, fontSize: fontMetrics.detailSize, textAlign: 'left', wordBreak: 'break-word', lineHeight: '1.2' }}>
+                              • {item.name || 'Unknown Item'}
+                              {item.weightKg ? ` (${item.weightKg}Kg @ ₹${item.pricePerKg}/kg)` : ''}
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: fontMetrics.detailSize, marginTop: '1px' }}>
+                              <span style={{ color: '#444' }}>[{Number(item.price || 0).toFixed(2)}] × {activeQty}</span>
+                              <span style={{ fontWeight: 700 }}>{(item.price * activeQty).toFixed(2)}</span>
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
-                  );
-                })
+                  ))}
+
+                  {/* Individual / Loose Items */}
+                  {invoiceIndividualItems.length > 0 && (
+                    <>
+                      {totalBoxesCount > 0 && (
+                        <div style={{ fontSize: fontMetrics.detailSize, fontWeight: 700, margin: '4px 0 2px 0', textTransform: 'uppercase' }}>
+                          🐟 Individual / Loose Items
+                        </div>
+                      )}
+                      {invoiceIndividualItems.map((item, idx) => {
+                        const activeQty = (item.quantity || 0) - (item.cancelledQuantity || 0);
+                        if (activeQty <= 0) return null;
+                        return (
+                          <div key={idx} style={{ marginBottom: '4px', paddingBottom: '3px', borderBottom: '1px dashed #e0e0e0' }}>
+                            <div style={{ fontWeight: 750, fontSize: fontMetrics.itemSize, textAlign: 'left', wordBreak: 'break-word', lineHeight: '1.2' }}>
+                              {item.name || 'Unknown Item'}
+                              {item.sellingUnit && <span style={{ fontSize: fontMetrics.detailSize, fontWeight: 'normal' }}> ({item.sellingUnit})</span>}
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: fontMetrics.detailSize, marginTop: '1.5px' }}>
+                              <span>[{Number(item.price || 0).toFixed(2)}] × {activeQty}</span>
+                              <span style={{ fontWeight: 750 }}>{(item.price * activeQty).toFixed(2)}</span>
+                            </div>
+                            {item.hsnCode && (
+                              <div style={{ fontSize: '9.5px', color: '#666' }}>HSN: {item.hsnCode}</div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </>
+                  )}
+                </>
               ) : (
                 <div style={{ textAlign: 'center', padding: '4px 0', fontSize: fontMetrics.detailSize }}>{t("No items")}</div>
               )}
@@ -1544,7 +1618,13 @@ const Invoice = ({ bill, onClose, onSave, whatsappBillSentIds, onWhatsAppSent, a
             {/* Totals & Breakdown */}
             <div style={{ fontSize: fontMetrics.detailSize, lineHeight: fontMetrics.lineHeight }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '1px 0' }}>
-                <span>{t("Total Qty: ")}{bill.items?.filter(i => !i.isCancelled).reduce((acc, curr) => acc + ((curr.quantity || 1) - (curr.cancelledQuantity || 0)), 0) || 0}</span>
+                <span>
+                  {totalBoxesCount > 0 && totalLooseQty > 0
+                    ? `Total: ${totalBoxesCount} Box(es) + ${totalLooseQty} Loose`
+                    : totalBoxesCount > 0
+                      ? `Total: ${totalBoxesCount} ${totalBoxesCount === 1 ? 'Box' : 'Boxes'} (${totalBoxesWeightKg.toFixed(1).replace(/\.0$/, '')} Kg)`
+                      : `${t("Total Qty: ")}${totalLooseQty}`}
+                </span>
                 <div style={{ display: 'flex', gap: '6px' }}>
                   <span>{t("Sub Total:")}</span>
                   <span style={{ fontWeight: 750 }}>{(bill.subtotal || bill.items?.filter(i => !i.isCancelled).reduce((acc, curr) => acc + ((curr.price || 0) * ((curr.quantity || 1) - (curr.cancelledQuantity || 0))), 0) || 0).toFixed(2)}</span>
@@ -1853,31 +1933,77 @@ const Invoice = ({ bill, onClose, onSave, whatsappBillSentIds, onWhatsAppSent, a
 
             {/* Items List */}
             <div className="mb-1 pb-1" style={{ borderBottom: '1.5px solid #000000', paddingBottom: '4px', marginBottom: '4px' }}>
-              {bill.items && bill.items.length > 0 ?
-                bill.items.filter(item => !item.isCancelled).map((item, idx) => {
-                  const activeQty = (item.quantity || 0) - (item.cancelledQuantity || 0);
-                  if (activeQty <= 0) return null;
-                  return (
-                    <div key={idx} className="flex items-start mb-1 leading-tight" style={{ display: 'flex', width: '100%', alignItems: 'flex-start', fontSize: fontMetrics.itemSize, fontWeight: 'normal' }}>
-                      <div className="flex-1 pr-1 break-words" style={{ flex: '1 1 0%', textAlign: 'left', wordBreak: 'break-word', paddingRight: '4px', fontSize: fontMetrics.itemSize }}>
-                        {item.name || 'Unknown Item'}
-                        {item.hsnCode ? <span style={{ fontSize: fontMetrics.detailSize }}>{t("(HSN:")}{item.hsnCode})</span> : ''}
+              {bill.items && bill.items.length > 0 ? (
+                <>
+                  {/* Boxes */}
+                  {Object.values(invoiceGroupedBoxes).map((box) => (
+                    <div key={`inv80-box-${box.boxNumber}`} style={{ marginBottom: '5px', border: '1.5px solid #000000', borderRadius: '3px', padding: '3px 4px', background: '#fafafa' }}>
+                      {/* Box Header Row */}
+                      <div style={{ display: 'flex', width: '100%', justifyContent: 'space-between', alignItems: 'center', fontWeight: 'bold', fontSize: fontMetrics.itemSize, borderBottom: '1px dashed #666', paddingBottom: '2px', marginBottom: '2px' }}>
+                        <span>{box.boxLabel} ({box.items.length} items{box.totalWeightKg > 0 ? ` • ${box.totalWeightKg.toFixed(1).replace(/\.0$/, '')} Kg` : ''})</span>
+                        <span style={{ fontWeight: 'bold' }}>{box.totalPrice.toFixed(2)}</span>
                       </div>
-                      <div className="w-8 text-center" style={{ width: '32px', textAlign: 'center', flexShrink: 0, fontSize: fontMetrics.itemSize }}>{activeQty}</div>
-                      <div className="w-14 text-right" style={{ width: '56px', textAlign: 'right', flexShrink: 0, fontSize: fontMetrics.itemSize }}>{(item.price || 0).toFixed(2)}</div>
-                      <div className="w-16 text-right" style={{ width: '64px', textAlign: 'right', flexShrink: 0, fontSize: fontMetrics.itemSize }}>{(item.price * activeQty).toFixed(2)}</div>
+                      {/* Items inside Box */}
+                      {box.items.map((item, idx) => {
+                        const activeQty = (item.quantity || 0) - (item.cancelledQuantity || 0);
+                        if (activeQty <= 0) return null;
+                        return (
+                          <div key={idx} className="flex items-start mb-0.5 leading-tight" style={{ display: 'flex', width: '100%', alignItems: 'flex-start', fontSize: fontMetrics.detailSize, paddingLeft: '8px' }}>
+                            <div className="flex-1 pr-1 break-words" style={{ flex: '1 1 0%', textAlign: 'left', wordBreak: 'break-word', paddingRight: '4px' }}>
+                              • {item.name || 'Unknown Item'}{item.weightKg ? ` (${item.weightKg}Kg @ ₹${item.pricePerKg}/kg)` : ''}
+                              {item.hsnCode ? <span style={{ fontSize: '9px', color: '#555' }}> (HSN: {item.hsnCode})</span> : ''}
+                            </div>
+                            <div className="w-8 text-center" style={{ width: '32px', textAlign: 'center', flexShrink: 0 }}>{activeQty}</div>
+                            <div className="w-14 text-right" style={{ width: '56px', textAlign: 'right', flexShrink: 0 }}>{(item.price || 0).toFixed(2)}</div>
+                            <div className="w-16 text-right" style={{ width: '64px', textAlign: 'right', flexShrink: 0, fontWeight: 'bold' }}>{(item.price * activeQty).toFixed(2)}</div>
+                          </div>
+                        );
+                      })}
                     </div>
-                  );
-                }) :
+                  ))}
 
+                  {/* Individual / Loose Items */}
+                  {invoiceIndividualItems.length > 0 && (
+                    <>
+                      {totalBoxesCount > 0 && (
+                        <div style={{ fontSize: fontMetrics.detailSize, fontWeight: 'bold', margin: '4px 0 2px 0', textTransform: 'uppercase' }}>
+                          🐟 Individual / Loose Items
+                        </div>
+                      )}
+                      {invoiceIndividualItems.map((item, idx) => {
+                        const activeQty = (item.quantity || 0) - (item.cancelledQuantity || 0);
+                        if (activeQty <= 0) return null;
+                        return (
+                          <div key={idx} className="flex items-start mb-1 leading-tight" style={{ display: 'flex', width: '100%', alignItems: 'flex-start', fontSize: fontMetrics.itemSize, fontWeight: 'normal' }}>
+                            <div className="flex-1 pr-1 break-words" style={{ flex: '1 1 0%', textAlign: 'left', wordBreak: 'break-word', paddingRight: '4px', fontSize: fontMetrics.itemSize }}>
+                              {item.name || 'Unknown Item'}
+                              {item.sellingUnit && <span style={{ fontSize: fontMetrics.detailSize }}> ({item.sellingUnit})</span>}
+                              {item.hsnCode ? <span style={{ fontSize: fontMetrics.detailSize }}>{t("(HSN:")}{item.hsnCode})</span> : ''}
+                            </div>
+                            <div className="w-8 text-center" style={{ width: '32px', textAlign: 'center', flexShrink: 0, fontSize: fontMetrics.itemSize }}>{activeQty}</div>
+                            <div className="w-14 text-right" style={{ width: '56px', textAlign: 'right', flexShrink: 0, fontSize: fontMetrics.itemSize }}>{(item.price || 0).toFixed(2)}</div>
+                            <div className="w-16 text-right" style={{ width: '64px', textAlign: 'right', flexShrink: 0, fontSize: fontMetrics.itemSize }}>{(item.price * activeQty).toFixed(2)}</div>
+                          </div>
+                        );
+                      })}
+                    </>
+                  )}
+                </>
+              ) : (
                 <div className="text-center py-1" style={{ textAlign: 'center', fontSize: fontMetrics.detailSize, fontWeight: 'normal' }}>{t("No items")}</div>
-              }
+              )}
             </div>
 
             {/* Tax / Discount / Items summary */}
             <div className="flex flex-col gap-0.5 mt-1" style={{ display: 'flex', flexDirection: 'column', fontSize: fontMetrics.detailSize, fontWeight: 'normal' }}>
               <div className="flex justify-between w-full" style={{ display: 'flex', width: '100%', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span className="text-left w-24" style={{ width: '96px', textAlign: 'left', flexShrink: 0 }}>{t("Total Qty:")}{bill.items?.filter(i => !i.isCancelled).reduce((acc, curr) => acc + ((curr.quantity || 1) - (curr.cancelledQuantity || 0)), 0) || 0}</span>
+                <span className="text-left w-36" style={{ width: '144px', textAlign: 'left', flexShrink: 0, fontWeight: 'bold' }}>
+                  {totalBoxesCount > 0 && totalLooseQty > 0
+                    ? `Total: ${totalBoxesCount} Box(es) + ${totalLooseQty} Loose`
+                    : totalBoxesCount > 0
+                      ? `Total: ${totalBoxesCount} ${totalBoxesCount === 1 ? 'Box' : 'Boxes'} (${totalBoxesWeightKg.toFixed(1).replace(/\.0$/, '')} Kg)`
+                      : `${t("Total Qty:")}${totalLooseQty}`}
+                </span>
                 <div className="flex-1 flex justify-between pl-2" style={{ flex: 1, display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingLeft: '8px' }}>
                   <span className="text-left" style={{ textAlign: 'left' }}>{t("Sub Total")}</span>
                   <span className="w-16 text-right" style={{ width: '64px', textAlign: 'right', flexShrink: 0 }}>{(bill.subtotal || bill.items?.filter(i => !i.isCancelled).reduce((acc, curr) => acc + ((curr.price || 0) * ((curr.quantity || 1) - (curr.cancelledQuantity || 0))), 0) || 0).toFixed(2)}</span>

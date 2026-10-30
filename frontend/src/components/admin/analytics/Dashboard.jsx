@@ -3,7 +3,9 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useLanguage } from '../../../context/LanguageContext';
 import { getDailyStats, getBillById, deleteBill } from '../../../api/billing/billing';
 import { getMenuItems } from '../../../api/catalog/menu';
-import { LayoutDashboard, Clock, ChevronDown, Calendar, Crown, BarChart2, Fish, Scale, Boxes, TrendingUp } from 'lucide-react';
+import { LayoutDashboard, Clock, ChevronDown, Calendar, Crown, BarChart2, Fish, Scale, Boxes, TrendingUp, Ship, Package, IndianRupee, Wallet, ArrowDownLeft, RotateCcw, Truck } from 'lucide-react';
+import OperationModal from '../operations/OperationModal';
+import { getOperationsSummary } from '../../../api/operations/operations';
 import realtimeService from '../../../services/realtimeService';
 import {
   ComposedChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer
@@ -41,6 +43,30 @@ const Dashboard = ({ onNavigate, onGoBack }) => {
   const [customDateRange, setCustomDateRange] = useState({ start: '', end: '' });
   const [isFilterDropdownOpen, setIsFilterDropdownOpen] = useState(false);
   const [menuCatalog, setMenuCatalog] = useState([]);
+  const [activeOperationModal, setActiveOperationModal] = useState(null);
+  const [operationsData, setOperationsData] = useState({
+    import: { totalAmount: 0, totalNetKg: 0, count: 0 },
+    export: { totalAmount: 0, totalNetKg: 0, totalBoxes: 0, count: 0 },
+    sales: { totalAmount: 0, totalInvoices: 0, totalBoxes: 0 },
+    expenses: { totalAmount: 0, count: 0 },
+    purchase: { totalAmount: 0, totalNetKg: 0, count: 0 },
+    purchaseReturn: { totalAmount: 0, totalNetKg: 0, count: 0 },
+    salesReturn: { totalAmount: 0, totalNetKg: 0, count: 0 },
+    vehicleOthers: { totalAmount: 0, count: 0 }
+  });
+
+  const fetchOperations = useCallback(async () => {
+    try {
+      const summary = await getOperationsSummary();
+      if (summary) setOperationsData(summary);
+    } catch (e) {
+      console.error('Error fetching operations summary:', e);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchOperations();
+  }, [fetchOperations]);
 
   useEffect(() => {
     getMenuItems().then(items => {
@@ -223,267 +249,256 @@ const Dashboard = ({ onNavigate, onGoBack }) => {
         </div>
       </div>
 
-      {/* 4 Stat Cards */}
-      <div style={{
-        display: 'grid',
-        gridTemplateColumns: isMobile ? 'repeat(2, minmax(0, 1fr))' : 'repeat(auto-fit, minmax(230px, 1fr))',
-        gap: isMobile ? '6px' : '16px',
-        marginBottom: isMobile ? '12px' : '20px',
-        padding: isMobile ? '0 4px' : 0
-      }}>
-
-        {/* Card 1: Total Fish Sales */}
-        <div style={{
-          background: 'linear-gradient(135deg, #fff7ed 0%, #ffedd5 100%)',
-          borderRadius: '20px',
-          padding: isMobile ? '12px 14px' : '18px 22px',
-          border: '1px solid rgba(253,186,116,0.6)',
-          boxShadow: '0 2px 8px rgba(234,88,12,0.06)',
-          position: 'relative',
-          overflow: 'hidden',
-          minHeight: isMobile ? '105px' : '142px',
-          display: 'flex',
-          flexDirection: 'column',
-          justifyContent: 'space-between'
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '6px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? '6px' : '8px', minWidth: 0 }}>
-              <div style={{
-                width: isMobile ? '28px' : '32px',
-                height: isMobile ? '28px' : '32px',
-                borderRadius: '50%',
-                background: '#ea580c',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                color: '#ffffff',
-                boxShadow: '0 2px 6px rgba(234,88,12,0.25)',
-                flexShrink: 0
-              }}>
-                <Fish size={isMobile ? 15 : 17} strokeWidth={2.4} />
-              </div>
-              <span style={{
-                fontSize: isMobile ? '0.78rem' : '0.86rem',
-                fontWeight: 700,
-                color: '#1e293b',
-                whiteSpace: 'nowrap',
-                overflow: 'hidden',
-                textOverflow: 'ellipsis'
-              }}>
-                {t('Total Fish Sales')}
-              </span>
-            </div>
-            <span style={{
-              background: '#ffedd5',
-              color: '#c2410c',
-              fontSize: isMobile ? '0.65rem' : '0.72rem',
-              fontWeight: 700,
-              padding: isMobile ? '2px 7px' : '2px 8px',
-              borderRadius: '999px',
-              border: '1px solid rgba(234,88,12,0.2)',
-              flexShrink: 0
-            }}>
-              Today
+      {/* 8 YNR Fishes Operations Cards (Matching Notebook Layout) */}
+      <div className="mb-5">
+        <div className="flex items-center justify-between mb-3 px-1">
+          <div className="flex items-center gap-2">
+            <span className="text-xs sm:text-sm font-black uppercase tracking-wider text-slate-800">
+              YNR Fishes Operations Grid
+            </span>
+            <span className="px-2 py-0.5 rounded-full text-[9px] font-black bg-amber-100 text-amber-900 border border-amber-300">
+              8 Core Modules
             </span>
           </div>
-          <div style={{ marginTop: isMobile ? '6px' : '10px' }}>
-            <div style={{ fontSize: isMobile ? '1.3rem' : '2rem', fontWeight: 900, color: '#ea580c', letterSpacing: '-0.02em', lineHeight: 1.1 }}>
-              {formatCurrency(stats.sales || 0)}
-            </div>
-            <div style={{ fontSize: isMobile ? '0.7rem' : '0.76rem', color: '#64748b', marginTop: '4px', fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-              {stats.orders || 0} Total Invoices
-            </div>
-          </div>
+          <span className="text-[10.5px] text-slate-500 font-bold">
+            Tap any box to record or view ledger
+          </span>
         </div>
 
-        {/* Card 2: Retail Orders */}
         <div style={{
-          background: 'linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%)',
-          borderRadius: '20px',
-          padding: isMobile ? '12px 14px' : '18px 22px',
-          border: '1px solid rgba(134,239,172,0.6)',
-          boxShadow: '0 2px 8px rgba(22,163,74,0.06)',
-          position: 'relative',
-          overflow: 'hidden',
-          minHeight: isMobile ? '105px' : '142px',
-          display: 'flex',
-          flexDirection: 'column',
-          justifyContent: 'space-between'
+          display: 'grid',
+          gridTemplateColumns: isMobile ? 'repeat(2, minmax(0, 1fr))' : 'repeat(4, minmax(0, 1fr))',
+          gap: isMobile ? '8px' : '14px'
         }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '6px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? '6px' : '8px', minWidth: 0 }}>
-              <div style={{
-                width: isMobile ? '28px' : '32px',
-                height: isMobile ? '28px' : '32px',
-                borderRadius: '50%',
-                background: '#16a34a',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                color: '#ffffff',
-                boxShadow: '0 2px 6px rgba(22,163,74,0.25)',
-                flexShrink: 0
-              }}>
-                <Scale size={isMobile ? 15 : 17} strokeWidth={2.4} />
+          {/* Row 1, Card 1: IMPORT */}
+          <div
+            onClick={() => setActiveOperationModal('Import')}
+            className="cursor-pointer group rounded-2xl p-3.5 sm:p-4 bg-gradient-to-br from-sky-50 to-blue-100/60 border border-sky-300 shadow-sm hover:shadow-md hover:border-sky-500 transition-all active:scale-[0.98] flex flex-col justify-between min-h-[120px]"
+          >
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 min-w-0">
+                <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-xl bg-sky-600 text-white flex items-center justify-center shrink-0 shadow-xs">
+                  <Ship size={16} />
+                </div>
+                <span className="font-black text-xs sm:text-sm text-slate-900 uppercase tracking-wide truncate">
+                  Import
+                </span>
               </div>
-              <span style={{
-                fontSize: isMobile ? '0.78rem' : '0.86rem',
-                fontWeight: 700,
-                color: '#1e293b',
-                whiteSpace: 'nowrap',
-                overflow: 'hidden',
-                textOverflow: 'ellipsis'
-              }}>
-                {t('Retail Orders (Kg)')}
+              <span className="text-[9.5px] font-black px-1.5 py-0.5 rounded bg-sky-200 text-sky-900">
+                Harbor
               </span>
             </div>
-            <span style={{
-              background: '#dcfce7',
-              color: '#15803d',
-              fontSize: isMobile ? '0.65rem' : '0.72rem',
-              fontWeight: 700,
-              padding: isMobile ? '2px 7px' : '2px 8px',
-              borderRadius: '999px',
-              border: '1px solid rgba(22,163,74,0.2)',
-              flexShrink: 0
-            }}>
-              Retail
-            </span>
-          </div>
-          <div style={{ marginTop: isMobile ? '6px' : '10px' }}>
-            <div style={{ fontSize: isMobile ? '1.3rem' : '2rem', fontWeight: 900, color: '#16a34a', letterSpacing: '-0.02em', lineHeight: 1.1 }}>
-              {retailOrdersCount}
-            </div>
-            <div style={{ fontSize: isMobile ? '0.7rem' : '0.76rem', color: '#64748b', marginTop: '4px', fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-              Individual fish cuts & weighed orders
+            <div className="mt-2">
+              <div className="text-lg sm:text-xl font-black text-sky-950 font-mono">
+                {formatCurrency(operationsData.import?.totalAmount || 0)}
+              </div>
+              <div className="text-[10px] text-slate-600 font-bold mt-0.5 flex items-center justify-between">
+                <span>{operationsData.import?.totalNetKg || 0} Kg Net</span>
+                <span className="text-sky-700 font-bold">{operationsData.import?.count || 0} entries</span>
+              </div>
             </div>
           </div>
-        </div>
 
-        {/* Card 3: Bulk Orders */}
-        <div style={{
-          background: 'linear-gradient(135deg, #fefce8 0%, #fef9c3 100%)',
-          borderRadius: '20px',
-          padding: isMobile ? '12px 14px' : '18px 22px',
-          border: '1px solid rgba(253,224,71,0.6)',
-          boxShadow: '0 2px 8px rgba(161,98,7,0.06)',
-          position: 'relative',
-          overflow: 'hidden',
-          minHeight: isMobile ? '105px' : '142px',
-          display: 'flex',
-          flexDirection: 'column',
-          justifyContent: 'space-between'
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '6px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? '6px' : '8px', minWidth: 0 }}>
-              <div style={{
-                width: isMobile ? '28px' : '32px',
-                height: isMobile ? '28px' : '32px',
-                borderRadius: '50%',
-                background: '#ca8a04',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                color: '#ffffff',
-                boxShadow: '0 2px 6px rgba(202,138,4,0.25)',
-                flexShrink: 0
-              }}>
-                <Boxes size={isMobile ? 15 : 17} strokeWidth={2.4} />
+          {/* Row 1, Card 2: EXPORT */}
+          <div
+            onClick={() => setActiveOperationModal('Export')}
+            className="cursor-pointer group rounded-2xl p-3.5 sm:p-4 bg-gradient-to-br from-amber-50 to-orange-100/60 border border-amber-300 shadow-sm hover:shadow-md hover:border-amber-500 transition-all active:scale-[0.98] flex flex-col justify-between min-h-[120px]"
+          >
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 min-w-0">
+                <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-xl bg-[#ea580c] text-white flex items-center justify-center shrink-0 shadow-xs">
+                  <Package size={16} />
+                </div>
+                <span className="font-black text-xs sm:text-sm text-slate-900 uppercase tracking-wide truncate">
+                  Export
+                </span>
               </div>
-              <span style={{
-                fontSize: isMobile ? '0.78rem' : '0.86rem',
-                fontWeight: 700,
-                color: '#1e293b',
-                whiteSpace: 'nowrap',
-                overflow: 'hidden',
-                textOverflow: 'ellipsis'
-              }}>
-                {t('Bulk Orders (Boxes)')}
+              <span className="text-[9.5px] font-black px-1.5 py-0.5 rounded bg-amber-200 text-amber-900">
+                Wholesale
               </span>
             </div>
-            <span style={{
-              background: '#fef9c3',
-              color: '#a16207',
-              fontSize: isMobile ? '0.65rem' : '0.72rem',
-              fontWeight: 700,
-              padding: isMobile ? '2px 7px' : '2px 8px',
-              borderRadius: '999px',
-              border: '1px solid rgba(161,98,7,0.2)',
-              flexShrink: 0
-            }}>
-              Wholesale
-            </span>
-          </div>
-          <div style={{ marginTop: isMobile ? '6px' : '10px' }}>
-            <div style={{ fontSize: isMobile ? '1.3rem' : '2rem', fontWeight: 900, color: '#ca8a04', letterSpacing: '-0.02em', lineHeight: 1.1 }}>
-              {bulkOrdersCount}
-            </div>
-            <div style={{ fontSize: isMobile ? '0.7rem' : '0.76rem', color: '#64748b', marginTop: '4px', fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-              Wholesale box batches sold
+            <div className="mt-2">
+              <div className="text-lg sm:text-xl font-black text-amber-950 font-mono">
+                {formatCurrency(operationsData.export?.totalAmount || 0)}
+              </div>
+              <div className="text-[10px] text-slate-600 font-bold mt-0.5 flex items-center justify-between">
+                <span>{operationsData.export?.totalBoxes || 0} Boxes</span>
+                <span className="text-amber-800 font-bold">{operationsData.export?.totalNetKg || 0} Kg</span>
+              </div>
             </div>
           </div>
-        </div>
 
-        {/* Card 4: Estimated Gross Profit */}
-        <div style={{
-          background: 'linear-gradient(135deg, #faf5ff 0%, #f3e8ff 100%)',
-          borderRadius: '20px',
-          padding: isMobile ? '12px 14px' : '18px 22px',
-          border: '1px solid rgba(233,213,255,0.85)',
-          boxShadow: '0 2px 8px rgba(168,85,247,0.06)',
-          position: 'relative',
-          overflow: 'hidden',
-          minHeight: isMobile ? '105px' : '142px',
-          display: 'flex',
-          flexDirection: 'column',
-          justifyContent: 'space-between'
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '6px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? '6px' : '8px', minWidth: 0 }}>
-              <div style={{
-                width: isMobile ? '28px' : '32px',
-                height: isMobile ? '28px' : '32px',
-                borderRadius: '50%',
-                background: '#9333ea',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                color: '#ffffff',
-                boxShadow: '0 2px 6px rgba(147,51,234,0.25)',
-                flexShrink: 0
-              }}>
-                <BarChart2 size={isMobile ? 15 : 17} strokeWidth={2.4} />
+          {/* Row 1, Card 3: SALES */}
+          <div
+            onClick={() => onNavigate ? onNavigate('billing') : setActiveOperationModal('Sales')}
+            className="cursor-pointer group rounded-2xl p-3.5 sm:p-4 bg-gradient-to-br from-emerald-50 to-green-100/60 border border-emerald-300 shadow-sm hover:shadow-md hover:border-emerald-500 transition-all active:scale-[0.98] flex flex-col justify-between min-h-[120px]"
+          >
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 min-w-0">
+                <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-xl bg-emerald-600 text-white flex items-center justify-center shrink-0 shadow-xs">
+                  <IndianRupee size={16} strokeWidth={2.5} />
+                </div>
+                <span className="font-black text-xs sm:text-sm text-slate-900 uppercase tracking-wide truncate">
+                  Sales
+                </span>
               </div>
-              <span style={{
-                fontSize: isMobile ? '0.78rem' : '0.86rem',
-                fontWeight: 700,
-                color: '#1e293b',
-                whiteSpace: 'nowrap',
-                overflow: 'hidden',
-                textOverflow: 'ellipsis'
-              }}>
-                {t('Estimated Gross Profit')}
+              <span className="text-[9.5px] font-black px-1.5 py-0.5 rounded bg-emerald-200 text-emerald-900">
+                Live POS
               </span>
             </div>
-            <span style={{
-              background: '#f3e8ff',
-              color: '#7e22ce',
-              fontSize: isMobile ? '0.65rem' : '0.72rem',
-              fontWeight: 700,
-              padding: isMobile ? '2px 7px' : '2px 8px',
-              borderRadius: '999px',
-              border: '1px solid rgba(147,51,234,0.2)',
-              flexShrink: 0
-            }}>
-              Margin
-            </span>
-          </div>
-          <div style={{ marginTop: isMobile ? '6px' : '10px' }}>
-            <div style={{ fontSize: isMobile ? '1.3rem' : '2rem', fontWeight: 900, color: '#9333ea', letterSpacing: '-0.02em', lineHeight: 1.1 }}>
-              {formatCurrency(Math.round((stats.sales || 0) * 0.28))}
+            <div className="mt-2">
+              <div className="text-lg sm:text-xl font-black text-emerald-950 font-mono">
+                {formatCurrency(stats.sales || operationsData.sales?.totalAmount || 0)}
+              </div>
+              <div className="text-[10px] text-slate-600 font-bold mt-0.5 flex items-center justify-between">
+                <span>{stats.orders || 0} Invoices</span>
+                <span className="text-emerald-700 font-bold">{operationsData.sales?.totalBoxes || 0} Boxes</span>
+              </div>
             </div>
-            <div style={{ fontSize: isMobile ? '0.7rem' : '0.76rem', color: '#64748b', marginTop: '4px', fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-              Avg ~28% Fish Margin
+          </div>
+
+          {/* Row 1, Card 4: EXPENSES */}
+          <div
+            onClick={() => setActiveOperationModal('Expenses')}
+            className="cursor-pointer group rounded-2xl p-3.5 sm:p-4 bg-gradient-to-br from-rose-50 to-red-100/60 border border-rose-300 shadow-sm hover:shadow-md hover:border-rose-500 transition-all active:scale-[0.98] flex flex-col justify-between min-h-[120px]"
+          >
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 min-w-0">
+                <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-xl bg-rose-600 text-white flex items-center justify-center shrink-0 shadow-xs">
+                  <Wallet size={16} />
+                </div>
+                <span className="font-black text-xs sm:text-sm text-slate-900 uppercase tracking-wide truncate">
+                  Expenses
+                </span>
+              </div>
+              <span className="text-[9.5px] font-black px-1.5 py-0.5 rounded bg-rose-200 text-rose-900">
+                OpEx
+              </span>
+            </div>
+            <div className="mt-2">
+              <div className="text-lg sm:text-xl font-black text-rose-950 font-mono">
+                {formatCurrency(operationsData.expenses?.totalAmount || 0)}
+              </div>
+              <div className="text-[10px] text-slate-600 font-bold mt-0.5 flex items-center justify-between">
+                <span>Ice / Labor / Stall</span>
+                <span className="text-rose-700 font-bold">{operationsData.expenses?.count || 0} vouchers</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Row 2, Card 5: PURCHASE */}
+          <div
+            onClick={() => setActiveOperationModal('Purchase')}
+            className="cursor-pointer group rounded-2xl p-3.5 sm:p-4 bg-gradient-to-br from-blue-50 to-indigo-100/60 border border-blue-300 shadow-sm hover:shadow-md hover:border-blue-500 transition-all active:scale-[0.98] flex flex-col justify-between min-h-[120px]"
+          >
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 min-w-0">
+                <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-xl bg-blue-600 text-white flex items-center justify-center shrink-0 shadow-xs">
+                  <ArrowDownLeft size={16} />
+                </div>
+                <span className="font-black text-xs sm:text-sm text-slate-900 uppercase tracking-wide truncate">
+                  Purchase
+                </span>
+              </div>
+              <span className="text-[9.5px] font-black px-1.5 py-0.5 rounded bg-blue-200 text-blue-900">
+                Local / Farm
+              </span>
+            </div>
+            <div className="mt-2">
+              <div className="text-lg sm:text-xl font-black text-blue-950 font-mono">
+                {formatCurrency(operationsData.purchase?.totalAmount || 0)}
+              </div>
+              <div className="text-[10px] text-slate-600 font-bold mt-0.5 flex items-center justify-between">
+                <span>{operationsData.purchase?.totalNetKg || 0} Kg Net</span>
+                <span className="text-blue-700 font-bold">{operationsData.purchase?.count || 0} lots</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Row 2, Card 6: PURCHASE RETURN */}
+          <div
+            onClick={() => setActiveOperationModal('Purchase Return')}
+            className="cursor-pointer group rounded-2xl p-3.5 sm:p-4 bg-gradient-to-br from-amber-50 via-yellow-50 to-amber-100/70 border border-amber-400 shadow-sm hover:shadow-md hover:border-amber-600 transition-all active:scale-[0.98] flex flex-col justify-between min-h-[120px]"
+          >
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 min-w-0">
+                <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-xl bg-amber-700 text-white flex items-center justify-center shrink-0 shadow-xs">
+                  <RotateCcw size={16} />
+                </div>
+                <span className="font-black text-xs sm:text-sm text-slate-900 uppercase tracking-wide truncate">
+                  Purchase Return
+                </span>
+              </div>
+              <span className="text-[9.5px] font-black px-1.5 py-0.5 rounded bg-amber-200 text-amber-950">
+                Debit Note
+              </span>
+            </div>
+            <div className="mt-2">
+              <div className="text-lg sm:text-xl font-black text-amber-950 font-mono">
+                {formatCurrency(operationsData.purchaseReturn?.totalAmount || 0)}
+              </div>
+              <div className="text-[10px] text-slate-600 font-bold mt-0.5 flex items-center justify-between">
+                <span>{operationsData.purchaseReturn?.totalNetKg || 0} Kg Rejected</span>
+                <span className="text-amber-800 font-bold">{operationsData.purchaseReturn?.count || 0} claims</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Row 2, Card 7: SALES RETURN */}
+          <div
+            onClick={() => setActiveOperationModal('Sales Return')}
+            className="cursor-pointer group rounded-2xl p-3.5 sm:p-4 bg-gradient-to-br from-orange-50 to-amber-100/60 border border-orange-300 shadow-sm hover:shadow-md hover:border-orange-500 transition-all active:scale-[0.98] flex flex-col justify-between min-h-[120px]"
+          >
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 min-w-0">
+                <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-xl bg-orange-600 text-white flex items-center justify-center shrink-0 shadow-xs">
+                  <RotateCcw size={16} />
+                </div>
+                <span className="font-black text-xs sm:text-sm text-slate-900 uppercase tracking-wide truncate">
+                  Sales Return
+                </span>
+              </div>
+              <span className="text-[9.5px] font-black px-1.5 py-0.5 rounded bg-orange-200 text-orange-900">
+                Credit Note
+              </span>
+            </div>
+            <div className="mt-2">
+              <div className="text-lg sm:text-xl font-black text-orange-950 font-mono">
+                {formatCurrency(operationsData.salesReturn?.totalAmount || 0)}
+              </div>
+              <div className="text-[10px] text-slate-600 font-bold mt-0.5 flex items-center justify-between">
+                <span>{operationsData.salesReturn?.totalNetKg || 0} Kg</span>
+                <span className="text-orange-700 font-bold">{operationsData.salesReturn?.count || 0} returns</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Row 2, Card 8: VEHICLE / OTHERS */}
+          <div
+            onClick={() => setActiveOperationModal('Vehicle / Others')}
+            className="cursor-pointer group rounded-2xl p-3.5 sm:p-4 bg-gradient-to-br from-purple-50 to-violet-100/60 border border-purple-300 shadow-sm hover:shadow-md hover:border-purple-500 transition-all active:scale-[0.98] flex flex-col justify-between min-h-[120px]"
+          >
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 min-w-0">
+                <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-xl bg-purple-600 text-white flex items-center justify-center shrink-0 shadow-xs">
+                  <Truck size={16} />
+                </div>
+                <span className="font-black text-xs sm:text-sm text-slate-900 uppercase tracking-wide truncate">
+                  Vehicle / Others
+                </span>
+              </div>
+              <span className="text-[9.5px] font-black px-1.5 py-0.5 rounded bg-purple-200 text-purple-900">
+                Fleet & Misc
+              </span>
+            </div>
+            <div className="mt-2">
+              <div className="text-lg sm:text-xl font-black text-purple-950 font-mono">
+                {formatCurrency(operationsData.vehicleOthers?.totalAmount || 0)}
+              </div>
+              <div className="text-[10px] text-slate-600 font-bold mt-0.5 flex items-center justify-between">
+                <span>Diesel & Transport</span>
+                <span className="text-purple-700 font-bold">{operationsData.vehicleOthers?.count || 0} trips</span>
+              </div>
             </div>
           </div>
         </div>
@@ -680,7 +695,18 @@ const Dashboard = ({ onNavigate, onGoBack }) => {
         <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />
       )}
 
-    </div>
+    
+      {/* Operation Management Modal */}
+      {activeOperationModal && (
+        <OperationModal
+          isOpen={!!activeOperationModal}
+          onClose={() => setActiveOperationModal(null)}
+          operationType={activeOperationModal}
+          onSaved={fetchOperations}
+          menuCatalog={menuCatalog}
+        />
+      )}
+</div>
   );
 };
 

@@ -11,6 +11,7 @@ const BillSummary = ({
   orderId,
   cart,
   updateQuantity,
+  removeBoxFromCart,
   updateItemNote,
   updateItemPrice,
   subtotal,
@@ -71,6 +72,32 @@ const BillSummary = ({
   const isCaptain = userRole === 'Captain';
 
   const cartEndRef = React.useRef(null);
+
+  const { groupedBoxes, individualItems } = React.useMemo(() => {
+    const boxes = {};
+    const individual = [];
+    (cart || []).forEach((item) => {
+      if (item.boxNumber) {
+        const boxKey = String(item.boxNumber);
+        if (!boxes[boxKey]) {
+          boxes[boxKey] = {
+            boxNumber: item.boxNumber,
+            boxLabel: item.boxLabel || `Box #${item.boxNumber}`,
+            items: [],
+            totalWeightKg: 0,
+            totalPrice: 0
+          };
+        }
+        boxes[boxKey].items.push(item);
+        boxes[boxKey].totalWeightKg += Number(item.weightKg) || 0;
+        const activeQty = (item.quantity || 1) - (item.cancelledQuantity || 0);
+        boxes[boxKey].totalPrice += (Number(item.price) || 0) * activeQty;
+      } else {
+        individual.push(item);
+      }
+    });
+    return { groupedBoxes: boxes, individualItems: individual };
+  }, [cart]);
 
   const [directPrintOnSave, setDirectPrintOnSave] = useState(() => {
     try {
@@ -741,11 +768,32 @@ const BillSummary = ({
       <div id="cart-items-header" className="flex items-center px-2 py-1.5 bg-[#F7EFE2] border-b border-[#E8DCCB] text-[#475569] text-[9px] font-bold uppercase tracking-wider shrink-0">
         <div className="w-[44%] flex items-center gap-1.5 min-w-0">
           <span className="shrink-0">{t("Items")}</span>
-          {cart.length > 0 && (
-            <span className="inline-flex items-center px-1.5 py-0.2 rounded-full text-[8px] font-black bg-orange-100 text-orange-700 border border-orange-200 shadow-2xs truncate">
-              {cart.length} ({cart.reduce((sum, item) => sum + (parseInt(item.quantity, 10) || 0), 0)} {t("Qty")})
-            </span>
-          )}
+          {cart.length > 0 && (() => {
+            const boxKeys = Object.keys(groupedBoxes);
+            const totalBoxes = boxKeys.length;
+            const individualQty = individualItems.reduce((sum, item) => sum + (parseInt(item.quantity, 10) || 0), 0);
+            const totalBoxKg = cart.filter(i => i.boxNumber).reduce((sum, i) => sum + (Number(i.weightKg) || 0), 0);
+
+            if (totalBoxes > 0 && individualQty > 0) {
+              return (
+                <span className="inline-flex items-center px-1.5 py-0.2 rounded-full text-[8.5px] font-black bg-amber-100 text-amber-900 border border-amber-300 shadow-2xs truncate">
+                  📦 {totalBoxes} {totalBoxes === 1 ? 'Box' : 'Boxes'} + 🐟 {individualQty} Loose
+                </span>
+              );
+            }
+            if (totalBoxes > 0) {
+              return (
+                <span className="inline-flex items-center px-1.5 py-0.2 rounded-full text-[8.5px] font-black bg-amber-100 text-amber-900 border border-amber-300 shadow-2xs truncate">
+                  📦 {totalBoxes} {totalBoxes === 1 ? 'Box' : 'Boxes'} ({cart.length} items{totalBoxKg > 0 ? ` • ${totalBoxKg.toFixed(1).replace(/\.0$/, '')} Kg` : ''})
+                </span>
+              );
+            }
+            return (
+              <span className="inline-flex items-center px-1.5 py-0.2 rounded-full text-[8px] font-black bg-orange-100 text-orange-700 border border-orange-200 shadow-2xs truncate">
+                {cart.length} ({cart.reduce((sum, item) => sum + (parseInt(item.quantity, 10) || 0), 0)} {t("Qty")})
+              </span>
+            );
+          })()}
         </div>
         <div className="w-[14%] text-center hidden xl:block">{t("Check")}</div>
         <div className="w-[26%] text-center">{t("Qty.")}</div>
@@ -807,238 +855,402 @@ const BillSummary = ({
               </p>
             </div>
           ) : (
-            cart.map((item, index) => (
-              <div key={item._id || item.name || index} className={`flex items-start py-1.5 px-1.5 border-b border-[#f1f5f9] hover:bg-[#F5E8D8] transition-colors group ${item.isCancelled ? 'opacity-50' : ''}`}>
-                {/* Delete Icon */}
-                <button
-                  onClick={() => updateQuantity(item.itemKey || item._id || item.name, -item.quantity)}
-                  disabled={isLocked || item.isCancelled}
-                  className="w-5 h-5 rounded-full text-gray-400 hover:bg-red-50 hover:text-red-500 flex items-center justify-center shrink-0 mt-0.5 mr-1 transition-all disabled:opacity-50">
-                  <X size={12} strokeWidth={3} />
-                </button>
-
-                {/* Item Name */}
-                <div className="flex-1 min-w-0 pr-1">
-                  <div className="flex items-center gap-1 flex-wrap">
-                    <span className={`text-[11px] text-text-muted font-bold leading-tight ${item.isCancelled ? 'line-through' : ''}`}>
-                      {(language !== 'en' && item.nameTranslations?.[language]) || item.name}
-                      {item.sellingUnit && <span className="text-[10px] text-primary ml-1 font-semibold">({item.sellingUnit})</span>}
-                    </span>
-                    {(() => {
-                      const rawQty = parseInt(item.quantity || 0, 10) || 0;
-                      const cancelledQty = parseInt(item.cancelledQuantity || 0, 10) || 0;
-                      const effectiveQty = Math.max(0, rawQty - cancelledQty);
-                      const totalQty = Math.max(0, rawQty);
-
-                      // Use only the first `effectiveQty` slots so cancelled units don't inflate status counts
-                      const rawUnitStatuses = Array.isArray(item.unitStatuses) && item.unitStatuses.length === totalQty && totalQty > 0
-                        ? item.unitStatuses
-                        : Array.from({ length: totalQty }, () => item.status || 'Pending');
-                      const unitStatuses = rawUnitStatuses.slice(0, effectiveQty);
-
-                      const preparedCount = unitStatuses.filter(s => s === 'Ready' || s === 'Prepared').length;
-                      const preparingCount = unitStatuses.filter(s => s === 'Preparing').length;
-                      const pendingCount = unitStatuses.filter(s => s === 'Pending' || (!s && s !== 'Cancelled')).length;
-
-                      const hasMixedStatus = effectiveQty > 1 && (
-                        (preparedCount > 0 && (preparingCount > 0 || pendingCount > 0)) ||
-                        (preparingCount > 0 && pendingCount > 0)
-                      );
-
-                      // If item has zero effective quantity (cancelled or removed), show Cancelled — don't run status logic
-                      if (effectiveQty === 0) {
-                        return <span className="text-[9px] bg-red-100 text-red-600 px-1 py-0.5 rounded font-bold">{t("Cancelled")}</span>;
-                      }
-
-                      if (item.isCancelled) {
-                        return <span className="text-[9px] bg-red-100 text-red-600 px-1 py-0.5 rounded font-bold">{t("Cancelled")}</span>;
-                      }
-                      if (item.cancellationRejected) {
-                        return <span className="text-[9px] bg-gray-200 text-text-muted px-1 py-0.5 rounded font-bold">{t("Rejected")}</span>;
-                      }
-                      if (item.cancellationRequested) {
-                        return <span className="text-[9px] bg-orange-100 text-orange-600 px-1 py-0.5 rounded font-bold">{t("Pending")}</span>;
-                      }
-
-                      const reducedBadge = (item.cancelledQuantity > 0 || item.reducedQuantity > 0) ? (
-                        <span className="text-[9px] bg-red-100 text-red-600 px-1 py-0.5 rounded font-bold whitespace-nowrap">
-                          (-{item.cancelledQuantity || item.reducedQuantity})
+            <>
+              {/* Wholesale Boxes Rendering */}
+              {Object.values(groupedBoxes).map((box) => (
+                <div
+                  key={`box-${box.boxNumber}`}
+                  className="mb-2.5 mx-1 rounded-xl border-2 border-amber-300 bg-[#FFFDF9] shadow-xs overflow-hidden"
+                >
+                  {/* Box Header Bar */}
+                  <div className="flex items-center justify-between px-2.5 py-1.5 bg-gradient-to-r from-[#FDE8D0] via-[#FDF0DE] to-[#FCE1BE] border-b border-amber-300">
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      <span className="text-sm">📦</span>
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="text-xs font-black uppercase tracking-wider text-amber-950">
+                          {box.boxLabel}
                         </span>
-                      ) : null;
+                        <span className="px-1.5 py-0.2 rounded-full text-[9px] font-bold bg-amber-900/10 text-amber-900 border border-amber-900/20">
+                          {box.items.length} {box.items.length === 1 ? t('item') : t('items')}
+                        </span>
+                        {box.totalWeightKg > 0 && (
+                          <span className="px-1.5 py-0.2 rounded-full text-[9px] font-black bg-emerald-600 text-white shadow-2xs">
+                            {box.totalWeightKg.toFixed(1).replace(/\.0$/, '')} Kg
+                          </span>
+                        )}
+                      </div>
+                    </div>
 
-                      let statusNode = null;
-
-                      if (hasMixedStatus) {
-                        statusNode = (
-                          <span className="inline-flex items-center gap-1 flex-wrap">
-                            {preparedCount > 0 && (
-                              <span className="text-[9px] bg-emerald-50 text-emerald-700 px-1.5 py-0.5 rounded font-bold border border-emerald-200 shadow-2xs inline-flex items-center gap-1">
-                                <CheckCircle size={10} className="text-emerald-600 shrink-0" />
-                                <span>{preparedCount}x {t("Prepared")}</span>
-                              </span>
-                            )}
-                            {preparingCount > 0 && (
-                              <span className="text-[9px] bg-amber-50 text-amber-700 px-1.5 py-0.5 rounded font-bold border border-amber-200 shadow-2xs inline-flex items-center gap-1">
-                                <Loader2 size={10} className="animate-spin text-amber-600 shrink-0" />
-                                <span>{preparingCount}x 👨‍🍳 {t("Preparing")}</span>
-                              </span>
-                            )}
-                            {pendingCount > 0 && (
-                              <span className="text-[9px] bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded font-bold border border-blue-100 inline-flex items-center gap-1">
-                                <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse shrink-0"></span>
-                                <span>{pendingCount}x ⏳ {t("Pending")}</span>
-                              </span>
-                            )}
-                          </span>
-                        );
-                      } else if (item.status === 'Preparing' || preparingCount > 0) {
-                        statusNode = (
-                          <span className="text-[9px] bg-amber-50 text-amber-700 px-1.5 py-0.5 rounded font-bold border border-amber-200 shadow-2xs inline-flex items-center gap-1">
-                            <Loader2 size={10} className="animate-spin text-amber-600 shrink-0" />
-                            <span>{effectiveQty > 1 ? `${effectiveQty}x ` : ''}👨‍🍳 {t("Preparing")}</span>
-                          </span>
-                        );
-                      } else if (effectiveQty > 0 && (item.status === 'Ready' || item.status === 'Prepared' || preparedCount === effectiveQty)) {
-                        statusNode = (
-                          <span className="text-[9px] bg-emerald-50 text-emerald-700 px-1.5 py-0.5 rounded font-bold border border-emerald-200 shadow-2xs inline-flex items-center gap-1">
-                            <CheckCircle size={10} className="text-emerald-600 shrink-0" />
-                            <span>{effectiveQty > 1 ? `${effectiveQty}x ` : ''}✅ {t("Prepared")}</span>
-                          </span>
-                        );
-                      } else if (item.status === 'Pending' || ((item.printedQuantity || 0) > 0 && !item.status)) {
-                        statusNode = (
-                          <span className="text-[9px] bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded font-bold border border-blue-100 inline-flex items-center gap-1">
-                            <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse shrink-0"></span>
-                            <span>{effectiveQty > 1 ? `${effectiveQty}x ` : ''}⏳ {t("Pending")}</span>
-                          </span>
-                        );
-                      }
-
-                      if (statusNode || reducedBadge) {
-                        return (
-                          <span className="inline-flex items-center gap-1">
-                            {statusNode}
-                            {reducedBadge}
-                          </span>
-                        );
-                      }
-
-                      return null;
-                    })()}
-                    <button
-                      onClick={() => handleItemNoteClick(item)}
-                      disabled={isLocked || item.isCancelled}
-                      className="text-gray-400 hover:text-orange-500 transition-colors p-0.5"
-                      title={t("Add special note for this item")}
-                    >
-                      <Clipboard size={10} />
-                    </button>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <span className="text-xs font-black text-amber-950 font-mono">
+                        {currencySymbol}{box.totalPrice.toFixed(0)}
+                      </span>
+                      {!isLocked && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (removeBoxFromCart) {
+                              removeBoxFromCart(box.boxNumber);
+                            } else {
+                              box.items.forEach(i => updateQuantity(i.itemKey || i._id || i.name, -i.quantity));
+                            }
+                          }}
+                          title={t("Delete entire Box")}
+                          className="w-5 h-5 rounded-md bg-red-100 hover:bg-red-500 text-red-600 hover:text-white flex items-center justify-center transition-all cursor-pointer shadow-2xs"
+                        >
+                          <Trash2 size={11} strokeWidth={2.5} />
+                        </button>
+                      )}
+                    </div>
                   </div>
-                  {(item.orderedAt || item.createdAt || item.time || item.addedAt) && (
-                    <div className="text-[8.5px] text-gray-400 font-semibold mt-0.5 flex items-center gap-0.5">
-                      <span>🕒 {(() => {
-                        const d = new Date(item.orderedAt || item.createdAt || item.time || item.addedAt);
-                        return isNaN(d.getTime()) ? '' : d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
-                      })()}</span>
-                    </div>
-                  )}
-                  {item.specialNote ? (
-                    <div
-                      onClick={() => handleItemNoteClick(item)}
-                      className="text-[9px] text-amber-600 font-bold cursor-pointer hover:underline mt-0.5 flex items-center gap-0.5 truncate"
-                    >
-                      <span>📝 {item.specialNote}</span>
-                    </div>
-                  ) : null}
-                </div>
 
-                {/* Quantity Controls */}
-                <div className="flex items-center gap-0 w-[78px] shrink-0 bg-[#F7EFE2] rounded-lg overflow-hidden border border-[#E8DCCB]">
+                  {/* Packed Fish Items Inside Box */}
+                  <div className="divide-y divide-amber-100/80 bg-white">
+                    {box.items.map((item, idx) => {
+                      const effectiveQty = (item.quantity || 1) - (item.cancelledQuantity || 0);
+                      const itemTotal = (item.price || 0) * effectiveQty;
+                      return (
+                        <div
+                          key={item.itemKey || item._id || item.name || idx}
+                          className={`flex items-start justify-between py-1.5 px-2 hover:bg-amber-50/50 transition-colors group ${item.isCancelled ? 'opacity-50' : ''}`}
+                        >
+                          {/* Delete single item + Fish Info */}
+                          <div className="flex items-start gap-1.5 min-w-0 flex-1 pr-1">
+                            <button
+                              onClick={() => updateQuantity(item.itemKey || item._id || item.name, -item.quantity)}
+                              disabled={isLocked || item.isCancelled}
+                              className="w-4 h-4 rounded text-gray-300 hover:text-red-500 hover:bg-red-50 flex items-center justify-center shrink-0 mt-0.5 transition-colors"
+                              title={t("Remove this fish from box")}
+                            >
+                              <X size={10} strokeWidth={3} />
+                            </button>
+                            <div className="flex flex-col min-w-0 flex-1">
+                              <div className="flex items-center gap-1 flex-wrap">
+                                <span className={`text-[11px] font-bold text-slate-800 leading-tight ${item.isCancelled ? 'line-through' : ''}`}>
+                                  {(language !== 'en' && item.nameTranslations?.[language]) || item.name}
+                                </span>
+                                <button
+                                  onClick={() => handleItemNoteClick(item)}
+                                  disabled={isLocked || item.isCancelled}
+                                  className="text-gray-400 hover:text-orange-500 transition-colors p-0.5"
+                                  title={t("Add special note for this item")}
+                                >
+                                  <Clipboard size={10} />
+                                </button>
+                              </div>
+                              <div className="flex items-center gap-1.5 text-[9.5px] font-semibold text-amber-800 mt-0.5">
+                                {item.weightKg ? (
+                                  <span className="bg-amber-50 text-amber-900 border border-amber-200 px-1 py-0.2 rounded font-mono font-bold">
+                                    {item.weightKg} Kg @ {currencySymbol}{item.pricePerKg}/kg
+                                  </span>
+                                ) : (
+                                  item.sellingUnit && <span>{item.sellingUnit}</span>
+                                )}
+                                {item.specialNote && (
+                                  <span className="text-amber-700 font-bold truncate">📝 {item.specialNote}</span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Price */}
+                          <div className="shrink-0 text-right flex flex-col justify-center h-6 pl-2">
+                            {editingPriceId === (item._id || item.name) ? (
+                              <input
+                                type="number"
+                                min="0"
+                                step="0.01"
+                                autoFocus
+                                value={editingPriceValue}
+                                onChange={(e) => setEditingPriceValue(e.target.value)}
+                                onBlur={() => {
+                                  if (updateItemPrice) {
+                                    const newTotal = parseFloat(editingPriceValue);
+                                    if (!isNaN(newTotal) && effectiveQty > 0) {
+                                      updateItemPrice(item._id || item.name, newTotal / effectiveQty);
+                                    }
+                                  }
+                                  setEditingPriceId(null);
+                                }}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') { e.target.blur(); }
+                                  if (e.key === 'Escape') { setEditingPriceId(null); }
+                                }}
+                                className="w-16 text-right text-[11px] font-bold text-primary bg-primary/10 border border-primary/30 rounded px-1 py-0.5 focus:outline-none"
+                              />
+                            ) : (
+                              <div
+                                className={`text-[11px] font-mono font-bold text-slate-800 cursor-pointer hover:text-primary hover:underline transition-colors ${item.isCancelled ? 'line-through text-gray-400' : ''}`}
+                                title={t("Click to edit total price")}
+                                onClick={() => {
+                                  if (!isLocked && !item.isCancelled) {
+                                    setEditingPriceId(item._id || item.name);
+                                    setEditingPriceValue(String(itemTotal.toFixed(0)));
+                                  }
+                                }}
+                              >
+                                {currencySymbol}{itemTotal.toFixed(0)}
+                                {!isLocked && !item.isCancelled && <Edit3 size={8} className="inline ml-0.5 opacity-40" />}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* Box Footer Total */}
+                  <div className="flex items-center justify-between px-2.5 py-1 bg-gradient-to-r from-amber-50 to-orange-50/70 border-t border-amber-200 text-[10px] font-black text-amber-950">
+                    <span className="flex items-center gap-1">
+                      <span>{box.boxLabel} {t("Total")}:</span>
+                      <span className="text-amber-800 font-semibold font-mono">({box.items.length} items • {box.totalWeightKg.toFixed(1).replace(/\.0$/, '')} Kg)</span>
+                    </span>
+                    <span className="font-mono text-xs font-black text-amber-950">{currencySymbol}{box.totalPrice.toFixed(0)}</span>
+                  </div>
+                </div>
+              ))}
+
+              {/* Individual / Loose items section header (only shown when mixed with boxes) */}
+              {individualItems.length > 0 && Object.keys(groupedBoxes).length > 0 && (
+                <div className="px-2 py-1 text-[9.5px] font-black uppercase tracking-wider text-slate-600 bg-slate-100 rounded-md mx-1 my-1.5 flex items-center gap-1 border border-slate-200">
+                  <span>🐟</span>
+                  <span>{t("Individual / Loose Fish Items")}</span>
+                  <span className="ml-auto text-[8.5px] font-bold text-slate-500 font-mono">({individualItems.length})</span>
+                </div>
+              )}
+
+              {/* Individual Items List */}
+              {individualItems.map((item, index) => (
+                <div key={item._id || item.name || index} className={`flex items-start py-1.5 px-1.5 border-b border-[#f1f5f9] hover:bg-[#F5E8D8] transition-colors group ${item.isCancelled ? 'opacity-50' : ''}`}>
+                  {/* Delete Icon */}
                   <button
-                    type="button"
-                    onClick={() => updateQuantity(item.itemKey || item._id || item.name, -1)}
+                    onClick={() => updateQuantity(item.itemKey || item._id || item.name, -item.quantity)}
                     disabled={isLocked || item.isCancelled}
-                    className="w-5 h-6 flex items-center justify-center text-[#64748b] hover:bg-[#F5E8D8] hover:text-red-500 disabled:opacity-50 transition-colors shrink-0">
-                    <Minus size={11} />
+                    className="w-5 h-5 rounded-full text-gray-400 hover:bg-red-50 hover:text-red-500 flex items-center justify-center shrink-0 mt-0.5 mr-1 transition-all disabled:opacity-50">
+                    <X size={12} strokeWidth={3} />
                   </button>
-                  <input
-                    type="number"
-                    min="0.01"
-                    step="any"
-                    disabled={isLocked || item.isCancelled}
-                    value={item.quantity - (item.cancelledQuantity || 0)}
-                    onWheel={(e) => e.target.blur()}
-                    onKeyDown={(e) => {
-                      if (e.key === '-' || e.key === 'e' || e.key === '+') e.preventDefault();
-                    }}
-                    onChange={(e) => {
-                      const raw = e.target.value;
-                      if (raw === '') return;
-                      const parsed = parseFloat(raw);
-                      if (!isNaN(parsed) && parsed >= 0) {
-                        const currentActive = item.quantity - (item.cancelledQuantity || 0);
-                        const delta = parsed - currentActive;
-                        if (delta !== 0) {
-                          updateQuantity(item.itemKey || item._id || item.name, delta);
+
+                  {/* Item Name */}
+                  <div className="flex-1 min-w-0 pr-1">
+                    <div className="flex items-center gap-1 flex-wrap">
+                      <span className={`text-[11px] text-text-muted font-bold leading-tight ${item.isCancelled ? 'line-through' : ''}`}>
+                        {(language !== 'en' && item.nameTranslations?.[language]) || item.name}
+                        {item.sellingUnit && <span className="text-[10px] text-primary ml-1 font-semibold">({item.sellingUnit})</span>}
+                      </span>
+                      {(() => {
+                        const rawQty = parseInt(item.quantity || 0, 10) || 0;
+                        const cancelledQty = parseInt(item.cancelledQuantity || 0, 10) || 0;
+                        const effectiveQty = Math.max(0, rawQty - cancelledQty);
+                        const totalQty = Math.max(0, rawQty);
+
+                        const rawUnitStatuses = Array.isArray(item.unitStatuses) && item.unitStatuses.length === totalQty && totalQty > 0
+                          ? item.unitStatuses
+                          : Array.from({ length: totalQty }, () => item.status || 'Pending');
+                        const unitStatuses = rawUnitStatuses.slice(0, effectiveQty);
+
+                        const preparedCount = unitStatuses.filter(s => s === 'Ready' || s === 'Prepared').length;
+                        const preparingCount = unitStatuses.filter(s => s === 'Preparing').length;
+                        const pendingCount = unitStatuses.filter(s => s === 'Pending' || (!s && s !== 'Cancelled')).length;
+
+                        const hasMixedStatus = effectiveQty > 1 && (
+                          (preparedCount > 0 && (preparingCount > 0 || pendingCount > 0)) ||
+                          (preparingCount > 0 && pendingCount > 0)
+                        );
+
+                        if (effectiveQty === 0) {
+                          return <span className="text-[9px] bg-red-100 text-red-600 px-1 py-0.5 rounded font-bold">{t("Cancelled")}</span>;
                         }
-                      }
-                    }}
-                    className={`w-9 h-6 bg-[#FDFBF7] text-center font-bold text-[11px] text-[#1e293b] focus:outline-none border-x border-[#E8DCCB] p-0 ${item.isCancelled ? 'line-through text-slate-500' : ''}`}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => updateQuantity(item.itemKey || item._id || item.name, 1)}
-                    disabled={isLocked || item.isCancelled}
-                    className="w-5 h-6 flex items-center justify-center text-[#64748b] hover:bg-[#F5E8D8] hover:text-emerald-600 disabled:opacity-50 transition-colors shrink-0">
-                    <Plus size={11} />
-                  </button>
-                </div>
 
-                {/* Price - editable on click */}
-                <div className="w-[50px] shrink-0 text-right flex flex-col justify-center h-6 pr-1">
-                  {editingPriceId === (item._id || item.name) ? (
+                        if (item.isCancelled) {
+                          return <span className="text-[9px] bg-red-100 text-red-600 px-1 py-0.5 rounded font-bold">{t("Cancelled")}</span>;
+                        }
+                        if (item.cancellationRejected) {
+                          return <span className="text-[9px] bg-gray-200 text-text-muted px-1 py-0.5 rounded font-bold">{t("Rejected")}</span>;
+                        }
+                        if (item.cancellationRequested) {
+                          return <span className="text-[9px] bg-orange-100 text-orange-600 px-1 py-0.5 rounded font-bold">{t("Pending")}</span>;
+                        }
+
+                        const reducedBadge = (item.cancelledQuantity > 0 || item.reducedQuantity > 0) ? (
+                          <span className="text-[9px] bg-red-100 text-red-600 px-1 py-0.5 rounded font-bold whitespace-nowrap">
+                            (-{item.cancelledQuantity || item.reducedQuantity})
+                          </span>
+                        ) : null;
+
+                        let statusNode = null;
+
+                        if (hasMixedStatus) {
+                          statusNode = (
+                            <span className="inline-flex items-center gap-1 flex-wrap">
+                              {preparedCount > 0 && (
+                                <span className="text-[9px] bg-emerald-50 text-emerald-700 px-1.5 py-0.5 rounded font-bold border border-emerald-200 shadow-2xs inline-flex items-center gap-1">
+                                  <CheckCircle size={10} className="text-emerald-600 shrink-0" />
+                                  <span>{preparedCount}x {t("Prepared")}</span>
+                                </span>
+                              )}
+                              {preparingCount > 0 && (
+                                <span className="text-[9px] bg-amber-50 text-amber-700 px-1.5 py-0.5 rounded font-bold border border-amber-200 shadow-2xs inline-flex items-center gap-1">
+                                  <Loader2 size={10} className="animate-spin text-amber-600 shrink-0" />
+                                  <span>{preparingCount}x 👨‍🍳 {t("Preparing")}</span>
+                                </span>
+                              )}
+                              {pendingCount > 0 && (
+                                <span className="text-[9px] bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded font-bold border border-blue-100 inline-flex items-center gap-1">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse shrink-0"></span>
+                                  <span>{pendingCount}x ⏳ {t("Pending")}</span>
+                                </span>
+                              )}
+                            </span>
+                          );
+                        } else if (item.status === 'Preparing' || preparingCount > 0) {
+                          statusNode = (
+                            <span className="text-[9px] bg-amber-50 text-amber-700 px-1.5 py-0.5 rounded font-bold border border-amber-200 shadow-2xs inline-flex items-center gap-1">
+                              <Loader2 size={10} className="animate-spin text-amber-600 shrink-0" />
+                              <span>{effectiveQty > 1 ? `${effectiveQty}x ` : ''}👨‍🍳 {t("Preparing")}</span>
+                            </span>
+                          );
+                        } else if (effectiveQty > 0 && (item.status === 'Ready' || item.status === 'Prepared' || preparedCount === effectiveQty)) {
+                          statusNode = (
+                            <span className="text-[9px] bg-emerald-50 text-emerald-700 px-1.5 py-0.5 rounded font-bold border border-emerald-200 shadow-2xs inline-flex items-center gap-1">
+                              <CheckCircle size={10} className="text-emerald-600 shrink-0" />
+                              <span>{effectiveQty > 1 ? `${effectiveQty}x ` : ''}✅ {t("Prepared")}</span>
+                            </span>
+                          );
+                        } else if (item.status === 'Pending' || ((item.printedQuantity || 0) > 0 && !item.status)) {
+                          statusNode = (
+                            <span className="text-[9px] bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded font-bold border border-blue-100 inline-flex items-center gap-1">
+                              <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse shrink-0"></span>
+                              <span>{effectiveQty > 1 ? `${effectiveQty}x ` : ''}⏳ {t("Pending")}</span>
+                            </span>
+                          );
+                        }
+
+                        if (statusNode || reducedBadge) {
+                          return (
+                            <span className="inline-flex items-center gap-1">
+                              {statusNode}
+                              {reducedBadge}
+                            </span>
+                          );
+                        }
+
+                        return null;
+                      })()}
+                      <button
+                        onClick={() => handleItemNoteClick(item)}
+                        disabled={isLocked || item.isCancelled}
+                        className="text-gray-400 hover:text-orange-500 transition-colors p-0.5"
+                        title={t("Add special note for this item")}
+                      >
+                        <Clipboard size={10} />
+                      </button>
+                    </div>
+                    {(item.orderedAt || item.createdAt || item.time || item.addedAt) && (
+                      <div className="text-[8.5px] text-gray-400 font-semibold mt-0.5 flex items-center gap-0.5">
+                        <span>🕒 {(() => {
+                          const d = new Date(item.orderedAt || item.createdAt || item.time || item.addedAt);
+                          return isNaN(d.getTime()) ? '' : d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+                        })()}</span>
+                      </div>
+                    )}
+                    {item.specialNote ? (
+                      <div
+                        onClick={() => handleItemNoteClick(item)}
+                        className="text-[9px] text-amber-600 font-bold cursor-pointer hover:underline mt-0.5 flex items-center gap-0.5 truncate"
+                      >
+                        <span>📝 {item.specialNote}</span>
+                      </div>
+                    ) : null}
+                  </div>
+
+                  {/* Quantity Controls */}
+                  <div className="flex items-center gap-0 w-[78px] shrink-0 bg-[#F7EFE2] rounded-lg overflow-hidden border border-[#E8DCCB]">
+                    <button
+                      type="button"
+                      onClick={() => updateQuantity(item.itemKey || item._id || item.name, -1)}
+                      disabled={isLocked || item.isCancelled}
+                      className="w-5 h-6 flex items-center justify-center text-[#64748b] hover:bg-[#F5E8D8] hover:text-red-500 disabled:opacity-50 transition-colors shrink-0">
+                      <Minus size={11} />
+                    </button>
                     <input
                       type="number"
-                      min="0"
-                      step="0.01"
-                      autoFocus
-                      value={editingPriceValue}
-                      onChange={(e) => setEditingPriceValue(e.target.value)}
-                      onBlur={() => {
-                        if (updateItemPrice) {
-                          const effectiveQty = item.quantity - (item.cancelledQuantity || 0);
-                          const newTotal = parseFloat(editingPriceValue);
-                          if (!isNaN(newTotal) && effectiveQty > 0) {
-                            updateItemPrice(item._id || item.name, newTotal / effectiveQty);
+                      min="0.01"
+                      step="any"
+                      disabled={isLocked || item.isCancelled}
+                      value={item.quantity - (item.cancelledQuantity || 0)}
+                      onWheel={(e) => e.target.blur()}
+                      onKeyDown={(e) => {
+                        if (e.key === '-' || e.key === 'e' || e.key === '+') e.preventDefault();
+                      }}
+                      onChange={(e) => {
+                        const raw = e.target.value;
+                        if (raw === '') return;
+                        const parsed = parseFloat(raw);
+                        if (!isNaN(parsed) && parsed >= 0) {
+                          const currentActive = item.quantity - (item.cancelledQuantity || 0);
+                          const delta = parsed - currentActive;
+                          if (delta !== 0) {
+                            updateQuantity(item.itemKey || item._id || item.name, delta);
                           }
                         }
-                        setEditingPriceId(null);
                       }}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') { e.target.blur(); }
-                        if (e.key === 'Escape') { setEditingPriceId(null); }
-                      }}
-                      className="w-full text-right text-[11px] font-bold text-primary bg-primary/10 border border-primary/30 rounded px-1 py-0.5 focus:outline-none"
+                      className={`w-9 h-6 bg-[#FDFBF7] text-center font-bold text-[11px] text-[#1e293b] focus:outline-none border-x border-[#E8DCCB] p-0 ${item.isCancelled ? 'line-through text-slate-500' : ''}`}
                     />
-                  ) : (
-                    <div
-                      className={`text-[11px] font-bold text-text-muted cursor-pointer hover:text-primary hover:underline transition-colors ${item.isCancelled ? 'line-through text-gray-400' : ''}`}
-                      title="Click to edit total price"
-                      onClick={() => {
-                        if (!isLocked && !item.isCancelled) {
-                          setEditingPriceId(item._id || item.name);
-                          const effectiveQty = item.quantity - (item.cancelledQuantity || 0);
-                          setEditingPriceValue(String((item.price * effectiveQty).toFixed(0)));
-                        }
-                      }}
-                    >
-                      {(item.price * (item.quantity - (item.cancelledQuantity || 0))).toFixed(0)}
-                      {!isLocked && !item.isCancelled && <Edit3 size={8} className="inline ml-0.5 opacity-40" />}
-                    </div>
-                  )}
+                    <button
+                      type="button"
+                      onClick={() => updateQuantity(item.itemKey || item._id || item.name, 1)}
+                      disabled={isLocked || item.isCancelled}
+                      className="w-5 h-6 flex items-center justify-center text-[#64748b] hover:bg-[#F5E8D8] hover:text-emerald-600 disabled:opacity-50 transition-colors shrink-0">
+                      <Plus size={11} />
+                    </button>
+                  </div>
+
+                  {/* Price - editable on click */}
+                  <div className="w-[50px] shrink-0 text-right flex flex-col justify-center h-6 pr-1">
+                    {editingPriceId === (item._id || item.name) ? (
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        autoFocus
+                        value={editingPriceValue}
+                        onChange={(e) => setEditingPriceValue(e.target.value)}
+                        onBlur={() => {
+                          if (updateItemPrice) {
+                            const effectiveQty = item.quantity - (item.cancelledQuantity || 0);
+                            const newTotal = parseFloat(editingPriceValue);
+                            if (!isNaN(newTotal) && effectiveQty > 0) {
+                              updateItemPrice(item._id || item.name, newTotal / effectiveQty);
+                            }
+                          }
+                          setEditingPriceId(null);
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') { e.target.blur(); }
+                          if (e.key === 'Escape') { setEditingPriceId(null); }
+                        }}
+                        className="w-full text-right text-[11px] font-bold text-primary bg-primary/10 border border-primary/30 rounded px-1 py-0.5 focus:outline-none"
+                      />
+                    ) : (
+                      <div
+                        className={`text-[11px] font-bold text-text-muted cursor-pointer hover:text-primary hover:underline transition-colors ${item.isCancelled ? 'line-through text-gray-400' : ''}`}
+                        title="Click to edit total price"
+                        onClick={() => {
+                          if (!isLocked && !item.isCancelled) {
+                            setEditingPriceId(item._id || item.name);
+                            const effectiveQty = item.quantity - (item.cancelledQuantity || 0);
+                            setEditingPriceValue(String((item.price * effectiveQty).toFixed(0)));
+                          }
+                        }}
+                      >
+                        {(item.price * (item.quantity - (item.cancelledQuantity || 0))).toFixed(0)}
+                        {!isLocked && !item.isCancelled && <Edit3 size={8} className="inline ml-0.5 opacity-40" />}
+                      </div>
+                    )}
+                  </div>
                 </div>
-              </div>
-            ))
+              ))}
+            </>
           )}
           <div ref={cartEndRef} />
         </div>

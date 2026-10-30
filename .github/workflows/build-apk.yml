@@ -6,6 +6,7 @@ on:
       - main
     paths:
       - 'frontend/**'
+      - 'Desktop/**'
       - '.github/workflows/build-apk.yml'
   workflow_dispatch:
 
