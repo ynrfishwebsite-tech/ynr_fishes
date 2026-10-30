@@ -73,10 +73,16 @@ jobs:
         working-directory: ./frontend
         run: npx cap sync android
 
-      - name: 🔑 Generate Release Keystore
+      - name: 🔑 Ensure Release Keystore
         working-directory: ./frontend/android
+        shell: pwsh
         run: |
-          keytool -genkeypair -v -keystore keystore.jks -alias msbilling -keyalg RSA -keysize 2048 -validity 10000 -storepass "msbilling2026" -keypass "msbilling2026" -dname "CN=YNR Fishes, OU=POS, O=YNR Fishes, L=City, ST=State, C=IN"
+          if (-not (Test-Path keystore.jks)) {
+            Write-Host "Generating fresh keystore.jks..."
+            & "$env:JAVA_HOME\bin\keytool" -genkeypair -v -keystore keystore.jks -alias msbilling -keyalg RSA -keysize 2048 -validity 10000 -storepass "msbilling2026" -keypass "msbilling2026" -dname "CN=YNR Fishes, OU=POS, O=YNR Fishes, L=City, ST=State, C=IN"
+          } else {
+            Write-Host "Using existing repository keystore.jks."
+          }
 
       - name: 🔨 Build Android APK (.apk)
         working-directory: ./frontend/android
@@ -102,3 +108,4 @@ jobs:
             frontend/android/app/build/outputs/apk/debug/*.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
