@@ -1,0 +1,79 @@
+{
+  "name": "ynr-fishes-pos",
+  "productName": "YNR Fishes POS",
+  "version": "6.0.110",
+  "description": "YNR Fishes Desktop POS Application",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "prebuild": "node build.js",
+    "dist": "npm run prebuild && electron-builder"
+  },
+  "build": {
+    "appId": "com.ynrfishes.pos",
+    "productName": "YNR Fishes POS",
+    "compression": "store",
+    "directories": {
+      "output": "dist"
+    },
+    "asarUnpack": [
+      "frontend/**/*"
+    ],
+    "files": [
+      "main.js",
+      "preload.js",
+      "package.json",
+      "icon.ico",
+      "icon.png",
+      "frontend/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "backend",
+        "to": "backend",
+        "filter": [
+          "**/*",
+          ".env",
+          "node_modules/**/*",
+          "!auth_info_baileys/**",
+          "!reports/**",
+          "!uploads/**",
+          "!logs/**"
+        ]
+      }
+    ],
+    "mac": {
+      "target": "dmg",
+      "icon": "icon.png",
+      "identity": null,
+      "artifactName": "MS-Billings-${version}.${ext}"
+    },
+    "win": {
+      "compression": "store",
+      "target": "nsis",
+      "icon": "icon.ico",
+      "artifactName": "YNR-Fishes-Setup-${version}.${ext}"
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": false,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "runAfterFinish": true,
+      "shortcutName": "YNR Fishes POS",
+      "installerIcon": "icon.ico",
+      "uninstallerIcon": "icon.ico",
+      "installerHeaderIcon": "icon.ico"
+    },
+    "publish": null
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2",
+    "electron": "^31.7.7",
+    "electron-builder": "^24.9.1"
+  },
+  "dependencies": {
+    "electron-updater": "^6.8.9"
+  }
+}

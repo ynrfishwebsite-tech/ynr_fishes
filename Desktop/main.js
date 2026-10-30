@@ -1,0 +1,1112 @@
+const { app, BrowserWindow, dialog, ipcMain, Menu, shell, Notification } = require('electron');
+
+// Ensure single instance lock to prevent quota database locking & access denied errors on Windows
+const gotTheLock = app.requestSingleInstanceLock();
+if (!gotTheLock) {
+  app.quit();
+} else {
+  app.on('second-instance', () => {
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.show();
+      mainWindow.focus();
+    }
+  });
+}
+
+app.commandLine.appendSwitch('enable-speech-dispatcher');
+app.commandLine.appendSwitch('use-fake-ui-for-media-stream');
+
+// Configure App User Model ID for Windows Start Menu, Taskbar & Notifications
+if (process.platform === 'win32') {
+  app.setAppUserModelId('com.mstechhive.ynrfishespos');
+}
+
+const path = require('path');
+const fs = require('fs');
+const os = require('os');
+const { spawn } = require('child_process');
+const { autoUpdater } = require('electron-updater');
+
+let mainWindow;
+let backendProcess;
+
+function createMenu() {
+  const isMac = process.platform === 'darwin';
+
+  const template = [
+    // { role: 'fileMenu' }
+    {
+      label: 'File',
+      submenu: [
+        {
+          label: 'Clear Cache & Restart',
+          click: async () => {
+            const { session } = require('electron');
+            try {
+              const ses = session.fromPartition('persist:msbillings');
+              await ses.clearCache();
+              await ses.clearStorageData({ storages: ['serviceworkers', 'cachestorage'] });
+            } catch (_) {}
+            try {
+              await session.defaultSession.clearCache();
+              await session.defaultSession.clearStorageData({ storages: ['serviceworkers', 'cachestorage'] });
+            } catch (_) {}
+            app.relaunch();
+            app.exit(0);
+          }
+        },
+        { type: 'separator' },
+        isMac ? { role: 'close' } : { role: 'quit' }
+      ]
+    },
+    // { role: 'editMenu' }
+    {
+      label: 'Edit',
+      submenu: [
+        { role: 'undo' },
+        { role: 'redo' },
+        { type: 'separator' },
+        { role: 'cut' },
+        { role: 'copy' },
+        { role: 'paste' },
+        ...(isMac
+          ? [
+            { role: 'pasteAndMatchStyle' },
+            { role: 'delete' },
+            { role: 'selectAll' },
+            { type: 'separator' },
+            {
+              label: 'Speech',
+              submenu: [
+                { role: 'startSpeaking' },
+                { role: 'stopSpeaking' }
+              ]
+            }
+          ]
+          : [
+            { role: 'delete' },
+            { type: 'separator' },
+            { role: 'selectAll' }
+          ])
+      ]
+    },
+    // { role: 'viewMenu' }
+    {
+      label: 'View',
+      submenu: [
+        {
+          label: 'Reload',
+          accelerator: 'CommandOrControl+R',
+          click: (item, focusedWindow) => {
+            if (focusedWindow) focusedWindow.reload();
+          }
+        },
+        {
+          label: 'Force Reload (Clear Cache)',
+          accelerator: 'CommandOrControl+Shift+R',
+          click: (item, focusedWindow) => {
+            if (focusedWindow) focusedWindow.webContents.reloadIgnoringCache();
+          }
+        },
+        {
+          label: 'Toggle Developer Tools',
+          accelerator: 'F12',
+          click: (item, focusedWindow) => {
+            if (focusedWindow) focusedWindow.webContents.toggleDevTools();
+          }
+        },
+        { type: 'separator' },
+        {
+          label: 'Force Sync with Cloud',
+          click: () => {
+            if (mainWindow) {
+              mainWindow.webContents.send('force-sync-cloud');
+            }
+          }
+        },
+        { type: 'separator' },
+        {
+          label: 'Zoom In',
+          accelerator: 'CommandOrControl+=',
+          click: (item, focusedWindow) => {
+            if (focusedWindow) {
+              const currentZoom = focusedWindow.webContents.getZoomLevel();
+              focusedWindow.webContents.setZoomLevel(Math.min(currentZoom + 0.5, 3));
+            }
+          }
+        },
+        {
+          label: 'Zoom Out',
+          accelerator: 'CommandOrControl+-',
+          click: (item, focusedWindow) => {
+            if (focusedWindow) {
+              const currentZoom = focusedWindow.webContents.getZoomLevel();
+              focusedWindow.webContents.setZoomLevel(Math.max(currentZoom - 0.5, -2));
+            }
+          }
+        },
+        {
+          label: 'Reset Zoom',
+          accelerator: 'CommandOrControl+0',
+          click: (item, focusedWindow) => {
+            if (focusedWindow) {
+              focusedWindow.webContents.setZoomLevel(0);
+            }
+          }
+        },
+        { type: 'separator' },
+        {
+          label: 'Toggle Full Screen',
+          accelerator: 'F11',
+          click: (item, focusedWindow) => {
+            if (focusedWindow) {
+              focusedWindow.setFullScreen(!focusedWindow.isFullScreen());
+            }
+          }
+        }
+      ]
+    },
+    // { role: 'windowMenu' }
+    {
+      label: 'Window',
+      submenu: [
+        { role: 'minimize' },
+        { role: 'zoom' },
+        ...(isMac
+          ? [
+            { type: 'separator' },
+            { role: 'front' },
+            { type: 'separator' },
+            { role: 'window' }
+          ]
+          : [
+            { role: 'close' }
+          ])
+      ]
+    },
+    {
+      role: 'help',
+      submenu: [
+        {
+          label: '📖 User Manual / Guide',
+          click: () => {
+            if (mainWindow) mainWindow.webContents.send('show-user-manual');
+          }
+        },
+        { type: 'separator' },
+        {
+          label: '📞 Contact Support',
+          click: () => {
+            if (mainWindow) mainWindow.webContents.send('show-contact-support');
+          }
+        },
+        { type: 'separator' },
+        {
+          label: '🔄 Check for Updates',
+          click: () => {
+            isManualUpdateCheck = true;
+            if (!app.isPackaged) {
+              dialog.showMessageBox({
+                type: 'info',
+                title: 'Check for Updates',
+                message: `You are currently running in Local Development / Test Mode (v${app.getVersion()}).\n\nLive GitHub auto-updates are active and operational in the installed production setup.`,
+                buttons: ['OK']
+              });
+              return;
+            }
+            if (mainWindow && !mainWindow.isDestroyed()) {
+              mainWindow.webContents.send('checking-for-update');
+            }
+            autoUpdater.checkForUpdates().catch((err) => {
+              // Let autoUpdater.on('error') handle ALL errors properly
+              // Do NOT show "up to date" here — it masks real update failures
+              console.error('[AutoUpdater] Manual menu check error:', err);
+            });
+          }
+        },
+        { type: 'separator' },
+        {
+          label: 'ℹ️ About MS Billing',
+          click: () => {
+            if (mainWindow) mainWindow.webContents.send('show-about', app.getVersion());
+          }
+        }
+      ]
+    }
+  ];
+
+  const menu = Menu.buildFromTemplate(template);
+  Menu.setApplicationMenu(menu);
+}
+
+function createWindow() {
+  const { session } = require('electron');
+  // Clean up any stale service workers/cache from persist:msbillings that could cause white screen freezes
+  try {
+    const ses = session.fromPartition('persist:msbillings');
+    ses.clearStorageData({ storages: ['serviceworkers', 'cachestorage'] }).catch(() => {});
+  } catch (_) {}
+
+  const appIcon = path.join(__dirname, process.platform === 'win32' ? 'icon.ico' : 'icon.png');
+  mainWindow = new BrowserWindow({
+    width: 1200,
+    height: 800,
+    icon: appIcon,
+    webPreferences: {
+      nodeIntegration: false,
+      contextIsolation: true,
+      webSecurity: false,
+      partition: 'persist:msbillings',
+      preload: path.join(__dirname, 'preload.js')
+    },
+    title: "YNR Fishes POS",
+    show: false // Wait until ready to show
+  });
+
+  // Preserve session data and local storage across app restarts
+
+  // Handle render load failures and automatically recover
+  mainWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription, validatedURL) => {
+    console.error(`[Renderer Fail-Load]: ${errorDescription} (${errorCode}) for ${validatedURL}`);
+    setTimeout(() => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.reloadIgnoringCache();
+      }
+    }, 1200);
+  });
+
+  // Log renderer console messages to userData/renderer.log
+  try {
+    const rendererLogPath = path.join(app.getPath('userData'), 'renderer.log');
+    const rendererLogStream = fs.createWriteStream(rendererLogPath, { flags: 'a' });
+    mainWindow.webContents.on('console-message', (event, level, message, line, sourceId) => {
+      rendererLogStream.write(`[${new Date().toISOString()}][LVL ${level}] ${message} (${sourceId}:${line})\n`);
+    });
+  } catch (_) {}
+
+  // Load the built static files
+  mainWindow.loadFile(path.join(__dirname, 'frontend/index.html'));
+
+  mainWindow.once('ready-to-show', () => {
+    mainWindow.show();
+    mainWindow.maximize();
+  });
+
+  mainWindow.on('closed', () => {
+    mainWindow = null;
+  });
+}
+
+let backendRestartCount = 0;
+const MAX_BACKEND_RESTARTS = 3;
+
+function startBackend() {
+  const { fork } = require('child_process');
+
+  // Check if app is packaged
+  const isPackaged = app.isPackaged;
+
+  // Path to backend:
+  // In development: ./backend
+  // In production: process.resourcesPath/backend (via extraResources in electron-builder)
+  let backendPath = isPackaged
+    ? path.join(process.resourcesPath, 'backend')
+    : path.join(__dirname, 'backend');
+
+  let serverPath = path.join(backendPath, 'server.js');
+
+  // When packaged by electron-builder, files inside ASAR cannot be executed directly.
+  // extraResources places backend outside ASAR at process.resourcesPath, so this is usually
+  // not needed — but kept as a safety net.
+  if (serverPath.includes('app.asar') && !serverPath.includes('app.asar.unpacked')) {
+    serverPath = serverPath.replace('app.asar', 'app.asar.unpacked');
+    backendPath = backendPath.replace('app.asar', 'app.asar.unpacked');
+  }
+
+  console.log(`[Backend] Starting from: ${serverPath}`);
+  console.log(`[Backend] CWD: ${backendPath}`);
+
+  const fs = require('fs');
+  const backendLogPath = path.join(app.getPath('userData'), 'backend.log');
+  let logStream = fs.createWriteStream(backendLogPath, { flags: 'a' });
+
+  // NODE_PATH tells Node.js where to find node_modules when using ESM imports
+  // This is critical for the bundled backend inside extraResources
+  const nodeModulesPath = path.join(backendPath, 'node_modules');
+
+  // Start the backend Node server using Electron's bundled Node process
+  backendProcess = fork(serverPath, [], {
+    cwd: backendPath,
+    env: {
+      ...process.env,
+      ELECTRON_RUN_AS_NODE: '1',
+      APP_USER_DATA_PATH: app.getPath('userData'),
+      NODE_PATH: nodeModulesPath
+    },
+    stdio: 'pipe'
+  });
+
+  backendProcess.stdout.on('data', (data) => {
+    logStream.write(data);
+    console.log(`[BACKEND]: ${data}`);
+  });
+
+  backendProcess.stderr.on('data', (data) => {
+    logStream.write(data);
+    console.error(`[BACKEND ERR]: ${data}`);
+  });
+
+  backendProcess.on('error', (err) => {
+    console.error('Failed to start backend server.', err);
+    dialog.showErrorBox('Backend Error', `Failed to start the local database server.\nPath: ${serverPath}\nError: ${err.message}\n\nPlease restart the application.`);
+  });
+
+  backendProcess.on('exit', (code, signal) => {
+    // Ignore clean shutdowns
+    if (code === 0 || code === null) return;
+
+    console.error(`[Backend] Process exited with code ${code}`);
+
+    // Auto-restart up to MAX_BACKEND_RESTARTS times silently before alerting user
+    if (backendRestartCount < MAX_BACKEND_RESTARTS) {
+      backendRestartCount++;
+      console.log(`[Backend] Auto-restarting (${backendRestartCount}/${MAX_BACKEND_RESTARTS})...`);
+      setTimeout(() => startBackend(), 2000);
+      return;
+    }
+
+    // After max restarts exceeded — show error with Restart button
+    try {
+      const tailLogs = fs.readFileSync(backendLogPath, 'utf8').split('\n').slice(-20).join('\n');
+      dialog.showMessageBox({
+        type: 'error',
+        title: 'Backend Crashed',
+        message: 'YNR Fishes POS server stopped unexpectedly.',
+        detail: `Exit Code: ${code}\n\nLast Logs:\n${tailLogs}\n\nPlease contact support with this screenshot.`,
+        buttons: ['Restart App', 'Close'],
+        defaultId: 0
+      }).then((result) => {
+        if (result.response === 0) {
+          backendRestartCount = 0;
+          app.relaunch();
+          app.exit(0);
+        }
+      });
+    } catch (e) {
+      dialog.showErrorBox('Backend Crashed', `The server crashed after ${MAX_BACKEND_RESTARTS} restart attempts.\nExit Code: ${code}\n\nPlease restart the application.`);
+    }
+  });
+}
+
+ipcMain.on('show-notification', (event, { title, body, icon }) => {
+  try {
+    if (Notification && Notification.isSupported()) {
+      const notifIcon = icon || path.join(__dirname, 'icon.png');
+      const notification = new Notification({
+        title: title || 'YNR Fishes POS',
+        body: body || 'New notification received',
+        icon: notifIcon,
+        silent: false
+      });
+      notification.on('click', () => {
+        if (mainWindow) {
+          if (mainWindow.isMinimized()) mainWindow.restore();
+          mainWindow.show();
+          mainWindow.focus();
+        }
+      });
+      notification.show();
+    }
+  } catch (err) {
+    console.error('[Notification] Native OS notification error:', err);
+  }
+});
+
+function ensureWindowsThermalPrinter() {
+  if (process.platform !== 'win32') return;
+  try {
+    const psScript = `
+      $ErrorActionPreference = 'SilentlyContinue'
+      $pnp = Get-PnpDevice -PresentOnly | Where-Object { $_.FriendlyName -like '*EPSON TM-T82*' -or $_.InstanceId -like '*EPSONTM-T82*' -or $_.InstanceId -like '*USB010*' } | Select-Object -First 1
+      if ($pnp) {
+        $printers = Get-Printer
+        $hasEpson = $printers | Where-Object { $_.Name -eq 'EPSON TM-T82X-S/A' }
+        if (-not $hasEpson) {
+          $driver = Get-PrinterDriver | Where-Object { $_.Name -eq 'POS80' -or $_.Name -eq 'Generic / Text Only' } | Select-Object -First 1
+          $driverName = if ($driver) { $driver.Name } else { 'Generic / Text Only' }
+          Add-Printer -Name 'EPSON TM-T82X-S/A' -DriverName $driverName -PortName 'USB010'
+          Write-Output 'REGISTERED_EPSON'
+        }
+      }
+    `;
+    const encoded = Buffer.from(psScript, 'utf16le').toString('base64');
+    const { exec } = require('child_process');
+    exec(`powershell -NoProfile -ExecutionPolicy Bypass -EncodedCommand ${encoded}`, (err, stdout) => {
+      if (!err && stdout && stdout.includes('REGISTERED_EPSON')) {
+        console.log('[Print] Auto-registered EPSON TM-T82X-S/A in Windows Print Spooler!');
+      }
+    });
+  } catch (err) {
+    console.warn('[Print] Auto-register printer check error:', err.message);
+  }
+}
+
+ipcMain.handle('get-printers', async () => {
+  ensureWindowsThermalPrinter();
+  if (mainWindow && mainWindow.webContents) {
+    try {
+      const printers = await mainWindow.webContents.getPrintersAsync();
+      console.log('[Print] Found OS printers:', printers.map(p => p.name));
+      return printers;
+    } catch (err) {
+      console.error('[Print] Failed to fetch OS printers:', err);
+      return [];
+    }
+  }
+  return [];
+});
+
+ipcMain.handle('get-connected-hardware', async () => {
+  if (process.platform !== 'win32') return [];
+  return new Promise((resolve) => {
+    try {
+      const psScript = `
+        $ErrorActionPreference = 'SilentlyContinue'
+        $pnp = Get-PnpDevice -PresentOnly | Where-Object { 
+          $_.Status -eq 'OK' -and 
+          ($_.InstanceId -match '^USBPRINT\\\\' -or ($_.InstanceId -match '^USB\\\\' -and $_.FriendlyName -notmatch 'Hub|Controller|Composite|Host|Bluetooth|Camera|Audio|Touchpad|Mouse|Keyboard|Wireless|Receiver|Adapter'))
+        }
+        $result = @()
+        foreach ($dev in $pnp) {
+          $name = $dev.FriendlyName
+          if (-not $name) { continue }
+          $port = 'USB'
+          if ($dev.InstanceId -match '(USB\\d+)') { $port = $matches[1] }
+          $result += [PSCustomObject]@{
+            name = $name
+            port = $port
+            type = 'usb-printer'
+            status = 'connected'
+            isPluggedIn = $true
+            displayName = if ($port -ne 'USB') { "$port ($name)" } else { $name }
+          }
+        }
+        $seen = @{}
+        $filtered = @()
+        foreach ($item in $result) {
+          $key = ($item.name).Trim().ToLower()
+          if (-not $seen.ContainsKey($key)) {
+            $seen[$key] = $item
+            $filtered += $item
+          } elseif ($item.port -match '^USB\\d+' -and $seen[$key].port -eq 'USB') {
+            $seen[$key].port = $item.port
+            $seen[$key].displayName = "$($item.port) ($($item.name))"
+          }
+        }
+        $filtered | ConvertTo-Json -Compress
+      `;
+      const encoded = Buffer.from(psScript, 'utf16le').toString('base64');
+      const { exec } = require('child_process');
+      exec(`powershell -NoProfile -ExecutionPolicy Bypass -EncodedCommand ${encoded}`, { timeout: 3500 }, (err, stdout) => {
+        if (err || !stdout || !stdout.trim()) return resolve([]);
+        try {
+          const parsed = JSON.parse(stdout.trim());
+          resolve(Array.isArray(parsed) ? parsed : [parsed]);
+        } catch (_) {
+          resolve([]);
+        }
+      });
+    } catch (e) {
+      resolve([]);
+    }
+  });
+});
+
+ipcMain.handle('print-raw', async (event, { base64Data, printerName, correlationId = "UNKNOWN", copies = 1 }) => {
+  return new Promise((resolve) => {
+    try {
+      if (!base64Data) {
+        return resolve({ success: false, reason: "No raw print data provided" });
+      }
+
+      const candidates = [
+        path.join(process.resourcesPath, 'backend', 'utils', 'RawPrinter.exe'),
+        path.join(process.resourcesPath, 'app.asar.unpacked', 'backend', 'utils', 'RawPrinter.exe'),
+        path.join(__dirname, 'backend', 'utils', 'RawPrinter.exe'),
+        path.join(__dirname, '..', 'Backend', 'utils', 'RawPrinter.exe'),
+        path.join(process.cwd(), 'Backend', 'utils', 'RawPrinter.exe'),
+        'C:\\Users\\busar\\AppData\\Local\\Programs\\restaurant-billing-desktop\\resources\\backend\\utils\\RawPrinter.exe'
+      ];
+      const exePath = candidates.find(c => fs.existsSync(c));
+
+      const psScriptCandidates = [
+        path.join(process.resourcesPath, 'backend', 'utils', 'rawPrint.ps1'),
+        path.join(__dirname, 'backend', 'utils', 'rawPrint.ps1'),
+        path.join(__dirname, '..', 'Backend', 'utils', 'rawPrint.ps1'),
+        path.join(process.cwd(), 'Backend', 'utils', 'rawPrint.ps1')
+      ];
+      const psScriptPath = psScriptCandidates.find(c => fs.existsSync(c));
+
+      let targetQueue = (printerName || '').trim();
+      if (!targetQueue || targetQueue.toLowerCase().includes('default')) {
+        targetQueue = 'EPSON TM-T82X-S/A';
+      }
+
+      const numCopies = Math.max(1, parseInt(copies, 10) || 1);
+      console.log(`[PrintRaw][${correlationId}] Native RAW print to queue: '${targetQueue}' (Copies: ${numCopies}, Exe: ${exePath}, PS: ${psScriptPath})`);
+
+      const tempDir = path.join(os.tmpdir(), 'msbillings_print');
+      if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir, { recursive: true });
+      const tempBin = path.join(tempDir, `raw_${Date.now()}_${Math.random().toString(36).slice(2, 7)}.bin`);
+      const singleBuf = Buffer.from(base64Data, 'base64');
+      const buf = numCopies > 1 ? Buffer.concat(Array(numCopies).fill(singleBuf)) : singleBuf;
+      fs.writeFileSync(tempBin, buf);
+
+      const runPsFallback = () => {
+        if (!psScriptPath) {
+          try { fs.unlinkSync(tempBin); } catch (_) {}
+          return resolve({ success: false, reason: "Raw printing tool not found" });
+        }
+        const { execFile } = require('child_process');
+        execFile('powershell', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', psScriptPath, '-Port', 'USB010', '-File', tempBin, '-PrinterName', targetQueue], { timeout: 10000 }, (psErr, psStdout, psStderr) => {
+          try { fs.unlinkSync(tempBin); } catch (_) {}
+          const psOut = (psStdout || psStderr || '').trim();
+          if (psOut.includes("SUCCESS")) {
+            console.log(`[PrintRaw][${correlationId}] PowerShell RAW print fallback SUCCESS to ${targetQueue}`);
+            return resolve({ success: true });
+          }
+          console.warn(`[PrintRaw][${correlationId}] PowerShell RAW print fallback returned: ${psOut}`);
+          resolve({ success: false, reason: psOut || psErr?.message });
+        });
+      };
+
+      if (exePath && fs.existsSync(exePath)) {
+        const { execFile } = require('child_process');
+        execFile(exePath, [targetQueue, tempBin], { timeout: 8000 }, (err, stdout, stderr) => {
+          const outStr = (stdout || stderr || '').trim();
+          if (outStr.includes("SUCCESS")) {
+            console.log(`[PrintRaw][${correlationId}] Native RAW print SUCCESS to ${targetQueue}`);
+            try { fs.unlinkSync(tempBin); } catch (_) {}
+            return resolve({ success: true });
+          }
+
+          console.warn(`[PrintRaw][${correlationId}] Attempt on ${targetQueue} returned: ${outStr}. Trying fallback queue...`);
+          const fallbackQueue = targetQueue === 'EPSON TM-T82X-S/A' ? 'MS_POS_USB010' : 'EPSON TM-T82X-S/A';
+          execFile(exePath, [fallbackQueue, tempBin], { timeout: 8000 }, (fErr, fOut, fStderr) => {
+            const fOutStr = (fOut || fStderr || '').trim();
+            if (fOutStr.includes("SUCCESS")) {
+              console.log(`[PrintRaw][${correlationId}] Fallback RAW print SUCCESS to ${fallbackQueue}`);
+              try { fs.unlinkSync(tempBin); } catch (_) {}
+              return resolve({ success: true });
+            }
+            console.warn(`[PrintRaw][${correlationId}] Binary failed, falling back to PowerShell rawPrint.ps1...`);
+            runPsFallback();
+          });
+        });
+      } else {
+        runPsFallback();
+      }
+    } catch (ex) {
+      console.error(`[PrintRaw][${correlationId}] Exception:`, ex);
+      resolve({ success: false, reason: ex.message });
+    }
+  });
+});
+
+ipcMain.handle('silent-print', async (event, { htmlContent, printerName, silent = true, correlationId = "UNKNOWN", copies = 1 }) => {
+  return new Promise((resolve) => {
+    const numCopies = Math.max(1, parseInt(copies, 10) || 1);
+    const e1 = performance.now();
+    console.log(`[PRINT-PERF][${correlationId}] EVENT=IPC_START TIME=0`);
+    console.log(`[PRINT-PERF][${correlationId}] EVENT=IPC_RECEIVED TIME=${e1}`);
+    console.log('[Print] silent-print received, silent:', silent, 'printer:', printerName || '(default)', 'copies:', numCopies);
+
+    console.log(`[PRINT-PERF][${correlationId}] EVENT=BROWSER_WINDOW_CREATE_START TIME=${performance.now()}`);
+    let printWindow = new BrowserWindow({
+      show: false, // Always keep print worker window hidden so extra preview window never pops up over main app
+      width: 320,
+      height: 800,
+      webPreferences: {
+        nodeIntegration: false,
+        contextIsolation: true
+      }
+    });
+    console.log(`[PRINT-PERF][${correlationId}] EVENT=BROWSER_WINDOW_CREATE_END TIME=${performance.now()}`);
+
+    if (!silent) {
+      printWindow.setMenuBarVisibility(false);
+    }
+    // Find all compiled CSS files
+    let cssContent = '';
+    try {
+      const assetsPath = path.join(__dirname, 'frontend/assets');
+      if (fs.existsSync(assetsPath)) {
+        const files = fs.readdirSync(assetsPath);
+        const cssFiles = files.filter(f => f.endsWith('.css'));
+        cssContent = cssFiles.map(f => fs.readFileSync(path.join(assetsPath, f), 'utf8')).join('\n');
+      }
+    } catch (err) {
+      console.error('[Print] Could not load CSS for printing:', err);
+    }
+
+    // Detect which web font is selected so we can inject a Google Fonts link.
+    // System fonts (Arial, Verdana, Tahoma, Georgia, Courier New, etc.) are available
+    // natively on Windows and need no external link. Only web-only fonts need injection.
+    const WEB_FONT_LINKS = {
+      roboto: '<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap">',
+      inter: '<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap">',
+      'space mono': '<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&display=swap">',
+      'roboto mono': '<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@400;700&display=swap">',
+    };
+    // Extract font-family from the receipt HTML's inline style (set by Invoice.jsx/KOT.jsx)
+    let googleFontsLink = '';
+    const fontFamilyMatch = htmlContent.match(/font-family\s*:\s*([^;"']+)/i);
+    if (fontFamilyMatch) {
+      const detectedFont = fontFamilyMatch[1].toLowerCase();
+      for (const [key, linkTag] of Object.entries(WEB_FONT_LINKS)) {
+        if (detectedFont.includes(key)) {
+          googleFontsLink = linkTag;
+          console.log('[Print] Injecting Google Font for:', key);
+          break;
+        }
+      }
+    }
+
+    const fullHtml = `
+    <!DOCTYPE html>
+    <html>
+      <head>
+        <meta charset="UTF-8">
+        <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+        ${googleFontsLink}
+        <style>${cssContent}</style>
+        <style>
+          * {
+            box-sizing: border-box !important;
+          }
+          html, body {
+            width: 72mm !important;
+            max-width: 72mm !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            background-color: #ffffff !important;
+            color: #000000 !important;
+            /* NOTE: font-family is intentionally NOT set here.
+               The receipt component already carries the user-selected font as an
+               inline style (fontFamily: receiptFont) set by Invoice.jsx / KOT.jsx.
+               Overriding it here would silently ignore the Bill & KOT Font Style setting. */
+          }
+          @page {
+            margin: 0 !important;
+          }
+          @media print {
+            html, body {
+              width: 72mm !important;
+              max-width: 72mm !important;
+              margin: 0 !important;
+              padding: 0 !important;
+              background-color: #ffffff !important;
+            }
+            .receipt-print, #invoice-print-area, #kot-print-area {
+              width: 100% !important;
+              max-width: 72mm !important;
+              margin: 0 !important;
+              padding: 0 !important;
+            }
+            .print\\:hidden { display: none !important; }
+            .print\\:p-0 { padding: 0 !important; }
+            .print\\:m-0 { margin: 0 !important; }
+            .print\\:shadow-none { box-shadow: none !important; }
+            .print\\:border-0 { border: 0 !important; }
+            .print\\:max-w-none { max-width: none !important; }
+          }
+          .receipt-print, #invoice-print-area, #kot-print-area {
+            width: 100% !important;
+            max-width: 72mm !important;
+            margin: 0 !important;
+            padding: 0 4px !important;
+          }
+        </style>
+      </head>
+      <body>
+        ${htmlContent}
+      </body>
+    </html>
+  `;
+
+    // Write HTML to a temp file to avoid data: URL size limits
+    const tempPath = path.join(app.getPath('temp'), 'msbilling-print.html');
+    try {
+      console.log(`[PRINT-PERF][${correlationId}] EVENT=TEMP_FILE_WRITE_START TIME=${performance.now()}`);
+      fs.writeFileSync(tempPath, fullHtml, 'utf8');
+      console.log(`[PRINT-PERF][${correlationId}] EVENT=TEMP_FILE_WRITE_END TIME=${performance.now()}`);
+      console.log(`[PRINT-PERF][${correlationId}] EVENT=LOAD_START TIME=${performance.now()}`);
+      printWindow.loadFile(tempPath);
+    } catch (err) {
+      console.error('[Print] Failed to write temp file, falling back to data URL:', err);
+      console.log(`[PRINT-PERF][${correlationId}] EVENT=LOAD_START TIME=${performance.now()}`);
+      printWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(fullHtml)}`);
+    }
+
+    printWindow.webContents.once('did-finish-load', () => {
+      console.log(`[PRINT-PERF][${correlationId}] EVENT=DID_FINISH_LOAD TIME=${performance.now()}`);
+      console.log('[Print] Print window loaded, sending to printer...');
+      // Slight delay to ensure CSS is fully painted before sending to printer spooler
+      console.log(`[PRINT-PERF][${correlationId}] EVENT=DELAY_START TIME=${performance.now()}`);
+      setTimeout(async () => {
+        console.log(`[PRINT-PERF][${correlationId}] EVENT=DELAY_END TIME=${performance.now()}`);
+        const printOptions = {
+          silent: silent,
+          margins: { marginType: 'none' },
+          pageSize: { width: 80000, height: 297000 },
+          landscape: false,
+          printBackground: true,
+          color: false
+        };
+        if (printerName && typeof printerName === 'string' && printerName.trim()) {
+          try {
+            const osPrinters = await printWindow.webContents.getPrintersAsync();
+            const cleanTarget = printerName.trim().toLowerCase();
+            const exists = osPrinters.find(p => p.name.toLowerCase() === cleanTarget);
+            if (exists) {
+              printOptions.deviceName = exists.name;
+            } else {
+              const matched = osPrinters.find(p =>
+                p.name.toLowerCase().includes(cleanTarget) ||
+                cleanTarget.includes(p.name.toLowerCase())
+              );
+              if (matched) {
+                console.log(`[Print] Matched partial printer name: '${printerName}' -> '${matched.name}'`);
+                printOptions.deviceName = matched.name;
+              } else {
+                // Thermal printer fallback: If user requested Epson/POS/Thermal printer, find any matching OS thermal printer
+                const isThermalTarget = cleanTarget.includes('epson') || cleanTarget.includes('pos') || cleanTarget.includes('t82') || cleanTarget.includes('bill') || cleanTarget.includes('kot') || cleanTarget.includes('thermal');
+                const thermalPrinter = isThermalTarget ? osPrinters.find(p => {
+                  const n = p.name.toLowerCase();
+                  return n.includes('epson') || n.includes('pos80') || n.includes('ms_pos') || n.includes('t82') || n.includes('pos');
+                }) : null;
+
+                if (thermalPrinter) {
+                  console.log(`[Print] Resolved thermal fallback printer: '${thermalPrinter.name}' for request '${printerName}'`);
+                  printOptions.deviceName = thermalPrinter.name;
+                } else {
+                  console.warn(`[Print] Specified printer '${printerName}' not found in OS printers. Available printers: ${osPrinters.map(p => p.name).join(', ')}. Falling back to default printer.`);
+                }
+              }
+            }
+          } catch (err) {
+            console.warn(`[Print] Could not enumerate printers: ${err.message}. Falling back to default printer.`);
+          }
+        }
+        console.log('[Print] Print options:', JSON.stringify(printOptions));
+        try {
+          console.log(`[PRINT-PERF][${correlationId}] EVENT=PRINT_API_START TIME=${performance.now()}`);
+          for (let i = 0; i < numCopies; i++) {
+            await printWindow.webContents.print(printOptions);
+            if (i < numCopies - 1) {
+              await new Promise(r => setTimeout(r, 250));
+            }
+          }
+          console.log(`[PRINT-PERF][${correlationId}] EVENT=PRINT_API_CALLBACK TIME=${performance.now()}`);
+          console.log('[Print] Print succeeded');
+          resolve({ success: true });
+        } catch (err) {
+          console.log('[Print] Print failed:', err);
+          resolve({ success: false, reason: err.message || err.toString() });
+        } finally {
+          if (!printWindow.isDestroyed()) printWindow.close();
+          console.log(`[PRINT-PERF][${correlationId}] EVENT=WINDOW_DESTROY TIME=${performance.now()}`);
+          try { fs.unlinkSync(tempPath); } catch (e) { }
+        }
+      }, 500);
+    });
+  });
+
+  printWindow.webContents.once('did-fail-load', (event, errorCode, errorDescription) => {
+    console.error('[Print] Window failed to load:', errorCode, errorDescription);
+    if (!printWindow.isDestroyed()) printWindow.close();
+    resolve({ success: false, reason: errorDescription });
+  });
+});
+
+ipcMain.on('print-preview', async (event, { htmlContent, printerName, billNumber }) => {
+  let pdfRenderWindow = new BrowserWindow({
+    show: false,
+    width: 800,
+    height: 1000,
+    webPreferences: { nodeIntegration: false, contextIsolation: true }
+  });
+
+  let cssContent = '';
+  try {
+    const assetsPath = path.join(__dirname, 'frontend/assets');
+    if (fs.existsSync(assetsPath)) {
+      const files = fs.readdirSync(assetsPath);
+      const cssFiles = files.filter(f => f.endsWith('.css'));
+      cssContent = cssFiles.map(f => fs.readFileSync(path.join(assetsPath, f), 'utf8')).join('\n');
+    }
+  } catch (err) {
+    console.error('Could not load CSS for print preview:', err);
+  }
+
+  const fullHtml = `
+    <!DOCTYPE html>
+    <html>
+      <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <style>${cssContent}</style>
+        <style>
+          @page {
+            size: A4 portrait;
+            margin: 10mm;
+          }
+          html, body {
+            width: 100% !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            background-color: #ffffff !important;
+            color: #000000 !important;
+          }
+          .flex { display: flex !important; }
+          .flex-col { display: flex !important; flex-direction: column !important; }
+          .flex-1 { flex: 1 1 0% !important; }
+          .items-start { align-items: flex-start !important; }
+          .items-center { align-items: center !important; }
+          .justify-between { justify-content: space-between !important; }
+          .text-right { text-align: right !important; }
+          .text-left { text-align: left !important; }
+          .text-center { text-align: center !important; }
+          .w-full { width: 100% !important; }
+          .w-8 { width: 32px !important; }
+          .w-14 { width: 56px !important; }
+          .w-16 { width: 64px !important; }
+          .w-24 { width: 96px !important; }
+
+          .receipt-print, #invoice-print-area {
+            width: 320px !important;
+            max-width: 320px !important;
+            min-width: 320px !important;
+            margin: 0 auto !important;
+            padding: 12px !important;
+            box-sizing: border-box !important;
+            background: #ffffff !important;
+          }
+          .receipt-print *, #invoice-print-area * {
+            box-sizing: border-box !important;
+          }
+          .receipt-print img, #invoice-print-area img, img {
+            max-width: 90px !important;
+            max-height: 60px !important;
+            width: auto !important;
+            height: auto !important;
+            object-fit: contain !important;
+            margin: 0 auto !important;
+            display: block !important;
+          }
+          .print\\:hidden { display: none !important; }
+        </style>
+      </head>
+      <body>
+        <table width="100%" border="0" cellspacing="0" cellpadding="0" style="width: 100%; margin: 0 auto; border-collapse: collapse;">
+          <tr>
+            <td align="center" valign="top" style="text-align: center; padding-top: 15px;">
+              <div style="width: 320px; max-width: 320px; margin: 0 auto; text-align: left; display: inline-block;">
+                ${htmlContent}
+              </div>
+            </td>
+          </tr>
+        </table>
+      </body>
+    </html>
+  `;
+
+  pdfRenderWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(fullHtml)}`);
+
+  pdfRenderWindow.webContents.once('did-finish-load', async () => {
+    try {
+      setTimeout(async () => {
+        const pdfBuffer = await pdfRenderWindow.webContents.printToPDF({
+          printBackground: true,
+          marginsType: 0,
+          pageSize: 'A4'
+        });
+        pdfRenderWindow.close();
+
+        const defaultFileName = billNumber ? `Bill_${billNumber}.pdf` : `Bill_${Date.now()}.pdf`;
+        const { filePath } = await dialog.showSaveDialog(mainWindow, {
+          title: 'Download Bill PDF',
+          defaultPath: path.join(app.getPath('downloads'), defaultFileName),
+          filters: [{ name: 'PDF Files', extensions: ['pdf'] }]
+        });
+
+        if (filePath) {
+          fs.writeFileSync(filePath, pdfBuffer);
+          console.log('[PDF] Bill successfully saved to:', filePath);
+        }
+      }, 400);
+    } catch (error) {
+      console.error('Failed to generate PDF:', error);
+      if (!pdfRenderWindow.isDestroyed()) pdfRenderWindow.close();
+    }
+  });
+});
+
+let isManualUpdateCheck = false;
+
+function setupAutoUpdater() {
+  autoUpdater.autoDownload = true;
+  autoUpdater.autoInstallOnAppQuit = true;
+  try {
+    autoUpdater.logger = console;
+  } catch (e) { }
+
+  autoUpdater.on('checking-for-update', () => {
+    console.log('[AutoUpdater] Checking for updates...');
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('checking-for-update');
+    }
+  });
+
+  autoUpdater.on('update-available', (info) => {
+    console.log('[AutoUpdater] Update available:', info ? info.version : 'new version');
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('update-available', info);
+    }
+  });
+
+  autoUpdater.on('download-progress', (progressObj) => {
+    const percent = progressObj.percent ? progressObj.percent.toFixed(1) : 0;
+    console.log(`[AutoUpdater] Download speed: ${progressObj.bytesPerSecond} - Downloaded ${percent}% (${progressObj.transferred}/${progressObj.total})`);
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('download-progress', progressObj);
+    }
+  });
+
+  autoUpdater.on('update-not-available', (info) => {
+    console.log('[AutoUpdater] Application is up to date.');
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('update-not-available', info);
+    }
+    if (isManualUpdateCheck) {
+      isManualUpdateCheck = false;
+      dialog.showMessageBox({
+        type: 'info',
+        title: 'Check for Updates',
+        message: `Your software is completely up to date! (Current version: v${app.getVersion()})`,
+        buttons: ['OK']
+      });
+    }
+  });
+
+  autoUpdater.on('update-downloaded', (info) => {
+    console.log('[AutoUpdater] Update downloaded silently:', info ? info.version : 'ready');
+    isManualUpdateCheck = false;
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('update-ready', info);
+    }
+  });
+
+  ipcMain.on('install-update', () => {
+    console.log('[AutoUpdater] User requested install update.');
+    autoUpdater.quitAndInstall(true, true);
+  });
+
+  ipcMain.on('check-for-updates', () => {
+    console.log('[AutoUpdater] Manual check triggered via IPC.');
+    isManualUpdateCheck = true;
+    autoUpdater.checkForUpdates().catch((err) => {
+      console.error('[AutoUpdater] Check error:', err);
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('update-error', err ? err.message : 'Failed to check updates');
+      }
+    });
+  });
+
+  autoUpdater.on('error', (err) => {
+    console.error('[AutoUpdater] Error:', err);
+    const errMsg = err?.message || '';
+
+    // 404 means no published release exists yet (draft or not yet released) — not a real error
+    const isNoRelease = errMsg.includes('404') || errMsg.includes('ENOTFOUND');
+
+    if (mainWindow && !mainWindow.isDestroyed() && !isNoRelease) {
+      mainWindow.webContents.send('update-error', errMsg || 'Unknown update error');
+    }
+    if (isManualUpdateCheck) {
+      isManualUpdateCheck = false;
+      if (isNoRelease) {
+        // Release not yet available / still being built — treat as up to date
+        dialog.showMessageBox({
+          type: 'info',
+          title: 'Check for Updates',
+          message: `Your software is up to date! (Current version: v${app.getVersion()})`,
+          buttons: ['OK']
+        });
+      } else {
+        dialog.showMessageBox({
+          type: 'warning',
+          title: 'Update Check',
+          message: `Could not check for updates.\nPlease ensure you have an active internet connection.`,
+          buttons: ['OK']
+        });
+      }
+    }
+  });
+}
+
+app.on('ready', async () => {
+  startBackend();
+
+  const { session } = require('electron');
+
+  session.defaultSession.setPermissionRequestHandler((_, permission, callback) => {
+    console.log(`[Permissions] Auto-granting permission request for '${permission}'`);
+    callback(true);
+  });
+
+  // Also handle permission checks (for navigator.permissions.query)
+  session.defaultSession.setPermissionCheckHandler((_, permission) => {
+    return true;
+  });
+
+  // Wait a little bit for the backend to initialize
+  setTimeout(() => {
+    createMenu();
+    createWindow();
+    setupAutoUpdater();
+
+    // Initial check for updates
+    autoUpdater.checkForUpdatesAndNotify().catch((err) => {
+      console.error('[AutoUpdater] Initial check error:', err);
+    });
+
+    // Check for updates every 3 minutes (180,000 ms) so new GitHub releases show up immediately
+    setInterval(() => {
+      console.log('[AutoUpdater] Scheduled update check running...');
+      autoUpdater.checkForUpdatesAndNotify().catch((err) => {
+        console.error('[AutoUpdater] Periodic check error:', err);
+      });
+    }, 3 * 60 * 1000);
+  }, 2000);
+});
+
+app.on('window-all-closed', () => {
+  if (process.platform !== 'darwin') {
+    app.quit();
+  }
+});
+
+app.on('will-quit', () => {
+  // Kill the backend process when the app closes
+  if (backendProcess) {
+    backendProcess.kill();
+  }
+});
+
+app.on('activate', () => {
+  if (mainWindow === null) {
+    createWindow();
+  }
+});

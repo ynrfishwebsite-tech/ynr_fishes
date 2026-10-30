@@ -1,0 +1,394 @@
+@import "tailwindcss";
+
+@theme {
+  --color-background: #fff8f0;
+  /* Warm cream */
+  --color-surface: #ffffff;
+  --color-surface-hover: #fef7f0;
+
+  /* Luxurious Restaurant Tones */
+  --color-primary: #d2691e;
+  /* Chocolate orange */
+  --color-primary-hover: #b8571f;
+
+  /* Warm Accents */
+  --color-secondary: #f4a261;
+  /* Sandy brown */
+  --color-accent: #e76f51;
+  /* Coral */
+  --color-accent-dark: #d85742;
+
+  /* Text Colors */
+  --color-text-main: #2d1810;
+  /* Darker for contrast */
+  --color-text-muted: #8b5a3c;
+
+  /* Functional Colors */
+  --color-border: #f5e6d3;
+  --color-success: #4caf50;
+  --color-danger: #f44336;
+  --color-warning: #ff9800;
+
+  --font-sans: 'Outfit', Inter, system-ui, sans-serif;
+}
+
+@layer base {
+
+  *,
+  ::before,
+  ::after {
+    box-sizing: border-box;
+  }
+
+  html {
+    width: 100%;
+    min-height: 100%;
+    min-height: 100dvh;
+    margin: 0;
+    padding: 0;
+    scroll-behavior: smooth;
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+  }
+
+  body {
+    width: 100%;
+    min-height: 100%;
+    min-height: 100dvh;
+    margin: 0;
+    padding: 0;
+    position: relative;
+    background-color: var(--color-background);
+    color: var(--color-text-main);
+    font-family: 'Outfit', Inter, system-ui, sans-serif !important;
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  #root {
+    width: 100%;
+    min-height: 100%;
+    min-height: 100dvh;
+    display: flex;
+    flex-direction: column;
+    position: relative;
+    margin: 0;
+    padding: 0;
+  }
+
+  main {
+    flex: 1 1 0%;
+    min-height: 0;
+    width: 100%;
+  }
+
+  input,
+  textarea,
+  button,
+  select {
+    font-family: 'Outfit', Inter, system-ui, sans-serif !important;
+    -webkit-user-select: auto;
+    user-select: auto;
+    -webkit-app-region: no-drag; /* Fixes input blocking in Electron .exe modals */
+    pointer-events: auto;
+  }
+
+  /* Disable spinner arrows and accidental increments globally on all number inputs */
+  input[type=number]::-webkit-inner-spin-button,
+  input[type=number]::-webkit-outer-spin-button {
+    -webkit-appearance: none !important;
+    margin: 0 !important;
+  }
+
+  input[type=number] {
+    -moz-appearance: textfield !important;
+    appearance: textfield !important;
+  }
+}
+
+/* Global Dynamic Viewport Unit Overrides for 100% responsive layout across all phone screens */
+.h-screen {
+  height: 100vh;
+  height: 100dvh !important;
+  max-height: 100dvh !important;
+}
+
+.min-h-screen {
+  min-height: 100vh;
+  min-height: 100dvh !important;
+}
+
+.max-h-screen {
+  max-height: 100vh;
+  max-height: 100dvh !important;
+}
+
+.h-dvh {
+  height: 100dvh !important;
+}
+
+.min-h-dvh {
+  min-height: 100dvh !important;
+}
+
+/* Universal Dynamic Header Safe Area for Curved, Notch & Cutout Screens */
+header {
+  padding-top: env(safe-area-inset-top, 0px) !important;
+  padding-left: max(0.5rem, env(safe-area-inset-left, 0px)) !important;
+  padding-right: max(0.5rem, env(safe-area-inset-right, 0px)) !important;
+  min-height: calc(3.75rem + env(safe-area-inset-top, 0px)) !important;
+  box-sizing: border-box !important;
+}
+
+/* Universal Dynamic Bottom Safe Area for Gesture Bars & Curved Navigation */
+footer,
+.safe-bottom {
+  padding-bottom: max(0.5rem, env(safe-area-inset-bottom, 0px)) !important;
+}
+
+.pb-safe {
+  padding-bottom: max(0.75rem, env(safe-area-inset-bottom, 0px)) !important;
+}
+
+/* Fix Native Date Input Calendar Picker Indicator Overlap & Misalignment */
+input[type="date"]::-webkit-calendar-picker-indicator {
+  cursor: pointer;
+  opacity: 0.75;
+  transition: opacity 0.2s ease;
+  margin-left: auto;
+  padding: 0 2px;
+}
+
+input[type="date"]::-webkit-calendar-picker-indicator:hover {
+  opacity: 1;
+}
+
+input[type="date"] {
+  min-width: 120px;
+}
+
+/* Touch Target Minimum Sizing & Helper Classes */
+.touch-target {
+  min-height: 44px;
+  min-width: 44px;
+}
+
+/* Fluid Responsive Typography & Container Safeguards */
+.responsive-container {
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+/* Scrollbar hide helper for horizontal scroll containers */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 0px;
+  height: 0px;
+}
+
+* {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  @apply bg-border/50 rounded-full hover:bg-primary/50 transition-colors;
+}
+
+/* Category horizontal scrollbar — visible and styled */
+.category-scroll {
+  scrollbar-width: thin !important;
+  scrollbar-color: var(--color-primary) transparent;
+  -ms-overflow-style: auto !important;
+}
+
+.category-scroll::-webkit-scrollbar {
+  height: 5px !important;
+  display: block !important;
+}
+
+.category-scroll::-webkit-scrollbar-track {
+  background: var(--color-border);
+  border-radius: 999px;
+}
+
+.category-scroll::-webkit-scrollbar-thumb {
+  background: var(--color-primary);
+  border-radius: 999px;
+}
+
+.category-scroll::-webkit-scrollbar-thumb:hover {
+  background: var(--color-primary-hover);
+}
+
+/* GLOBAL FIX: Make the entire date/time input field clickable to open the native calendar popup */
+input[type="date"],
+input[type="time"],
+input[type="datetime-local"],
+input[type="month"],
+input[type="week"] {
+  position: relative;
+}
+
+input[type="date"]::-webkit-calendar-picker-indicator,
+input[type="time"]::-webkit-calendar-picker-indicator,
+input[type="datetime-local"]::-webkit-calendar-picker-indicator,
+input[type="month"]::-webkit-calendar-picker-indicator,
+input[type="week"]::-webkit-calendar-picker-indicator {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  width: auto;
+  height: auto;
+  cursor: pointer;
+  /* Keeps the native calendar icon on the right side without stretching it */
+  background-position: right 1rem center;
+  background-size: 1.25rem;
+  background-repeat: no-repeat;
+}
+
+/* Print Styles for Dynamic Printers and QR Menu Codes */
+@media print {
+  @page {
+    size: portrait;
+    margin: 8mm 6mm !important;
+  }
+
+  /* When printing standard invoices/receipts */
+  body:has(.invoice-container) {
+    margin: 0 !important;
+    padding: 0 !important;
+    background: white;
+    visibility: hidden;
+  }
+
+  body:has(.invoice-container) .invoice-container {
+    visibility: visible;
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: auto;
+    background: white !important;
+  }
+
+  /* When printing QR Code Sheets: Allow multi-page natural flow */
+  body:has(.qr-print-container) {
+    visibility: visible !important;
+    height: auto !important;
+    overflow: visible !important;
+    position: static !important;
+    background: white !important;
+  }
+
+  .receipt-print {
+    visibility: visible;
+    margin: 0 auto !important;
+    padding: 2mm !important;
+    box-shadow: none !important;
+    border: none !important;
+    color: #000 !important;
+  }
+
+  .receipt-print * {
+    color: #000 !important;
+  }
+
+  /* Force hidden elements to stay hidden */
+  .print\:hidden {
+    display: none !important;
+    visibility: hidden !important;
+  }
+}
+
+/* Prevent Chrome/Edge browser password manager autofill on search inputs */
+input[type="search"]::-webkit-search-decoration,
+input[type="search"]::-webkit-search-cancel-button,
+input[type="search"]::-webkit-search-results-button,
+input[type="search"]::-webkit-search-results-decoration {
+  -webkit-appearance: none;
+}
+
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus {
+  -webkit-box-shadow: 0 0 0px 1000px #ffffff inset !important;
+  transition: background-color 5000s ease-in-out 0s;
+}
+
+/* WhatsApp Dynamic Sending Button Animations */
+@keyframes wa-shimmer {
+  0% {
+    transform: translateX(-100%);
+  }
+
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+@keyframes wa-pulse-ring {
+  0% {
+    transform: scale(0.98);
+    opacity: 0.9;
+    box-shadow: 0 0 0 0 rgba(37, 211, 102, 0.7);
+  }
+
+  50% {
+    transform: scale(1.02);
+    opacity: 1;
+    box-shadow: 0 0 20px 6px rgba(37, 211, 102, 0.4);
+  }
+
+  100% {
+    transform: scale(0.98);
+    opacity: 0.9;
+    box-shadow: 0 0 0 0 rgba(37, 211, 102, 0.7);
+  }
+}
+
+@keyframes wa-progress-strip {
+  0% {
+    left: -100%;
+    width: 50%;
+  }
+
+  50% {
+    left: 25%;
+    width: 75%;
+  }
+
+  100% {
+    left: 100%;
+    width: 50%;
+  }
+}
+
+.animate-wa-shimmer {
+  animation: wa-shimmer 2s infinite linear;
+}
+
+.animate-wa-pulse-ring {
+  animation: wa-pulse-ring 1.5s infinite ease-in-out;
+}
+
+.animate-wa-progress {
+  animation: wa-progress-strip 1.6s infinite ease-in-out;
+}

@@ -1,0 +1,157 @@
+/* ==========================================================================
+   Gallery Section Styling
+   ========================================================================== */
+
+.gallery-section {
+  position: relative;
+  width: 100%;
+  padding: 6rem 2rem 8rem;
+  background-color: var(--ocean-abyss);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  overflow: hidden;
+  z-index: 10;
+}
+
+.gallery-container {
+  max-width: 1200px;
+  width: 100%;
+  position: relative;
+  z-index: 2;
+  text-align: center;
+}
+
+.gallery-subtitle {
+  font-family: var(--font-sans);
+  color: var(--text-soft);
+  font-size: 1.1rem;
+  margin-top: -2rem;
+  margin-bottom: 4rem;
+  letter-spacing: 0.05em;
+}
+
+/* BSS Masonry Grid */
+.gallery-masonry {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  grid-auto-rows: 250px;
+  gap: 1.5rem;
+}
+
+.gallery-item {
+  position: relative;
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--ocean-deep);
+  box-shadow: 0 10px 20px rgba(0, 0, 0, 0.05);
+  border: 1px solid var(--ocean-depth-2);
+  transition: transform 0.4s ease, box-shadow 0.4s ease;
+  cursor: pointer;
+}
+
+.gallery-item.large {
+  grid-row: span 2;
+  grid-column: span 2;
+}
+.gallery-item.medium {
+  grid-row: span 2;
+}
+@media (max-width: 768px) {
+  .gallery-section {
+    padding: 3rem 3px 4rem;
+  }
+  .gallery-masonry {
+    gap: 0.5rem;
+    grid-auto-rows: 200px;
+  }
+  .gallery-item.large {
+    grid-column: span 1;
+  }
+  .gallery-subtitle {
+    margin-bottom: 2rem;
+  }
+  .gallery-caption {
+    padding: 1rem 0.8rem 0.8rem;
+  }
+  .gallery-caption h4 {
+    font-size: 1rem;
+  }
+}
+
+.gallery-item:hover {
+  transform: translateY(-8px);
+  box-shadow: 0 15px 30px rgba(0, 0, 0, 0.1), 0 0 15px rgba(0, 0, 0, 0.05);
+  border-color: var(--ocean-current);
+}
+
+.gallery-img-placeholder {
+  width: 100%;
+  height: 100%;
+  background: var(--ocean-deep);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  transition: background 0.4s ease;
+}
+
+.gallery-item:hover .gallery-img-placeholder {
+  background: var(--ocean-depth-2);
+}
+
+.placeholder-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+  color: var(--text-muted);
+  transition: color 0.4s ease;
+}
+
+.gallery-item:hover .placeholder-content {
+  color: var(--text-primary);
+}
+
+.camera-icon {
+  width: 32px;
+  height: 32px;
+}
+
+.gallery-caption {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  padding: 1.5rem 1.2rem 1.2rem;
+  background: linear-gradient(to top, rgba(248, 248, 240, 0.95), transparent);
+  text-align: left;
+  transform: translateY(10px);
+  opacity: 0.9;
+  transition: all 0.4s ease;
+}
+
+.gallery-item:hover .gallery-caption {
+  transform: translateY(0);
+  opacity: 1;
+}
+
+.gallery-caption h4 {
+  font-family: var(--font-display);
+  color: var(--text-primary);
+  font-size: 1.2rem;
+  letter-spacing: 0.05em;
+  margin: 0;
+  text-shadow: none;
+}
+
+/* Base caustics for depth */
+.gallery-caustics {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  height: 300px;
+  background: radial-gradient(ellipse at bottom, rgba(14, 86, 114, 0.15) 0%, transparent 70%);
+  pointer-events: none;
+  z-index: 1;
+}

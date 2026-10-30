@@ -1,0 +1,868 @@
+/* ==========================================================================
+   YNR FISHES - SKEUOMORPHIC TACTILE HARDWARE CONSOLE STYLESHEET
+   Accurately crafted to mirror the retro-industrial terminal interface:
+   - Brushed Aluminum & Screws
+   - Saddle-Stitched Dark Cognac Leather
+   - 3D Glossy Candy Push-Buttons
+   - VFD / Nixie Digital Glowing Clock
+   - Analog Mechanical Odometer Counter
+   - Oscilloscope / Radar CRT Screen
+   - Pinned Masking-Tape Polaroid
+   ========================================================================== */
+
+/* Outer Industrial Chassis */
+.skeuo-terminal-shell {
+  background: #1e130c; /* Deep walnut benchtop */
+  background-image: 
+    radial-gradient(circle at 50% 0%, rgba(255, 255, 255, 0.04) 0%, transparent 60%),
+    linear-gradient(180deg, #2a1b12 0%, #170d07 100%);
+  padding: 12px;
+  min-height: 100vh;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+}
+
+.skeuo-terminal-enclosure {
+  background: #ded9cf;
+  border-radius: 20px;
+  border: 3px solid #8e9aaa;
+  box-shadow: 
+    inset 0 2px 4px rgba(255, 255, 255, 0.9),
+    inset 0 -3px 6px rgba(0, 0, 0, 0.4),
+    0 16px 40px rgba(0, 0, 0, 0.65);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  flex: 1;
+  position: relative;
+}
+
+/* Machined Bottom Bumper Tube */
+.skeuo-bottom-bumper {
+  height: 18px;
+  background: linear-gradient(180deg, #c7d1de 0%, #8391a3 40%, #526071 70%, #9aa7b7 100%);
+  border-top: 1px solid #475466;
+  border-bottom: 2px solid #2d3744;
+  box-shadow: inset 0 2px 4px rgba(255, 255, 255, 0.8), 0 4px 10px rgba(0, 0, 0, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 24px;
+}
+
+/* Screws & Rivets */
+.skeuo-screw {
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 35%, #ffffff 0%, #d1d5db 35%, #6b7280 75%, #374151 100%);
+  box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.9), 0 1px 3px rgba(0, 0, 0, 0.6);
+  position: relative;
+  display: inline-block;
+  shrink-0: 0;
+}
+.skeuo-screw::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 15%;
+  width: 70%;
+  height: 1.5px;
+  background: #1f2937;
+  transform: translateY(-50%) rotate(42deg);
+  box-shadow: 0 0.5px 0.5px rgba(255, 255, 255, 0.6);
+}
+.skeuo-screw.flat::before {
+  transform: translateY(-50%) rotate(0deg);
+}
+.skeuo-screw.vertical::before {
+  transform: translateY(-50%) rotate(90deg);
+}
+
+/* Top Brushed Aluminum Console Header */
+.skeuo-header-bar {
+  background: linear-gradient(180deg, #f5f7fa 0%, #d8e0ea 42%, #b5c2d3 50%, #9cb0c5 52%, #cdd6e2 75%, #f1f4f8 100%);
+  border-bottom: 2px solid #778598;
+  box-shadow: 
+    inset 0 1px 0 rgba(255, 255, 255, 0.95),
+    inset 0 -2px 4px rgba(0, 0, 0, 0.25),
+    0 4px 14px rgba(0, 0, 0, 0.18);
+  padding: 10px 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  position: relative;
+  z-index: 40;
+}
+
+/* Embossed Coin Badge */
+.skeuo-coin-badge {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 35%, #ffffff 0%, #d1d9e4 40%, #8fa0b5 80%, #5d6f83 100%);
+  border: 2px solid #cbd5e1;
+  box-shadow: 
+    inset 0 2px 3px rgba(255, 255, 255, 0.9),
+    inset 0 -2px 3px rgba(0, 0, 0, 0.5),
+    0 4px 8px rgba(0, 0, 0, 0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  overflow: hidden;
+  cursor: pointer;
+}
+.skeuo-coin-badge img {
+  width: 90%;
+  height: 90%;
+  object-fit: cover;
+  border-radius: 50%;
+  filter: contrast(1.1) brightness(0.96);
+}
+
+/* Dangling Cargo Fish Tag */
+.skeuo-cargo-tag {
+  background: linear-gradient(135deg, #1e3a8a 0%, #1e40af 100%);
+  border: 1px dashed rgba(255, 255, 255, 0.4);
+  color: #ffffff;
+  padding: 3px 10px 3px 20px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+  position: relative;
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.35);
+  display: inline-flex;
+  align-items: center;
+  margin-left: -6px;
+  transform: rotate(-2deg);
+}
+.skeuo-cargo-tag::before {
+  content: '';
+  position: absolute;
+  left: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #ef4444; /* Brass/red reinforcement eyelet */
+  box-shadow: inset 0 1px 1px #000, 0 0 0 1.5px #fca5a5;
+}
+
+/* Green Glass Dome Siren */
+.skeuo-dome-siren {
+  width: 24px;
+  height: 24px;
+  border-radius: 50% 50% 40% 40%;
+  background: radial-gradient(circle at 40% 28%, #a7f3d0 0%, #34d399 35%, #10b981 65%, #064e3b 100%);
+  border: 2px solid #4b5563;
+  box-shadow: 
+    inset 0 2px 4px rgba(255, 255, 255, 0.95),
+    0 0 14px rgba(52, 211, 153, 0.8),
+    0 3px 6px rgba(0, 0, 0, 0.4);
+  position: relative;
+  display: inline-block;
+  animation: skeuo-lamp-pulse 2.5s infinite alternate ease-in-out;
+}
+@keyframes skeuo-lamp-pulse {
+  0% { box-shadow: inset 0 2px 4px rgba(255, 255, 255, 0.95), 0 0 10px rgba(52, 211, 153, 0.6), 0 3px 6px rgba(0, 0, 0, 0.4); }
+  100% { box-shadow: inset 0 2px 4px rgba(255, 255, 255, 0.95), 0 0 20px rgba(16, 185, 129, 0.95), 0 3px 6px rgba(0, 0, 0, 0.4); }
+}
+
+/* Recessed Nixie / VFD Amber Glowing Digital Clock */
+.skeuo-nixie-clock {
+  background: #090c10;
+  border: 2px solid #5a677a;
+  border-radius: 8px;
+  padding: 4px 16px;
+  box-shadow: 
+    inset 0 3px 8px #000000,
+    inset 0 -1px 2px rgba(255, 255, 255, 0.3),
+    0 2px 4px rgba(0, 0, 0, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.skeuo-nixie-digits {
+  font-family: 'Courier New', Courier, monospace;
+  font-size: 19px;
+  font-weight: 900;
+  letter-spacing: 2.5px;
+  color: #fbbf24;
+  text-shadow: 
+    0 0 4px #fbbf24,
+    0 0 12px rgba(245, 158, 11, 0.8),
+    0 0 20px rgba(217, 119, 6, 0.6);
+  user-select: none;
+}
+
+/* Glossy 3D Tactile Candy Buttons */
+.skeuo-btn-orange {
+  background: linear-gradient(180deg, #ff9248 0%, #f97316 48%, #ea580c 52%, #c2410c 100%);
+  color: #ffffff;
+  border: 1px solid #9a3412;
+  border-radius: 20px;
+  padding: 8px 18px;
+  font-size: 13px;
+  font-weight: 800;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  cursor: pointer;
+  box-shadow: 
+    inset 0 1px 1px rgba(255, 255, 255, 0.8),
+    inset 0 -2px 3px rgba(0, 0, 0, 0.35),
+    0 4px 8px rgba(154, 52, 18, 0.45);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+  transition: all 0.1s ease;
+  user-select: none;
+}
+.skeuo-btn-orange:hover {
+  filter: brightness(1.06);
+}
+.skeuo-btn-orange:active {
+  transform: translateY(1.5px);
+  box-shadow: 
+    inset 0 2px 4px rgba(0, 0, 0, 0.5),
+    0 2px 4px rgba(154, 52, 18, 0.3);
+}
+
+.skeuo-btn-green {
+  background: linear-gradient(180deg, #4ade80 0%, #22c55e 48%, #16a34a 52%, #15803d 100%);
+  color: #ffffff;
+  border: 1px solid #14532d;
+  border-radius: 20px;
+  padding: 8px 18px;
+  font-size: 13px;
+  font-weight: 800;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  cursor: pointer;
+  box-shadow: 
+    inset 0 1px 1px rgba(255, 255, 255, 0.8),
+    inset 0 -2px 3px rgba(0, 0, 0, 0.35),
+    0 4px 8px rgba(20, 83, 45, 0.45);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+  transition: all 0.1s ease;
+  user-select: none;
+}
+.skeuo-btn-green:hover {
+  filter: brightness(1.06);
+}
+.skeuo-btn-green:active {
+  transform: translateY(1.5px);
+  box-shadow: 
+    inset 0 2px 4px rgba(0, 0, 0, 0.5),
+    0 2px 4px rgba(20, 83, 45, 0.3);
+}
+
+/* Recessed Metallic Toggle Slider (Alerts) */
+.skeuo-toggle-housing {
+  background: #0f141c;
+  border: 1.5px solid #64748b;
+  border-radius: 12px;
+  width: 44px;
+  height: 22px;
+  padding: 2px;
+  box-shadow: inset 0 2px 4px #000000;
+  position: relative;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+}
+.skeuo-toggle-knob {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 35%, #ffffff 0%, #cbd5e1 50%, #64748b 100%);
+  border: 1px solid #94a3b8;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
+  transform: translateX(20px);
+  transition: transform 0.2s ease;
+}
+
+/* Brushed Metal Signout Button */
+.skeuo-btn-metal {
+  background: linear-gradient(180deg, #f8fafc 0%, #e2e8f0 50%, #cbd5e1 100%);
+  color: #334155;
+  border: 1px solid #94a3b8;
+  border-radius: 10px;
+  padding: 6px 14px;
+  font-size: 12px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  box-shadow: 
+    inset 0 1px 0 rgba(255, 255, 255, 0.9),
+    0 2px 5px rgba(0, 0, 0, 0.15);
+  transition: all 0.1s ease;
+}
+.skeuo-btn-metal:hover {
+  background: linear-gradient(180deg, #ffffff 0%, #edf2f7 50%, #d8e2ec 100%);
+  color: #0f172a;
+}
+.skeuo-btn-metal:active {
+  transform: translateY(1px);
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+
+/* ==========================================================================
+   LEFT SIDEBAR: SADDLE-STITCHED DARK COGNAC LEATHER
+   ========================================================================== */
+.skeuo-leather-sidebar {
+  width: 216px;
+  min-width: 216px;
+  background: #2b170e;
+  background-image: 
+    radial-gradient(circle at 50% 20%, #3e2215 0%, #23120a 100%);
+  border-right: 3px solid #160a05;
+  box-shadow: 
+    inset -3px 0 8px rgba(0, 0, 0, 0.6),
+    inset 2px 0 4px rgba(255, 255, 255, 0.05);
+  padding: 16px 12px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  position: relative;
+  overflow-y: auto;
+}
+
+/* Saddle Stitch Line on edge */
+.skeuo-leather-sidebar::after {
+  content: '';
+  position: absolute;
+  top: 6px;
+  bottom: 6px;
+  right: 6px;
+  width: 1px;
+  border-right: 2px dashed #b88656;
+  opacity: 0.65;
+  filter: drop-shadow(1px 0 0.5px rgba(0, 0, 0, 0.8));
+  pointer-events: none;
+}
+.skeuo-leather-sidebar::before {
+  content: '';
+  position: absolute;
+  top: 6px;
+  bottom: 6px;
+  left: 6px;
+  width: 1px;
+  border-left: 2px dashed #b88656;
+  opacity: 0.65;
+  filter: drop-shadow(1px 0 0.5px rgba(0, 0, 0, 0.8));
+  pointer-events: none;
+}
+
+/* Active Nav Item - Embossed Cognac Leather Pill */
+.skeuo-nav-active {
+  background: linear-gradient(180deg, #aa5a24 0%, #873f14 50%, #6d310e 100%);
+  border: 1px solid #542207;
+  border-radius: 10px;
+  padding: 9px 12px;
+  color: #ffffff;
+  font-weight: 800;
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  cursor: pointer;
+  box-shadow: 
+    inset 0 1px 1px rgba(255, 255, 255, 0.45),
+    inset 0 -2px 3px rgba(0, 0, 0, 0.5),
+    0 4px 10px rgba(0, 0, 0, 0.55);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
+}
+
+/* Inactive Nav Items with Embossed Text and Hardware Toggle Sliders */
+.skeuo-nav-inactive {
+  background: transparent;
+  border: none;
+  border-radius: 8px;
+  padding: 8px 10px;
+  color: #d1b89d;
+  font-weight: 700;
+  font-size: 12.5px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  cursor: pointer;
+  text-shadow: 0 -1px 1px rgba(0, 0, 0, 0.8);
+  transition: all 0.15s ease;
+}
+.skeuo-nav-inactive:hover {
+  background: rgba(255, 255, 255, 0.05);
+  color: #fce7d2;
+}
+
+/* Mini Toggle Slider beside Nav Item */
+.skeuo-nav-toggle {
+  width: 32px;
+  height: 14px;
+  border-radius: 7px;
+  background: #170b06;
+  border: 1px solid #482c1e;
+  box-shadow: inset 0 1px 3px #000;
+  position: relative;
+}
+.skeuo-nav-toggle::after {
+  content: '';
+  position: absolute;
+  top: 1px;
+  left: 1px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 35%, #ffffff 0%, #cbd5e1 60%, #64748b 100%);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
+}
+
+/* Polaroid Photo with Masking Tape */
+.skeuo-polaroid-frame {
+  background: #fdfdfd;
+  border-radius: 3px;
+  padding: 6px 6px 14px 6px;
+  box-shadow: 
+    0 8px 20px rgba(0, 0, 0, 0.7),
+    0 2px 5px rgba(0, 0, 0, 0.4);
+  transform: rotate(-3deg);
+  margin-top: 18px;
+  position: relative;
+}
+.skeuo-masking-tape {
+  position: absolute;
+  top: -9px;
+  left: 50%;
+  transform: translateX(-50%) rotate(2deg);
+  width: 60px;
+  height: 18px;
+  background: rgba(254, 240, 138, 0.75);
+  border-left: 2px dashed rgba(202, 138, 4, 0.5);
+  border-right: 2px dashed rgba(202, 138, 4, 0.5);
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+  z-index: 5;
+}
+
+/* ==========================================================================
+   MAIN DASHBOARD CANVAS & INDUSTRIAL CARDS
+   ========================================================================== */
+.skeuo-deck-canvas {
+  background: #ece5d8;
+  background-image: 
+    radial-gradient(circle at 50% 0%, rgba(255, 255, 255, 0.35) 0%, transparent 80%),
+    linear-gradient(180deg, #f5efe4 0%, #e8e0d1 100%);
+  box-shadow: inset 0 4px 12px rgba(0, 0, 0, 0.12);
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px 24px;
+}
+
+/* Mechanical Analog Odometer Counter Roller */
+.skeuo-odometer-box {
+  background: #0d1117;
+  border: 2px solid #576579;
+  border-radius: 6px;
+  padding: 3px 8px;
+  box-shadow: 
+    inset 0 3px 6px #000000,
+    0 2px 4px rgba(0, 0, 0, 0.25);
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+.skeuo-odometer-wheel {
+  background: linear-gradient(180deg, #2b313a 0%, #0d1015 48%, #21262d 52%, #161b22 100%);
+  border: 1px solid #485465;
+  border-radius: 4px;
+  width: 22px;
+  height: 28px;
+  color: #ffffff;
+  font-family: 'Courier New', monospace;
+  font-size: 18px;
+  font-weight: 900;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.3), inset 0 -1px 2px #000;
+  user-select: none;
+}
+
+/* Top 4 Metric Hardware Panels */
+.skeuo-panel-aluminum {
+  background: linear-gradient(180deg, #f1f5f9 0%, #cbd5e1 48%, #94a3b8 52%, #cbd5e1 100%);
+  border: 2px solid #64748b;
+  border-radius: 16px;
+  padding: 14px 18px;
+  box-shadow: 
+    inset 0 1px 1px rgba(255, 255, 255, 0.95),
+    inset 0 -2px 3px rgba(0, 0, 0, 0.3),
+    0 6px 16px rgba(0, 0, 0, 0.18);
+  position: relative;
+  overflow: hidden;
+  min-height: 140px;
+}
+
+.skeuo-panel-green-enamel {
+  background: linear-gradient(180deg, #86efac 0%, #22c55e 35%, #15803d 75%, #14532d 100%);
+  border: 2px solid #14532d;
+  border-radius: 16px;
+  padding: 14px 18px;
+  box-shadow: 
+    inset 0 1px 1px rgba(255, 255, 255, 0.8),
+    inset 0 -2px 3px rgba(0, 0, 0, 0.4),
+    0 6px 16px rgba(0, 0, 0, 0.22);
+  position: relative;
+  overflow: hidden;
+  min-height: 140px;
+}
+
+.skeuo-panel-bronze {
+  background: linear-gradient(180deg, #d7bfa8 0%, #a27b5c 40%, #6f4e37 75%, #4a3425 100%);
+  border: 2px solid #4a3425;
+  border-radius: 16px;
+  padding: 14px 18px;
+  box-shadow: 
+    inset 0 1px 1px rgba(255, 255, 255, 0.8),
+    inset 0 -2px 3px rgba(0, 0, 0, 0.4),
+    0 6px 16px rgba(0, 0, 0, 0.22);
+  position: relative;
+  overflow: hidden;
+  min-height: 140px;
+}
+
+.skeuo-panel-purple {
+  background: linear-gradient(180deg, #c084fc 0%, #9333ea 40%, #6b21a8 75%, #4c1d95 100%);
+  border: 2px solid #4c1d95;
+  border-radius: 16px;
+  padding: 14px 18px;
+  box-shadow: 
+    inset 0 1px 1px rgba(255, 255, 255, 0.8),
+    inset 0 -2px 3px rgba(0, 0, 0, 0.4),
+    0 6px 16px rgba(0, 0, 0, 0.22);
+  position: relative;
+  overflow: hidden;
+  min-height: 140px;
+}
+
+/* Recessed LED Display inside purple panel */
+.skeuo-purple-led {
+  background: #0b0713;
+  border: 2px solid #4c1d95;
+  border-radius: 6px;
+  padding: 2px 10px;
+  color: #e879f9;
+  font-family: 'Courier New', monospace;
+  font-size: 18px;
+  font-weight: 900;
+  text-shadow: 0 0 6px #e879f9, 0 0 12px rgba(232, 121, 249, 0.8);
+  display: inline-flex;
+  align-items: center;
+  box-shadow: inset 0 2px 6px #000;
+}
+
+/* Heavy Machined Metal Chassis Panel (Bottom Consoles) */
+.skeuo-chassis-console {
+  background: linear-gradient(180deg, #f8fafc 0%, #e2e8f0 45%, #94a3b8 50%, #7d8c9e 55%, #c8d3e0 100%);
+  border: 3px solid #64748b;
+  border-radius: 18px;
+  box-shadow: 
+    inset 0 1.5px 0 rgba(255, 255, 255, 0.95),
+    inset 0 -2px 4px rgba(0, 0, 0, 0.35),
+    0 8px 24px rgba(0, 0, 0, 0.2);
+  padding: 18px;
+  position: relative;
+}
+
+/* Weathered Parchment Banner Header */
+.skeuo-parchment-banner {
+  background: linear-gradient(180deg, #fefae0 0%, #faedcd 100%);
+  border: 1px solid #d4a373;
+  border-radius: 6px;
+  padding: 6px 14px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.12);
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Sunken Cavity inside Top Selling Items */
+.skeuo-sunken-cavity {
+  background: #dfd8cb;
+  border: 2px solid #a3998b;
+  border-radius: 12px;
+  box-shadow: inset 0 4px 10px rgba(0, 0, 0, 0.3);
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 200px;
+}
+
+/* Weathered Note on Cardboard box */
+.skeuo-weathered-note {
+  background: #fbf3d5;
+  border: 1px dashed #c4a480;
+  border-radius: 4px;
+  padding: 6px 18px;
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.2);
+  text-align: center;
+  margin-top: 10px;
+  position: relative;
+}
+
+/* CRT Oscilloscope Screen for Sales Overview */
+.skeuo-crt-screen {
+  background: #09121a;
+  background-image: 
+    radial-gradient(circle at 50% 30%, rgba(20, 60, 80, 0.3) 0%, transparent 80%),
+    linear-gradient(rgba(14, 165, 233, 0.08) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(14, 165, 233, 0.08) 1px, transparent 1px);
+  background-size: 100% 100%, 20px 20px, 20px 20px;
+  border: 3px solid #203548;
+  border-radius: 12px;
+  box-shadow: 
+    inset 0 4px 14px #000000,
+    0 0 10px rgba(14, 165, 233, 0.15);
+  position: relative;
+  overflow: hidden;
+  padding: 14px;
+}
+
+/* CRT Glass Glare reflection across corner */
+.skeuo-crt-screen::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 140px;
+  height: 100px;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.12) 0%, transparent 60%);
+  pointer-events: none;
+}
+
+/* CRT Glowing HUD Tooltip */
+.skeuo-crt-hud {
+  background: rgba(9, 24, 38, 0.95);
+  border: 1px solid #0284c7;
+  border-radius: 6px;
+  padding: 5px 12px;
+  box-shadow: 0 0 10px rgba(2, 132, 199, 0.4);
+  color: #38bdf8;
+  font-family: monospace;
+  font-size: 11px;
+}
+
+
+
+/* ==========================================================================
+   ENHANCED 3D TACTILE BUTTON INTERACTIONS (PHYSICAL DEPRESSION)
+   ========================================================================== */
+.skeuo-btn-orange:active {
+  transform: translateY(2.5px) scale(0.97) !important;
+  box-shadow: 
+    inset 0 3px 6px rgba(0, 0, 0, 0.6),
+    0 1px 2px rgba(154, 52, 18, 0.2) !important;
+  filter: brightness(0.92) !important;
+}
+
+.skeuo-btn-green:active {
+  transform: translateY(2.5px) scale(0.97) !important;
+  box-shadow: 
+    inset 0 3px 6px rgba(0, 0, 0, 0.6),
+    0 1px 2px rgba(20, 83, 45, 0.2) !important;
+  filter: brightness(0.92) !important;
+}
+
+.skeuo-btn-metal:active {
+  transform: translateY(2px) scale(0.97) !important;
+  box-shadow: 
+    inset 0 2px 5px rgba(0, 0, 0, 0.4),
+    0 1px 2px rgba(0, 0, 0, 0.2) !important;
+}
+
+.skeuo-nav-active:active,
+.skeuo-nav-inactive:active {
+  transform: translateY(1.5px) scale(0.98);
+}
+
+/* ==========================================================================
+   RESPONSIVE GRIDS & MOBILE DRAWER STYLES
+   ========================================================================== */
+.skeuo-cards-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.skeuo-consoles-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 18px;
+}
+
+.skeuo-drawer-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(4px);
+  z-index: 999;
+  animation: skeuo-fade 0.2s ease;
+}
+
+@keyframes skeuo-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* Tablet view (769px - 1024px) */
+@media (max-width: 1024px) {
+  .skeuo-cards-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 14px;
+  }
+  .skeuo-consoles-grid {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+}
+
+/* Mobile view (<= 768px) */
+@media (max-width: 768px) {
+  .skeuo-header-bar {
+    padding: 8px 12px !important;
+    gap: 8px !important;
+  }
+
+  .skeuo-header-title {
+    font-size: 1.05rem !important;
+  }
+
+  .skeuo-header-subtitle {
+    display: none !important;
+  }
+
+  .skeuo-nixie-digits {
+    font-size: 13px !important;
+    letter-spacing: 1.5px !important;
+  }
+
+  .skeuo-nixie-clock {
+    padding: 3px 8px !important;
+  }
+
+  .skeuo-btn-orange,
+  .skeuo-btn-green {
+    padding: 6px 12px !important;
+    font-size: 11px !important;
+  }
+
+  .skeuo-btn-metal {
+    padding: 6px 10px !important;
+    font-size: 11px !important;
+  }
+
+  .skeuo-cards-grid {
+    grid-template-columns: 1fr !important;
+    gap: 12px !important;
+    margin-bottom: 14px !important;
+  }
+
+  @media (min-width: 480px) and (max-width: 768px) {
+    .skeuo-cards-grid {
+      grid-template-columns: repeat(2, 1fr) !important;
+    }
+  }
+
+  .skeuo-consoles-grid {
+    grid-template-columns: 1fr !important;
+    gap: 14px !important;
+  }
+
+  /* Slide-out mobile leather drawer */
+  .skeuo-leather-sidebar {
+    position: fixed !important;
+    top: 0 !important;
+    bottom: 0 !important;
+    left: 0 !important;
+    width: 260px !important;
+    max-width: 80vw !important;
+    z-index: 1000 !important;
+    transform: translateX(-100%);
+    transition: transform 0.28s cubic-bezier(0.4, 0, 0.2, 1) !important;
+    box-shadow: 8px 0 30px rgba(0, 0, 0, 0.85) !important;
+  }
+
+  .skeuo-leather-sidebar.mobile-open {
+    transform: translateX(0) !important;
+  }
+
+  .skeuo-deck-canvas {
+    padding: 12px 14px !important;
+  }
+}
+
+
+/* ==========================================================================
+   AUTHENTIC 3D PUSH-BUTTON PHYSICAL DEPRESSION (CLICK-IN ANIMATIONS)
+   ========================================================================== */
+.skeuo-fhd-btn-orange {
+  transition: transform 0.08s ease, filter 0.08s ease, box-shadow 0.08s ease;
+  cursor: pointer;
+  border-radius: 18px;
+}
+.skeuo-fhd-btn-orange:hover {
+  filter: brightness(1.1) drop-shadow(0 0 10px rgba(249, 115, 22, 0.7));
+}
+.skeuo-fhd-btn-orange:active {
+  transform: translateY(3.5px) scale(0.96) !important;
+  filter: brightness(0.9) contrast(1.1) !important;
+}
+
+.skeuo-fhd-btn-green {
+  transition: transform 0.08s ease, filter 0.08s ease, box-shadow 0.08s ease;
+  cursor: pointer;
+  border-radius: 18px;
+}
+.skeuo-fhd-btn-green:hover {
+  filter: brightness(1.1) drop-shadow(0 0 10px rgba(34, 197, 94, 0.7));
+}
+.skeuo-fhd-btn-green:active {
+  transform: translateY(3.5px) scale(0.96) !important;
+  filter: brightness(0.9) contrast(1.1) !important;
+}
+
+.skeuo-fhd-btn-metal {
+  transition: transform 0.08s ease, filter 0.08s ease;
+  cursor: pointer;
+  border-radius: 10px;
+}
+.skeuo-fhd-btn-metal:hover {
+  filter: brightness(1.12);
+}
+.skeuo-fhd-btn-metal:active {
+  transform: translateY(2.5px) scale(0.96) !important;
+  filter: brightness(0.92) !important;
+}
+
+.skeuo-sidebar-hotspot {
+  transition: background 0.12s ease, transform 0.08s ease;
+  cursor: pointer;
+  border-radius: 6px;
+}
+.skeuo-sidebar-hotspot:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+.skeuo-sidebar-hotspot:active {
+  transform: scale(0.98);
+}

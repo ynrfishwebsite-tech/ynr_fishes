@@ -1,0 +1,80 @@
+import mongoose from 'mongoose';
+
+const staffSchema = new mongoose.Schema({
+  name: {
+    type: String,
+    required: true,
+    trim: true
+  },
+  role: {
+    type: String,
+    enum: ['Billing Cashier', 'Fish Cutter', 'Manager', 'Helper', 'Driver', 'Other'],
+    default: 'Billing Cashier'
+  },
+  phone: {
+    type: String,
+    trim: true
+  },
+  pin: {
+    type: String, // 4-digit PIN for clock-in/out
+    required: true
+  },
+  baseSalary: {
+    type: Number,
+    default: 0
+  },
+  salaryType: {
+    type: String,
+    enum: ['Monthly', 'Hourly', 'Daily'],
+    default: 'Monthly'
+  },
+  status: {
+    type: String,
+    enum: ['Active', 'Inactive'],
+    default: 'Active'
+  },
+  assignedDepartment: {
+    type: String,
+    default: 'All'
+  },
+  assignedKitchenId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'PrinterConfig',
+    default: null
+  },
+  tenantId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Tenant', // If applicable, or just a string if they prefer
+    index: true
+  },
+  faceDescriptors: {
+    type: [[Number]], // Array of 128-dimensional embeddings
+    default: []
+  },
+  attendance: [{
+    date: { type: Date, required: true }, // Start of the day
+    clockIn: { type: Date },
+    clockOut: { type: Date },
+    clockInPhoto: { type: String }, // Base64 image
+    clockOutPhoto: { type: String }, // Base64 image
+    status: { type: String, enum: ['Present', 'Absent', 'Half-Day', 'Leave'], default: 'Present' },
+    confidence: { type: Number } // Added confidence score for face recognition
+  }],
+  biometricCredentials: [{
+    credentialID: { type: Buffer, required: true },
+    credentialPublicKey: { type: Buffer, required: true },
+    counter: { type: Number, required: true },
+    transports: [{ type: String }],
+    registeredAt: { type: Date, default: Date.now },
+    deviceName: { type: String }
+  }],
+  biometricLoginEnabled: { type: Boolean, default: false }
+}, {
+  timestamps: true
+});
+
+// Indexes for fast staff lookups and attendance history
+staffSchema.index({ status: 1, role: 1 });
+staffSchema.index({ 'attendance.date': -1 });
+
+export default mongoose.model('Staff', staffSchema);

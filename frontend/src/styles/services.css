@@ -1,0 +1,118 @@
+/* ==========================================================================
+   Services Section Styling
+   ========================================================================== */
+
+.services-section {
+  position: relative;
+  width: 100%;
+  padding: 6rem 2rem;
+  background-color: var(--ocean-abyss);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 10;
+}
+
+.services-container {
+  max-width: 1200px;
+  width: 100%;
+  text-align: center;
+}
+
+.services-lead-text {
+  font-family: var(--font-sans);
+  font-size: clamp(1rem, 2vw, 1.2rem);
+  color: var(--text-soft);
+  max-width: 800px;
+  margin: 0 auto 4rem auto;
+  line-height: 1.8;
+}
+
+.ports-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 2.5rem;
+}
+
+.port-card {
+  background: var(--ocean-deep);
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: 0 15px 35px rgba(0, 0, 0, 0.2);
+  transition: transform 0.4s ease, box-shadow 0.4s ease;
+  border: 1px solid var(--ocean-depth-2);
+  display: flex;
+  flex-direction: column;
+}
+
+.port-card:hover {
+  transform: translateY(-10px);
+  box-shadow: 0 20px 45px rgba(0, 0, 0, 0.3);
+  border-color: rgba(61, 192, 204, 0.3);
+}
+
+.port-img-wrapper {
+  position: relative;
+  width: 100%;
+  height: 220px;
+  overflow: hidden;
+}
+
+.port-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform 0.5s ease;
+}
+
+.port-card:hover .port-img {
+  transform: scale(1.08);
+}
+
+.port-overlay {
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: linear-gradient(to top, rgba(1, 8, 16, 0.9) 0%, transparent 60%);
+}
+
+.port-name {
+  position: absolute;
+  bottom: 15px;
+  left: 20px;
+  font-family: var(--font-display);
+  font-size: 1.4rem;
+  color: #fff;
+  font-weight: 700;
+  text-shadow: 0 2px 4px rgba(0,0,0,0.5);
+  margin: 0;
+  z-index: 2;
+}
+
+.port-content {
+  padding: 1.5rem 1.5rem 2rem;
+  text-align: left;
+  flex-grow: 1;
+}
+
+.port-desc {
+  font-family: var(--font-sans);
+  font-size: 0.95rem;
+  color: var(--text-soft);
+  line-height: 1.6;
+  margin: 0;
+}
+
+@media (max-width: 768px) {
+  .services-section {
+    padding: 4rem 1rem;
+  }
+  
+  .ports-grid {
+    grid-template-columns: 1fr;
+    gap: 1.5rem;
+  }
+
+  .port-img-wrapper {
+    height: 180px;
+  }
+}

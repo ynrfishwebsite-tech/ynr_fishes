@@ -1,0 +1,107 @@
+/* ==========================================================================
+   Vertical Scrolling Image Grid Hero Background
+   ========================================================================== */
+
+.v-scroll-hero {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background-color: #010A14;
+  z-index: 0;
+}
+
+.v-scroll-grid {
+  display: flex;
+  width: 110%;
+  height: 160vh;
+  transform: rotate(-10deg) scale(1.2); /* Dynamic angle */
+  transform-origin: center;
+  margin-left: -5%;
+  margin-top: -30vh;
+  gap: 1.5rem;
+}
+
+.v-scroll-column {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  width: 33.333%;
+  will-change: transform;
+}
+
+.v-scroll-img {
+  width: 100%;
+  border-radius: 16px;
+  object-fit: cover;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.6);
+  height: 35vh; 
+  filter: brightness(0.8) contrast(1.1) saturate(1.2); /* Slightly brighter but still punchy */
+}
+
+/* Animations */
+.scroll-up {
+  animation: scrollUp 45s linear infinite;
+}
+
+.scroll-down {
+  animation: scrollDown 50s linear infinite;
+}
+
+/* We translate by exactly half the height since the images are duplicated 4 times 
+   (2 full sets). -50% ensures it loops seamlessly back to the start. */
+@keyframes scrollUp {
+  0% { transform: translateY(0); }
+  100% { transform: translateY(-50%); }
+}
+
+@keyframes scrollDown {
+  0% { transform: translateY(-50%); }
+  100% { transform: translateY(0); }
+}
+
+.v-hero-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  /* Lighter dark gradient to ensure text readability while letting images show through */
+  background: radial-gradient(circle at center, rgba(1, 10, 20, 0.5) 0%, rgba(1, 10, 20, 0.85) 100%);
+  z-index: 1;
+}
+
+/* Dynamic Text Typing Effect */
+.dynamic-text-wrapper {
+  margin-top: 1rem;
+  height: 40px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.dynamic-text {
+  font-family: var(--font-sans);
+  font-size: 1.2rem;
+  font-weight: 600;
+  color: var(--ocean-aqua-soft);
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+}
+
+.typing-cursor {
+  display: inline-block;
+  width: 2px;
+  height: 1.2rem;
+  background-color: var(--gold-accent);
+  margin-left: 6px;
+  animation: blink 1s step-end infinite;
+  vertical-align: middle;
+}
+
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}

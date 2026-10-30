@@ -1,0 +1,361 @@
+import dns from 'dns';
+try {
+  dns.setServers(['8.8.8.8', '1.1.1.1']);
+} catch (e) { }
+
+import mongoose from 'mongoose';
+import MenuDefault from '../../models/catalog/Menu.js';
+import BillDefault from '../../models/billing/Bill.js';
+import SettingDefault from '../../models/system/Setting.js';
+import UserDefault from '../../models/auth/User.js';
+import CategoryDefault from '../../models/catalog/Category.js';
+import ExpenseDefault from '../../models/finance/Expense.js';
+import CalculationHistoryDefault from '../../models/finance/CalculationHistory.js';
+const FloorSchema = new mongoose.Schema({ name: String }, { strict: false });
+const FloorDefault = { schema: FloorSchema };
+const StockLogSchema = new mongoose.Schema({ name: String }, { strict: false });
+const StockLogDefault = { schema: StockLogSchema };
+import StaffDefault from '../../models/operations/Staff.js';
+import CustomerDefault from '../../models/crm/Customer.js';
+import TaxDefault from '../../models/system/Tax.js';
+import DiscountDefault from '../../models/system/Discount.js';
+import CashLogDefault from '../../models/finance/CashLog.js';
+import CreditAccountDefault from '../../models/finance/CreditAccount.js';
+import FeedbackDefault from '../../models/crm/Feedback.js';
+import PrinterConfigDefault from '../../models/operations/PrinterConfig.js';
+import OnlineConfigDefault from '../../models/system/OnlineConfig.js';
+const LoyaltyConfigSchema = new mongoose.Schema({ name: String }, { strict: false });
+const LoyaltyConfigDefault = { schema: LoyaltyConfigSchema };
+import { NotificationDefault } from '../../models/communication/Notification.js';
+import WhatsAppAuthDefault from '../../models/communication/WhatsAppAuth.js';
+import CampaignDefault from '../../models/communication/Campaign.js';
+
+const tenantModelsCache = new Map();
+
+// Map of clusterName -> mongoose.Connection (e.g. 'cluster1' -> Connection, 'cluster2' -> Connection)
+const clusterConnections = new Map();
+const clusterInitPromises = new Map();
+
+// Dynamic in-memory map: databaseName -> clusterName (e.g. 'client_test2_db' -> 'cluster1')
+const tenantClusterCache = new Map();
+
+export const getTenantClusterName = (databaseName) => {
+  return tenantClusterCache.get(databaseName) || null;
+};
+
+/**
+ * Reads all MONGO_URI* keys from process.env dynamically.
+ * Returns an array of { name, uri } for every configured cluster.
+ * e.g. [{ name:'cluster0', uri:'...' }, { name:'cluster1', uri:'...' }, ...]
+ * No cluster names are hardcoded — driven entirely by .env.
+ */
+const getAllClusterEnvs = () => {
+  const clusters = [];
+  // cluster0 is always MONGO_URI (the master/default)
+  if (process.env.MONGO_URI) {
+    clusters.push({ name: 'cluster0', uri: process.env.MONGO_URI });
+  }
+  // cluster1..N come from MONGO_URI_CLUSTER1, MONGO_URI_CLUSTER2, ...
+  Object.keys(process.env)
+    .filter(k => /^MONGO_URI_CLUSTER(\d+)$/.test(k))
+    .sort() // cluster1 before cluster2, etc.
+    .forEach(k => {
+      const num = k.match(/^MONGO_URI_CLUSTER(\d+)$/)[1];
+      clusters.push({ name: `cluster${num}`, uri: process.env[k] });
+    });
+  return clusters;
+};
+
+export const getClusterConnection = async (clusterName = 'cluster0') => {
+  const normalized = (clusterName || 'cluster0').toLowerCase().trim();
+  if (normalized === 'cluster0' || normalized === 'primary' || normalized === 'default') {
+    return mongoose.connection;
+  }
+
+  if (clusterConnections.has(normalized)) {
+    const conn = clusterConnections.get(normalized);
+    if (conn && conn.readyState === 1) return conn;
+  }
+
+  if (clusterInitPromises.has(normalized)) {
+    return clusterInitPromises.get(normalized);
+  }
+
+  const envKey = `MONGO_URI_${normalized.toUpperCase()}`;
+  const uri = process.env[envKey];
+
+  if (!uri) {
+    const errorMsg = `[tenantManager] No environment variable found for cluster '${normalized}' (${envKey}). Refusing to fall back to primary cluster to protect tenant data isolation!`;
+    console.error(errorMsg);
+    throw new Error(errorMsg);
+  }
+
+  const initPromise = (async () => {
+    try {
+      const conn = mongoose.createConnection(uri, {
+        maxPoolSize: 20,
+        serverSelectionTimeoutMS: 15000
+      });
+      await conn.asPromise();
+      console.log(`[tenantManager] Connected to ${normalized} pool successfully`);
+      clusterConnections.set(normalized, conn);
+      return conn;
+    } catch (err) {
+      console.error(`[tenantManager] Failed to connect to ${normalized} pool:`, err.message);
+      clusterInitPromises.delete(normalized);
+      // DO NOT fallback to primary mongoose.connection if an explicit tenant cluster is specified!
+      // Silently falling back to cluster0 corrupts tenant data and isolation.
+      throw err;
+    }
+  })();
+
+  clusterInitPromises.set(normalized, initPromise);
+  return initPromise;
+};
+
+// Backward compatibility alias for cluster1
+export const getCluster1Connection = () => getClusterConnection('cluster1');
+
+export const registerTenantCluster = (databaseName, clusterName) => {
+  if (databaseName) {
+    tenantClusterCache.set(databaseName, (clusterName || 'cluster0').toLowerCase().trim());
+  }
+};
+
+/**
+ * Pre-loads ALL tenant → cluster mappings from the master registry (mscurechain.clients).
+ * Call this once after connectDB() succeeds.
+ * After this runs, resolveClusterConnection() resolves in 0ms from cache for all known tenants.
+ * Cluster names come 100% from .env — nothing is hardcoded.
+ */
+export const buildTenantClusterMap = async () => {
+  try {
+    // Wait for default (cluster0/mscurechain) connection to be ready
+    if (mongoose.connection.readyState !== 1) {
+      await new Promise((resolve) => {
+        if (mongoose.connection.readyState === 1) return resolve();
+        mongoose.connection.once('open', resolve);
+        setTimeout(resolve, 8000);
+      });
+    }
+
+    // Primary registry: mscurechain.clients on cluster0 holds ALL tenant registrations
+    const clients = await mongoose.connection.db
+      ?.collection('clients')
+      ?.find({}, { projection: { databaseName: 1, cluster: 1 } })
+      .toArray()
+      .catch(() => []);
+
+    let count = 0;
+    for (const client of (clients || [])) {
+      if (client.databaseName && !tenantClusterCache.has(client.databaseName)) {
+        tenantClusterCache.set(
+          client.databaseName,
+          (client.cluster || 'cluster0').toLowerCase().trim()
+        );
+        count++;
+      }
+    }
+
+    if (count > 0) {
+      console.log(`[tenantManager] ✅ Pre-loaded ${count} tenant→cluster mappings from master registry`);
+    } else {
+      console.log('[tenantManager] No tenant registrations found in master registry (or already cached)');
+    }
+
+    // Pre-warm non-cluster0 pools in parallel so first requests are instant
+    const clustersToWarm = Array.from(new Set(tenantClusterCache.values())).filter(c => c !== 'cluster0');
+    await Promise.all(clustersToWarm.map(c => getClusterConnection(c).catch(err => {
+      console.warn(`[tenantManager] Warning pre-warming ${c}:`, err.message);
+    })));
+  } catch (e) {
+    console.warn('[tenantManager] buildTenantClusterMap error:', e.message);
+  }
+};
+
+const resolveClusterConnection = async (databaseName) => {
+  if (!databaseName || databaseName === 'mscurechain' || databaseName === 'default') {
+    return mongoose.connection;
+  }
+
+  // Step 1: Check in-memory cache — 0ms, fastest path
+  if (tenantClusterCache.has(databaseName)) {
+    const clusterName = tenantClusterCache.get(databaseName);
+    return await getClusterConnection(clusterName);
+  }
+
+  // Step 2: Query master registry (mscurechain.clients on cluster0)
+  // This is the authoritative source — all tenants are registered here with their cluster
+  try {
+    if (mongoose.connection.readyState === 1) {
+      const clientDoc = await mongoose.connection.db?.collection('clients')?.findOne(
+        { databaseName },
+        { projection: { cluster: 1 } }
+      );
+      if (clientDoc) {
+        const clusterName = (clientDoc.cluster || 'cluster0').toLowerCase().trim();
+        console.log(`[tenantManager] Resolved ${databaseName} → ${clusterName} from master registry`);
+        tenantClusterCache.set(databaseName, clusterName);
+        return await getClusterConnection(clusterName);
+      }
+    }
+  } catch (e) {
+    console.warn(`[tenantManager] Master registry lookup failed for ${databaseName}:`, e.message);
+  }
+
+  // Step 3: Scan ALL cluster registries dynamically from .env
+  // Tries each cluster's own default DB for a clients collection record
+  // This handles cases where the master registry doesn't have the entry yet
+  const allClusters = getAllClusterEnvs();
+  for (const { name: clusterName, uri } of allClusters) {
+    if (clusterName === 'cluster0') continue; // already checked above
+    try {
+      const conn = await getClusterConnection(clusterName);
+      if (!conn || conn.readyState !== 1) continue;
+      // Extract the default DB name from the cluster URI (e.g. msbillings_2)
+      const defaultDbName = uri.split('/').pop()?.split('?')[0]?.trim();
+      if (!defaultDbName) continue;
+      const db = conn.useDb(defaultDbName, { useCache: true });
+      const clientDoc = await db.collection('clients').findOne(
+        { databaseName },
+        { projection: { cluster: 1 } }
+      ).catch(() => null);
+      if (clientDoc) {
+        const resolvedCluster = (clientDoc.cluster || clusterName).toLowerCase().trim();
+        console.log(`[tenantManager] Resolved ${databaseName} → ${resolvedCluster} from ${clusterName} registry`);
+        tenantClusterCache.set(databaseName, resolvedCluster);
+        return await getClusterConnection(resolvedCluster);
+      }
+    } catch (e) {
+      // Skip unreachable clusters silently
+    }
+  }
+
+  // Step 4: Last resort — physically check which cluster has this DB by querying a known collection
+  // This bypasses the MongoDB Atlas restriction on listDatabases() for shared tiers (M0, M2, M5).
+  for (const { name: clusterName } of allClusters) {
+    try {
+      const conn = await getClusterConnection(clusterName);
+      if (!conn || conn.readyState !== 1) continue;
+      
+      const db = conn.useDb(databaseName, { useCache: true });
+      // If we can find at least one user (or if the query succeeds without auth errors), the DB exists here
+      const userDoc = await db.collection('users').findOne({}).catch(() => null);
+      
+      if (userDoc) {
+        console.log(`[tenantManager] Auto-detected ${databaseName} physically on ${clusterName} via direct collection query`);
+        tenantClusterCache.set(databaseName, clusterName);
+        return conn;
+      }
+    } catch (e) {
+      // Skip
+    }
+  }
+
+  if (mongoose.connection.readyState === 1) {
+    tenantClusterCache.set(databaseName, 'cluster0');
+    return mongoose.connection;
+  }
+
+  const errorMsg = `[tenantManager] FATAL: Could not resolve cluster for tenant '${databaseName}'! Refusing to fall back to primary cluster to protect tenant data isolation.`;
+  console.error(errorMsg);
+  throw new Error(errorMsg);
+};
+
+export const getTenantModels = async (databaseName) => {
+  // If databaseName is empty or 'default', route to the primary connected database (e.g. mscurechain)
+  if (!databaseName || databaseName === 'undefined' || databaseName === 'null' || databaseName === 'default') {
+    const primaryDb = mongoose.connection.db?.databaseName || 'mscurechain';
+    databaseName = primaryDb;
+  }
+
+  // Ensure default connection is established
+  if (mongoose.connection.readyState !== 1) {
+    if (mongoose.connection.readyState === 2) {
+      await new Promise((resolve) => {
+        if (mongoose.connection.readyState === 1) return resolve();
+        mongoose.connection.once('open', resolve);
+        setTimeout(resolve, 5000);
+      });
+    }
+  }
+
+  if (tenantModelsCache.has(databaseName)) {
+    return tenantModelsCache.get(databaseName);
+    
+  }
+
+  // Resolve target cluster connection pool (Cluster 0 or Cluster 1)
+  const targetClusterConn = await resolveClusterConnection(databaseName);
+  if (targetClusterConn && targetClusterConn.readyState !== 1) {
+    if (targetClusterConn.readyState === 2) {
+      await new Promise((resolve) => {
+        if (targetClusterConn.readyState === 1) return resolve();
+        targetClusterConn.once('open', resolve);
+        setTimeout(resolve, 5000);
+      });
+    }
+  }
+
+  // Switch to tenant DB instantly using target cluster connection pool (0ms delay)
+  const conn = targetClusterConn.useDb(databaseName, { useCache: true });
+  console.log(`[tenantManager] useDb called for ${databaseName}, readyState: ${conn.readyState}`);
+
+  // Compile models on this tenant connection if not already compiled
+  const Menu = conn.models.Menu || conn.model('Menu', MenuDefault.schema);
+  const Bill = conn.models.Bill || conn.model('Bill', BillDefault.schema);
+  const Setting = conn.models.Setting || conn.model('Setting', SettingDefault.schema);
+  const User = conn.models.User || conn.model('User', UserDefault.schema);
+  const Category = conn.models.Category || conn.model('Category', CategoryDefault.schema);
+  const Expense = conn.models.Expense || conn.model('Expense', ExpenseDefault.schema);
+  const StockLog = conn.models.StockLog || conn.model('StockLog', StockLogDefault.schema);
+  const Floor = conn.models.Floor || conn.model('Floor', FloorDefault.schema);
+  const Staff = conn.models.Staff || conn.model('Staff', StaffDefault.schema);
+  const Customer = conn.models.Customer || conn.model('Customer', CustomerDefault.schema);
+  const Tax = conn.models.Tax || conn.model('Tax', TaxDefault.schema);
+  const Discount = conn.models.Discount || conn.model('Discount', DiscountDefault.schema);
+  const CashLog = conn.models.CashLog || conn.model('CashLog', CashLogDefault.schema);
+  const CreditAccount = conn.models.CreditAccount || conn.model('CreditAccount', CreditAccountDefault.schema);
+  const Feedback = conn.models.Feedback || conn.model('Feedback', FeedbackDefault.schema);
+  const PrinterConfig = conn.models.PrinterConfig || conn.model('PrinterConfig', PrinterConfigDefault.schema);
+  const OnlineConfig = conn.models.OnlineConfig || conn.model('OnlineConfig', OnlineConfigDefault.schema);
+  const LoyaltyConfig = conn.models.LoyaltyConfig || conn.model('LoyaltyConfig', LoyaltyConfigDefault.schema);
+  const Notification = conn.models.Notification || conn.model('Notification', NotificationDefault.schema);
+  // Ensure the 24h TTL index is actually applied to existing tenant databases
+  Notification.syncIndexes().catch(() => {});
+
+  const WhatsAppAuth = conn.models.WhatsAppAuth || conn.model('WhatsAppAuth', WhatsAppAuthDefault.schema);
+  const Campaign = conn.models.Campaign || conn.model('Campaign', CampaignDefault.schema);
+
+  const CalculationHistory = conn.models.CalculationHistory || conn.model('CalculationHistory', CalculationHistoryDefault.schema);
+
+  const models = {
+    Menu,
+    Bill,
+    Setting,
+    User,
+    Category,
+    Expense,
+    CalculationHistory,
+    StockLog,
+    Floor,
+    Staff,
+    Customer,
+    Tax,
+    Discount,
+    CashLog,
+    CreditAccount,
+    Feedback,
+    PrinterConfig,
+    OnlineConfig,
+    LoyaltyConfig,
+    Notification,
+    WhatsAppAuth,
+    Campaign,
+    connection: conn
+  };
+
+  tenantModelsCache.set(databaseName, models);
+  return models;
+};
+

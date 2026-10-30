@@ -1,0 +1,483 @@
+import { useLanguage } from "../../../context/LanguageContext";import React, { useState, useEffect } from 'react';
+import { getDayBook, downloadDayBookExcel } from '../../../api/analytics/analytics';
+import { Calendar, Download, TrendingUp, TrendingDown, RefreshCw, CreditCard, Wallet, Smartphone, Banknote, Loader2 } from 'lucide-react';
+import Toast from '../system/Toast';
+import BackButton from '../common/BackButton';
+import { sendWhatsAppMessage, sendWhatsAppBill, getWhatsAppStatus } from '../../../api/communication/whatsapp';
+import api from '../../../api/system/axios';
+import { formatTime12 } from '../../../utils/formatters/timeFormat';
+
+const DayBook = ({ onNavigate, onGoBack }) => {const { t } = useLanguage();
+  const [date, setDate] = useState(new Date().toLocaleDateString('en-CA'));
+  const [data, setData] = useState({
+    summary: { totalSales: 0, salesCount: 0, totalExpenses: 0, expensesCount: 0 },
+    cashFlow: { cashIn: 0, cashOut: 0, onlineIn: 0, onlineOut: 0, onlineInBreakdown: [] },
+    transactions: []
+  });
+  const [loading, setLoading] = useState(true);
+  const [downloading, setDownloading] = useState(false);
+  const [sendingWhatsApp, setSendingWhatsApp] = useState(false);
+  const [toast, setToast] = useState(null);
+
+  useEffect(() => {
+    fetchDayBookData();
+  }, [date]);
+
+  const fetchDayBookData = async () => {
+    setLoading(true);
+    try {
+      const response = await getDayBook(date);
+      setData(response);
+    } catch (error) {
+      console.error('Error fetching daybook:', error);
+      setToast({ message: 'Failed to load DayBook data', type: 'error' });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDownloadExcel = async () => {
+    setDownloading(true);
+    try {
+      const user = JSON.parse(localStorage.getItem('user') || '{}');
+      await downloadDayBookExcel(date, user.username || 'YNR FISHES');
+    } catch (error) {
+      console.error('Error downloading excel:', error);
+      setToast({ message: 'Failed to download Excel report', type: 'error' });
+    } finally {
+      setDownloading(false);
+    }
+  };
+
+  const handleShareWhatsApp = async (customPhone = null) => {
+    if (sendingWhatsApp) return;
+    setSendingWhatsApp(true);
+    try {
+      let s = {};
+      try {
+        const configRes = await api.get('/config/info');
+        s = configRes.data?.restaurantSettings || configRes.data || {};
+      } catch (e) {
+        s = JSON.parse(localStorage.getItem('restaurantSettings') || '{}');
+      }
+      const userObj = JSON.parse(localStorage.getItem('user') || localStorage.getItem('ynr_user') || '{}');
+      const restName = (s.restaurantName || userObj.branch?.name || 'YNR Fishes').trim();
+      
+      let rawPhone = customPhone || s.whatsappNumber;
+      if (!rawPhone) {
+        try {
+          const waStatus = await getWhatsAppStatus();
+          if (waStatus?.status === 'CONNECTED' && waStatus?.connectedNumber) {
+            rawPhone = waStatus.connectedNumber;
+          }
+        } catch (e) {}
+      }
+      if (!rawPhone) {
+        rawPhone = s.phone || '';
+      }
+
+      let cleanPhone = String(rawPhone).replace(/[^0-9]/g, '');
+      if (cleanPhone.length === 10) {
+        cleanPhone = '91' + cleanPhone; // Default country code for 10-digit Indian numbers
+      }
+
+      if (!cleanPhone || cleanPhone.length < 10) {
+        setToast({ message: t("Please enter a valid WhatsApp number in POS Settings"), type: 'warning' });
+        return;
+      }
+
+      let formattedDate = date;
+      try {
+        const [y, m, d] = date.split('-');
+        if (y && m && d) formattedDate = `${d}/${m}/${y}`;
+      } catch (e) {}
+
+      const totalSales = Number(data.summary.totalSales || 0).toLocaleString('en-IN');
+      const salesCount = data.summary.salesCount || 0;
+      const totalExpenses = Number(data.summary.totalExpenses || 0).toLocaleString('en-IN');
+      const expensesCount = data.summary.expensesCount || 0;
+      const netCashFlow = Number((data.summary.totalSales || 0) - (data.summary.totalExpenses || 0)).toLocaleString('en-IN');
+
+      const cashIn = Number(data.cashFlow.cashIn || 0).toLocaleString('en-IN');
+      const onlineIn = Number(data.cashFlow.onlineIn || 0).toLocaleString('en-IN');
+      const cashOut = Number(data.cashFlow.cashOut || 0).toLocaleString('en-IN');
+      const onlineOut = Number(data.cashFlow.onlineOut || 0).toLocaleString('en-IN');
+
+      let onlineBreakdownText = '';
+      if (data.cashFlow.onlineInBreakdown && data.cashFlow.onlineInBreakdown.length > 0) {
+        onlineBreakdownText = data.cashFlow.onlineInBreakdown
+          .map(b => `  • ${b.app}: ₹${Number(b.amount || 0).toLocaleString('en-IN')}`)
+          .join('\n');
+      }
+
+      const READ_MORE = String.fromCharCode(8206).repeat(4001);
+
+      const msg = `📊 *DAILY SALES REPORT* 📊\n` +
+        `🏨 *${restName.toUpperCase()}* (${formattedDate})\n` +
+        READ_MORE + `\n` +
+        `━━━━━━━━━━━━━━━━━━━━\n` +
+        `💰 *SALES SUMMARY*\n` +
+        `• *Total Sales:* ₹${totalSales} (${salesCount} Bills)\n` +
+        `• *Total Expenses:* ₹${totalExpenses} (${expensesCount} Expenses)\n` +
+        `• *Net Cash Flow:* ₹${netCashFlow}\n\n` +
+        `📥 *PAYMENT IN*\n` +
+        `• *Cash In:* ₹${cashIn}\n` +
+        `• *Online In:* ₹${onlineIn}\n` +
+        (onlineBreakdownText ? `${onlineBreakdownText}\n` : '') +
+        `\n📤 *PAYMENT OUT*\n` +
+        `• *Cash Out:* ₹${cashOut}\n` +
+        `• *Online Out:* ₹${onlineOut}\n` +
+        `━━━━━━━━━━━━━━━━━━━━\n` +
+        `_Generated automatically via ${restName} Portal_`;
+
+      try {
+        let directRes;
+        try {
+          directRes = await api.post('/analytics/daybook/whatsapp', {
+            phone: cleanPhone,
+            date,
+            restaurantName: restName,
+            message: msg
+          });
+        } catch (firstErr) {
+          console.warn('DayBook WhatsApp post attempt 1 failed, retrying after auto-reconnect...', firstErr?.message);
+          await new Promise(r => setTimeout(r, 800));
+          directRes = await api.post('/analytics/daybook/whatsapp', {
+            phone: cleanPhone,
+            date,
+            restaurantName: restName,
+            message: msg
+          });
+        }
+
+        if (directRes.data && directRes.data.success) {
+          setToast({ message: `${t("DayBook Excel report sent automatically to")} +${cleanPhone} ${t("via WhatsApp! ✓")}`, type: 'success' });
+          return;
+        } else {
+          throw new Error(directRes.data?.error || t('Failed to send DayBook Excel report via WhatsApp'));
+        }
+      } catch (directErr) {
+        console.error('DayBook WhatsApp send error:', directErr);
+        const errorMsg = directErr.response?.data?.error || directErr.message || t('Failed to send DayBook Excel report via WhatsApp');
+        setToast({ message: `WhatsApp: ${errorMsg}`, type: 'error' });
+      }
+    } catch (err) {
+      console.error('Error sharing report to WhatsApp:', err);
+      setToast({ message: t("Failed to generate WhatsApp report"), type: 'error' });
+    } finally {
+      setSendingWhatsApp(false);
+    }
+  };
+
+  if (loading && !data.transactions.length) {
+    return (
+      <div className="h-full flex items-center justify-center bg-[#F7EFE2]">
+        <div className="flex flex-col items-center gap-4">
+          <RefreshCw className="w-8 h-8 text-[#ea580c] animate-spin" />
+          <p className="text-gray-400">{t("Loading DayBook...")}</p>
+        </div>
+      </div>);
+  }
+
+  return (
+    <div className="min-h-full h-full bg-[#F7EFE2] text-slate-800 p-1.5 sm:p-2.5 md:p-3 overflow-y-auto">
+      <style>{`
+        .glass-card {
+          background: #ffffff;
+          border: 1px solid #eedecb;
+          border-radius: 16px;
+          box-shadow: 0 4px 18px rgba(0, 0, 0, 0.03);
+        }
+        /* Custom date picker styling to fix overlap */
+        input[type="date"]::-webkit-calendar-picker-indicator {
+          cursor: pointer;
+          opacity: 0.75;
+          transition: 0.2s;
+          padding-left: 10px;
+        }
+        input[type="date"]::-webkit-calendar-picker-indicator:hover {
+          opacity: 1;
+        }
+      `}</style>
+      {/* Header */}
+      <div className="glass-card p-2 sm:p-3 md:p-4 mb-3 sm:mb-5 relative overflow-hidden">
+        {/* Decorative background glow */}
+        <div className="absolute top-0 right-0 w-64 h-64 bg-[#f97316]/5 rounded-full blur-3xl pointer-events-none"></div>
+        <div className="flex flex-col sm:flex-row sm:flex-nowrap justify-between items-stretch sm:items-center gap-2 sm:gap-2 md:gap-3 relative z-10">
+          <div className="flex items-center gap-1.5 sm:gap-2 md:gap-2.5 shrink-0">
+            <BackButton onClick={onGoBack} className="shrink-0 !px-2.5 !py-1 sm:!px-2.5 sm:!py-1.5 md:!px-3 md:!py-2 !text-xs sm:!text-xs md:!text-sm" />
+            <div className="bg-gradient-to-br from-[#f97316]/15 to-[#ea580c]/10 p-1.5 sm:p-1.5 md:p-2 rounded-xl border border-[#f97316]/20 shadow-xs flex items-center justify-center shrink-0">
+              <Calendar className="w-3.5 h-3.5 sm:w-4 sm:h-4 md:w-5 md:h-5 text-[#f97316]" />
+            </div>
+            <h1 className="text-sm sm:text-base md:text-xl lg:text-2xl font-black text-slate-800 tracking-tight shrink-0">{t("DayBook")}</h1>
+            <div className="flex items-center gap-1 bg-white rounded-lg px-1.5 py-0.5 sm:px-2 sm:py-1 border border-[#E8DCCB] shadow-xs focus-within:border-[#ea580c] transition-colors shrink-0">
+              <input
+                type="date"
+                value={date}
+                max={new Date().toLocaleDateString('en-CA')}
+                onChange={(e) => {
+                  const todayStr = new Date().toLocaleDateString('en-CA');
+                  const val = e.target.value;
+                  if (val > todayStr) {
+                    setToast({ message: t("Future dates are not allowed"), type: 'error' });
+                    setDate(todayStr);
+                  } else {
+                    setDate(val);
+                  }
+                }}
+                className="bg-transparent font-semibold text-slate-700 focus:outline-none cursor-pointer [color-scheme:light] text-[11px] sm:text-xs md:text-sm w-[95px] sm:w-[105px] md:w-[120px]" />
+            </div>
+          </div>
+
+          <div className="flex items-center gap-1.5 sm:gap-1.5 md:gap-2 shrink-0 justify-end">
+            <button
+              onClick={() => handleShareWhatsApp()}
+              disabled={sendingWhatsApp}
+              title={t("Share Daily Report on WhatsApp")}
+              className={`flex-1 sm:flex-initial flex items-center justify-center gap-1 px-2 py-1.5 sm:px-2.5 sm:py-1.5 md:px-3.5 md:py-2 rounded-xl border transition-all font-bold text-[11px] sm:text-xs md:text-sm cursor-pointer relative overflow-hidden shrink-0 whitespace-nowrap ${
+                sendingWhatsApp
+                  ? 'bg-gradient-to-r from-[#25D366]/25 via-[#10B981]/40 to-[#25D366]/25 border-[#25D366] text-[#25D366] animate-wa-pulse-ring shadow-[0_0_25px_rgba(37,211,102,0.5)] cursor-wait ring-2 ring-[#25D366]/60'
+                  : 'bg-[#25D366]/15 hover:bg-[#25D366]/25 text-[#25D366] hover:text-[#4ade80] border-[#25D366]/40 shadow-[0_0_15px_rgba(37,211,102,0.15)] active:scale-95'
+              }`}>
+              {sendingWhatsApp ? (
+                <>
+                  <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent -translate-x-full animate-wa-shimmer pointer-events-none" />
+                  <div className="absolute bottom-0 left-0 h-[3px] bg-gradient-to-r from-[#25D366] via-[#86efac] to-[#25D366] animate-wa-progress pointer-events-none rounded-full shadow-[0_0_8px_#25D366]" />
+                  <div className="relative flex items-center justify-center shrink-0 w-3.5 h-3.5 z-10">
+                    <Loader2 size={16} className="animate-spin text-[#25D366] absolute -inset-0.5" />
+                    <svg className="w-2 h-2 fill-[#25D366] animate-pulse z-10" viewBox="0 0 24 24">
+                      <path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946.003-6.556 5.338-11.891 11.893-11.891 3.181.001 6.167 1.24 8.413 3.488 2.245 2.248 3.481 5.236 3.48 8.414-.003 6.557-5.338 11.892-11.893 11.892-1.99-.001-3.951-.5-5.688-1.448l-6.305 1.654zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884-.001 2.225.651 3.891 1.746 5.634l-.999 3.648 3.742-.981zm11.387-5.464c-.074-.124-.272-.198-.57-.347-.297-.149-1.758-.868-2.031-.967-.272-.099-.47-.149-.669.149-.198.297-.768.967-.941 1.165-.173.198-.347.223-.644.074-.297-.149-1.255-.462-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.297-.347.446-.521.151-.172.2-.296.3-.495.099-.198.05-.372-.025-.521-.075-.148-.669-1.611-.916-2.206-.242-.579-.487-.501-.669-.51l-.57-.01c-.198 0-.52.074-.792.372s-1.04 1.016-1.04 2.479 1.065 2.876 1.213 3.074c.149.198 2.095 3.2 5.076 4.487.709.306 1.263.489 1.694.626.712.226 1.36.194 1.872.118.571-.085 1.758-.719 2.006-1.413.248-.695.248-1.29.173-1.414z"/>
+                    </svg>
+                  </div>
+                  <span className="relative z-10 font-extrabold tracking-wide text-[#25D366] drop-shadow-[0_0_8px_rgba(37,211,102,0.8)] flex items-center gap-0.5">
+                    <span>{t("Sending")}</span>
+                    <span className="animate-pulse font-mono font-black">...</span>
+                  </span>
+                </>
+              ) : (
+                <>
+                  <svg className="w-3.5 h-3.5 fill-current shrink-0" viewBox="0 0 24 24">
+                    <path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946.003-6.556 5.338-11.891 11.893-11.891 3.181.001 6.167 1.24 8.413 3.488 2.245 2.248 3.481 5.236 3.48 8.414-.003 6.557-5.338 11.892-11.893 11.892-1.99-.001-3.951-.5-5.688-1.448l-6.305 1.654zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884-.001 2.225.651 3.891 1.746 5.634l-.999 3.648 3.742-.981zm11.387-5.464c-.074-.124-.272-.198-.57-.347-.297-.149-1.758-.868-2.031-.967-.272-.099-.47-.149-.669.149-.198.297-.768.967-.941 1.165-.173.198-.347.223-.644.074-.297-.149-1.255-.462-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.297-.347.446-.521.151-.172.2-.296.3-.495.099-.198.05-.372-.025-.521-.075-.148-.669-1.611-.916-2.206-.242-.579-.487-.501-.669-.51l-.57-.01c-.198 0-.52.074-.792.372s-1.04 1.016-1.04 2.479 1.065 2.876 1.213 3.074c.149.198 2.095 3.2 5.076 4.487.709.306 1.263.489 1.694.626.712.226 1.36.194 1.872.118.571-.085 1.758-.719 2.006-1.413.248-.695.248-1.29.173-1.414z"/>
+                  </svg>
+                  <span>{t("WhatsApp")}</span>
+                </>
+              )}
+            </button>
+            <button
+              onClick={fetchDayBookData}
+              className="flex-1 sm:flex-initial flex items-center justify-center gap-1 px-2 py-1.5 sm:px-2.5 sm:py-1.5 md:px-3 md:py-2 bg-white hover:bg-[#F5E8D8] rounded-xl border border-[#E8DCCB] transition-all text-slate-700 hover:text-slate-900 shadow-xs font-bold text-[11px] sm:text-xs md:text-sm cursor-pointer shrink-0 whitespace-nowrap">
+              <RefreshCw size={12} className={`shrink-0 ${loading ? 'animate-spin' : ''}`} />
+              <span>{t("Refresh")}</span>
+            </button>
+            <button
+              onClick={handleDownloadExcel}
+              disabled={downloading}
+              className="flex-1 sm:flex-initial flex items-center justify-center gap-1 px-2 py-1.5 sm:px-2.5 sm:py-1.5 md:px-3.5 md:py-2 bg-gradient-to-r from-[#22c55e] to-[#16a34a] hover:from-[#16a34a] hover:to-[#15803d] rounded-xl transition-all text-white shadow-[0_0_15px_rgba(34,197,94,0.3)] font-bold disabled:opacity-70 disabled:cursor-not-allowed border border-[#22c55e]/50 text-[11px] sm:text-xs md:text-sm cursor-pointer shrink-0 whitespace-nowrap">
+              {downloading ? <Loader2 size={12} className="animate-spin shrink-0" /> : <Download size={12} className="shrink-0" />}
+              <span>{downloading ? t('Exporting...') : t('Export Excel')}</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Top Summary Cards */}
+      <div className="grid grid-cols-2 gap-2.5 sm:gap-4 mb-3 sm:mb-5">
+        <div className="glass-card p-3 sm:p-5 relative overflow-hidden group hover:border-[#22c55e]/50 hover:shadow-md transition-all duration-300">
+          <div className="absolute -right-8 -top-8 w-24 h-24 bg-[#22c55e]/10 rounded-full blur-2xl group-hover:bg-[#22c55e]/20 transition-all"></div>
+          <div className="flex justify-between items-start relative z-10 gap-2">
+            <div className="min-w-0">
+              <p className="text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-widest mb-0.5 truncate">{t("Total Sales")}</p>
+              <h3 className="text-base sm:text-3xl font-black text-slate-800 tracking-tight truncate">₹{data.summary.totalSales.toLocaleString()}</h3>
+              <p className="text-[10px] sm:text-xs text-gray-400 mt-1 font-medium flex items-center gap-1">
+                <span className="inline-block w-1.5 h-1.5 rounded-full bg-[#22c55e]"></span>
+                <span>{data.summary.salesCount} {t("Bills")}</span>
+              </p>
+            </div>
+            <div className="w-8 h-8 sm:w-12 sm:h-12 bg-gradient-to-br from-[#22c55e]/20 to-[#22c55e]/5 rounded-xl border border-[#22c55e]/20 flex items-center justify-center shrink-0">
+              <TrendingUp className="w-4 h-4 sm:w-6 sm:h-6 text-[#22c55e]" />
+            </div>
+          </div>
+        </div>
+
+        <div className="glass-card p-3 sm:p-5 relative overflow-hidden group hover:border-red-400 hover:shadow-md transition-all duration-300">
+          <div className="absolute -right-8 -top-8 w-24 h-24 bg-red-500/10 rounded-full blur-2xl group-hover:bg-red-500/20 transition-all"></div>
+          <div className="flex justify-between items-start relative z-10 gap-2">
+            <div className="min-w-0">
+              <p className="text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-widest mb-0.5 truncate">{t("Total Expenses")}</p>
+              <h3 className="text-base sm:text-3xl font-black text-slate-800 tracking-tight truncate">₹{data.summary.totalExpenses.toLocaleString()}</h3>
+              <p className="text-[10px] sm:text-xs text-gray-400 mt-1 font-medium flex items-center gap-1">
+                <span className="inline-block w-1.5 h-1.5 rounded-full bg-red-500"></span>
+                <span>{data.summary.expensesCount} {t("Expenses")}</span>
+              </p>
+            </div>
+            <div className="w-8 h-8 sm:w-12 sm:h-12 bg-gradient-to-br from-red-500/20 to-red-500/5 rounded-xl border border-red-500/20 flex items-center justify-center shrink-0">
+              <TrendingDown className="w-4 h-4 sm:w-6 sm:h-6 text-red-500" />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Cash Flow Section */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4 mb-3 sm:mb-5">
+        {/* Payment In */}
+        <div className="glass-card p-3.5 sm:p-5 border-l-4 border-l-[#22c55e]">
+          <h3 className="text-[#16a34a] font-bold text-xs sm:text-sm mb-3 flex items-center gap-2">
+            <TrendingUp size={16} />
+            <span>{t("Total Payment In (₹")}{(data.cashFlow.cashIn + data.cashFlow.onlineIn).toLocaleString()})</span>
+          </h3>
+          <div className="space-y-2.5">
+            <div className="flex justify-between items-center bg-[#F7EFE2] p-3 rounded-xl border border-[#E8DCCB]">
+              <div className="flex items-center gap-2.5">
+                <Banknote className="text-[#22c55e] w-4 h-4 sm:w-5 sm:h-5" />
+                <span className="font-semibold text-slate-800 text-xs sm:text-sm">{t("Cash In")}</span>
+              </div>
+              <span className="font-bold text-slate-900 text-xs sm:text-sm font-mono">₹{data.cashFlow.cashIn.toLocaleString()}</span>
+            </div>
+
+            {data.cashFlow.onlineInBreakdown.length > 0 && (
+              <div className="bg-[#F7EFE2] p-3 rounded-xl border border-[#E8DCCB]">
+                <div className="flex items-center gap-2.5 mb-2.5">
+                  <Smartphone className="text-[#22c55e] w-4 h-4 sm:w-5 sm:h-5" />
+                  <span className="font-semibold text-slate-800 text-xs sm:text-sm">{t("Online In")}</span>
+                </div>
+                <div className="space-y-2 pl-6 sm:pl-8">
+                  {data.cashFlow.onlineInBreakdown.map((item, i) => (
+                    <div key={i} className="flex justify-between items-center text-xs border-b border-[#E8DCCB]/60 last:border-0 pb-1.5 last:pb-0">
+                      <span className="text-slate-600">{item.app}</span>
+                      <span className="font-bold text-slate-800 font-mono">₹{item.amount.toLocaleString()}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Payment Out */}
+        <div className="glass-card p-3.5 sm:p-5 border-l-4 border-l-red-500">
+          <h3 className="text-red-600 font-bold text-xs sm:text-sm mb-3 flex items-center gap-2">
+            <TrendingDown size={16} />
+            <span>{t("Total Payment Out (₹")}{(data.cashFlow.cashOut + data.cashFlow.onlineOut).toLocaleString()})</span>
+          </h3>
+          <div className="space-y-2.5">
+            <div className="flex justify-between items-center bg-[#F7EFE2] p-3 rounded-xl border border-[#E8DCCB]">
+              <div className="flex items-center gap-2.5">
+                <Banknote className="text-red-500 w-4 h-4 sm:w-5 sm:h-5" />
+                <span className="font-semibold text-slate-800 text-xs sm:text-sm">{t("Cash Out")}</span>
+              </div>
+              <span className="font-bold text-slate-900 text-xs sm:text-sm font-mono">₹{data.cashFlow.cashOut.toLocaleString()}</span>
+            </div>
+
+            <div className="flex justify-between items-center bg-[#F7EFE2] p-3 rounded-xl border border-[#E8DCCB]">
+              <div className="flex items-center gap-2.5">
+                <CreditCard className="text-red-500 w-4 h-4 sm:w-5 sm:h-5" />
+                <span className="font-semibold text-slate-800 text-xs sm:text-sm">{t("Online Out")}</span>
+              </div>
+              <span className="font-bold text-slate-900 text-xs sm:text-sm font-mono">₹{data.cashFlow.onlineOut.toLocaleString()}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Transactions Section */}
+      <div className="glass-card mb-4 shadow-xs overflow-hidden border border-[#E8DCCB]">
+        <div className="px-3.5 sm:px-6 py-3 sm:py-4 border-b border-[#E8DCCB] bg-[#F7EFE2]">
+          <h3 className="font-bold text-slate-800 text-sm sm:text-base">{t("Detailed Transactions")}</h3>
+        </div>
+
+        {/* Desktop Table */}
+        <div className="hidden md:block overflow-x-auto p-2">
+          <table className="w-full text-left border-collapse">
+            <thead className="bg-[#F7EFE2] shadow-xs border-b border-[#E8DCCB]">
+              <tr>
+                <th className="p-3 text-[11px] font-black text-slate-600 uppercase tracking-wider rounded-tl-lg">{t("Time")}</th>
+                <th className="p-3 text-[11px] font-black text-slate-600 uppercase tracking-wider">{t("Category")}</th>
+                <th className="p-3 text-[11px] font-black text-slate-600 uppercase tracking-wider">{t("Particulars")}</th>
+                <th className="p-3 text-[11px] font-black text-slate-600 uppercase tracking-wider">{t("Customer / Phone")}</th>
+                <th className="p-3 text-[11px] font-black text-slate-600 uppercase tracking-wider">{t("Mode")}</th>
+                <th className="p-3 text-[11px] font-black text-slate-600 uppercase tracking-wider text-right">{t("Total")}</th>
+                <th className="p-3 text-[11px] font-black text-red-600 uppercase tracking-wider text-right">{t("CashOut(-)")}</th>
+                <th className="p-3 text-[11px] font-black text-[#16a34a] uppercase tracking-wider text-right rounded-tr-lg">{t("CashIn(+)")}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.transactions.length === 0 ? (
+                <tr>
+                  <td colSpan="8" className="p-10 text-center">
+                    <p className="text-text-muted font-medium text-xs sm:text-sm">{t("No transactions recorded for this date.")}</p>
+                  </td>
+                </tr>
+              ) : (
+                data.transactions.map((tx, i) => (
+                  <tr key={`${tx.id}-${i}`} className="border-b border-[#f1f5f9] hover:bg-[#F5E8D8]/60 transition-colors">
+                    <td className="p-3 text-slate-500 text-xs sm:text-sm whitespace-nowrap">{formatTime12(tx.date)}</td>
+                    <td className="p-3">
+                      <span className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider ${tx.type === 'Sale' ? 'bg-[#22c55e]/10 text-[#4ade80] border border-[#22c55e]/30' : 'bg-red-500/10 text-red-400 border border-red-500/30'}`}>{tx.type}</span>
+                    </td>
+                    <td className="p-3 font-semibold text-slate-800 text-xs sm:text-sm">{tx.particulars}</td>
+                    <td className="p-3">
+                      <div className="flex flex-col">
+                        <span className="font-semibold text-slate-800 text-xs">{tx.name && tx.name !== '--' ? tx.name : 'Walk-In'}</span>
+                        {tx.phone && tx.phone !== '--' && (
+                          <span className="text-[11px] text-sky-400 font-mono">{tx.phone}</span>
+                        )}
+                      </div>
+                    </td>
+                    <td className="p-3">
+                      <span className="px-2 py-0.5 rounded bg-[#F7EFE2] border border-[#E8DCCB] text-slate-700 text-[11px] font-mono font-medium">{tx.paymentMode || 'Cash'}</span>
+                    </td>
+                    <td className="p-3 font-bold text-slate-900 text-right text-xs sm:text-sm font-mono">₹{tx.total.toLocaleString()}</td>
+                    <td className="p-3 font-mono font-medium text-red-600 text-right text-xs sm:text-sm">{tx.cashOut > 0 ? `- ₹${tx.cashOut.toLocaleString()}` : '-'}</td>
+                    <td className="p-3 font-mono text-right text-xs sm:text-sm">
+                      {tx.cashIn > 0 && (
+                        <span className="text-[#16a34a] font-bold block">+ ₹{tx.cashIn.toLocaleString()} <span className="text-[10px] text-gray-400 font-sans">Cash</span></span>
+                      )}
+                      {tx.onlineIn > 0 && (
+                        <span className="text-blue-600 font-bold block">+ ₹{tx.onlineIn.toLocaleString()} <span className="text-[10px] text-gray-400 font-sans">Online</span></span>
+                      )}
+                      {!tx.cashIn && !tx.onlineIn && '-'}
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Mobile Transaction Cards */}
+        <div className="md:hidden p-2.5 space-y-2">
+          {data.transactions.length === 0 ? (
+            <p className="text-text-muted font-medium text-center py-6 text-xs">{t("No transactions recorded for this date.")}</p>
+          ) : (
+            data.transactions.map((tx, i) => (
+              <div key={`${tx.id}-${i}`} className="bg-[#F7EFE2] rounded-xl border border-[#E8DCCB] p-3 shadow-xs">
+                <div className="flex items-start justify-between gap-2 mb-1.5">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-1.5 mb-0.5">
+                      <span className={`px-2 py-0.5 rounded text-[9px] font-black uppercase ${tx.type === 'Sale' ? 'bg-[#22c55e]/10 text-[#4ade80] border border-[#22c55e]/30' : 'bg-red-500/10 text-red-400 border border-red-500/30'}`}>{tx.type}</span>
+                      <span className="text-gray-400 text-[11px] font-mono">{formatTime12(tx.date)}</span>
+                      <span className="px-1.5 py-0.2 rounded bg-white border border-[#E8DCCB] text-slate-700 text-[9px] font-mono">{tx.paymentMode || 'Cash'}</span>
+                    </div>
+                    <p className="font-semibold text-slate-800 text-xs sm:text-sm truncate">{tx.particulars}</p>
+                  </div>
+                  <span className="font-bold text-slate-900 text-xs sm:text-sm shrink-0 font-mono">₹{tx.total.toLocaleString()}</span>
+                </div>
+                {(tx.cashIn > 0 || tx.onlineIn > 0 || tx.cashOut > 0) && (
+                  <div className="flex flex-wrap gap-2 pt-1.5 border-t border-white/10 font-mono text-[11px]">
+                    {tx.cashIn > 0 && <span className="font-bold text-[#22c55e]">+₹{tx.cashIn.toLocaleString()} (Cash)</span>}
+                    {tx.onlineIn > 0 && <span className="font-bold text-blue-400">+₹{tx.onlineIn.toLocaleString()} (Online)</span>}
+                    {tx.cashOut > 0 && <span className="font-bold text-red-400">-₹{tx.cashOut.toLocaleString()}</span>}
+                  </div>
+                )}
+              </div>
+            ))
+          )}
+        </div>
+      </div>
+
+      {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
+    </div>);
+
+};
+
+export default DayBook;

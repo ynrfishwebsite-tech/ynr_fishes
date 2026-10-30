@@ -1,0 +1,102 @@
+/* ==========================================================================
+   Ocean Ambient Background (Deep Water, Rays, Bubbles, Caustics)
+   ========================================================================== */
+
+.ocean-ambient-container {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: #031424;
+  overflow: hidden;
+  z-index: 0;
+}
+
+/* Deep water gradient */
+.water-depth {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: radial-gradient(circle at 50% 0%, #1e879f 0%, #072a42 50%, #031424 100%);
+  z-index: 1;
+}
+
+/* Light rays shimmering down from the surface */
+.sun-rays {
+  position: absolute;
+  top: -20%;
+  left: -50%;
+  width: 200%;
+  height: 150%;
+  background: repeating-linear-gradient(
+    170deg,
+    rgba(255, 255, 255, 0.04) 0%,
+    rgba(255, 255, 255, 0.01) 2%,
+    transparent 8%,
+    transparent 15%
+  );
+  animation: ray-sway 12s ease-in-out infinite alternate;
+  filter: blur(4px);
+  z-index: 2;
+  mix-blend-mode: screen;
+}
+
+@keyframes ray-sway {
+  0% { transform: translateX(-3%) rotate(-1deg); opacity: 0.6; }
+  100% { transform: translateX(3%) rotate(1deg); opacity: 1; }
+}
+
+/* Shimmering Caustics (light reflecting in water) */
+.caustics {
+  position: absolute;
+  top: -50%;
+  left: -50%;
+  width: 200%;
+  height: 200%;
+  background-image: 
+    radial-gradient(ellipse at center, rgba(114, 222, 229, 0.1) 0%, transparent 50%),
+    radial-gradient(ellipse at center, rgba(255, 255, 255, 0.05) 0%, transparent 40%);
+  background-size: 100px 100px, 150px 150px;
+  background-position: 0 0, 50px 50px;
+  animation: caustics-drift 15s linear infinite;
+  mix-blend-mode: color-dodge;
+  z-index: 3;
+}
+
+@keyframes caustics-drift {
+  0% { transform: translate(0, 0) scale(1); }
+  50% { transform: translate(-30px, 20px) scale(1.1); }
+  100% { transform: translate(-70px, -20px) scale(1); }
+}
+
+/* 3D Floating Bubbles */
+.bubble {
+  position: absolute;
+  bottom: -50px;
+  background: radial-gradient(circle at 30% 30%, rgba(255, 255, 255, 0.9), rgba(255, 255, 255, 0.1) 60%, transparent 100%);
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  border-radius: 50%;
+  box-shadow: inset 0 0 10px rgba(255, 255, 255, 0.5), 0 0 5px rgba(255, 255, 255, 0.2);
+  animation: float-up infinite ease-in;
+  z-index: 4;
+}
+
+@keyframes float-up {
+  0% { 
+    transform: translateY(0) translateX(0) scale(0.8); 
+    opacity: 0; 
+  }
+  10% { 
+    opacity: 0.8; 
+  }
+  90% { 
+    opacity: 0.5; 
+  }
+  100% { 
+    transform: translateY(-110vh) translateX(var(--drift)) scale(1.2); 
+    opacity: 0; 
+  }
+}

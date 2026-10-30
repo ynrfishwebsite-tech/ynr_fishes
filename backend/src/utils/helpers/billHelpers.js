@@ -1,0 +1,129 @@
+import mongoose from 'mongoose';
+import BillDefault from '../../models/billing/Bill.js';
+import UserDefault from '../../models/auth/User.js';
+import SettingDefault from '../../models/system/Setting.js';
+import { getTenantModel } from '../database/tenantHelper.js';
+
+// Helper to get indexed clean match for table/space variations (e.g. "Ground Floor - Cabin 1" vs "Ground Floor - Table 1" vs "Table 1")
+const getTableMatchCondition = (tblStr) => {
+  if (!tblStr) return tblStr;
+  const trimmed = String(tblStr).trim();
+  const variants = new Set([trimmed]);
+
+  if (trimmed.includes(' - ')) {
+    const parts = trimmed.split(' - ');
+    const floorPart = parts[0].trim();
+    const tablePart = parts.slice(1).join(' - ').trim();
+    variants.add(tablePart);
+
+    const standardMatch = tablePart.match(/^(Table|Cabin|Sofa|Room|Bar)\s*0*(\d+)$/i);
+    if (standardMatch) {
+      const type = standardMatch[1];
+      const num = parseInt(standardMatch[2], 10);
+      const firstLetter = type.charAt(0).toUpperCase();
+      const capType = type.charAt(0).toUpperCase() + type.slice(1).toLowerCase();
+      variants.add(`${floorPart} - ${capType} ${num}`);
+      variants.add(`${floorPart} - ${capType}${num}`);
+      variants.add(`${floorPart} - ${firstLetter}-${num}`);
+      variants.add(`${floorPart} - ${firstLetter}${num}`);
+      variants.add(`${capType} ${num}`);
+      variants.add(`${capType}${num}`);
+      variants.add(`${firstLetter}-${num}`);
+      variants.add(`${firstLetter}${num}`);
+    } else {
+      const letterNumMatch = tablePart.match(/^([A-Za-z]+)-?0*(\d+)$/);
+      if (letterNumMatch) {
+        const letter = letterNumMatch[1];
+        const num = parseInt(letterNumMatch[2], 10);
+        variants.add(`${floorPart} - ${letter}-${num}`);
+        variants.add(`${floorPart} - ${letter}${num}`);
+        variants.add(`${letter}-${num}`);
+        variants.add(`${letter}${num}`);
+      }
+    }
+  } else {
+    const standardMatch = trimmed.match(/^(Table|Cabin|Sofa|Room|Bar)\s*0*(\d+)$/i);
+    if (standardMatch) {
+      const type = standardMatch[1];
+      const num = parseInt(standardMatch[2], 10);
+      const firstLetter = type.charAt(0).toUpperCase();
+      const capType = type.charAt(0).toUpperCase() + type.slice(1).toLowerCase();
+      variants.add(`${capType} ${num}`);
+      variants.add(`${capType}${num}`);
+      variants.add(`${firstLetter}-${num}`);
+      variants.add(`${firstLetter}${num}`);
+    } else {
+      const letterNumMatch = trimmed.match(/^([A-Za-z]+)-?0*(\d+)$/);
+      if (letterNumMatch) {
+        const letter = letterNumMatch[1];
+        const num = parseInt(letterNumMatch[2], 10);
+        variants.add(`${letter}-${num}`);
+        variants.add(`${letter}${num}`);
+      }
+    }
+  }
+
+  const arr = Array.from(variants);
+  if (arr.length === 1) {
+    return arr[0];
+  }
+  return { $in: arr };
+};
+// In-memory cache for dynamic tax rate per tenant DB with 60s TTL
+const taxRateCache = new Map();
+// Helper to dynamically get active tax rate from restaurantSettings in DB
+const getDynamicTaxRate = async (req) => {
+  try {
+    const tenantDb = req.tenantDb || req.headers['x-tenant-db'] || req.user?.db || 'default';
+    const cached = taxRateCache.get(tenantDb);
+    if (cached && (Date.now() - cached.time < 60000)) {
+      return cached.rate;
+    }
+    const Setting = getTenantModel(req, 'Setting', SettingDefault);
+    const settingsDoc = await Setting.findOne({ key: 'restaurantSettings' }).maxTimeMS(600).lean().catch(() => null);
+    let s = {};
+    if (settingsDoc?.value) {
+      s = typeof settingsDoc.value === 'string' ? JSON.parse(settingsDoc.value) : settingsDoc.value;
+    }
+    let tot = 0;
+    if (s.enableCgst) {
+      tot += Number(s.cgstRate || 0);
+    }
+    if (s.enableSgst) {
+      tot += Number(s.sgstRate || 0);
+    }
+    if (s.enableGst) {
+      tot += Number(s.gstRate || 0);
+    }
+    taxRateCache.set(tenantDb, { rate: tot, time: Date.now() });
+    return tot;
+  } catch (e) {
+    console.error("Error reading dynamic tax rate:", e);
+    return 0;
+  }
+};
+// In-memory cache for dynamic shop name per tenant DB (120s TTL)
+const shopNameCache = new Map();
+const getTenantShopName = async (req) => {
+  try {
+    const tenantDb = req.tenantDb || req.headers['x-tenant-db'] || req.user?.db || 'default';
+    const cached = shopNameCache.get(tenantDb);
+    if (cached && (Date.now() - cached.time < 120000)) {
+      return cached.name;
+    }
+    const Setting = getTenantModel(req, 'Setting', SettingDefault);
+    const settingsDoc = await Setting.findOne({ key: 'restaurantSettings' }).maxTimeMS(400).lean().catch(() => null);
+    let name = '';
+    if (settingsDoc?.value) {
+      const s = typeof settingsDoc.value === 'string' ? JSON.parse(settingsDoc.value) : settingsDoc.value;
+      if (s.restaurantName) name = s.restaurantName.trim();
+    }
+    shopNameCache.set(tenantDb, { name, time: Date.now() });
+    return name;
+  } catch {
+    return '';
+  }
+};
+// Get active order for a table
+
+export { getTableMatchCondition, getDynamicTaxRate, getTenantShopName };

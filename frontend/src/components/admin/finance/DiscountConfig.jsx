@@ -1,0 +1,1327 @@
+import { getApiUrl } from "../../../config.js";
+import { useLanguage } from "../../../context/LanguageContext";
+import React, { useState, useEffect, useMemo } from 'react';
+import axios from 'axios';
+import {
+  Plus, Trash2, Edit2, Tags, Gift, Sparkles, CheckCircle2,
+  XCircle, AlertCircle, Loader2, Calendar, Clock, AlertTriangle,
+  Info, ShieldCheck, Timer, MessageCircle
+} from 'lucide-react';
+import BackButton from '../common/BackButton';
+import { getMenuItems } from '../../../api/catalog/menu';
+import BroadcastCampaignModal from '../communication/BroadcastCampaignModal';
+
+const getTodayDateStr = () => {
+  const d = new Date();
+  return d.toISOString().split('T')[0];
+};
+
+const getFutureDateStr = (days = 4) => {
+  const d = new Date();
+  d.setDate(d.getDate() + days);
+  return d.toISOString().split('T')[0];
+};
+
+export const OFFER_CATEGORIES = [
+  { id: 'weekend', label: 'Weekend offers', icon: '⚡', badgeColor: 'bg-amber-50 text-amber-800 border-amber-200' },
+  { id: 'birthday', label: 'Birthday offers', icon: '🎂', badgeColor: 'bg-pink-50 text-pink-700 border-pink-200' },
+  { id: 'anniversary', label: 'Anniversary offers', icon: '💍', badgeColor: 'bg-purple-50 text-purple-700 border-purple-200' },
+  { id: 'festival', label: 'Festival offers', icon: '🎉', badgeColor: 'bg-rose-50 text-rose-700 border-rose-200' },
+  { id: 'new_menu', label: 'New menu announcements', icon: '🍲', badgeColor: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
+  { id: 'lunch', label: 'Lunch offers', icon: '☀️', badgeColor: 'bg-orange-50 text-orange-700 border-orange-200' },
+  { id: 'dinner', label: 'Dinner offers', icon: '🌙', badgeColor: 'bg-blue-50 text-blue-700 border-blue-200' },
+  { id: 'coupon', label: 'Coupon codes', icon: '🎟️', badgeColor: 'bg-teal-50 text-teal-700 border-teal-200' },
+  { id: 'loyal', label: 'Special discounts for loyal customers', icon: '👑', badgeColor: 'bg-yellow-50 text-yellow-800 border-yellow-200' },
+  { id: 'opening', label: 'Shop opening offers', icon: '🚀', badgeColor: 'bg-indigo-50 text-indigo-700 border-indigo-200' },
+  { id: 'special', label: 'Special offers', icon: '✨', badgeColor: 'bg-sky-50 text-sky-700 border-sky-200' }
+];
+
+export const getOfferCategoryMeta = (catStr) => {
+  if (!catStr) {
+    return {
+      label: 'Special offers',
+      icon: '✨',
+      badgeColor: 'bg-sky-50 text-sky-700 border-sky-200'
+    };
+  }
+  const match = OFFER_CATEGORIES.find(c => c.label.toLowerCase() === catStr.trim().toLowerCase());
+  if (match) return match;
+  return {
+    label: catStr,
+    icon: '🏷️',
+    badgeColor: 'bg-gray-100 text-text-muted border-border'
+  };
+};
+
+const getOfferStatus = (discount) => {
+  if (!discount.isActive) {
+    return {
+      status: 'inactive',
+      label: 'Inactive',
+      badgeClass: 'bg-slate-100 text-slate-600 border-slate-200',
+      description: 'Disabled manually'
+    };
+  }
+
+  if (discount.hasTimeline && discount.endDate) {
+    const endStr = `${discount.endDate.split('T')[0]}T${discount.endTime || '23:59'}:59`;
+    const startStr = `${(discount.startDate || discount.endDate).split('T')[0]}T${discount.startTime || '00:00'}:00`;
+    
+    const now = new Date();
+    const end = new Date(endStr);
+    const start = new Date(startStr);
+
+    if (now > end) {
+      const endFormatted = end.toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+      return {
+        status: 'expired',
+        label: 'Offer Expired',
+        badgeClass: 'bg-red-100 text-red-800 border-red-200',
+        description: `Expired on ${endFormatted}`,
+        isExpired: true
+      };
+    }
+
+    if (now < start) {
+      const startFormatted = start.toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+      return {
+        status: 'upcoming',
+        label: 'Scheduled',
+        badgeClass: 'bg-sky-100 text-sky-800 border-sky-200',
+        description: `Starts on ${startFormatted}`
+      };
+    }
+
+    // Active within timeline
+    const diffMs = end - now;
+    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+    const diffHours = Math.floor((diffMs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+
+    let timeRemainingStr = '';
+    if (diffDays > 0) {
+      timeRemainingStr = `${diffDays}d ${diffHours}h left`;
+    } else {
+      timeRemainingStr = `${diffHours}h remaining`;
+    }
+
+    const endFormatted = end.toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+
+    return {
+      status: 'active',
+      label: 'Active',
+      badgeClass: 'bg-emerald-100 text-emerald-800 border-emerald-200',
+      timeRemaining: timeRemainingStr,
+      description: `Ends ${endFormatted} (${timeRemainingStr})`
+    };
+  }
+
+  return {
+    status: 'active',
+    label: 'Active Always',
+    badgeClass: 'bg-emerald-100 text-emerald-800 border-emerald-200',
+    description: 'Ongoing offer'
+  };
+};
+
+const DiscountConfig = ({ onNavigate, onGoBack }) => {
+  const { t } = useLanguage();
+  const [discounts, setDiscounts] = useState([]);
+  const [categories, setCategories] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingDiscount, setEditingDiscount] = useState(null);
+  const [validationError, setValidationError] = useState('');
+  const [selectedCategoryFilter, setSelectedCategoryFilter] = useState('All');
+
+  // WhatsApp Promotional Broadcast state
+  const [broadcastModalOpen, setBroadcastModalOpen] = useState(false);
+  const [broadcastDiscount, setBroadcastDiscount] = useState(null);
+  const [broadcastOnSave, setBroadcastOnSave] = useState(false);
+  const [restaurantName, setRestaurantName] = useState(() => {
+    return localStorage.getItem('resto_restaurant_name') || '';
+  });
+
+  const [formData, setFormData] = useState({
+    name: '',
+    offerCategory: 'Festival offers',
+    customCategory: '',
+    type: 'percentage',
+    value: '',
+    buyQty: 2,
+    getQty: 1,
+    applicableTo: 'all',
+    targetCategory: '',
+    isActive: true,
+    hasTimeline: false,
+    startDate: getTodayDateStr(),
+    startTime: '00:00',
+    endDate: getFutureDateStr(4),
+    endTime: '23:59',
+    validityDays: 4
+  });
+
+  const handleBroadcastClick = (discount) => {
+    setBroadcastDiscount(discount);
+    setBroadcastModalOpen(true);
+  };
+
+  const fetchDiscounts = async () => {
+    try {
+      const token = localStorage.getItem('accessToken') || localStorage.getItem('token');
+      const response = await axios.get(`${getApiUrl()}/discounts`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      setDiscounts(response.data);
+      if (Array.isArray(response.data)) {
+        try {
+          localStorage.setItem('resto_discounts_cache', JSON.stringify(response.data));
+          window.dispatchEvent(new CustomEvent('resto_discounts_updated', { detail: response.data }));
+        } catch {}
+      }
+    } catch (error) {
+      console.error('Error fetching discounts', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchCategories = async () => {
+    try {
+      const items = await getMenuItems();
+      if (Array.isArray(items)) {
+        const catNames = items
+          .map(i => (typeof i.category === 'object' && i.category !== null ? i.category.name : i.category))
+          .filter(c => typeof c === 'string' && c.trim().length > 0);
+        const uniqueCats = [...new Set(catNames)];
+        setCategories(uniqueCats);
+      }
+    } catch (e) {
+      console.error('Error fetching categories for discount config:', e);
+    }
+  };
+
+  useEffect(() => {
+    fetchDiscounts();
+    fetchCategories();
+
+    // Fetch restaurant name for campaign message branding
+    const fetchSettings = async () => {
+      try {
+        const token = localStorage.getItem('accessToken') || localStorage.getItem('token');
+        const res = await axios.get(`${getApiUrl()}/config/info`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        if (res.data?.restaurantSettings?.restaurantName) {
+          setRestaurantName(res.data.restaurantSettings.restaurantName);
+        } else if (res.data?.restaurantName) {
+          setRestaurantName(res.data.restaurantName);
+        }
+      } catch (err) {
+        // Silently fallback
+      }
+    };
+    fetchSettings();
+  }, []);
+
+  // Quick Preset Helper for Timeline
+  const applyTimelinePreset = (days) => {
+    const today = getTodayDateStr();
+    const future = getFutureDateStr(days);
+    setFormData(prev => ({
+      ...prev,
+      hasTimeline: true,
+      startDate: today,
+      startTime: '00:00',
+      endDate: future,
+      endTime: '23:59',
+      validityDays: days
+    }));
+    setValidationError('');
+  };
+
+  // Conflict / Overlap Detection
+  const conflictingOffers = useMemo(() => {
+    if (!formData.isActive) return [];
+
+    const activeList = discounts.filter(d => {
+      if (editingDiscount && d._id === editingDiscount._id) return false;
+      const st = getOfferStatus(d);
+      return st.status === 'active' || st.status === 'upcoming';
+    });
+
+    const conflicts = [];
+    const currentScope = formData.applicableTo;
+    const currentCat = (formData.targetCategory || '').trim().toLowerCase();
+
+    for (const d of activeList) {
+      const targetCat = (typeof d.targetCategory === 'object' && d.targetCategory !== null ? d.targetCategory.name : d.targetCategory || '').trim().toLowerCase();
+      
+      if (currentScope === 'all') {
+        if (d.applicableTo === 'all') {
+          conflicts.push({
+            offerName: d.name,
+            type: d.type,
+            value: d.value,
+            scope: 'All Menu Items',
+            message: `"${d.name}" (${d.type === 'percentage' ? `${d.value}% Off` : (d.type === 'bogo' ? 'BOGO' : `₹${d.value} Flat`)}) is already active on All Menu Items.`
+          });
+        } else if (d.applicableTo === 'category' && targetCat) {
+          conflicts.push({
+            offerName: d.name,
+            type: d.type,
+            value: d.value,
+            scope: `Category "${d.targetCategory}"`,
+            message: `"${d.name}" is already active on Category "${d.targetCategory}".`
+          });
+        }
+      } else if (currentScope === 'category' && currentCat) {
+        if (d.applicableTo === 'all') {
+          conflicts.push({
+            offerName: d.name,
+            type: d.type,
+            value: d.value,
+            scope: 'All Menu Items',
+            message: `"${d.name}" is active across All Menu Items (including "${formData.targetCategory}").`
+          });
+        } else if (d.applicableTo === 'category' && targetCat === currentCat) {
+          conflicts.push({
+            offerName: d.name,
+            type: d.type,
+            value: d.value,
+            scope: `Category "${formData.targetCategory}"`,
+            message: `Category "${formData.targetCategory}" is already applied in active offer "${d.name}" (${d.type === 'percentage' ? `${d.value}% Off` : (d.type === 'bogo' ? 'BOGO' : `₹${d.value} Flat`)}).`
+          });
+        }
+      }
+    }
+
+    return conflicts;
+  }, [formData.applicableTo, formData.targetCategory, formData.isActive, discounts, editingDiscount]);
+
+  // Identify expired offers for notification banner
+  const expiredOffers = useMemo(() => {
+    return discounts.filter(d => getOfferStatus(d).status === 'expired');
+  }, [discounts]);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setValidationError('');
+
+    // Start date & End date validations
+    if (formData.hasTimeline) {
+      if (!formData.startDate || !formData.endDate) {
+        setValidationError(t('Start Date and End Date are mandatory when enabling an offer timeline.'));
+        return;
+      }
+
+      const sDate = new Date(`${formData.startDate}T${formData.startTime || '00:00'}:00`);
+      const eDate = new Date(`${formData.endDate}T${formData.endTime || '23:59'}:00`);
+
+      if (isNaN(sDate.getTime()) || isNaN(eDate.getTime())) {
+        setValidationError(t('Invalid Start or End Date & Time format.'));
+        return;
+      }
+
+      if (sDate > eDate) {
+        setValidationError(t('Start Date & Time cannot be later than End Date & Time. Please adjust the timeline.'));
+        return;
+      }
+    }
+
+    if (formData.applicableTo === 'category' && !formData.targetCategory) {
+      setValidationError(t('Please select a specific category.'));
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const token = localStorage.getItem('accessToken') || localStorage.getItem('token');
+      const resolvedCategory = formData.offerCategory === 'Custom'
+        ? (formData.customCategory?.trim() || 'Special offers')
+        : (formData.offerCategory || 'Festival offers');
+
+      const payload = {
+        name: formData.name.trim(),
+        offerCategory: resolvedCategory,
+        type: formData.type,
+        value: formData.type === 'bogo' ? 0 : Number(formData.value) || 0,
+        buyQty: formData.type === 'bogo' ? (Number(formData.buyQty) || 2) : 2,
+        getQty: formData.type === 'bogo' ? (Number(formData.getQty) || 1) : 1,
+        applicableTo: formData.applicableTo,
+        targetCategory: formData.applicableTo === 'category' ? formData.targetCategory : '',
+        isActive: formData.isActive,
+        hasTimeline: formData.hasTimeline,
+        startDate: formData.hasTimeline ? formData.startDate : null,
+        endDate: formData.hasTimeline ? formData.endDate : null,
+        startTime: formData.hasTimeline ? (formData.startTime || '00:00') : '00:00',
+        endTime: formData.hasTimeline ? (formData.endTime || '23:59') : '23:59',
+        validityDays: formData.hasTimeline ? Number(formData.validityDays) || 0 : 0
+      };
+
+      let savedDiscount = null;
+      if (editingDiscount) {
+        const res = await axios.put(`${getApiUrl()}/discounts/${editingDiscount._id}`, payload, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        savedDiscount = res.data;
+      } else {
+        const res = await axios.post(`${getApiUrl()}/discounts`, payload, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        savedDiscount = res.data;
+      }
+
+      setIsModalOpen(false);
+      setEditingDiscount(null);
+      fetchDiscounts();
+
+      // If owner chose to broadcast immediately upon saving
+      if (broadcastOnSave) {
+        const targetDiscount = savedDiscount || {
+          ...payload,
+          _id: editingDiscount?._id || 'new_offer'
+        };
+        setBroadcastDiscount(targetDiscount);
+        setBroadcastModalOpen(true);
+        setBroadcastOnSave(false);
+      }
+    } catch (error) {
+      console.error('Error saving discount', error);
+      const msg = error.response?.data?.message || 'Error saving discount';
+      setValidationError(msg);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDelete = async (id) => {
+    if (window.confirm(t('Are you sure you want to delete this discount/offer?'))) {
+      try {
+        const token = localStorage.getItem('accessToken') || localStorage.getItem('token');
+        await axios.delete(`${getApiUrl()}/discounts/${id}`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        fetchDiscounts();
+      } catch (error) {
+        console.error('Error deleting discount', error);
+        alert(t('Error deleting discount'));
+      }
+    }
+  };
+
+  const handleEditClick = (discount) => {
+    setEditingDiscount(discount);
+    setValidationError('');
+    setBroadcastOnSave(false);
+    const catName = typeof discount.targetCategory === 'object' && discount.targetCategory !== null
+      ? discount.targetCategory.name
+      : (discount.targetCategory || '');
+
+    const sDate = discount.startDate ? discount.startDate.split('T')[0] : getTodayDateStr();
+    const eDate = discount.endDate ? discount.endDate.split('T')[0] : getFutureDateStr(4);
+
+    const existingCat = discount.offerCategory || 'Festival offers';
+    const isPreset = OFFER_CATEGORIES.some(c => c.label.toLowerCase() === existingCat.toLowerCase());
+
+    setFormData({
+      name: discount.name || '',
+      offerCategory: isPreset ? existingCat : 'Custom',
+      customCategory: isPreset ? '' : existingCat,
+      type: discount.type || 'percentage',
+      value: discount.value || '',
+      buyQty: discount.buyQty || 2,
+      getQty: discount.getQty || 1,
+      applicableTo: discount.applicableTo || 'all',
+      targetCategory: catName,
+      isActive: discount.isActive !== undefined ? discount.isActive : true,
+      hasTimeline: !!discount.hasTimeline,
+      startDate: sDate,
+      startTime: discount.startTime || '00:00',
+      endDate: eDate,
+      endTime: discount.endTime || '23:59',
+      validityDays: discount.validityDays || 4
+    });
+    setIsModalOpen(true);
+  };
+
+  const openNewModal = (initialType = 'percentage', defaultCat = 'Festival offers') => {
+    setEditingDiscount(null);
+    setValidationError('');
+    setBroadcastOnSave(false);
+    setFormData({
+      name: '',
+      offerCategory: defaultCat,
+      customCategory: '',
+      type: initialType,
+      value: '',
+      buyQty: 2,
+      getQty: 1,
+      applicableTo: 'all',
+      targetCategory: categories[0] || '',
+      isActive: true,
+      hasTimeline: true, // Default to true so 4-day timeline is ready
+      startDate: getTodayDateStr(),
+      startTime: '00:00',
+      endDate: getFutureDateStr(4),
+      endTime: '23:59',
+      validityDays: 4
+    });
+    setIsModalOpen(true);
+  };
+
+  // Filtered discounts based on occasion category pill
+  const filteredDiscounts = useMemo(() => {
+    if (selectedCategoryFilter === 'All') return discounts;
+    return discounts.filter(d => {
+      const cat = d.offerCategory || 'Special offers';
+      return cat.toLowerCase() === selectedCategoryFilter.toLowerCase();
+    });
+  }, [discounts, selectedCategoryFilter]);
+
+  return (
+    <div className="h-full flex flex-col bg-[#f7f1ea] p-1.5 sm:p-2.5 md:p-4 overflow-y-auto custom-scrollbar">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-4 gap-3 shrink-0">
+        <div className="flex items-center gap-3">
+          <BackButton onClick={onGoBack} />
+          <div>
+            <h1 className="text-lg sm:text-xl font-black text-text-main tracking-tight">
+              {t("Discounts & BOGO Offers")}
+            </h1>
+            <p className="text-xs text-text-muted">{t("Configure percentage discounts, flat reductions, custom Buy X Get Y Free rules, and dynamic timeline validity.")}</p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2 self-stretch sm:self-auto">
+          <button
+            onClick={() => openNewModal('bogo')}
+            className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white px-3 py-2 rounded-xl transition-all text-xs font-bold shadow-sm active:scale-95 cursor-pointer">
+            <Gift size={15} />
+            <span>{t("Add BOGO Rule")}</span>
+          </button>
+          <button
+            onClick={() => openNewModal('percentage')}
+            className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 bg-primary hover:bg-primary-hover text-white px-3 py-2 rounded-xl transition-all text-xs font-bold shadow-sm active:scale-95 cursor-pointer">
+            <Plus size={16} />
+            <span>{t("Add Discount")}</span>
+          </button>
+        </div>
+      </div>
+
+      {/* EXPIRED OFFERS NOTIFICATION BANNER */}
+      {expiredOffers.length > 0 && (
+        <div className="mb-4 bg-red-50 border border-red-200/80 rounded-2xl p-3.5 shadow-sm flex items-start gap-3">
+          <div className="p-2 bg-red-100 text-red-600 rounded-xl shrink-0 mt-0.5">
+            <AlertTriangle size={18} />
+          </div>
+          <div className="flex-1 text-xs">
+            <div className="flex items-center gap-2">
+              <span className="font-bold text-red-900 text-sm">{t("Offer Expired Notification")}</span>
+              <span className="bg-red-200 text-red-900 text-[10px] font-black px-1.5 py-0.5 rounded-full">
+                {expiredOffers.length} {t("Expired")}
+              </span>
+            </div>
+            <p className="text-red-700 mt-1 leading-relaxed">
+              {t("The following offer(s) have passed their scheduled end date and are now expired:")}{' '}
+              <span className="font-bold">
+                {expiredOffers.map(o => `"${o.name}"`).join(', ')}
+              </span>.
+              {' '}{t("Expired offers are automatically deactivated from billing calculations. You can edit them to extend their dates or delete them.")}
+            </p>
+          </div>
+        </div>
+      )}
+
+      {loading ? (
+        <div className="flex flex-col items-center justify-center py-20">
+          <div className="animate-spin w-10 h-10 border-4 border-primary border-t-transparent rounded-full mb-3"></div>
+          <p className="text-xs text-text-muted font-semibold">{t("Loading discounts & offers...")}</p>
+        </div>
+      ) : discounts.length === 0 ? (
+        <div className="bg-surface border border-border shadow-2xl rounded-2xl text-text-main shadow-sm border border-border p-8 sm:p-12 text-center text-gray-400">
+          <div className="flex flex-col items-center justify-center">
+            <Tags size={36} className="text-gray-300 mb-2.5" />
+            <p className="font-bold text-text-muted text-sm mb-1">{t("No discounts or BOGO offers configured yet")}</p>
+            <p className="text-xs text-gray-400 max-w-sm">{t("Create custom BOGO deals or promo codes to apply them on the billing page.")}</p>
+          </div>
+        </div>
+      ) : (
+        <>
+          {/* OCCASION / CATEGORY FILTER PILLS */}
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 mb-3 shrink-0 custom-scrollbar">
+            <button
+              type="button"
+              onClick={() => setSelectedCategoryFilter('All')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
+                selectedCategoryFilter === 'All'
+                  ? 'bg-gray-900 text-white shadow-sm'
+                  : 'bg-white hover:bg-gray-100 text-text-muted border border-border'
+              }`}
+            >
+              {t("All Occasions")} ({discounts.length})
+            </button>
+            {OFFER_CATEGORIES.map(cat => {
+              const count = discounts.filter(d => (d.offerCategory || 'Special offers').toLowerCase() === cat.label.toLowerCase()).length;
+              if (count === 0 && selectedCategoryFilter !== cat.label) return null;
+              const isSelected = selectedCategoryFilter === cat.label;
+              return (
+                <button
+                  key={cat.id}
+                  type="button"
+                  onClick={() => setSelectedCategoryFilter(cat.label)}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap border transition-all cursor-pointer flex items-center gap-1.5 ${
+                    isSelected
+                      ? 'bg-primary text-white border-primary shadow-sm'
+                      : 'bg-white hover:bg-[#f7f1ea] text-text-muted border-border'
+                  }`}
+                >
+                  <span>{cat.icon}</span>
+                  <span>{cat.label}</span>
+                  <span className={`text-[10px] px-1.5 py-0.2 rounded-full ${isSelected ? 'bg-white/25 text-white' : 'bg-gray-100 text-text-muted'}`}>
+                    {count}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+
+          {/* MOBILE VIEW (< sm): Responsive Cards */}
+          <div className="block sm:hidden space-y-3">
+            {filteredDiscounts.length === 0 ? (
+              <div className="bg-surface border border-border shadow-2xl rounded-xl text-text-main p-6 text-center text-xs text-gray-400 border border-border">
+                {t("No offers found under this category filter.")}
+              </div>
+            ) : filteredDiscounts.map((discount) => {
+              const statusInfo = getOfferStatus(discount);
+              const catMeta = getOfferCategoryMeta(discount.offerCategory);
+              return (
+                <div key={discount._id} className="bg-surface border border-border shadow-2xl rounded-xl text-text-main p-3.5 shadow-sm border border-border flex flex-col gap-2.5">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <div className={`p-1.5 rounded-lg shrink-0 ${discount.type === 'bogo' ? 'bg-orange-100 text-orange-600' : 'bg-blue-100 text-primary'}`}>
+                        {discount.type === 'bogo' ? <Gift size={15} /> : <Tags size={15} />}
+                      </div>
+                      <div className="min-w-0">
+                        <span className="font-bold text-text-main text-xs truncate block">{discount.name}</span>
+                        <span className={`inline-flex items-center gap-1 px-1.5 py-0.2 rounded-md text-[9px] font-bold border mt-0.5 ${catMeta.badgeColor}`}>
+                          <span>{catMeta.icon}</span>
+                          <span>{catMeta.label}</span>
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-1 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => handleBroadcastClick(discount)}
+                        className="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors cursor-pointer"
+                        title={t("Broadcast Offer via WhatsApp")}>
+                        <MessageCircle size={15} />
+                      </button>
+                      <button
+                        onClick={() => handleEditClick(discount)}
+                        className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors cursor-pointer"
+                        title={t("Edit")}>
+                        <Edit2 size={15} />
+                      </button>
+                      <button
+                        onClick={() => handleDelete(discount._id)}
+                        className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg transition-colors cursor-pointer"
+                        title={t("Delete")}>
+                        <Trash2 size={15} />
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-1.5 pt-1 border-t border-border text-[11px]">
+                    <span className={`px-2 py-0.5 rounded-full font-black uppercase text-[10px] border ${
+                      discount.type === 'bogo'
+                        ? 'bg-amber-50 text-amber-800 border-amber-200'
+                        : discount.type === 'percentage'
+                        ? 'bg-blue-50 text-blue-700 border-blue-200'
+                        : 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                    }`}>
+                      {discount.type === 'bogo' ? t("BOGO") : discount.type === 'percentage' ? t("% Off") : t("₹ Flat")}
+                    </span>
+
+                    <span className="font-mono font-bold text-text-main bg-gray-100 px-2 py-0.5 rounded">
+                      {discount.type === 'bogo' ? `Buy ${discount.buyQty || 2} Get ${discount.getQty || 1} Free` : (discount.type === 'percentage' ? `${discount.value}%` : `₹${discount.value}`)}
+                    </span>
+
+                    <span className="bg-orange-50 text-orange-800 border border-orange-200/60 px-2 py-0.5 rounded font-bold text-[10px]">
+                      {discount.applicableTo === 'category'
+                        ? (typeof discount.targetCategory === 'object' && discount.targetCategory !== null
+                            ? discount.targetCategory.name
+                            : (discount.targetCategory || t("Category")))
+                        : t("All Items")}
+                    </span>
+
+                    <span className={`ml-auto inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border ${statusInfo.badgeClass}`}>
+                      {statusInfo.status === 'active' && <CheckCircle2 size={10} />}
+                      {statusInfo.status === 'expired' && <AlertTriangle size={10} />}
+                      {statusInfo.status === 'upcoming' && <Clock size={10} />}
+                      {statusInfo.status === 'inactive' && <XCircle size={10} />}
+                      <span>{statusInfo.label}</span>
+                    </span>
+                  </div>
+
+                  {discount.hasTimeline && (
+                    <div className="flex items-center gap-1.5 text-[10px] text-text-muted bg-[#f7f1ea] px-2 py-1 rounded-lg border border-border font-medium">
+                      <Timer size={12} className={statusInfo.status === 'expired' ? 'text-red-500' : 'text-primary'} />
+                      <span>{statusInfo.description}</span>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+          {/* DESKTOP & TABLET VIEW (>= sm): Dynamic Width Columns Table */}
+          <div className="hidden sm:block bg-surface border border-border shadow-2xl rounded-2xl text-text-main shadow-sm border border-border overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left">
+                <thead className="bg-[#f7f1ea]/80 border-b border-border text-xs font-black text-text-muted uppercase tracking-wider">
+                  <tr>
+                    <th className="px-5 py-3.5 whitespace-nowrap">{t("Offer / Discount Name")}</th>
+                    <th className="px-5 py-3.5 whitespace-nowrap">{t("Type")}</th>
+                    <th className="px-5 py-3.5 whitespace-nowrap">{t("Rule / Value")}</th>
+                    <th className="px-5 py-3.5 whitespace-nowrap">{t("Applies To")}</th>
+                    <th className="px-5 py-3.5 whitespace-nowrap">{t("Timeline & Validity")}</th>
+                    <th className="px-5 py-3.5 whitespace-nowrap">{t("Status")}</th>
+                    <th className="px-5 py-3.5 whitespace-nowrap text-right">{t("Actions")}</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100 text-xs">
+                  {filteredDiscounts.length === 0 ? (
+                    <tr>
+                      <td colSpan={7} className="px-5 py-8 text-center text-gray-400 font-medium text-xs">
+                        {t("No offers found under this category filter.")}
+                      </td>
+                    </tr>
+                  ) : filteredDiscounts.map((discount) => {
+                    const statusInfo = getOfferStatus(discount);
+                    const catMeta = getOfferCategoryMeta(discount.offerCategory);
+                    return (
+                      <tr key={discount._id} className={`transition-colors ${statusInfo.status === 'expired' ? 'bg-red-50/20 hover:bg-red-50/40' : 'hover:bg-orange-50/30'}`}>
+                        <td className="px-5 py-3.5 font-bold text-text-main whitespace-nowrap">
+                          <div className="flex items-center gap-2.5">
+                            {discount.type === 'bogo' ? (
+                              <div className="p-1.5 bg-orange-100 text-orange-600 rounded-lg shrink-0">
+                                <Gift size={15} />
+                              </div>
+                            ) : (
+                              <div className="p-1.5 bg-blue-100 text-primary rounded-lg shrink-0">
+                                <Tags size={15} />
+                              </div>
+                            )}
+                            <div>
+                              <div className="flex items-center gap-1.5">
+                                <span className="font-bold text-text-main text-xs">{discount.name}</span>
+                                {statusInfo.status === 'expired' && (
+                                  <span className="text-[10px] font-bold text-red-600 bg-red-100 px-1.5 py-0.2 rounded border border-red-200">
+                                    {t("EXPIRED")}
+                                  </span>
+                                )}
+                              </div>
+                              <div className="flex items-center gap-1.5 mt-0.5">
+                                <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border ${catMeta.badgeColor}`}>
+                                  <span>{catMeta.icon}</span>
+                                  <span>{catMeta.label}</span>
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                        </td>
+
+                        <td className="px-5 py-3.5 whitespace-nowrap">
+                          <span className={`px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider border ${
+                            discount.type === 'bogo'
+                              ? 'bg-amber-50 text-amber-800 border-amber-200'
+                              : discount.type === 'percentage'
+                              ? 'bg-blue-50 text-blue-700 border-blue-200'
+                              : 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                          }`}>
+                            {discount.type === 'bogo' ? t("BOGO Offer") : discount.type === 'percentage' ? t("Percentage (%)") : t("Flat (₹)")}
+                          </span>
+                        </td>
+
+                        <td className="px-5 py-3.5 font-bold text-text-main whitespace-nowrap font-mono">
+                          {discount.type === 'bogo' ? (
+                            <span className="text-orange-600">
+                              Buy {discount.buyQty || 2} Get {discount.getQty || 1} Free
+                            </span>
+                          ) : discount.type === 'percentage' ? (
+                            <span>{discount.value}%</span>
+                          ) : (
+                            <span>₹{discount.value}</span>
+                          )}
+                        </td>
+
+                        <td className="px-5 py-3.5 text-text-muted whitespace-nowrap">
+                          {discount.applicableTo === 'category' ? (
+                            <span className="bg-orange-50 text-orange-800 border border-orange-200/60 px-2 py-0.5 rounded-md font-bold text-[11px]">
+                              {typeof discount.targetCategory === 'object' && discount.targetCategory !== null
+                                ? (discount.targetCategory.name || 'Category')
+                                : (discount.targetCategory || t("Category"))}
+                            </span>
+                          ) : (
+                            <span className="text-text-muted font-medium">{t("All Items")}</span>
+                          )}
+                        </td>
+
+                        <td className="px-5 py-3.5 whitespace-nowrap">
+                          {discount.hasTimeline ? (
+                            <div className="flex flex-col">
+                              <span className="font-semibold text-text-main flex items-center gap-1">
+                                <Clock size={12} className={statusInfo.status === 'expired' ? 'text-red-500' : 'text-primary'} />
+                                {statusInfo.description}
+                              </span>
+                              <span className="text-[10px] text-gray-400">
+                                {discount.startDate ? new Date(discount.startDate).toLocaleDateString() : ''} → {discount.endDate ? new Date(discount.endDate).toLocaleDateString() : ''}
+                              </span>
+                            </div>
+                          ) : (
+                            <span className="text-gray-400 font-medium">{t("Always Active (No expiry)")}</span>
+                          )}
+                        </td>
+
+                        <td className="px-5 py-3.5 whitespace-nowrap">
+                          <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${statusInfo.badgeClass}`}>
+                            {statusInfo.status === 'active' && <CheckCircle2 size={11} />}
+                            {statusInfo.status === 'expired' && <AlertTriangle size={11} />}
+                            {statusInfo.status === 'upcoming' && <Clock size={11} />}
+                            {statusInfo.status === 'inactive' && <XCircle size={11} />}
+                            <span>{statusInfo.label}</span>
+                          </span>
+                        </td>
+
+                        <td className="px-5 py-3.5 text-right whitespace-nowrap">
+                          <div className="flex justify-end items-center gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => handleBroadcastClick(discount)}
+                              className="p-1.5 px-2 bg-emerald-50 text-emerald-700 hover:bg-emerald-100/80 border border-emerald-200/80 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 font-bold text-xs shadow-xs active:scale-95"
+                              title={t("Broadcast Offer to Customers via WhatsApp")}>
+                              <MessageCircle size={14} className="text-emerald-600 shrink-0" />
+                              <span className="hidden md:inline text-[11px] font-bold">
+                                {t("Broadcast")}
+                              </span>
+                            </button>
+                            <button
+                              onClick={() => handleEditClick(discount)}
+                              className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors cursor-pointer"
+                              title={t("Edit")}>
+                              <Edit2 size={16} />
+                            </button>
+                            <button
+                              onClick={() => handleDelete(discount._id)}
+                              className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg transition-colors cursor-pointer"
+                              title={t("Delete")}>
+                              <Trash2 size={16} />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* Modal */}
+      {isModalOpen && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-[99999] flex items-center justify-center p-4 animate-fade-in">
+          <div className="bg-[#FDFBF7] border border-sky-500/40 shadow-2xl rounded-2xl text-slate-800 w-full max-w-lg overflow-hidden animate-slide-up max-h-[92vh] flex flex-col">
+            <div className="px-6 py-4 border-b border-sky-900/50 flex justify-between items-center bg-[#F7EFE2] shrink-0">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 bg-orange-500/20 border border-orange-500/40 text-orange-400 rounded-lg">
+                  {formData.type === 'bogo' ? <Gift size={18} /> : <Tags size={18} />}
+                </div>
+                <h2 className="text-base font-black text-slate-800">
+                  {editingDiscount ? t("Edit Offer / Discount") : t("Add Offer / Discount")}
+                </h2>
+              </div>
+              <button
+                onClick={() => setIsModalOpen(false)}
+                className="text-slate-400 hover:text-slate-700 p-1.5 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer">
+                &times;
+              </button>
+            </div>
+
+            <form onSubmit={handleSubmit} className="p-6 space-y-4 overflow-y-auto custom-scrollbar bg-[#f7f1ea]">
+              {/* Validation Error Box */}
+              {validationError && (
+                <div className="p-3 bg-red-950/60 border border-red-500/40 text-red-300 rounded-xl text-xs flex items-start gap-2">
+                  <AlertCircle size={16} className="text-red-400 shrink-0 mt-0.5" />
+                  <span className="font-semibold">{validationError}</span>
+                </div>
+              )}
+
+              {/* OVERLAP / CONFLICT VALIDATION WARNING BANNER */}
+              {conflictingOffers.length > 0 && formData.isActive && (
+                <div className="p-3.5 bg-amber-950/40 border border-amber-500/40 rounded-xl text-xs flex flex-col gap-1.5 text-amber-200">
+                  <div className="flex items-center gap-1.5 font-bold text-amber-400">
+                    <AlertTriangle size={15} className="text-amber-400 shrink-0" />
+                    <span>{t("Active Offer Overlap Notice")}</span>
+                  </div>
+                  <p className="text-[11px] text-amber-200/90 leading-snug">
+                    {t("The scope you selected overlaps with already active offer(s):")}
+                  </p>
+                  <ul className="list-disc list-inside space-y-0.5 text-[11px] font-medium text-amber-300 pl-1">
+                    {conflictingOffers.map((c, i) => (
+                      <li key={i}>{c.message}</li>
+                    ))}
+                  </ul>
+                  <p className="text-[10px] text-amber-400/80 italic">
+                    {t("You can still proceed, but having multiple active offers for the same items can lead to overlapping discounts.")}
+                  </p>
+                </div>
+              )}
+
+              {/* Offer Type Selector */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                  {t("Offer Type")}
+                </label>
+                <div className="grid grid-cols-3 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setFormData({ ...formData, type: 'bogo' })}
+                    className={`py-2 px-2 rounded-xl font-bold text-xs border text-center transition-all cursor-pointer ${
+                      formData.type === 'bogo'
+                        ? 'bg-orange-500 text-white border-orange-500 shadow-md shadow-orange-500/30'
+                        : 'bg-[#FDFBF7] hover:bg-sky-950 text-slate-700 border-sky-500/30'
+                    }`}
+                  >
+                    🎁 {t("BOGO Offer")}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setFormData({ ...formData, type: 'percentage' })}
+                    className={`py-2 px-2 rounded-xl font-bold text-xs border text-center transition-all cursor-pointer ${
+                      formData.type === 'percentage'
+                        ? 'bg-sky-500 text-white border-sky-500 shadow-md shadow-sky-500/30'
+                        : 'bg-[#FDFBF7] hover:bg-sky-950 text-slate-300 border-sky-500/30'
+                    }`}
+                  >
+                    % {t("Percentage")}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setFormData({ ...formData, type: 'flat' })}
+                    className={`py-2 px-2 rounded-xl font-bold text-xs border text-center transition-all cursor-pointer ${
+                      formData.type === 'flat'
+                        ? 'bg-sky-500 text-white border-sky-500 shadow-md shadow-sky-500/30'
+                        : 'bg-[#FDFBF7] hover:bg-sky-950 text-slate-300 border-sky-500/30'
+                    }`}
+                  >
+                    ₹ {t("Flat Off")}
+                  </button>
+                </div>
+              </div>
+
+              {/* OFFER CATEGORY / OCCASION SELECTOR */}
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider">
+                    {t("Offer Category / Occasion")}
+                  </label>
+                  <span className="text-[10px] text-slate-600 font-medium">
+                    {t("Theme & Campaign Tag")}
+                  </span>
+                </div>
+
+                <div className="relative">
+                  <select
+                    value={formData.offerCategory}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setFormData({
+                        ...formData,
+                        offerCategory: val,
+                        customCategory: val === 'Custom' ? formData.customCategory : ''
+                      });
+                    }}
+                    className="w-full px-3.5 py-2.5 bg-[#F7EFE2] border border-sky-500/30 rounded-xl focus:ring-1 focus:ring-sky-400 focus:border-sky-400 transition-all outline-none text-xs font-bold text-slate-100 cursor-pointer shadow-xs"
+                  >
+                    {OFFER_CATEGORIES.map(cat => (
+                      <option key={cat.id} value={cat.label} className="bg-white text-slate-800">
+                        {cat.icon} {cat.label}
+                      </option>
+                    ))}
+                    <option value="Custom" className="bg-white text-slate-800">✏️ {t("Custom Category...")}</option>
+                  </select>
+                </div>
+
+                {/* Quick 1-Click Chips for Popular Occasions */}
+                <div className="flex flex-wrap gap-1.5 mt-2">
+                  {OFFER_CATEGORIES.slice(0, 5).map(cat => {
+                    const isSelected = formData.offerCategory === cat.label;
+                    return (
+                      <button
+                        key={cat.id}
+                        type="button"
+                        onClick={() => setFormData({ ...formData, offerCategory: cat.label })}
+                        className={`px-2.5 py-1 rounded-lg text-[10px] font-bold border transition-all cursor-pointer flex items-center gap-1 ${
+                          isSelected
+                            ? 'bg-sky-500 text-white border-sky-500 shadow-xs'
+                            : 'bg-[#FDFBF7] hover:bg-sky-950 text-slate-300 border-sky-500/30'
+                        }`}
+                      >
+                        <span>{cat.icon}</span>
+                        <span>{cat.label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* Custom Category Input if Custom is selected */}
+                {formData.offerCategory === 'Custom' && (
+                  <div className="mt-2 animate-fade-in">
+                    <input
+                      type="text"
+                      required
+                      placeholder={t("Enter custom offer category (e.g. Monsoon Dhamaka, Midnight Special)")}
+                      value={formData.customCategory}
+                      onChange={(e) => setFormData({ ...formData, customCategory: e.target.value })}
+                      className="w-full px-3.5 py-2 bg-[#F7EFE2] border border-amber-500/40 rounded-xl text-xs font-medium text-slate-100 outline-none focus:ring-1 focus:ring-amber-400"
+                    />
+                  </div>
+                )}
+              </div>
+
+              {/* Offer Name */}
+              <div>
+                <label className="block text-xs font-bold text-sky-400 uppercase tracking-wider mb-1.5">
+                  {formData.type === 'bogo' ? t("Offer Title (e.g. Biryani BOGO or Buy 2 Get 1)") : t("Discount Name (e.g. SUMMER20 or Staff 10%)")}
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={formData.name}
+                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                  className="w-full px-3.5 py-2.5 bg-[#F7EFE2] border border-sky-500/30 rounded-xl focus:ring-1 focus:ring-sky-400 focus:border-sky-400 transition-all outline-none text-sm font-medium text-slate-800 placeholder:text-slate-400"
+                  placeholder={formData.type === 'bogo' ? "Weekend BOGO Deal" : "Testing Offer"}
+                />
+              </div>
+
+              {/* Dynamic Inputs based on Type */}
+              {formData.type === 'bogo' ? (
+                <div className="space-y-3 bg-[#F7EFE2] p-3.5 rounded-xl border border-orange-500/30">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-[11px] font-bold text-orange-400 uppercase mb-1">
+                        {t("Buy Quantity (X)")}
+                      </label>
+                      <input
+                        type="number"
+                        min="1"
+                        required
+                        value={formData.buyQty}
+                        onChange={(e) => setFormData({ ...formData, buyQty: e.target.value })}
+                        className="w-full px-3 py-2 bg-[#F7EFE2] border border-orange-500/30 rounded-lg text-sm font-bold text-slate-100 outline-none focus:border-orange-400 font-mono"
+                        placeholder="2"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-bold text-orange-400 uppercase mb-1">
+                        {t("Get Free Qty (Y)")}
+                      </label>
+                      <input
+                        type="number"
+                        min="1"
+                        required
+                        value={formData.getQty}
+                        onChange={(e) => setFormData({ ...formData, getQty: e.target.value })}
+                        className="w-full px-3 py-2 bg-[#F7EFE2] border border-orange-500/30 rounded-lg text-sm font-bold text-slate-100 outline-none focus:border-orange-400 font-mono"
+                        placeholder="1"
+                      />
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div>
+                  <label className="block text-xs font-bold text-sky-400 uppercase tracking-wider mb-1.5">
+                    {formData.type === 'percentage' ? t("Discount Value (%)") : t("Discount Amount (₹)")}
+                  </label>
+                  <input
+                    type="number"
+                    required
+                    min="0"
+                    max={formData.type === 'percentage' ? '100' : undefined}
+                    step={formData.type === 'percentage' ? '0.1' : '1'}
+                    value={formData.value}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      if (formData.type === 'percentage' && val !== '') {
+                        const num = parseFloat(val);
+                        setFormData({ ...formData, value: isNaN(num) ? '' : Math.min(100, Math.max(0, num)) });
+                      } else {
+                        setFormData({ ...formData, value: val });
+                      }
+                    }}
+                    className="w-full px-3.5 py-2.5 bg-[#F7EFE2] border border-sky-500/30 rounded-xl focus:ring-1 focus:ring-sky-400 focus:border-sky-400 transition-all outline-none text-sm font-bold font-mono text-slate-100 placeholder:text-slate-600"
+                    placeholder={formData.type === 'percentage' ? "18 (Max 100%)" : "50"}
+                  />
+                </div>
+              )}
+
+              {/* Applies To Category Selector (Available for BOGO, Percentage, Flat) */}
+              <div className="bg-[#FDFBF7] p-3.5 rounded-xl border border-sky-500/30 space-y-1.5">
+                <label className="block text-xs font-bold text-slate-800 uppercase tracking-wider">
+                  {t("Applies To")}
+                </label>
+                <div className="flex gap-2">
+                  <select
+                    value={formData.applicableTo}
+                    onChange={(e) => setFormData({ ...formData, applicableTo: e.target.value })}
+                    className="w-1/2 px-3 py-2 bg-white border border-[#E8DCCB] rounded-lg text-xs font-bold text-slate-800 outline-none focus:border-[#ea580c] cursor-pointer"
+                  >
+                    <option value="all" className="bg-white text-slate-800">{t("All Menu Items")}</option>
+                    <option value="category" className="bg-white text-slate-800">{t("Specific Category")}</option>
+                  </select>
+
+                  {formData.applicableTo === 'category' && (
+                    <select
+                      value={formData.targetCategory}
+                      onChange={(e) => setFormData({ ...formData, targetCategory: e.target.value })}
+                      className="w-1/2 px-3 py-2 bg-white border border-[#E8DCCB] rounded-lg text-xs font-bold text-slate-800 outline-none focus:border-[#ea580c] cursor-pointer"
+                    >
+                      <option value="" className="bg-white text-slate-800">{t("Select Category...")}</option>
+                      {categories.map((c, idx) => {
+                        const val = typeof c === 'object' && c !== null ? c.name : String(c);
+                        return (
+                          <option key={idx} value={val} className="bg-white text-slate-800">{val}</option>
+                        );
+                      })}
+                    </select>
+                  )}
+                </div>
+                {formData.applicableTo === 'category' && !formData.targetCategory && (
+                  <p className="text-[10px] text-amber-400 font-medium">
+                    {t("Please select which category this discount will apply to.")}
+                  </p>
+                )}
+              </div>
+
+              {/* DYNAMIC TIMELINE & DATE-TIME SCHEDULING SECTION */}
+              <div className="bg-[#FDFBF7] p-4 rounded-xl border border-sky-500/30 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Calendar size={16} className="text-sky-400" />
+                    <span className="text-xs font-black text-slate-800 uppercase tracking-wider">
+                      {t("Offer Validity & Timeline")}
+                    </span>
+                  </div>
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={formData.hasTimeline}
+                      onChange={(e) => setFormData({ ...formData, hasTimeline: e.target.checked })}
+                      className="sr-only peer"
+                    />
+                    <div className="w-9 h-5 bg-sky-950 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-sky-500"></div>
+                  </label>
+                </div>
+
+                {formData.hasTimeline ? (
+                  <div className="space-y-3 pt-1">
+                    {/* Quick Preset Buttons */}
+                    <div>
+                      <span className="text-[10px] font-bold text-slate-400 block mb-1.5">
+                        {t("Quick Duration Presets:")}
+                      </span>
+                      <div className="flex flex-wrap gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => applyTimelinePreset(1)}
+                          className="px-2.5 py-1 bg-[#FAF0E4] hover:bg-[#F5E8D8] text-[#7c3f1d] font-bold text-[11px] rounded-lg border border-[#E8DCCB] transition-colors shadow-2xs cursor-pointer"
+                        >
+                          {t("Today Only (24h)")}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => applyTimelinePreset(3)}
+                          className="px-2.5 py-1 bg-[#FAF0E4] hover:bg-[#F5E8D8] text-[#7c3f1d] font-bold text-[11px] rounded-lg border border-[#E8DCCB] transition-colors shadow-2xs cursor-pointer"
+                        >
+                          {t("3 Days")}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => applyTimelinePreset(4)}
+                          className="px-2.5 py-1 bg-[#ea580c] hover:bg-[#c2410c] text-white font-extrabold text-[11px] rounded-lg border border-[#ea580c] transition-colors shadow-2xs cursor-pointer"
+                        >
+                          {t("4 Days (Recommended)")}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => applyTimelinePreset(7)}
+                          className="px-2.5 py-1 bg-[#FAF0E4] hover:bg-[#F5E8D8] text-[#7c3f1d] font-bold text-[11px] rounded-lg border border-[#E8DCCB] transition-colors shadow-2xs cursor-pointer"
+                        >
+                          {t("1 Week (7d)")}
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Start Date & Time */}
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="block text-[10px] font-bold text-slate-700 uppercase mb-1">
+                          {t("Start Date *")}
+                        </label>
+                        <input
+                          type="date"
+                          required={formData.hasTimeline}
+                          value={formData.startDate}
+                          onChange={(e) => {
+                            setFormData({ ...formData, startDate: e.target.value });
+                            setValidationError('');
+                          }}
+                          className="w-full px-2.5 py-2 bg-white border border-[#E8DCCB] rounded-lg text-xs font-black text-slate-900 outline-none focus:border-[#ea580c]" style={{ colorScheme: 'light' }}
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-bold text-slate-700 uppercase mb-1">
+                          {t("Start Time")}
+                        </label>
+                        <input
+                          type="time"
+                          value={formData.startTime}
+                          onChange={(e) => {
+                            setFormData({ ...formData, startTime: e.target.value });
+                            setValidationError('');
+                          }}
+                          className="w-full px-2.5 py-2 bg-white border border-[#E8DCCB] rounded-lg text-xs font-black text-slate-900 outline-none focus:border-[#ea580c]" style={{ colorScheme: 'light' }}
+                        />
+                      </div>
+                    </div>
+
+                    {/* End Date & Time */}
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="block text-[10px] font-bold text-slate-700 uppercase mb-1">
+                          {t("End Date (Expiry) *")}
+                        </label>
+                        <input
+                          type="date"
+                          required={formData.hasTimeline}
+                          value={formData.endDate}
+                          onChange={(e) => {
+                            setFormData({ ...formData, endDate: e.target.value });
+                            setValidationError('');
+                          }}
+                          className="w-full px-2.5 py-2 bg-white border border-[#E8DCCB] rounded-lg text-xs font-black text-slate-900 outline-none focus:border-[#ea580c]" style={{ colorScheme: 'light' }}
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-bold text-slate-700 uppercase mb-1">
+                          {t("End Time")}
+                        </label>
+                        <input
+                          type="time"
+                          value={formData.endTime}
+                          onChange={(e) => {
+                            setFormData({ ...formData, endTime: e.target.value });
+                            setValidationError('');
+                          }}
+                          className="w-full px-2.5 py-2 bg-white border border-[#E8DCCB] rounded-lg text-xs font-black text-slate-900 outline-none focus:border-[#ea580c]" style={{ colorScheme: 'light' }}
+                        />
+                      </div>
+                    </div>
+
+                    <p className="text-[10px] text-slate-400 font-medium">
+                      {t("Once the end date & time passes, the offer will automatically expire and be disabled during billing.")}
+                    </p>
+                  </div>
+                ) : (
+                  <p className="text-[11px] text-slate-400 font-medium">
+                    {t("Timeline disabled. This offer will remain active continuously until manually deactivated.")}
+                  </p>
+                )}
+              </div>
+
+              {/* Active Toggle */}
+              <div className="flex items-center gap-2 pt-1">
+                <input
+                  type="checkbox"
+                  id="isActive"
+                  checked={formData.isActive}
+                  onChange={(e) => setFormData({ ...formData, isActive: e.target.checked })}
+                  className="w-4 h-4 rounded cursor-pointer accent-[#ea580c]"
+                />
+                <label htmlFor="isActive" className="text-xs font-bold text-slate-800 cursor-pointer">
+                  {t("Offer is currently enabled for billing")}
+                </label>
+              </div>
+
+              {/* Broadcast via WhatsApp on Save toggle */}
+              <div className="flex items-center justify-between p-3 bg-emerald-50 border border-emerald-300 rounded-xl">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-lg bg-emerald-100 border border-emerald-300 text-emerald-700 flex items-center justify-center shrink-0 shadow-sm">
+                    <MessageCircle size={16} />
+                  </div>
+                  <div>
+                    <p className="text-xs font-bold text-emerald-900">
+                      {t("Broadcast via WhatsApp on Save")}
+                    </p>
+                    <p className="text-[10px] text-emerald-800">
+                      {t("Automatically open customer audience selector to broadcast this offer")}
+                    </p>
+                  </div>
+                </div>
+                <input
+                  type="checkbox"
+                  id="broadcastOnSave"
+                  checked={broadcastOnSave}
+                  onChange={(e) => setBroadcastOnSave(e.target.checked)}
+                  className="w-4 h-4 text-emerald-500 accent-emerald-500 rounded cursor-pointer"
+                />
+              </div>
+
+              <div className="pt-3 flex gap-2 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setIsModalOpen(false)}
+                  className="flex-1 py-2.5 text-slate-700 hover:text-slate-900 bg-[#FAF0E4] hover:bg-[#F5E8D8] border border-[#E8DCCB] rounded-xl font-bold text-xs transition-colors cursor-pointer">
+                  {t("Cancel")}
+                </button>
+                <button
+                  type="submit"
+                  disabled={saving}
+                  className="flex-1 py-2.5 text-white bg-gradient-to-r from-[#ea580c] to-[#c2410c] hover:from-[#d94e08] hover:to-[#9a3412] text-white rounded-xl font-bold text-xs shadow-md transition-all cursor-pointer flex items-center justify-center gap-1.5 disabled:opacity-75">
+                  {saving ? (
+                    <>
+                      <Loader2 size={15} className="animate-spin text-white" />
+                      <span>{editingDiscount ? t("Updating Offer...") : t("Saving Offer...")}</span>
+                    </>
+                  ) : (
+                    <span>{editingDiscount ? t("Update Offer") : t("Save Offer")}</span>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* WhatsApp Campaign Broadcast Modal */}
+      {broadcastModalOpen && (
+        <BroadcastCampaignModal
+          isOpen={broadcastModalOpen}
+          onClose={() => {
+            setBroadcastModalOpen(false);
+            setBroadcastDiscount(null);
+          }}
+          discount={broadcastDiscount}
+          restaurantName={restaurantName}
+        />
+      )}
+    </div>
+  );
+};
+
+export default DiscountConfig;

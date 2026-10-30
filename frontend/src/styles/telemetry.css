@@ -1,0 +1,1025 @@
+/* ==========================================================================
+   REAL-TIME TELEMETRY & SAAS HEALTH STYLESHEET
+   Dark Oceanic Theme matching YNR Fishes Enterprise Portal & Website
+   ========================================================================== */
+
+.telemetry-module-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  width: 100%;
+  animation: fadeIn 0.3s ease-in-out;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* --------------------------------------------------------------------------
+   Telemetry Header Banner Card
+   -------------------------------------------------------------------------- */
+.telemetry-header-card {
+  background: rgba(4, 20, 37, 0.7);
+  border: 1px solid rgba(56, 189, 248, 0.22);
+  border-radius: 14px;
+  padding: 14px 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  backdrop-filter: blur(16px);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+}
+
+.telemetry-header-left {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.telemetry-icon-pulse {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  background: rgba(14, 165, 233, 0.15);
+  border: 1px solid rgba(56, 189, 248, 0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.telemetry-icon-pulse svg {
+  stroke: #38bdf8 !important;
+}
+
+.telemetry-title-block {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.telemetry-title-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.telemetry-heading {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: #f8fafc;
+  letter-spacing: -0.02em;
+}
+
+.live-pill-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(16, 185, 129, 0.15);
+  color: #34d399;
+  border: 1px solid rgba(52, 211, 153, 0.35);
+  padding: 3px 10px;
+  border-radius: 20px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.live-dot-pulse {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background-color: #10b981;
+  box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.8);
+  animation: pulseGreen 1.6s infinite cubic-bezier(0.66, 0, 0, 1);
+}
+
+@keyframes pulseGreen {
+  to {
+    box-shadow: 0 0 0 8px rgba(16, 185, 129, 0);
+  }
+}
+
+.telemetry-subtext {
+  margin: 0;
+  font-size: 0.83rem;
+  color: #94a3b8;
+  line-height: 1.4;
+}
+
+.telemetry-header-right {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.telemetry-clock {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.85rem;
+  color: #94a3b8;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  background: rgba(2, 13, 26, 0.5);
+  border: 1px solid rgba(56, 189, 248, 0.15);
+  padding: 6px 12px;
+  border-radius: 10px;
+}
+
+.telemetry-sync-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  background: rgba(14, 165, 233, 0.15);
+  border: 1px solid rgba(56, 189, 248, 0.35);
+  color: #38bdf8;
+  padding: 8px 16px;
+  border-radius: 10px;
+  font-size: 0.84rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.telemetry-sync-btn:hover {
+  background: rgba(14, 165, 233, 0.28);
+  border-color: #38bdf8;
+  color: #ffffff;
+}
+
+.telemetry-sync-btn.syncing {
+  opacity: 0.75;
+  cursor: not-allowed;
+}
+
+.spin-icon {
+  animation: spinAround 1s linear infinite;
+}
+
+@keyframes spinAround {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* --------------------------------------------------------------------------
+   Subtabs Bar
+   -------------------------------------------------------------------------- */
+.telemetry-subtabs-bar {
+  display: flex;
+  gap: 28px;
+  border-bottom: 1px solid rgba(56, 189, 248, 0.2);
+  padding-left: 4px;
+}
+
+.telemetry-subtab-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: none;
+  border: none;
+  padding: 12px 4px;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #94a3b8;
+  cursor: pointer;
+  position: relative;
+  transition: color 0.2s ease;
+}
+
+.telemetry-subtab-btn:hover {
+  color: #f8fafc;
+}
+
+.telemetry-subtab-btn.active {
+  color: #38bdf8;
+}
+
+.telemetry-subtab-indicator {
+  position: absolute;
+  bottom: -1px;
+  left: 0;
+  right: 0;
+  height: 2.5px;
+  background-color: #38bdf8;
+  border-radius: 2px;
+  box-shadow: 0 0 10px #0ea5e9;
+}
+
+.telemetry-subtab-icon {
+  display: flex;
+  align-items: center;
+}
+
+/* --------------------------------------------------------------------------
+   KPI 4-Grid Cards
+   -------------------------------------------------------------------------- */
+.telemetry-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+}
+
+.telemetry-kpi-card {
+  background: rgba(4, 20, 37, 0.7);
+  border: 1px solid rgba(56, 189, 248, 0.2);
+  border-radius: 14px;
+  padding: 14px 16px;
+  backdrop-filter: blur(14px);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.2);
+  display: flex;
+  flex-direction: column;
+}
+
+.telemetry-kpi-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.telemetry-kpi-title {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #94a3b8;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.kpi-icon-pill {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.kpi-icon-pill.blue {
+  background: rgba(14, 165, 233, 0.15);
+  border: 1px solid rgba(56, 189, 248, 0.3);
+}
+.kpi-icon-pill.green {
+  background: rgba(16, 185, 129, 0.15);
+  border: 1px solid rgba(16, 185, 129, 0.3);
+}
+.kpi-icon-pill.red {
+  background: rgba(239, 68, 68, 0.15);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+}
+.kpi-icon-pill.orange {
+  background: rgba(245, 158, 11, 0.15);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+}
+
+.telemetry-kpi-value {
+  font-size: 1.85rem;
+  font-weight: 800;
+  color: #ffffff;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+}
+
+.telemetry-kpi-unit {
+  font-size: 0.95rem;
+  font-weight: 500;
+  color: #94a3b8;
+}
+
+.telemetry-kpi-sub {
+  margin-top: 6px;
+  font-size: 0.78rem;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.telemetry-kpi-sub.green { color: #34d399; }
+.telemetry-kpi-sub.gray { color: #94a3b8; }
+.telemetry-kpi-sub.blue { color: #38bdf8; }
+.telemetry-kpi-sub.red { color: #f87171; }
+
+/* --------------------------------------------------------------------------
+   Middle Charts Grid (Traffic Area Chart & Active Branches Bar Chart)
+   -------------------------------------------------------------------------- */
+.telemetry-charts-grid {
+  display: grid;
+  grid-template-columns: 1.2fr 1fr;
+  gap: 12px;
+  margin-top: 4px;
+}
+
+.telemetry-panel-card {
+  background: rgba(4, 20, 37, 0.7);
+  border: 1px solid rgba(56, 189, 248, 0.2);
+  border-radius: 14px;
+  padding: 16px 18px;
+  backdrop-filter: blur(14px);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.2);
+}
+
+.telemetry-panel-card.no-padding {
+  padding: 0;
+  overflow: hidden;
+}
+
+.panel-header-between {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 14px;
+}
+
+.panel-card-title {
+  margin: 0;
+  font-size: 0.98rem;
+  font-weight: 700;
+  color: #f8fafc;
+}
+
+.panel-card-subtitle {
+  margin: 3px 0 0 0;
+  font-size: 0.78rem;
+  color: #94a3b8;
+}
+
+.rpm-pulse-badge {
+  background: rgba(14, 165, 233, 0.15);
+  color: #38bdf8;
+  border: 1px solid rgba(56, 189, 248, 0.35);
+  padding: 4px 10px;
+  border-radius: 8px;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.active-nodes-badge {
+  background: rgba(2, 13, 26, 0.6);
+  color: #94a3b8;
+  border: 1px solid rgba(56, 189, 248, 0.2);
+  padding: 4px 10px;
+  border-radius: 8px;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.traffic-chart-wrapper {
+  width: 100%;
+  margin-top: 6px;
+}
+
+.traffic-svg-chart {
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+
+/* Throughput Comparison Bars */
+.throughput-bars-container {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin-top: 10px;
+}
+
+.throughput-bar-row {
+  display: grid;
+  grid-template-columns: 140px 1fr 65px;
+  align-items: center;
+  gap: 12px;
+}
+
+.throughput-branch-name {
+  font-size: 0.78rem;
+  color: #cbd5e1;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: block;
+}
+
+.throughput-track {
+  width: 100%;
+  height: 8px;
+  background: rgba(2, 13, 26, 0.8);
+  border: 1px solid rgba(56, 189, 248, 0.15);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.throughput-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #0284c7, #38bdf8);
+  border-radius: 4px;
+  transition: width 0.4s ease;
+  box-shadow: 0 0 8px rgba(56, 189, 248, 0.5);
+}
+
+.throughput-val-col {
+  text-align: right;
+  font-size: 0.76rem;
+  color: #94a3b8;
+  font-weight: 600;
+}
+
+/* --------------------------------------------------------------------------
+   Telemetry Data Tables & Live Matrix
+   -------------------------------------------------------------------------- */
+.panel-header-table {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 18px 24px 14px 24px;
+}
+
+.nodes-tracked-badge {
+  font-size: 0.76rem;
+  color: #94a3b8;
+  font-weight: 600;
+  background: rgba(2, 13, 26, 0.5);
+  padding: 4px 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(56, 189, 248, 0.15);
+}
+
+.telemetry-table-responsive {
+  width: 100%;
+  overflow-x: auto;
+}
+
+.telemetry-data-table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+}
+
+.telemetry-data-table th {
+  background: rgba(2, 13, 26, 0.6);
+  color: #94a3b8;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  padding: 12px 24px;
+  border-top: 1px solid rgba(56, 189, 248, 0.15);
+  border-bottom: 1px solid rgba(56, 189, 248, 0.2);
+}
+
+.telemetry-data-table td {
+  padding: 14px 24px;
+  font-size: 0.82rem;
+  color: #e2e8f0;
+  border-bottom: 1px solid rgba(56, 189, 248, 0.1);
+  vertical-align: middle;
+}
+
+.telemetry-data-table tr:hover td {
+  background: rgba(14, 165, 233, 0.05);
+}
+
+.telemetry-data-table tr:last-child td {
+  border-bottom: none;
+}
+
+.node-name-cell {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.node-icon {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  background: rgba(14, 165, 233, 0.15);
+  border: 1px solid rgba(56, 189, 248, 0.25);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.node-icon svg {
+  stroke: #38bdf8 !important;
+}
+
+.node-icon.green {
+  background: rgba(16, 185, 129, 0.15);
+  border-color: rgba(16, 185, 129, 0.3);
+}
+
+.node-icon.green svg {
+  stroke: #34d399 !important;
+}
+
+.node-title {
+  font-weight: 600;
+  color: #f8fafc;
+}
+
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  border-radius: 12px;
+  font-size: 0.74rem;
+  font-weight: 600;
+}
+
+.status-pill.active {
+  background: rgba(16, 185, 129, 0.15);
+  color: #34d399;
+  border: 1px solid rgba(52, 211, 153, 0.3);
+}
+
+.status-pill.idle {
+  background: rgba(148, 163, 184, 0.12);
+  color: #94a3b8;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+}
+
+.status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.rpm-num-cell {
+  font-weight: 600;
+  color: #38bdf8;
+}
+
+.transfer-cell {
+  color: #94a3b8;
+  font-family: inherit;
+}
+
+.ping-cell {
+  color: #94a3b8;
+  font-size: 0.78rem;
+}
+
+/* --------------------------------------------------------------------------
+   Storage & External Services (Tab 2)
+   -------------------------------------------------------------------------- */
+.services-grid-2x2 {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 14px;
+}
+
+.service-health-card {
+  background: rgba(4, 20, 37, 0.7);
+  border: 1px solid rgba(56, 189, 248, 0.2);
+  border-radius: 14px;
+  padding: 16px 18px;
+  backdrop-filter: blur(14px);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.2);
+  display: flex;
+  flex-direction: column;
+}
+
+.service-card-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 16px;
+}
+
+.service-brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.service-brand-icon {
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.service-brand-icon.mongo {
+  background: rgba(16, 185, 129, 0.15);
+  border: 1px solid rgba(16, 185, 129, 0.3);
+}
+.service-brand-icon.cloud {
+  background: rgba(14, 165, 233, 0.15);
+  border: 1px solid rgba(56, 189, 248, 0.3);
+}
+.service-brand-icon.purple {
+  background: rgba(168, 85, 247, 0.15);
+  border: 1px solid rgba(168, 85, 247, 0.3);
+}
+.service-brand-icon.red {
+  background: rgba(239, 68, 68, 0.15);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+.service-title {
+  margin: 0;
+  font-size: 0.98rem;
+  font-weight: 700;
+  color: #f8fafc;
+}
+
+.service-subtitle {
+  margin: 2px 0 0 0;
+  font-size: 0.78rem;
+  color: #94a3b8;
+}
+
+.service-status-pill {
+  padding: 3px 10px;
+  border-radius: 12px;
+  font-size: 0.74rem;
+  font-weight: 700;
+}
+
+.service-status-pill.green {
+  background: rgba(16, 185, 129, 0.15);
+  color: #34d399;
+  border: 1px solid rgba(52, 211, 153, 0.3);
+}
+.service-status-pill.blue {
+  background: rgba(14, 165, 233, 0.15);
+  color: #38bdf8;
+  border: 1px solid rgba(56, 189, 248, 0.3);
+}
+.service-status-pill.muted {
+  background: rgba(148, 163, 184, 0.12);
+  color: #94a3b8;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+}
+
+.service-progress-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 18px;
+}
+
+.progress-labels {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.78rem;
+}
+
+.progress-label-main { color: #94a3b8; }
+.progress-val-bold { font-weight: 700; color: #f8fafc; }
+
+.service-meter-track {
+  width: 100%;
+  height: 6px;
+  background: rgba(2, 13, 26, 0.8);
+  border: 1px solid rgba(56, 189, 248, 0.15);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.service-meter-fill {
+  height: 100%;
+  border-radius: 3px;
+}
+
+.service-meter-fill.green {
+  background: #10b981;
+  box-shadow: 0 0 8px rgba(16, 185, 129, 0.5);
+}
+.service-meter-fill.blue {
+  background: #38bdf8;
+  box-shadow: 0 0 8px rgba(56, 189, 248, 0.5);
+}
+
+.progress-remaining-text {
+  font-size: 0.73rem;
+  color: #94a3b8;
+  text-align: right;
+}
+
+.service-card-footer {
+  display: flex;
+  justify-content: space-between;
+  border-top: 1px solid rgba(56, 189, 248, 0.15);
+  padding-top: 14px;
+  margin-top: auto;
+}
+
+.service-stat-col {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.stat-label {
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: #94a3b8;
+  letter-spacing: 0.05em;
+}
+
+.stat-val {
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: #f8fafc;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.stat-val-sm {
+  font-size: 0.84rem;
+  font-weight: 600;
+  color: #f8fafc;
+}
+
+.stat-sub {
+  font-size: 0.75rem;
+  color: #94a3b8;
+  font-weight: 500;
+}
+
+.text-green { color: #34d399; }
+
+.service-endpoint-box {
+  background: rgba(2, 13, 26, 0.6);
+  border: 1px solid rgba(56, 189, 248, 0.2);
+  border-radius: 10px;
+  padding: 10px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 18px;
+}
+
+.service-endpoint-box.email {
+  background: rgba(2, 13, 26, 0.6);
+}
+
+.endpoint-tag {
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: #94a3b8;
+  letter-spacing: 0.05em;
+}
+
+.endpoint-code {
+  font-family: monospace;
+  font-size: 0.82rem;
+  color: #38bdf8;
+  font-weight: 600;
+}
+
+.email-auth-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.tls-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  background: rgba(16, 185, 129, 0.15);
+  color: #34d399;
+  border: 1px solid rgba(52, 211, 153, 0.3);
+  border-radius: 6px;
+  padding: 2px 6px;
+  font-size: 0.68rem;
+  font-weight: 700;
+}
+
+.services-bottom-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 16px;
+}
+
+.summary-card-tag {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #94a3b8;
+  letter-spacing: 0.05em;
+}
+
+.summary-big-value {
+  font-size: 1.85rem;
+  font-weight: 800;
+  color: #ffffff;
+  margin: 6px 0;
+  letter-spacing: -0.02em;
+}
+
+.summary-sub-transfers {
+  font-size: 0.78rem;
+  color: #94a3b8;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.divider-dot { color: rgba(56, 189, 248, 0.3); }
+
+.summary-icon-box {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.summary-icon-box.blue {
+  background: rgba(14, 165, 233, 0.15);
+  border: 1px solid rgba(56, 189, 248, 0.3);
+}
+
+.summary-icon-box.blue svg {
+  stroke: #38bdf8 !important;
+}
+
+.summary-icon-box.green {
+  background: rgba(16, 185, 129, 0.15);
+  border: 1px solid rgba(16, 185, 129, 0.3);
+}
+
+.summary-icon-box.green svg {
+  stroke: #34d399 !important;
+}
+
+/* --------------------------------------------------------------------------
+   WhatsApp Matrix (Tab 3)
+   -------------------------------------------------------------------------- */
+.wa-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+}
+
+.wa-status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 10px;
+  border-radius: 12px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.wa-status-pill.connected {
+  background: rgba(16, 185, 129, 0.15);
+  color: #34d399;
+  border: 1px solid rgba(52, 211, 153, 0.3);
+}
+
+.wa-status-pill.disconnected {
+  background: rgba(239, 68, 68, 0.15);
+  color: #f87171;
+  border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+.wa-status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.blue-msg-count {
+  color: #38bdf8;
+  font-weight: 700;
+}
+
+.dept-routing-btn {
+  background: rgba(14, 165, 233, 0.12);
+  border: 1px solid rgba(56, 189, 248, 0.3);
+  color: #e2e8f0;
+  padding: 5px 12px;
+  border-radius: 8px;
+  font-size: 0.76rem;
+  font-weight: 600;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.2s ease;
+}
+
+.dept-routing-btn:hover {
+  background: rgba(14, 165, 233, 0.25);
+  border-color: #38bdf8;
+  color: #ffffff;
+}
+
+.chevron-icon {
+  transition: transform 0.25s ease;
+}
+
+.chevron-icon.rotated {
+  transform: rotate(180deg);
+}
+
+/* Expandable Department Drawer (Screenshot 5) */
+.tr-parent-expanded td {
+  background: rgba(2, 13, 26, 0.4);
+}
+
+.tr-expanded-drawer td {
+  background: rgba(2, 13, 26, 0.4);
+  padding: 0 24px 20px 24px;
+}
+
+.dept-drawer-card {
+  background: rgba(6, 24, 44, 0.85);
+  border: 1px solid rgba(56, 189, 248, 0.3);
+  border-radius: 12px;
+  padding: 16px 20px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+}
+
+.dept-drawer-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.83rem;
+  color: #f8fafc;
+  margin-bottom: 14px;
+}
+
+.dept-drawer-header svg {
+  stroke: #38bdf8 !important;
+}
+
+.dept-boxes-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+}
+
+.dept-pill-box {
+  background: rgba(2, 13, 26, 0.6);
+  border: 1px solid rgba(56, 189, 248, 0.15);
+  border-radius: 10px;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.dept-pill-box.active {
+  background: rgba(16, 185, 129, 0.12);
+  border-color: rgba(52, 211, 153, 0.4);
+}
+
+.dept-pill-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.dept-pill-title {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: #f8fafc;
+}
+
+.dept-state-badge {
+  font-size: 0.68rem;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 6px;
+}
+
+.dept-state-badge.active {
+  background: #10b981;
+  color: #ffffff;
+}
+
+.dept-state-badge.disabled {
+  background: rgba(148, 163, 184, 0.15);
+  color: #94a3b8;
+}
+
+.dept-pill-phone {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.78rem;
+  color: #34d399;
+  font-weight: 600;
+}
+
+.no-assigned {
+  color: #64748b;
+  font-size: 0.74rem;
+  font-weight: normal;
+}
