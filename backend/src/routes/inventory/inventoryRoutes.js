@@ -3,6 +3,8 @@ const router = express.Router();
 import { 
   getFishInventory, 
   recordProcurement, 
+  recordLocalStockIn,
+  recordDamStockIn,
   recordShrinkage, 
   getLogs, 
   getRestockPredictions
@@ -12,9 +14,11 @@ import { authenticateToken, optionalAuthenticateToken } from '../../middleware/a
 // Seafood Inventory & Stock Endpoints
 router.get('/', optionalAuthenticateToken, getFishInventory);
 
-// Mandi/Harbor Procurement & Daily Shrinkage
+// Catch Procurement (Stock-In)
 router.post('/procurement', authenticateToken, recordProcurement);
 router.post('/restock', authenticateToken, recordProcurement);
+router.post('/local-stock-in', authenticateToken, recordLocalStockIn);
+router.post('/dam-stock-in', authenticateToken, recordDamStockIn);
 router.post('/shrinkage', authenticateToken, recordShrinkage);
 
 // Audit Ledger & AI Restock Predictions

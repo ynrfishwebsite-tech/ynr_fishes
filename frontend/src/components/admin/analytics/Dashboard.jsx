@@ -16,6 +16,7 @@ import Invoice from '../billing/Invoice';
 import defaultFishLogo from '../../../assets/ynr_logo_hd.jpg';
 import EditHistoryModal from '../billing/EditHistoryModal';
 import { formatTime12 } from '../../../utils/formatters/timeFormat';
+import BackButton from '../common/BackButton';
 
 const Dashboard = ({ onNavigate, onGoBack }) => {
   const [isMobile, setIsMobile] = useState(typeof window !== 'undefined' ? window.innerWidth < 768 : false);
@@ -191,17 +192,20 @@ const Dashboard = ({ onNavigate, onGoBack }) => {
       {/* Compact Header Card with Neutral Border (no harsh colored borders) */}
       <div className="bg-[#FDFBF7] border border-[#E8DCCB] rounded-xl px-3 sm:px-4 py-2 sm:py-2.5 shadow-xs mb-3 sm:mb-4 flex items-center justify-between flex-nowrap gap-2">
         <div className="flex items-center gap-2 sm:gap-2.5 min-w-0">
+          {onGoBack && (
+            <BackButton onClick={onGoBack} label="Back" />
+          )}
           <div className="p-1.5 sm:p-2 rounded-xl bg-orange-100 text-[#ea580c] border border-orange-200 shadow-2xs shrink-0 flex items-center justify-center">
             <LayoutDashboard size={18} strokeWidth={2.5} />
           </div>
           <div className="min-w-0">
             <div className="flex items-center gap-1.5 sm:gap-2">
-              <h1 className="text-sm sm:text-base font-black text-slate-800 tracking-tight leading-none m-0 whitespace-nowrap">Dashboard</h1>
+              <h1 className="text-sm sm:text-base font-black text-slate-800 tracking-tight leading-none m-0 whitespace-nowrap">Second Dashboard</h1>
               <span className="hidden sm:inline-flex text-[10px] px-2 py-0.5 rounded-full bg-[#FAF0E4] text-slate-600 font-bold border border-[#E8DCCB]">
-                Overview
+                Operations & Analytics
               </span>
             </div>
-            <p className="text-[10px] sm:text-[11px] text-slate-500 font-semibold m-0 mt-0.5 truncate hidden sm:block">Monitor your fish business operations at a glance</p>
+            <p className="text-[10px] sm:text-[11px] text-slate-500 font-semibold m-0 mt-0.5 truncate hidden sm:block">Monitor 8 core operational modules, catch weight and live sales</p>
           </div>
         </div>
 

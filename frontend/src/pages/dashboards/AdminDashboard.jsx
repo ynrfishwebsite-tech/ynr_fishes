@@ -3,34 +3,16 @@ import { Navigate } from 'react-router-dom';
 import ynrLogo from '../../assets/ynr_logo_hd.jpg';
 import { useAuth } from '../../context/AuthContext';
 import {
-  ShoppingCart,
-  Clock,
-  History,
-  Fish,
-  BookOpen,
-  Wallet,
-  Receipt,
-  BarChart3,
-  MessageSquare,
-  Settings as SettingsIcon,
-  LogOut,
-  Plus,
   Bell,
-  Package,
-  Calculator,
-  Layers,
-  ChevronRight,
-  Home,
-  FileText,
-  IndianRupee,
-  BookMarked,
-  Truck,
-  Menu as MenuIcon,
-  X as XIcon,
-  User
+  LogOut,
+  Settings as SettingsIcon,
+  User,
+  ArrowLeft,
+  Home
 } from 'lucide-react';
 
 // Imported Admin Components
+import MainEntranceDashboard from '../../components/admin/hub/MainEntranceDashboard';
 import Dashboard from '../../components/admin/analytics/Dashboard';
 import BillingPage from '../../components/admin/billing/BillingPage';
 import ActiveOrders from '../../components/admin/billing/ActiveOrders';
@@ -52,6 +34,9 @@ import DiscountConfig from '../../components/admin/finance/DiscountConfig';
 import SecuritySettings from '../../components/admin/system/SecuritySettings';
 import AdminPanel from '../../components/admin/system/AdminPanel';
 import EditedBills from '../../components/admin/billing/EditedBills';
+import DriverPortal from '../../components/admin/operations/DriverPortal';
+import SupplierPortal from '../../components/admin/operations/SupplierPortal';
+import GlobalSearchBar from '../../components/admin/common/GlobalSearchBar';
 import NotificationPanel from '../../components/admin/communication/NotificationPanel';
 import NotificationsPage from '../../components/admin/communication/NotificationsPage';
 import useNotifications from '../../hooks/useNotifications';
@@ -61,29 +46,28 @@ import { getCachedOpenOrders } from '../../db/offlineDb';
 import realtimeService from '../../services/realtimeService';
 
 export default function AdminDashboard() {
-  const [isMobile, setIsMobile] = useState(typeof window !== 'undefined' ? window.innerWidth < 1024 : false);
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [isMobile, setIsMobile] = useState(typeof window !== 'undefined' ? window.innerWidth < 768 : false);
 
   useEffect(() => {
     const handleResize = () => {
-      const mobile = window.innerWidth < 1024;
-      setIsMobile(mobile);
-      if (!mobile) setMobileMenuOpen(false);
+      setIsMobile(window.innerWidth < 768);
     };
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
   }, []);
+
   const { user, logout } = useAuth();
 
   // Super-admin has a dedicated enterprise dashboard at /dashboard/super-admin
   if (user?.role === 'super-admin') {
     return <Navigate to="/dashboard/super-admin" replace />;
   }
+
   const VALID_VIEWS = [
-    'dashboard', 'billing', 'active-orders', 'bill-history', 'edited-bills',
+    'dashboard', 'second-dashboard', 'billing', 'active-orders', 'bill-history', 'edited-bills',
     'menu', 'inventory', 'day-book', 'khata', 'expenses', 'vehicles', 'analytics',
     'crm', 'staff', 'printer', 'operations', 'discount', 'security', 'settings',
-    'notifications'
+    'notifications', 'driver-portal', 'supplier-portal'
   ];
 
   const { notifications, unreadCount, markAllAsRead, clearNotification } = useNotifications(user?.role || 'Admin');
@@ -94,25 +78,39 @@ export default function AdminDashboard() {
   const userPermitted = Array.isArray(user?.permittedPages) && user.permittedPages.length > 0
     ? user.permittedPages
     : (user?.role === 'manager'
-      ? ['dashboard', 'billing', 'active-orders', 'bill-history', 'menu', 'inventory', 'day-book', 'khata', 'expenses', 'vehicles', 'analytics', 'operations']
-      : ['billing', 'active-orders', 'bill-history', 'inventory']);
+      ? ['dashboard', 'second-dashboard', 'billing', 'active-orders', 'bill-history', 'menu', 'inventory', 'day-book', 'khata', 'expenses', 'vehicles', 'analytics', 'operations']
+      : (user?.role === 'driver'
+        ? ['driver-portal']
+        : (user?.role === 'supplier'
+          ? ['supplier-portal']
+          : ['dashboard', 'billing', 'active-orders', 'bill-history', 'inventory'])));
 
   const isPagePermitted = (pageId) => {
+    if (user?.role === 'driver') return pageId === 'driver-portal';
+    if (user?.role === 'supplier') return pageId === 'supplier-portal';
     if (isFullAdmin) return true;
+    if (pageId === 'dashboard' || pageId === 'second-dashboard') return true;
     return userPermitted.includes(pageId);
   };
 
   const getInitialView = () => {
     try {
+      if (user?.role === 'driver') return 'driver-portal';
+      if (user?.role === 'supplier') return 'supplier-portal';
       const hash = window.location.hash.replace('#', '').trim();
       if (hash && VALID_VIEWS.includes(hash) && isPagePermitted(hash)) return hash;
       const saved = localStorage.getItem('admin_current_view');
       if (saved && VALID_VIEWS.includes(saved) && isPagePermitted(saved)) return saved;
     } catch (e) { }
-    return isFullAdmin ? 'dashboard' : (userPermitted[0] || 'billing');
+    return user?.role === 'driver' ? 'driver-portal' : (user?.role === 'supplier' ? 'supplier-portal' : 'dashboard');
   };
 
   const [currentView, setCurrentView] = useState(getInitialView);
+  const [viewHistory, setViewHistory] = useState(() => {
+    const init = getInitialView();
+    return [init || 'dashboard'];
+  });
+
   const [selectedOrderTable, setSelectedOrderTable] = useState(null);
   const [selectedOrderAction, setSelectedOrderAction] = useState(null);
   const [showWhatsAppModal, setShowWhatsAppModal] = useState(false);
@@ -122,6 +120,82 @@ export default function AdminDashboard() {
   const [currentTime, setCurrentTime] = useState(new Date());
   const [activeOrdersCount, setActiveOrdersCount] = useState(0);
   const [billingKey, setBillingKey] = useState(1);
+  const [selectedOrderMode, setSelectedOrderMode] = useState('individual');
+
+  // Navigate with step-by-step history tracking
+  const navigateTo = (view, options = {}) => {
+    if (!view || !VALID_VIEWS.includes(view)) return;
+    if (!isPagePermitted(view)) return;
+
+    if (view === 'billing') {
+      if (options.mode) {
+        setSelectedOrderMode(options.mode);
+      }
+      const tableToSet = options.table !== undefined ? options.table : (options.preserveTable ? selectedOrderTable : null);
+      const actionToSet = options.action !== undefined ? options.action : (options.preserveTable ? selectedOrderAction : null);
+
+      setSelectedOrderTable(tableToSet);
+      setSelectedOrderAction(actionToSet);
+
+      try {
+        if (tableToSet) {
+          sessionStorage.setItem('ms_initial_table', tableToSet);
+        } else {
+          sessionStorage.removeItem('ms_initial_table');
+        }
+        if (actionToSet) {
+          sessionStorage.setItem('ms_initial_action', actionToSet);
+        } else {
+          sessionStorage.removeItem('ms_initial_action');
+        }
+      } catch (e) {}
+      setBillingKey(k => k + 1);
+    }
+
+    if (view === currentView) return;
+
+    if (options.replace) {
+      setViewHistory(prev => {
+        const copy = [...prev];
+        copy[copy.length - 1] = view;
+        return copy;
+      });
+    } else {
+      setViewHistory(prev => [...prev, view]);
+    }
+    setCurrentView(view);
+  };
+
+  // Back button returns to the exact previous page
+  const goBack = () => {
+    setViewHistory(prev => {
+      if (prev.length > 1) {
+        const nextHistory = prev.slice(0, -1);
+        const previousView = nextHistory[nextHistory.length - 1];
+        setCurrentView(previousView);
+        return nextHistory;
+      } else {
+        setCurrentView('dashboard');
+        return ['dashboard'];
+      }
+    });
+  };
+
+  // Clicking Logo jumps directly to Main Entrance Dashboard
+  const goToHome = () => {
+    if (user?.role === 'driver') {
+      setViewHistory(['driver-portal']);
+      setCurrentView('driver-portal');
+      return;
+    }
+    if (user?.role === 'supplier') {
+      setViewHistory(['supplier-portal']);
+      setCurrentView('supplier-portal');
+      return;
+    }
+    setViewHistory(['dashboard']);
+    setCurrentView('dashboard');
+  };
 
   const fetchActiveOrdersCount = React.useCallback(async () => {
     try {
@@ -182,12 +256,15 @@ export default function AdminDashboard() {
     const handleHashChange = () => {
       const hash = window.location.hash.replace('#', '').trim();
       if (hash && VALID_VIEWS.includes(hash) && isPagePermitted(hash)) {
-        setCurrentView(hash);
+        if (hash !== currentView) {
+          setViewHistory(prev => [...prev, hash]);
+          setCurrentView(hash);
+        }
       }
     };
     window.addEventListener('hashchange', handleHashChange);
     return () => window.removeEventListener('hashchange', handleHashChange);
-  }, [user]);
+  }, [user, currentView]);
 
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
@@ -195,33 +272,11 @@ export default function AdminDashboard() {
   }, []);
 
   const branchName = user?.branch?.name || (user?.role === 'super-admin' ? 'Headquarters' : 'Kadapa City Depot');
-  const branchCode = user?.branch?.code || (user?.role === 'super-admin' ? 'HQ' : 'KDP');
-  const branchCity = user?.branch?.city || (user?.role === 'super-admin' ? 'Central' : 'Kadapa');
-
-  const allNavItems = [
-    { id: 'dashboard', label: 'Dashboard', icon: Home },
-    { id: 'billing', label: 'New Order', icon: ShoppingCart },
-    { id: 'active-orders', label: 'Active Orders', icon: Clock },
-    { id: 'bill-history', label: 'Bill History', icon: FileText },
-    { id: 'inventory', label: 'Stock', icon: Package },
-    { id: 'menu', label: 'Fish Registry', icon: Fish },
-    { id: 'day-book', label: 'Day Book', icon: BookOpen },
-    { id: 'khata', label: 'Khata Book', icon: BookMarked },
-    { id: 'expenses', label: 'Expenses', icon: IndianRupee },
-    { id: 'vehicles', label: 'Vehicles', icon: Truck },
-    { id: 'analytics', label: 'Analytics', icon: BarChart3 },
-    { id: 'operations', label: 'Extra Operations', icon: Layers },
-    { id: 'settings', label: 'Settings', icon: SettingsIcon },
-  ];
-
-  const navItems = isFullAdmin
-    ? allNavItems
-    : allNavItems.filter(item => isPagePermitted(item.id));
 
   return (
     <div className="admin-cream-ui" style={{ height: '100vh', maxHeight: '100vh', width: '100%', background: '#F7EFE2', color: '#1e293b', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
       
-      {/* Top Header Bar */}
+      {/* Top Header Bar (No Sidebar across entire application) */}
       <header
         style={{
           position: 'relative',
@@ -237,33 +292,15 @@ export default function AdminDashboard() {
           zIndex: (showNotifications || showProfileMenu) ? 99999 : 45
         }}
       >
-        {/* Left: Brand Logo & Title with Hamburger on Mobile */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? '6px' : '12px' }}>
-          {isMobile && (
-            <button
-              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-              aria-label="Toggle Navigation Menu"
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                background: '#FAF0E4',
-                border: '1.5px solid #E8DCCB',
-                color: '#7c3f1d',
-                borderRadius: '10px',
-                padding: '6px',
-                cursor: 'pointer'
-              }}
-            >
-              {mobileMenuOpen ? <XIcon size={18} /> : <MenuIcon size={18} />}
-            </button>
-          )}
-
+        {/* Left: Brand Logo, Depot Name & Header Navigation Controls */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? '8px' : '12px' }}>
+          {/* Brand Logo - Clicking always takes you Home */}
           <div
-            onClick={() => setCurrentView('dashboard')}
+            onClick={goToHome}
+            title="Home / Main Dashboard"
             style={{
-              width: isMobile ? '34px' : '42px',
-              height: isMobile ? '34px' : '42px',
+              width: isMobile ? '36px' : '42px',
+              height: isMobile ? '36px' : '42px',
               borderRadius: '50%',
               border: '2px solid #fdba74',
               padding: '2px',
@@ -274,8 +311,11 @@ export default function AdminDashboard() {
               alignItems: 'center',
               justifyContent: 'center',
               overflow: 'hidden',
-              flexShrink: 0
+              flexShrink: 0,
+              transition: 'transform 0.15s ease'
             }}
+            onMouseEnter={(e) => { e.currentTarget.style.transform = 'scale(1.05)'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
           >
             <img
               src={ynrLogo}
@@ -288,64 +328,73 @@ export default function AdminDashboard() {
             />
           </div>
 
-          {!isMobile && (
-            <div>
-              <h2 style={{
-                margin: 0,
-                fontSize: '1.2rem',
-                fontWeight: 900,
-                color: '#0f2942',
-                letterSpacing: '-0.02em',
-                lineHeight: 1.1
-              }}>
-                YNR FISHES
-              </h2>
-              <p style={{
-                margin: '2px 0 0 0',
-                fontSize: '0.74rem',
-                color: '#64748b',
-                fontWeight: 500
-              }}>
-                {branchName} | Admin Terminal
-              </p>
-            </div>
-          )}
+          {/* Title & Branch Subtitle */}
+          <div
+            onClick={goToHome}
+            title="Home / Main Dashboard"
+            style={{ cursor: 'pointer', userSelect: 'none' }}
+          >
+            <h2 style={{
+              margin: 0,
+              fontSize: isMobile ? '1.05rem' : '1.2rem',
+              fontWeight: 900,
+              color: '#0f2942',
+              letterSpacing: '-0.02em',
+              lineHeight: 1.1
+            }}>
+              YNR FISHES
+            </h2>
+            <p style={{
+              margin: '2px 0 0 0',
+              fontSize: '0.72rem',
+              color: '#64748b',
+              fontWeight: 600
+            }}>
+              {branchName} | {user?.role === 'driver' ? 'Driver Portal' : user?.role === 'supplier' ? 'Supplier Portal' : (user?.role ? user.role.charAt(0).toUpperCase() + user.role.slice(1) : 'Admin')}
+            </p>
+          </div>
         </div>
 
-        {/* Center: Live Status & Date/Time (Hidden on Mobile) */}
+        {/* Center on Tablet & Desktop: Global Quick-Jump Search Bar */}
         {!isMobile && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-            {/* 3D Status Ball - Green when connected, Red when disconnected (no text) */}
-            <div
-              title={isServerConnected ? "Server Connected" : "Server Disconnected"}
-              style={{
-                width: '18px',
-                height: '18px',
-                borderRadius: '50%',
-                background: isServerConnected
-                  ? 'radial-gradient(circle at 35% 35%, #86efac 0%, #22c55e 40%, #15803d 75%, #052e16 100%)'
-                  : 'radial-gradient(circle at 35% 35%, #fca5a5 0%, #ef4444 40%, #b91c1c 75%, #450a0a 100%)',
-                boxShadow: isServerConnected
-                  ? '0 0 10px rgba(34, 197, 94, 0.7), inset -2px -2px 4px rgba(0, 0, 0, 0.4), inset 2px 2px 3px rgba(255, 255, 255, 0.8)'
-                  : '0 0 10px rgba(239, 68, 68, 0.7), inset -2px -2px 4px rgba(0, 0, 0, 0.4), inset 2px 2px 3px rgba(255, 255, 255, 0.8)',
-                flexShrink: 0,
-                cursor: 'pointer'
-              }}
-            />
-
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', lineHeight: 1.15 }}>
-              <span style={{ fontSize: '0.88rem', fontWeight: 800, color: '#1e293b' }}>
-                {currentTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true })}
-              </span>
-              <span style={{ fontSize: '0.7rem', color: '#64748b', fontWeight: 500 }}>
-                {currentTime.toLocaleDateString('en-US', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })}
-              </span>
-            </div>
-          </div>
+          <GlobalSearchBar
+            onNavigate={navigateTo}
+            onOpenWhatsApp={() => setShowWhatsAppModal(true)}
+            isPermitted={isPagePermitted}
+          />
         )}
 
-        {/* Right Action Buttons - Alerts Bell Only */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? '8px' : '12px' }}>
+        {/* Right Area: Live Status & Date/Time + Alerts Bell & Profile */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? '8px' : '14px' }}>
+          {!isMobile && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <div
+                title={isServerConnected ? "Server Connected" : "Server Disconnected"}
+                style={{
+                  width: '14px',
+                  height: '14px',
+                  borderRadius: '50%',
+                  background: isServerConnected
+                    ? 'radial-gradient(circle at 35% 35%, #86efac 0%, #22c55e 40%, #15803d 75%, #052e16 100%)'
+                    : 'radial-gradient(circle at 35% 35%, #fca5a5 0%, #ef4444 40%, #b91c1c 75%, #450a0a 100%)',
+                  boxShadow: isServerConnected
+                    ? '0 0 10px rgba(34, 197, 94, 0.7), inset -2px -2px 4px rgba(0, 0, 0, 0.4), inset 2px 2px 3px rgba(255, 255, 255, 0.8)'
+                    : '0 0 10px rgba(239, 68, 68, 0.7), inset -2px -2px 4px rgba(0, 0, 0, 0.4), inset 2px 2px 3px rgba(255, 255, 255, 0.8)',
+                  flexShrink: 0,
+                  cursor: 'pointer'
+                }}
+              />
+
+              <div className="hidden lg:flex" style={{ flexDirection: 'column', alignItems: 'flex-start', lineHeight: 1.15 }}>
+                <span style={{ fontSize: '0.85rem', fontWeight: 800, color: '#1e293b' }}>
+                  {currentTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true })}
+                </span>
+                <span style={{ fontSize: '0.68rem', color: '#64748b', fontWeight: 500 }}>
+                  {currentTime.toLocaleDateString('en-US', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })}
+                </span>
+              </div>
+            </div>
+          )}
           {isMobile && (
             <div
               title={isServerConnected ? "Server Connected" : "Server Disconnected"}
@@ -415,8 +464,14 @@ export default function AdminDashboard() {
                 unreadCount={unreadCount}
                 onMarkAllAsRead={markAllAsRead}
                 onClearNotification={clearNotification}
-                onViewAll={() => setCurrentView('notifications')}
-                onNavigate={(viewId) => setCurrentView(viewId)}
+                onViewAll={() => {
+                  setShowNotifications(false);
+                  navigateTo('notifications');
+                }}
+                onNavigate={(viewId) => {
+                  setShowNotifications(false);
+                  navigateTo(viewId);
+                }}
                 onClose={() => setShowNotifications(false)}
               />
             )}
@@ -523,7 +578,7 @@ export default function AdminDashboard() {
                     <button
                       onClick={() => {
                         setShowProfileMenu(false);
-                        setCurrentView('settings');
+                        navigateTo('settings');
                       }}
                       style={{
                         display: 'flex',
@@ -577,266 +632,8 @@ export default function AdminDashboard() {
         </div>
       </header>
 
-      {/* Main Body Layout: Left Sidebar + Right Main View */}
+      {/* Main Full-Width Content View (No Sidebar, 100% responsive on all screen sizes) */}
       <div style={{ flex: 1, display: 'flex', overflow: 'hidden', position: 'relative' }}>
-        
-        {/* Mobile Backdrop Overlay */}
-        {isMobile && mobileMenuOpen && (
-          <div
-            onClick={() => setMobileMenuOpen(false)}
-            style={{
-              position: 'fixed',
-              inset: 0,
-              background: 'rgba(15, 23, 42, 0.55)',
-              backdropFilter: 'blur(3px)',
-              zIndex: 9998
-            }}
-          />
-        )}
-
-        {/* Left Vertical Sidebar (Off-Canvas on Mobile, Floating Island on Desktop) */}
-        {(!isMobile || mobileMenuOpen) && (
-          <aside
-            style={isMobile ? {
-              position: 'fixed',
-              top: 0,
-              left: 0,
-              bottom: 0,
-              width: '270px',
-              maxWidth: '82vw',
-              background: '#FDFBF7',
-              borderRadius: '0 20px 20px 0',
-              border: '1.5px solid #E8DCCB',
-              borderLeft: 'none',
-              boxShadow: '10px 0 40px rgba(0, 0, 0, 0.3)',
-              display: 'flex',
-              flexDirection: 'column',
-              justifyContent: 'space-between',
-              padding: '16px 10px',
-              overflowY: 'auto',
-              boxSizing: 'border-box',
-              zIndex: 9999,
-              animation: 'slideInLeft 0.25s ease'
-            } : {
-              width: '218px',
-              minWidth: '218px',
-              margin: '12px 6px 12px 14px',
-              background: '#FDFBF7',
-              borderRadius: '20px',
-              border: '1.5px solid #E8DCCB',
-              boxShadow: '0 6px 24px rgba(0, 0, 0, 0.04)',
-              display: 'flex',
-              flexDirection: 'column',
-              justifyContent: 'space-between',
-              padding: '12px 8px',
-              overflowY: 'auto',
-              boxSizing: 'border-box',
-              transition: 'all 0.2s ease',
-              zIndex: 10
-            }}
-          >
-            {/* Mobile Sidebar Close Header */}
-            {isMobile && (
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', paddingBottom: '10px', borderBottom: '1.5px solid #E8DCCB' }}>
-                <span style={{ fontWeight: 800, color: '#0f2942', fontSize: '1rem' }}>Admin Navigation</span>
-                <button
-                  onClick={() => setMobileMenuOpen(false)}
-                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b', padding: '4px' }}
-                >
-                  <XIcon size={20} />
-                </button>
-              </div>
-            )}
-
-            {/* Nav Items List */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-              {navItems.map((item) => {
-                const Icon = item.icon;
-                const isActive = currentView === item.id;
-                
-                if (isActive) {
-                  return (
-                    <button
-                      key={item.id}
-                      onClick={() => {
-                        if (item.id === 'billing') {
-                          setSelectedOrderTable(null);
-                          setSelectedOrderAction(null);
-                          try {
-                            sessionStorage.removeItem('ms_initial_table');
-                            sessionStorage.removeItem('ms_initial_action');
-                          } catch (e) {}
-                          setBillingKey(k => k + 1);
-                        }
-                        setCurrentView(item.id);
-                        if (isMobile) setMobileMenuOpen(false);
-                      }}
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
-                        width: '100%',
-                        padding: '9px 12px',
-                        borderRadius: '12px',
-                        background: '#FAF0E4',
-                        color: '#7c3f1d',
-                        border: '1px solid #eedecb',
-                        borderLeft: '4px solid #8b4513',
-                        fontWeight: 800,
-                        fontSize: '0.84rem',
-                        cursor: 'pointer',
-                        boxShadow: '0 2px 6px rgba(139, 69, 19, 0.08)',
-                        transition: 'all 0.15s ease'
-                      }}
-                    >
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                        <Icon size={17} strokeWidth={2.4} style={{ color: '#8b4513' }} />
-                        <span style={{ color: '#7c3f1d', fontWeight: 800 }}>{item.label}</span>
-                      </div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        {item.id === 'active-orders' && activeOrdersCount > 0 && (
-                          <span style={{
-                            background: '#ea580c',
-                            color: '#ffffff',
-                            fontSize: '0.72rem',
-                            fontWeight: 900,
-                            padding: '1px 7px',
-                            borderRadius: '10px',
-                            lineHeight: 1.2
-                          }}>
-                            {activeOrdersCount}
-                          </span>
-                        )}
-                        <ChevronRight size={14} strokeWidth={2.8} style={{ color: '#8b4513', opacity: 0.85 }} />
-                      </div>
-                    </button>
-                  );
-                }
-
-                return (
-                  <button
-                    key={item.id}
-                    onClick={() => {
-                      if (item.id === 'billing') {
-                        setSelectedOrderTable(null);
-                        setSelectedOrderAction(null);
-                        try {
-                          sessionStorage.removeItem('ms_initial_table');
-                          sessionStorage.removeItem('ms_initial_action');
-                        } catch (e) {}
-                        setBillingKey(k => k + 1);
-                      }
-                      setCurrentView(item.id);
-                      if (isMobile) setMobileMenuOpen(false);
-                    }}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      width: '100%',
-                      padding: '9px 12px',
-                      borderRadius: '12px',
-                      background: 'transparent',
-                      color: '#475569',
-                      border: 'none',
-                      fontWeight: 600,
-                      fontSize: '0.84rem',
-                      cursor: 'pointer',
-                      transition: 'all 0.15s ease'
-                    }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.background = '#F5E8D8';
-                      e.currentTarget.style.color = '#7c3f1d';
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.background = 'transparent';
-                      e.currentTarget.style.color = '#475569';
-                    }}
-                  >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                      <Icon size={17} strokeWidth={2} style={{ color: '#64748b' }} />
-                      <span>{item.label}</span>
-                    </div>
-                    {item.id === 'active-orders' && activeOrdersCount > 0 && (
-                      <span style={{
-                        background: '#ea580c',
-                        color: '#ffffff',
-                        fontSize: '0.72rem',
-                        fontWeight: 900,
-                        padding: '1px 7px',
-                        borderRadius: '10px',
-                        lineHeight: 1.2
-                      }}>
-                        {activeOrdersCount}
-                      </span>
-                    )}
-                  </button>
-                );
-              })}
-            </div>
-
-            {/* Bottom Profile & Terminal Info */}
-            <div style={{
-              marginTop: '12px',
-              padding: '10px 12px',
-              background: '#FAF0E4',
-              borderRadius: '12px',
-              border: '1px solid #E8DCCB',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '10px'
-            }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <div style={{ display: 'flex', flexDirection: 'column' }}>
-                  <span style={{ fontSize: '0.74rem', fontWeight: 800, color: '#1e293b' }}>
-                    {branchName}
-                  </span>
-                  <span style={{ fontSize: '0.64rem', color: '#64748b', fontWeight: 600 }}>
-                    {user?.role?.toUpperCase() || 'ADMIN'} TERMINAL
-                  </span>
-                </div>
-                <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#16a34a', boxShadow: '0 0 6px #22c55e', flexShrink: 0 }} />
-              </div>
-
-              {/* Sign Out Button inside Profile Section */}
-              <button
-                onClick={() => {
-                  if (isMobile) setMobileMenuOpen(false);
-                  setShowLogoutModal(true);
-                }}
-                title="Sign Out"
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: '8px',
-                  width: '100%',
-                  padding: '7px 10px',
-                  background: '#FDFBF7',
-                  border: '1.5px solid #fecaca',
-                  color: '#dc2626',
-                  borderRadius: '10px',
-                  fontSize: '0.78rem',
-                  fontWeight: 700,
-                  cursor: 'pointer',
-                  boxShadow: '0 1px 3px rgba(220, 38, 38, 0.08)',
-                  transition: 'all 0.15s ease'
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.background = '#fef2f2';
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.background = '#FDFBF7';
-                }}
-              >
-                <LogOut size={15} strokeWidth={2.4} />
-                <span>Sign Out</span>
-              </button>
-            </div>
-          </aside>
-        )}
-
-        {/* Right Main Content Area */}
         <main
           style={{
             flex: 1,
@@ -847,64 +644,214 @@ export default function AdminDashboard() {
             padding: currentView === 'billing' ? 0 : undefined
           }}
         >
-          {currentView === 'dashboard' && <Dashboard user={user} onNavigate={setCurrentView} />}
-          {currentView === 'billing' && (
-            <BillingPage
+          {/* Main Entrance Dashboard (The New Simple Categorized Buttons Hub) */}
+          {currentView === 'dashboard' && (
+            <MainEntranceDashboard
               user={user}
-              initialTable={selectedOrderTable}
-              initialAction={selectedOrderAction}
-              onNavigate={setCurrentView}
-            />
-          )}
-          {currentView === 'active-orders' && (
-            <ActiveOrders
-              user={user}
-              onNavigate={setCurrentView}
-              onSelectOrder={(tableNo, action) => {
-                setSelectedOrderTable(tableNo);
-                setSelectedOrderAction(action);
-                setCurrentView('billing');
-              }}
-              onGoBack={() => setCurrentView('billing')}
-            />
-          )}
-          {currentView === 'bill-history' && <BillHistory user={user} onNavigate={setCurrentView} onGoBack={() => setCurrentView('dashboard')} />}
-          {currentView === 'edited-bills' && <EditedBills user={user} onNavigate={setCurrentView} onGoBack={() => setCurrentView('operations')} />}
-          {currentView === 'inventory' && <FishInventoryManager user={user} onNavigate={setCurrentView} onGoBack={() => setCurrentView('dashboard')} />}
-          {currentView === 'menu' && <MenuManagement user={user} onNavigate={setCurrentView} onGoBack={() => setCurrentView('dashboard')} />}
-          {currentView === 'day-book' && <DayBook user={user} onNavigate={setCurrentView} onGoBack={() => setCurrentView('dashboard')} />}
-          {currentView === 'khata' && <KhataDashboard user={user} onNavigate={setCurrentView} onGoBack={() => setCurrentView('dashboard')} />}
-          {currentView === 'expenses' && <Expenses user={user} onNavigate={setCurrentView} onGoBack={() => setCurrentView('dashboard')} />}
-          {currentView === 'vehicles' && <VehicleManagement user={user} onNavigate={setCurrentView} onGoBack={() => setCurrentView('dashboard')} />}
-          {currentView === 'analytics' && <Analytics user={user} onNavigate={setCurrentView} onGoBack={() => setCurrentView('dashboard')} />}
-          {currentView === 'crm' && <CRM user={user} onNavigate={setCurrentView} onGoBack={() => setCurrentView('operations')} />}
-          {currentView === 'operations' && (
-            <Operations
-              userRole={user?.role}
-              onNavigate={setCurrentView}
-              onGoBack={() => setCurrentView('dashboard')}
+              onNavigate={navigateTo}
+              activeOrdersCount={activeOrdersCount}
+              unreadNotificationsCount={unreadCount}
+              branchName={branchName}
               onOpenWhatsApp={() => setShowWhatsAppModal(true)}
             />
           )}
+
+          {/* Second Dashboard (The 8-Module Operations Grid + Top Selling Items + Sales Chart) */}
+          {currentView === 'second-dashboard' && (
+            <Dashboard
+              user={user}
+              onNavigate={navigateTo}
+              onGoBack={goBack}
+            />
+          )}
+
+          {/* New Order / POS Counter */}
+          {currentView === 'billing' && (
+            <BillingPage
+              key={`${billingKey}-${selectedOrderMode}-${selectedOrderTable || 'none'}`}
+              user={user}
+              initialTable={selectedOrderTable}
+              initialAction={selectedOrderAction}
+              initialFishMode={selectedOrderMode}
+              onNavigate={navigateTo}
+              onGoBack={goBack}
+            />
+          )}
+
+          {/* Active Orders */}
+          {currentView === 'active-orders' && (
+            <ActiveOrders
+              user={user}
+              onNavigate={navigateTo}
+              onSelectOrder={(tableNo, action) => {
+                navigateTo('billing', { table: tableNo, action });
+              }}
+              onGoBack={goBack}
+            />
+          )}
+
+          {/* Bill History */}
+          {currentView === 'bill-history' && (
+            <BillHistory
+              user={user}
+              onNavigate={navigateTo}
+              onGoBack={goBack}
+            />
+          )}
+
+          {/* Edited Bills */}
+          {currentView === 'edited-bills' && (
+            <EditedBills
+              user={user}
+              onNavigate={navigateTo}
+              onGoBack={goBack}
+            />
+          )}
+
+          {/* Stock / Seafood Catch Ledger */}
+          {currentView === 'inventory' && (
+            <FishInventoryManager
+              user={user}
+              onNavigate={navigateTo}
+              onGoBack={goBack}
+            />
+          )}
+
+          {/* Fish Registry / Menu */}
+          {currentView === 'menu' && (
+            <MenuManagement
+              user={user}
+              onNavigate={navigateTo}
+              onGoBack={goBack}
+            />
+          )}
+
+          {/* Day Book */}
+          {currentView === 'day-book' && (
+            <DayBook
+              user={user}
+              onNavigate={navigateTo}
+              onGoBack={goBack}
+            />
+          )}
+
+          {/* Khata Book */}
+          {currentView === 'khata' && (
+            <KhataDashboard
+              user={user}
+              onNavigate={navigateTo}
+              onGoBack={goBack}
+            />
+          )}
+
+          {/* Expenses */}
+          {currentView === 'expenses' && (
+            <Expenses
+              user={user}
+              onNavigate={navigateTo}
+              onGoBack={goBack}
+            />
+          )}
+
+          {/* Vehicles */}
+          {currentView === 'vehicles' && (
+            <VehicleManagement
+              user={user}
+              onNavigate={navigateTo}
+              onGoBack={goBack}
+            />
+          )}
+
+          {/* Analytics */}
+          {currentView === 'analytics' && (
+            <Analytics
+              user={user}
+              onNavigate={navigateTo}
+              onGoBack={goBack}
+            />
+          )}
+
+          {/* CRM */}
+          {currentView === 'crm' && (
+            <CRM
+              user={user}
+              onNavigate={navigateTo}
+              onGoBack={goBack}
+            />
+          )}
+
+          {/* Extra Operations */}
+          {currentView === 'operations' && (
+            <Operations
+              userRole={user?.role}
+              onNavigate={navigateTo}
+              onGoBack={goBack}
+              onOpenWhatsApp={() => setShowWhatsAppModal(true)}
+            />
+          )}
+
+          {/* Discounts */}
           {currentView === 'discount' && (
             <DiscountConfig
-              onNavigate={setCurrentView}
-              onGoBack={() => setCurrentView('operations')}
+              onNavigate={navigateTo}
+              onGoBack={goBack}
             />
           )}
+
+          {/* Security */}
           {currentView === 'security' && (
             <SecuritySettings
-              onGoBack={() => setCurrentView('operations')}
+              onGoBack={goBack}
             />
           )}
-          {currentView === 'staff' && <AdminPanel onGoBack={() => setCurrentView('operations')} />}
-          {currentView === 'printer' && <PrinterConfig user={user} onNavigate={setCurrentView} onGoBack={() => setCurrentView('operations')} />}
-          {currentView === 'settings' && <Settings user={user} onNavigate={setCurrentView} onGoBack={() => setCurrentView('dashboard')} />}
+
+          {/* Staff Panel */}
+          {currentView === 'staff' && (
+            <AdminPanel
+              onGoBack={goBack}
+            />
+          )}
+
+          {/* Printer Config */}
+          {currentView === 'printer' && (
+            <PrinterConfig
+              user={user}
+              onNavigate={navigateTo}
+              onGoBack={goBack}
+            />
+          )}
+
+          {/* Settings */}
+          {currentView === 'settings' && (
+            <Settings
+              user={user}
+              onNavigate={navigateTo}
+              onGoBack={goBack}
+            />
+          )}
+
+          {/* System Notifications */}
           {currentView === 'notifications' && (
             <NotificationsPage
               userRole={user?.role || 'Admin'}
-              onNavigate={setCurrentView}
-              onGoBack={() => setCurrentView('dashboard')}
+              onNavigate={navigateTo}
+              onGoBack={goBack}
+            />
+          )}
+
+          {/* Driver Assigned Deliveries Portal (Read-Only) */}
+          {currentView === 'driver-portal' && (
+            <DriverPortal
+              user={user}
+              onGoBack={goBack}
+            />
+          )}
+
+          {/* Supplier Catch & Khata Passbook Portal (Read-Only) */}
+          {currentView === 'supplier-portal' && (
+            <SupplierPortal
+              user={user}
+              onGoBack={goBack}
             />
           )}
         </main>
@@ -918,7 +865,7 @@ export default function AdminDashboard() {
         />
       )}
 
-      {/* Custom Logout Confirmation Modal */}
+      {/* Logout Confirmation Modal */}
       {showLogoutModal && (
         <div
           style={{
@@ -1019,4 +966,3 @@ export default function AdminDashboard() {
     </div>
   );
 }
-

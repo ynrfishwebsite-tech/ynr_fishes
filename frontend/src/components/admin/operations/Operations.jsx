@@ -179,7 +179,7 @@ const Operations = ({ onNavigate, onGoBack, userRole = 'admin', onOpenWhatsApp }
       {/* Core POS & Ledger Operations */}
       <div className="operations-section-card">
         <h3 className="operations-section-heading" style={{ color: '#0284c7' }}>
-          💼 All Operations & Desk Tools
+          All Operations & Desk Tools
         </h3>
         {renderGrid(filteredOperations)}
       </div>

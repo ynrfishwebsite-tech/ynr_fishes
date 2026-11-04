@@ -156,10 +156,24 @@ export const deleteVehicle = async (req, res) => {
 
 export const getTrips = async (req, res) => {
   try {
-    const { vehicleId, startDate, endDate } = req.query;
+    const { vehicleId, startDate, endDate, exportType, driverName, status } = req.query;
     const query = {};
 
     if (vehicleId) query.vehicleId = vehicleId;
+    if (exportType && exportType !== 'All') query.exportType = exportType;
+    if (status && status !== 'All') query.status = status;
+
+    // If request is from a logged in driver, restrict to their assigned trips
+    if (req.user?.role === 'driver') {
+      const driverIdent = req.user.name || req.user.username || '';
+      query.$or = [
+        { driverName: new RegExp(driverIdent.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i') },
+        { driverPhone: req.user.phone || '' }
+      ];
+    } else if (driverName) {
+      query.driverName = new RegExp(driverName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+    }
+
     if (startDate || endDate) {
       query.date = {};
       if (startDate) query.date.$gte = new Date(startDate);
@@ -179,12 +193,22 @@ export const createTrip = async (req, res) => {
     const {
       vehicleId,
       driverName,
+      driverPhone,
       date,
       startTime,
       endTime,
       startKm,
       endKm,
       purpose,
+      exportType,
+      orderId,
+      orderTableNo,
+      customerName,
+      customerPhone,
+      customerAddress,
+      boxesCount,
+      totalWeightKg,
+      status,
       routeFrom,
       routeTo,
       tollCharges,
@@ -192,8 +216,13 @@ export const createTrip = async (req, res) => {
       updateStatus
     } = req.body;
 
-    const startNum = Number(startKm);
-    const endNum = Number(endKm);
+    const vehicle = await Vehicle.findById(vehicleId);
+    if (!vehicle) {
+      return res.status(404).json({ success: false, message: 'Vehicle not found' });
+    }
+
+    const startNum = startKm !== undefined && startKm !== '' ? Number(startKm) : (vehicle.currentKm || 0);
+    const endNum = endKm !== undefined && endKm !== '' ? Number(endKm) : startNum;
 
     if (isNaN(startNum) || isNaN(endNum)) {
       return res.status(400).json({ success: false, message: 'Start and End KMs must be valid numbers' });
@@ -203,26 +232,31 @@ export const createTrip = async (req, res) => {
       return res.status(400).json({ success: false, message: 'End KM cannot be less than Start KM' });
     }
 
-    const vehicle = await Vehicle.findById(vehicleId);
-    if (!vehicle) {
-      return res.status(404).json({ success: false, message: 'Vehicle not found' });
-    }
-
-    const distanceKm = endNum - startNum;
+    const distanceKm = Math.max(0, endNum - startNum);
 
     const trip = new VehicleTrip({
       vehicleId,
       vehicleNumber: vehicle.vehicleNumber,
       driverName: driverName || vehicle.driverName || '',
+      driverPhone: driverPhone || vehicle.driverPhone || '',
       date: date ? new Date(date) : new Date(),
       startTime: startTime || '',
       endTime: endTime || '',
       startKm: startNum,
       endKm: endNum,
       distanceKm,
-      purpose: purpose || 'Fish Delivery & Supply',
-      routeFrom: routeFrom || 'Kadapa Depot',
-      routeTo: routeTo || '',
+      purpose: purpose || (exportType ? `Export ${exportType} Consignment` : 'Fish Delivery & Supply'),
+      exportType: exportType || 'Local',
+      orderId: orderId || null,
+      orderTableNo: orderTableNo || '',
+      customerName: customerName || '',
+      customerPhone: customerPhone || '',
+      customerAddress: customerAddress || '',
+      boxesCount: Number(boxesCount) || 0,
+      totalWeightKg: Number(totalWeightKg) || 0,
+      status: status || 'On-Road',
+      routeFrom: routeFrom || 'Kadapa City Depot',
+      routeTo: routeTo || customerAddress || '',
       tollCharges: Number(tollCharges) || 0,
       notes: notes || ''
     });
@@ -233,9 +267,7 @@ export const createTrip = async (req, res) => {
     if (endNum > vehicle.currentKm) {
       vehicle.currentKm = endNum;
     }
-    if (updateStatus) {
-      vehicle.status = updateStatus;
-    }
+    vehicle.status = updateStatus || 'On Trip';
     await vehicle.save();
 
     res.status(201).json({ success: true, data: trip, message: `Trip logged successfully (+${distanceKm} KM)` });

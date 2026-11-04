@@ -234,7 +234,7 @@ export const generateESCPOSBillReceipt80mm = async (bill, printerConfig = {}, re
   }
 
   let finalTotal = Number(bill.total || 0);
-  const addCharges = Number(bill.deliveryCharge || 0) + Number(bill.containerCharge || 0);
+  const addCharges = Number(bill.deliveryCharge || 0) + Number(bill.containerCharge || 0) + Number(bill.cuttingCharge || 0);
   if (!finalTotal || isNaN(finalTotal) || (finalTotal <= 0 && sub > 0)) {
     finalTotal = taxable + computedTaxRupees + addCharges;
   }

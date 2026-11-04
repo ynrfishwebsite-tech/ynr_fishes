@@ -94,6 +94,44 @@ const menuSchema = new mongoose.Schema({
     default: 0,
     min: 0
   },
+  exportPricePerKg: {
+    type: Number,
+    default: 0,
+    min: 0
+  },
+  waterType: {
+    type: String,
+    enum: ['sea_water', 'fresh_water', 'all'],
+    default: 'sea_water'
+  },
+  speciesType: {
+    type: String,
+    enum: ['fish', 'prawn', 'crab', 'other'],
+    default: 'fish'
+  },
+  sizeGrades: {
+    small: {
+      minKg: { type: Number, default: 0 },
+      maxKg: { type: Number, default: 1 },
+      price: { type: Number, default: 0 },
+      wholesalePrice: { type: Number, default: 0 },
+      exportPrice: { type: Number, default: 0 }
+    },
+    medium: {
+      minKg: { type: Number, default: 1 },
+      maxKg: { type: Number, default: 4 },
+      price: { type: Number, default: 0 },
+      wholesalePrice: { type: Number, default: 0 },
+      exportPrice: { type: Number, default: 0 }
+    },
+    big: {
+      minKg: { type: Number, default: 4 },
+      maxKg: { type: Number, default: 99 },
+      price: { type: Number, default: 0 },
+      wholesalePrice: { type: Number, default: 0 },
+      exportPrice: { type: Number, default: 0 }
+    }
+  },
   category: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Category',

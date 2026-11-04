@@ -603,7 +603,7 @@ export default function AdminDashboard() {
               color: '#64748b',
               fontWeight: 500
             }}>
-              {branchName} | Admin Terminal
+              {branchName} | Admin
             </p>
           </div>
         </div>

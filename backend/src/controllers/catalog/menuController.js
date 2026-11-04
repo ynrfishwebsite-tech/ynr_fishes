@@ -336,6 +336,33 @@ export const bulkAddMenuItems = async (req, res) => {
         taxRate: Math.max(0, parseFloat(row.taxRate) || 0),
         hsnCode: (row.hsnCode || '').trim(),
         image: (row.image || '').trim(),
+        wholesalePricePerKg: Math.max(0, parseFloat(row.wholesalePricePerKg) || parseFloat(row.price) || 0),
+        exportPricePerKg: Math.max(0, parseFloat(row.exportPricePerKg) || parseFloat(row.wholesalePricePerKg) || parseFloat(row.price) || 0),
+        waterType: row.waterType || (String(row.category || '').toLowerCase().includes('fresh') ? 'fresh_water' : 'sea_water'),
+        speciesType: row.speciesType || (String(row.name || '').toLowerCase().includes('prawn') || String(row.category || '').toLowerCase().includes('prawn') ? 'prawn' : String(row.name || '').toLowerCase().includes('crab') || String(row.category || '').toLowerCase().includes('crab') ? 'crab' : 'fish'),
+        sizeGrades: row.sizeGrades || {
+          small: {
+            minKg: parseFloat(row.smallMinKg) || 0,
+            maxKg: parseFloat(row.smallMaxKg) || 1,
+            price: parseFloat(row.smallPrice) || parseFloat(row.price) || 0,
+            wholesalePrice: parseFloat(row.smallWholesalePrice) || parseFloat(row.wholesalePricePerKg) || parseFloat(row.price) || 0,
+            exportPrice: parseFloat(row.smallExportPrice) || parseFloat(row.exportPricePerKg) || parseFloat(row.price) || 0
+          },
+          medium: {
+            minKg: parseFloat(row.mediumMinKg) || 1,
+            maxKg: parseFloat(row.mediumMaxKg) || 4,
+            price: parseFloat(row.mediumPrice) || parseFloat(row.price) || 0,
+            wholesalePrice: parseFloat(row.mediumWholesalePrice) || parseFloat(row.wholesalePricePerKg) || parseFloat(row.price) || 0,
+            exportPrice: parseFloat(row.mediumExportPrice) || parseFloat(row.exportPricePerKg) || parseFloat(row.price) || 0
+          },
+          big: {
+            minKg: parseFloat(row.bigMinKg) || 4,
+            maxKg: parseFloat(row.bigMaxKg) || 99,
+            price: parseFloat(row.bigPrice) || parseFloat(row.price) || 0,
+            wholesalePrice: parseFloat(row.bigWholesalePrice) || parseFloat(row.wholesalePricePerKg) || parseFloat(row.price) || 0,
+            exportPrice: parseFloat(row.bigExportPrice) || parseFloat(row.exportPricePerKg) || parseFloat(row.price) || 0
+          }
+        },
         variants: Array.isArray(row.variants) ? row.variants : [],
         sweetConfig: row.sweetConfig || { enabled: false }
       };

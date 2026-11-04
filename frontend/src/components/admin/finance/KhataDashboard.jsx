@@ -8,7 +8,9 @@ import Toast from '../system/Toast';
 import PaymentModal from '../billing/PaymentModal';
 const Invoice = lazy(() => import('../billing/Invoice'));
 
-const KhataDashboard = () => {
+import BackButton from '../common/BackButton';
+
+const KhataDashboard = ({ onNavigate, onGoBack }) => {
   const { t } = useLanguage();
   const [accounts, setAccounts] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -105,7 +107,7 @@ const KhataDashboard = () => {
         note: noteStr,
         targetBillId: paymentBill ? paymentBill._id : undefined
       });
-      setToast({ message: `✅ Payment recorded for ${paymentAccount.customerName}`, type: 'success' });
+      setToast({ message: `Payment recorded for ${paymentAccount.customerName}`, type: 'success' });
       setPaymentModalOpen(false);
       setPaymentAccount(null);
       setPaymentBill(null);
@@ -131,6 +133,7 @@ const KhataDashboard = () => {
         
         {/* Title & Stats */}
         <div className="flex flex-wrap items-center gap-4 sm:gap-6 w-full md:w-auto">
+          {onGoBack && <BackButton onClick={onGoBack} label="Back" />}
           <div className="flex items-center gap-2 shrink-0">
             <div className="p-1.5 sm:p-2 bg-red-50 text-red-600 rounded-lg">
               <BookOpen size={18} />

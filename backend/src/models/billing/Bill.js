@@ -117,6 +117,11 @@ const billSchema = new mongoose.Schema({
     default: 0,
     min: [0, 'Container charge cannot be negative']
   },
+  cuttingCharge: {
+    type: Number,
+    default: 0,
+    min: [0, 'Cutting charge cannot be negative']
+  },
   total: {
     type: Number,
     default: 0,
@@ -158,10 +163,44 @@ const billSchema = new mongoose.Schema({
   },
   customerPhone: { type: String },
   customerName: { type: String },
+  customerCategory: {
+    type: String,
+    enum: ['Retail', 'Wholesale', 'Export'],
+    default: 'Retail'
+  },
+  exportSubCategory: {
+    type: String,
+    enum: ['Local', 'DAM', null, ''],
+    default: null
+  },
+  customerPhoto: {
+    type: String,
+    default: ''
+  },
+  customerAddress: {
+    type: String,
+    default: ''
+  },
+  orderLockedAt: {
+    type: Date,
+    default: null
+  },
+  orderDateFormatted: {
+    type: String,
+    default: ''
+  },
+  orderTimeFormatted: {
+    type: String,
+    default: ''
+  },
+  isOrderLocked: {
+    type: Boolean,
+    default: false
+  },
   billType: {
     type: String,
-    enum: ['Dine-In', 'Takeaway', 'Delivery'],
-    default: 'Dine-In'
+    enum: ['Dine-In', 'Takeaway', 'Delivery', 'Retail', 'Wholesale', 'Export'],
+    default: 'Retail'
   },
   orderSource: {
     type: String
@@ -245,6 +284,7 @@ const billSchema = new mongoose.Schema({
       totalTax: Number,
       deliveryCharge: Number,
       containerCharge: Number,
+      cuttingCharge: Number,
       total: Number,
       discountType: String,
       discountValue: Number
@@ -262,6 +302,7 @@ const billSchema = new mongoose.Schema({
       totalTax: Number,
       deliveryCharge: Number,
       containerCharge: Number,
+      cuttingCharge: Number,
       total: Number,
       discountType: String,
       discountValue: Number

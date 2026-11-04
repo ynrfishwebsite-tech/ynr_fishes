@@ -38,8 +38,10 @@ export const getRolesAndPages = async (req, res) => {
     const roles = [
       { id: 'cashier', label: 'Cashier (Billing & Printing)', defaultPages: ['billing', 'active-orders', 'bill-history'] },
       { id: 'worker', label: 'Worker / Operator (POS & Orders)', defaultPages: ['billing', 'active-orders', 'menu'] },
-      { id: 'manager', label: 'Manager (Operations & Analytics)', defaultPages: ['dashboard', 'billing', 'active-orders', 'bill-history', 'menu', 'day-book', 'khata', 'expenses', 'analytics', 'operations'] },
-      { id: 'admin', label: 'Admin (Full Branch Access)', defaultPages: ['dashboard', 'billing', 'active-orders', 'bill-history', 'edited-bills', 'menu', 'day-book', 'khata', 'expenses', 'analytics', 'crm', 'staff', 'printer', 'operations', 'discount', 'security', 'settings', 'notifications'] },
+      { id: 'manager', label: 'Manager (Operations & Analytics)', defaultPages: ['dashboard', 'billing', 'active-orders', 'bill-history', 'menu', 'day-book', 'khata', 'expenses', 'analytics', 'operations', 'vehicles'] },
+      { id: 'driver', label: 'Driver (Assigned Deliveries - View Only)', defaultPages: ['driver-portal'] },
+      { id: 'supplier', label: 'Supplier (Catch Passbook & Khata - View Only)', defaultPages: ['supplier-portal'] },
+      { id: 'admin', label: 'Admin (Full Branch Access)', defaultPages: ['dashboard', 'billing', 'active-orders', 'bill-history', 'edited-bills', 'menu', 'inventory', 'day-book', 'khata', 'expenses', 'vehicles', 'analytics', 'crm', 'staff', 'printer', 'operations', 'discount', 'security', 'settings', 'notifications'] },
     ];
 
     const availablePages = [
@@ -48,6 +50,10 @@ export const getRolesAndPages = async (req, res) => {
       { id: 'active-orders', label: 'Active Orders', group: 'Sales & Billing', description: 'Live orders, status updates, KOTs' },
       { id: 'bill-history', label: 'Bill History', group: 'Sales & Billing', description: 'Past invoices, reprints, settlements' },
       { id: 'edited-bills', label: 'Edited Bills Audit', group: 'Sales & Billing', description: 'Audit trail for modified invoices' },
+      { id: 'driver-portal', label: 'Driver Trips (View Only)', group: 'Logistics', description: 'Assigned deliveries, dealer address & phone, boxes count' },
+      { id: 'supplier-portal', label: 'Supplier Passbook (View Only)', group: 'Supply', description: 'Catch supplies history, weights, rates & khata ledger' },
+      { id: 'vehicles', label: 'Vehicle Fleet & Trips', group: 'Logistics', description: 'Fleet vehicles, delivery trips, fuel & maintenance' },
+      { id: 'inventory', label: 'Fish Inventory & Stock', group: 'Catalog', description: 'Catch stock-in, cold storage & shrinkage' },
       { id: 'menu', label: 'Fish Registry', group: 'Catalog', description: 'Fish species, rates, stock status' },
       { id: 'day-book', label: 'Day Book', group: 'Finance', description: 'Daily cash in/out and till reconcile' },
       { id: 'khata', label: 'Khata Book', group: 'Finance', description: 'Customer credit ledger & balance' },

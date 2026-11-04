@@ -589,7 +589,7 @@ const OperationModal = ({ isOpen, onClose, operationType, onSaved, menuCatalog =
                           <td className="p-2.5">{new Date(item.date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}</td>
                           <td className="p-2.5 font-bold">
                             {item.supplierName || item.customerName || item.vehicleNumber || '---'}
-                            {item.harbor && <span className="block text-[9.5px] text-slate-400 font-normal">📍 {item.harbor}</span>}
+                            {item.harbor && <span className="block text-[9.5px] text-slate-400 font-normal">{item.harbor}</span>}
                           </td>
                           <td className="p-2.5">{item.fishName || (item.boxesCount ? `${item.boxesCount} Boxes` : '---')}</td>
                           <td className="p-2.5 text-right font-mono font-bold">{item.netWeightKg > 0 ? `${item.netWeightKg} Kg` : '---'}</td>

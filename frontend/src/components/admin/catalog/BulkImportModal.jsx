@@ -5,30 +5,30 @@ import Papa from 'papaparse';
 import { useLanguage } from '../../../context/LanguageContext';
 
 const SAMPLE_10_ITEMS = [
-  { name: 'Rohu (రోహు)', scientificName: 'Labeo rohita', category: 'Fresh Water', sellingUnit: 'Kg', purchasePrice: 100, price: 150, variants: 'Live:150, Cleaned/Cut:200', openingStock: 250, boxPackingKg: 60, description: 'Fresh river Rohu fish, sweet water catch', isAvailable: 'TRUE', image: '/bocha.png' },
-  { name: 'Katla (బొచ్చె / కాట్లా)', scientificName: 'Gibelion catla', category: 'Fresh Water', sellingUnit: 'Kg', purchasePrice: 180, price: 220, variants: 'Live:220, Headless:250', openingStock: 200, boxPackingKg: 60, description: 'Live sweet water Katla, premium weight', isAvailable: 'TRUE', image: '/catla.png' },
-  { name: 'Red Prawns / రొయ్యలు', scientificName: 'Penaeus monodon', category: 'Prawns & Shrimps', sellingUnit: 'Kg', purchasePrice: 280, price: 350, variants: 'Tiger:600, Red Prawn:300, Vannamei:300, River:400, Sea:500', openingStock: 150, boxPackingKg: 60, description: 'Sea & river fresh prawns, counts 20/30/40', isAvailable: 'TRUE', image: '/images/prawns.jpg' },
-  { name: 'Basa Fish / పంగస్', scientificName: 'Pangasius bocourti', category: 'Fresh Water', sellingUnit: 'Kg', purchasePrice: 120, price: 150, variants: 'Whole:150, Fillet:400', openingStock: 180, boxPackingKg: 60, description: 'Boneless white meat Pangas/Basa fish', isAvailable: 'TRUE', image: '/pangas.png' },
-  { name: 'White Pomfret (తెల్ల చందువా)', scientificName: 'Pampus argenteus', category: 'Sea Water', sellingUnit: 'Piece', purchasePrice: 1300, price: 1500, variants: 'Large (1kg):1650, Medium (500g):1500', openingStock: 80, boxPackingKg: 30, description: 'Premium grade white pomfret, Vizag harbor direct', isAvailable: 'TRUE', image: '/pumenu.png' },
-  { name: 'Vanjaram / King Fish (వంజరం)', scientificName: 'Scomberomorus commerson', category: 'Sea Water', sellingUnit: 'Kg', purchasePrice: 600, price: 850, variants: 'Whole:850, King Slices:1200', openingStock: 120, boxPackingKg: 60, description: 'King mackerel large catch, ideal for fry & curry', isAvailable: 'TRUE', image: '/kontimuka.png' },
-  { name: 'Tilapia / Pilot (తిలాపియా)', scientificName: 'Oreochromis niloticus', category: 'Fresh Water', sellingUnit: 'Kg', purchasePrice: 80, price: 100, variants: 'Small:100, Medium:110, 1pc/kg:120', openingStock: 300, boxPackingKg: 60, description: 'Firm fresh water Tilapia/Jilebi fish', isAvailable: 'TRUE', image: '/jalebi.png' },
-  { name: 'Korramenu / Murrel Live (కొర్రమీను)', scientificName: 'Channa striata', category: 'Fresh Water', sellingUnit: 'Kg', purchasePrice: 320, price: 400, variants: 'Live:400, Cleaned:450', openingStock: 140, boxPackingKg: 60, description: 'High-protein predatory live Murrel fish', isAvailable: 'TRUE', image: '/korameenu.png' },
-  { name: 'Common Fish (కామన్ ఫిష్)', scientificName: 'Cyprinus carpio', category: 'Fresh Water', sellingUnit: 'Kg', purchasePrice: 380, price: 500, variants: 'Standard:500', openingStock: 100, boxPackingKg: 60, description: 'Fresh sweet water grass/common carp', isAvailable: 'TRUE', image: '/gaddi.png' },
-  { name: 'Mattu / మట్టు', scientificName: 'Siluriformes', category: 'Fresh Water', sellingUnit: 'Kg', purchasePrice: 150, price: 200, variants: 'Regular:200', openingStock: 110, boxPackingKg: 60, description: 'Fresh water Mattu fish', isAvailable: 'TRUE', image: '/mosu.png' },
-  { name: 'Karimeen / కరిమీన్', scientificName: 'Etroplus suratensis', category: 'Fresh Water', sellingUnit: 'Kg', purchasePrice: 250, price: 300, variants: 'Medium:300, Large:400', openingStock: 90, boxPackingKg: 40, description: 'Pearl spot fish / Chuka Jilebi delicacy', isAvailable: 'TRUE', image: '/chuka jilebi.png' },
-  { name: 'Apollo Meat / అపోలో ఫిష్', scientificName: 'Fish Boneless Fillet', category: 'Sea Water', sellingUnit: 'Kg', purchasePrice: 240, price: 300, variants: 'Cut Pieces:300, Finger Cut:400', openingStock: 120, boxPackingKg: 50, description: 'Boneless cube-cut fish meat for Apollo fish fry', isAvailable: 'TRUE', image: '/cut jella.png' },
-  { name: 'Tuna / సూర (చూర)', scientificName: 'Thunnini', category: 'Sea Water', sellingUnit: 'Kg', purchasePrice: 300, price: 400, variants: 'Steaks:400, Whole:350', openingStock: 160, boxPackingKg: 60, description: 'Ocean yellowfin / skipjack tuna', isAvailable: 'TRUE', image: '/dhoma.png' },
-  { name: 'Aila / కనగర్తలు', scientificName: 'Rastrelliger kanagurta', category: 'Sea Water', sellingUnit: 'Kg', purchasePrice: 220, price: 300, variants: 'Fresh Catch:300, Large:350', openingStock: 220, boxPackingKg: 60, description: 'Indian mackerel rich in Omega-3', isAvailable: 'TRUE', image: '/ulinka.png' },
-  { name: 'Sheelavathi / ఓషా ఫిష్', scientificName: 'Labeo rohita hybrid', category: 'Fresh Water', sellingUnit: 'Kg', purchasePrice: 240, price: 300, variants: 'Whole:300, Cleaned:400', openingStock: 170, boxPackingKg: 60, description: 'Tender sweet water Sheelavathi / Osha fish', isAvailable: 'TRUE', image: '/gaddi.png' },
-  { name: 'Nethallu / Nethili (నెత్తళ్లు)', scientificName: 'Anchoviella commersonii', category: 'Sea Water', sellingUnit: 'Kg', purchasePrice: 260, price: 350, variants: 'Small:350, White Large:450', openingStock: 130, boxPackingKg: 40, description: 'Fresh small coastal white anchovies', isAvailable: 'TRUE', image: '/jella.png' },
-  { name: 'Black Pomfret (నల్ల చందువా)', scientificName: 'Parastromateus niger', category: 'Sea Water', sellingUnit: 'Kg', purchasePrice: 650, price: 800, variants: 'Standard:800', openingStock: 100, boxPackingKg: 50, description: 'Deep sea black pomfret Halva', isAvailable: 'TRUE', image: '/pumenu.png' },
-  { name: 'Sea Crabs / పీతలు', scientificName: 'Portunus pelagicus', category: 'Crabs & Shellfish', sellingUnit: 'Kg', purchasePrice: 280, price: 350, variants: 'Medium:350, Jumbo Sea:500', openingStock: 110, boxPackingKg: 40, description: 'Live blue swimming sea crabs', isAvailable: 'TRUE', image: '/images/crabs.jpg' },
-  { name: 'Mirayal / మిరయల్', scientificName: 'Cirrhinus mrigala', category: 'Fresh Water', sellingUnit: 'Kg', purchasePrice: 110, price: 150, variants: 'Standard:150', openingStock: 190, boxPackingKg: 60, description: 'Fresh sweet water Mrigal carp', isAvailable: 'TRUE', image: '/bocha.png' },
-  { name: 'Bangaru Theega / Golden Fish (బంగారుతీగ)', scientificName: 'Carassius auratus', category: 'Fresh Water', sellingUnit: 'Kg', purchasePrice: 100, price: 150, variants: 'Standard:150', openingStock: 210, boxPackingKg: 60, description: 'Fresh water Bangaru Theega fish', isAvailable: 'TRUE', image: '/bangaru teega.png' },
-  { name: 'Koli / కోలి చేప', scientificName: 'Otolithes ruber', category: 'Sea Water', sellingUnit: 'Kg', purchasePrice: 70, price: 100, variants: 'Standard:100', openingStock: 160, boxPackingKg: 60, description: 'Coastal small Croaker Koli fish', isAvailable: 'TRUE', image: '/kontimuka.png' },
-  { name: 'Pothi Gini / చిన్న చేపలు', scientificName: 'Puntius sophore', category: 'Fresh Water', sellingUnit: 'Kg', purchasePrice: 180, price: 250, variants: 'Fresh Catch:250, Cleaned:300', openingStock: 130, boxPackingKg: 40, description: 'Local sweet water small fish mix', isAvailable: 'TRUE', image: '/chuka jilebi.png' },
-  { name: 'Rani / గులివిందలు', scientificName: 'Nemipterus japonicus', category: 'Sea Water', sellingUnit: 'Kg', purchasePrice: 220, price: 300, variants: 'Pink Perch:300', openingStock: 150, boxPackingKg: 50, description: 'Japanese threadfin bream / Pink Perch Rani fish', isAvailable: 'TRUE', image: '/ulinka.png' },
-  { name: 'Wallago / వాలగ (ఆల)', scientificName: 'Wallago attu', category: 'Fresh Water', sellingUnit: 'Kg', purchasePrice: 150, price: 200, variants: 'Whole:200, Large Slices:350', openingStock: 140, boxPackingKg: 60, description: 'Fresh water river shark Wallago / Valuga fish', isAvailable: 'TRUE', image: '/valuga.png' }
+  { name: 'Rohu (రోహు)', scientificName: 'Labeo rohita', category: 'Fresh Water', sellingUnit: 'Box', purchasePrice: 100, price: 150, variants: 'Live:150, Cleaned/Cut:200', openingStock: 250, boxPackingKg: 60, description: 'Fresh river Rohu fish, sweet water catch', isAvailable: 'TRUE', image: 'https://ik.imagekit.io/uy5estwss/menus/rohu.png' },
+  { name: 'Katla (బొచ్చె / కాట్లా)', scientificName: 'Gibelion catla', category: 'Fresh Water', sellingUnit: 'Box', purchasePrice: 180, price: 220, variants: 'Live:220, Headless:250', openingStock: 200, boxPackingKg: 60, description: 'Live sweet water Katla, premium weight', isAvailable: 'TRUE', image: 'https://ik.imagekit.io/uy5estwss/menus/katla.png' },
+  { name: 'Red Prawns / రొయ్యలు', scientificName: 'Penaeus monodon', category: 'Prawns & Shrimps', sellingUnit: 'Box', purchasePrice: 280, price: 350, variants: 'Tiger:600, Red Prawn:300, Vannamei:300, River:400, Sea:500', openingStock: 150, boxPackingKg: 60, description: 'Sea & river fresh prawns, counts 20/30/40', isAvailable: 'TRUE', image: 'https://ik.imagekit.io/uy5estwss/menus/red_prawns.jpg' },
+  { name: 'Basa Fish / పంగస్', scientificName: 'Pangasius bocourti', category: 'Fresh Water', sellingUnit: 'Box', purchasePrice: 120, price: 150, variants: 'Whole:150, Fillet:400', openingStock: 180, boxPackingKg: 60, description: 'Boneless white meat Pangas/Basa fish', isAvailable: 'TRUE', image: 'https://ik.imagekit.io/uy5estwss/menus/basa_pangas.png' },
+  { name: 'White Pomfret (తెల్ల చందువా)', scientificName: 'Pampus argenteus', category: 'Sea Water', sellingUnit: 'Piece', purchasePrice: 1300, price: 1500, variants: 'Large (1kg):1650, Medium (500g):1500', openingStock: 80, boxPackingKg: 30, description: 'Premium grade white pomfret, Vizag harbor direct', isAvailable: 'TRUE', image: 'https://ik.imagekit.io/uy5estwss/menus/white_pomfret.png' },
+  { name: 'Vanjaram / King Fish (వంజరం)', scientificName: 'Scomberomorus commerson', category: 'Sea Water', sellingUnit: 'Box', purchasePrice: 600, price: 850, variants: 'Whole:850, King Slices:1200', openingStock: 120, boxPackingKg: 60, description: 'King mackerel large catch, ideal for fry & curry', isAvailable: 'TRUE', image: 'https://ik.imagekit.io/uy5estwss/menus/vanjaram_kingfish.jpg' },
+  { name: 'Tilapia / Pilot (తిలాపియా)', scientificName: 'Oreochromis niloticus', category: 'Fresh Water', sellingUnit: 'Box', purchasePrice: 80, price: 100, variants: 'Small:100, Medium:110, 1pc/kg:120', openingStock: 300, boxPackingKg: 60, description: 'Firm fresh water Tilapia/Jilebi fish', isAvailable: 'TRUE', image: 'https://ik.imagekit.io/uy5estwss/menus/tilapia_jalebi.png' },
+  { name: 'Korramenu / Murrel Live (కొర్రమీను)', scientificName: 'Channa striata', category: 'Fresh Water', sellingUnit: 'Box', purchasePrice: 320, price: 400, variants: 'Live:400, Cleaned:450', openingStock: 140, boxPackingKg: 60, description: 'High-protein predatory live Murrel fish', isAvailable: 'TRUE', image: 'https://ik.imagekit.io/uy5estwss/menus/korramenu_murrel.png' },
+  { name: 'Common Fish (కామన్ ఫిష్)', scientificName: 'Cyprinus carpio', category: 'Fresh Water', sellingUnit: 'Box', purchasePrice: 380, price: 500, variants: 'Standard:500', openingStock: 100, boxPackingKg: 60, description: 'Fresh sweet water grass/common carp', isAvailable: 'TRUE', image: 'https://ik.imagekit.io/uy5estwss/menus/common_fish.png' },
+  { name: 'Mattu / మట్టు', scientificName: 'Siluriformes', category: 'Fresh Water', sellingUnit: 'Box', purchasePrice: 150, price: 200, variants: 'Regular:200', openingStock: 110, boxPackingKg: 60, description: 'Fresh water Mattu fish', isAvailable: 'TRUE', image: 'https://ik.imagekit.io/uy5estwss/menus/mattu_mosu.png' },
+  { name: 'Karimeen / కరిమీన్', scientificName: 'Etroplus suratensis', category: 'Fresh Water', sellingUnit: 'Box', purchasePrice: 250, price: 300, variants: 'Medium:300, Large:400', openingStock: 90, boxPackingKg: 40, description: 'Pearl spot fish / Chuka Jilebi delicacy', isAvailable: 'TRUE', image: 'https://ik.imagekit.io/uy5estwss/menus/karimeen_pearlspot.png' },
+  { name: 'Apollo Meat / అపోలో ఫిష్', scientificName: 'Fish Boneless Fillet', category: 'Sea Water', sellingUnit: 'Box', purchasePrice: 240, price: 300, variants: 'Cut Pieces:300, Finger Cut:400', openingStock: 120, boxPackingKg: 50, description: 'Boneless cube-cut fish meat for Apollo fish fry', isAvailable: 'TRUE', image: 'https://ik.imagekit.io/uy5estwss/menus/apollo_meat.png' },
+  { name: 'Tuna / సూర (చూర)', scientificName: 'Thunnini', category: 'Sea Water', sellingUnit: 'Box', purchasePrice: 300, price: 400, variants: 'Steaks:400, Whole:350', openingStock: 160, boxPackingKg: 60, description: 'Ocean yellowfin / skipjack tuna', isAvailable: 'TRUE', image: 'https://ik.imagekit.io/uy5estwss/menus/tuna_dhoma.png' },
+  { name: 'Aila / కనగర్తలు', scientificName: 'Rastrelliger kanagurta', category: 'Sea Water', sellingUnit: 'Box', purchasePrice: 220, price: 300, variants: 'Fresh Catch:300, Large:350', openingStock: 220, boxPackingKg: 60, description: 'Indian mackerel rich in Omega-3', isAvailable: 'TRUE', image: 'https://ik.imagekit.io/uy5estwss/menus/aila_mackerel.jpg' },
+  { name: 'Sheelavathi / ఓషా ఫిష్', scientificName: 'Labeo rohita hybrid', category: 'Fresh Water', sellingUnit: 'Box', purchasePrice: 240, price: 300, variants: 'Whole:300, Cleaned:400', openingStock: 170, boxPackingKg: 60, description: 'Tender sweet water Sheelavathi / Osha fish', isAvailable: 'TRUE', image: 'https://ik.imagekit.io/uy5estwss/menus/rohu.png' },
+  { name: 'Nethallu / Nethili (నెత్తళ్లు)', scientificName: 'Anchoviella commersonii', category: 'Sea Water', sellingUnit: 'Box', purchasePrice: 260, price: 350, variants: 'Small:350, White Large:450', openingStock: 130, boxPackingKg: 40, description: 'Fresh small coastal white anchovies', isAvailable: 'TRUE', image: 'https://ik.imagekit.io/uy5estwss/menus/nethallu_anchovy.jpg' },
+  { name: 'Black Pomfret (నల్ల చందువా)', scientificName: 'Parastromateus niger', category: 'Sea Water', sellingUnit: 'Box', purchasePrice: 650, price: 800, variants: 'Standard:800', openingStock: 100, boxPackingKg: 50, description: 'Deep sea black pomfret Halva', isAvailable: 'TRUE', image: 'https://ik.imagekit.io/uy5estwss/menus/black_pomfret.png' },
+  { name: 'Sea Crabs / పీతలు', scientificName: 'Portunus pelagicus', category: 'Crabs & Shellfish', sellingUnit: 'Box', purchasePrice: 280, price: 350, variants: 'Medium:350, Jumbo Sea:500', openingStock: 110, boxPackingKg: 40, description: 'Live blue swimming sea crabs', isAvailable: 'TRUE', image: 'https://ik.imagekit.io/uy5estwss/menus/sea_crabs.jpg' },
+  { name: 'Mirayal / మిరయల్', scientificName: 'Cirrhinus mrigala', category: 'Fresh Water', sellingUnit: 'Box', purchasePrice: 110, price: 150, variants: 'Standard:150', openingStock: 190, boxPackingKg: 60, description: 'Fresh sweet water Mrigal carp', isAvailable: 'TRUE', image: 'https://ik.imagekit.io/uy5estwss/menus/mirayal_mrigal.jpg' },
+  { name: 'Bangaru Theega / Golden Fish (బంగారుతీగ)', scientificName: 'Carassius auratus', category: 'Fresh Water', sellingUnit: 'Box', purchasePrice: 100, price: 150, variants: 'Standard:150', openingStock: 210, boxPackingKg: 60, description: 'Fresh water Bangaru Theega fish', isAvailable: 'TRUE', image: 'https://ik.imagekit.io/uy5estwss/menus/bangaru_theega.png' },
+  { name: 'Koli / కోలి చేప', scientificName: 'Otolithes ruber', category: 'Sea Water', sellingUnit: 'Box', purchasePrice: 70, price: 100, variants: 'Standard:100', openingStock: 160, boxPackingKg: 60, description: 'Coastal small Croaker Koli fish', isAvailable: 'TRUE', image: 'https://ik.imagekit.io/uy5estwss/menus/koli_croaker.png' },
+  { name: 'Pothi Gini / చిన్న చేపలు', scientificName: 'Puntius sophore', category: 'Fresh Water', sellingUnit: 'Box', purchasePrice: 180, price: 250, variants: 'Fresh Catch:250, Cleaned:300', openingStock: 130, boxPackingKg: 40, description: 'Local sweet water small fish mix', isAvailable: 'TRUE', image: 'https://ik.imagekit.io/uy5estwss/menus/pothi_gini.png' },
+  { name: 'Rani / గులివిందలు', scientificName: 'Nemipterus japonicus', category: 'Sea Water', sellingUnit: 'Box', purchasePrice: 220, price: 300, variants: 'Pink Perch:300', openingStock: 150, boxPackingKg: 50, description: 'Japanese threadfin bream / Pink Perch Rani fish', isAvailable: 'TRUE', image: 'https://ik.imagekit.io/uy5estwss/menus/rani_gulivindalu.png' },
+  { name: 'Wallago / వాలగ (ఆల)', scientificName: 'Wallago attu', category: 'Fresh Water', sellingUnit: 'Box', purchasePrice: 150, price: 200, variants: 'Whole:200, Large Slices:350', openingStock: 140, boxPackingKg: 60, description: 'Fresh water river shark Wallago / Valuga fish', isAvailable: 'TRUE', image: 'https://ik.imagekit.io/uy5estwss/menus/wallago_valuga.png' }
 ];
 
 const SAMPLE_SWEETS = [
@@ -1210,7 +1210,7 @@ const BulkImportModal = ({ isOpen, onClose, onImportSuccess }) => {
       'Fish Name': i.name,
       'Scientific Name': i.scientificName || '',
       Category: i.category,
-      'Selling Unit': i.sellingUnit || 'Kg',
+      'Selling Unit': i.sellingUnit || 'Box',
       'Purchase Price (₹/Kg)': i.purchasePrice || 0,
       'Selling Price (₹/Kg)': i.price,
       Variants: i.variants || '',
@@ -1310,7 +1310,7 @@ const BulkImportModal = ({ isOpen, onClose, onImportSuccess }) => {
         const name = getVal('Fish Name', 'Name', 'Item Name', 'ItemName');
         const scientificName = getVal('Scientific Name', 'ScientificName', 'Scientific');
         const category = getVal('Category', 'Category Name');
-        const sellingUnit = getVal('Selling Unit', 'SellingUnit', 'Unit') || 'Kg';
+        const sellingUnit = getVal('Selling Unit', 'SellingUnit', 'Unit') || 'Box';
         const purchasePriceRaw = getVal('Purchase Price (₹/Kg)', 'Purchase Price', 'PurchasePrice', 'Cost Price', 'Cost');
         const priceRaw = getVal('Selling Price (₹/Kg)', 'Selling Price', 'Price', 'Item Price', 'Cost', 'Rate');
         const variantsRaw = getVal('Variants', 'Variant', 'Varieties', 'Variety');
@@ -1344,12 +1344,31 @@ const BulkImportModal = ({ isOpen, onClose, onImportSuccess }) => {
         const sellByWeightRaw = getVal('Sell By Weight', 'SellByWeight');
         const sellByPieceRaw = getVal('Sell By Piece', 'SellByPiece');
 
+        const wholesalePricePerKgRaw = getVal('Wholesale Price', 'WholesalePrice', 'Wholesale Price (₹/Kg)', 'WholesalePricePerKg');
+        const exportPricePerKgRaw = getVal('Export Price', 'ExportPrice', 'Export Price (₹/Kg)', 'ExportPricePerKg');
+        const waterTypeRaw = getVal('Water Type', 'WaterType', 'Water Environment');
+        const speciesTypeRaw = getVal('Species Type', 'SpeciesType', 'Seafood Type', 'Species');
+        const smallPriceRaw = getVal('Small Price', 'SmallPrice', 'Small (₹/Kg)');
+        const mediumPriceRaw = getVal('Medium Price', 'MediumPrice', 'Medium (₹/Kg)');
+        const bigPriceRaw = getVal('Big Price', 'BigPrice', 'Big (₹/Kg)');
+
         const price = parseFloat(priceRaw) || 0;
+        const wholesalePricePerKg = parseFloat(wholesalePricePerKgRaw) || price;
+        const exportPricePerKg = parseFloat(exportPricePerKgRaw) || wholesalePricePerKg;
         const purchasePrice = parseFloat(purchasePriceRaw) || 0;
         const openingStock = parseFloat(openingStockRaw) || 0;
         const boxPackingKg = parseFloat(boxPackingKgRaw) || 60;
         const taxRate = parseFloat(taxRateRaw) || 0;
         const pricePerKg = parseFloat(pricePerKgRaw) || 0;
+
+        const catLower = String(category || '').toLowerCase();
+        const nameLower = String(name || '').toLowerCase();
+        const waterType = waterTypeRaw ? (String(waterTypeRaw).toLowerCase().includes('fresh') ? 'fresh_water' : 'sea_water') : (catLower.includes('fresh') || catLower.includes('river') || catLower.includes('sweet') ? 'fresh_water' : 'sea_water');
+        const speciesType = speciesTypeRaw ? (String(speciesTypeRaw).toLowerCase().includes('prawn') ? 'prawn' : String(speciesTypeRaw).toLowerCase().includes('crab') ? 'crab' : 'fish') : (catLower.includes('prawn') || nameLower.includes('prawn') || nameLower.includes('shrimp') ? 'prawn' : catLower.includes('crab') || nameLower.includes('crab') ? 'crab' : 'fish');
+
+        const smallPrice = parseFloat(smallPriceRaw) || price;
+        const mediumPrice = parseFloat(mediumPriceRaw) || price;
+        const bigPrice = parseFloat(bigPriceRaw) || price;
         const piecesPerKg = parseFloat(piecesPerKgRaw) || 0;
         const sellByWeight = sellByWeightRaw && String(sellByWeightRaw).toLowerCase() !== 'false' && sellByWeightRaw !== '0';
         const sellByPiece = sellByPieceRaw && String(sellByPieceRaw).toLowerCase() !== 'false' && sellByPieceRaw !== '0';
@@ -1390,6 +1409,15 @@ const BulkImportModal = ({ isOpen, onClose, onImportSuccess }) => {
           openingStock,
           boxPackingKg,
           price: isSweetsMode ? pricePerKg : price,
+          wholesalePricePerKg,
+          exportPricePerKg,
+          waterType,
+          speciesType,
+          sizeGrades: {
+            small: { minKg: 0, maxKg: 1, price: smallPrice, wholesalePrice: wholesalePricePerKg, exportPrice: exportPricePerKg },
+            medium: { minKg: 1, maxKg: 4, price: mediumPrice, wholesalePrice: wholesalePricePerKg, exportPrice: exportPricePerKg },
+            big: { minKg: 4, maxKg: 99, price: bigPrice, wholesalePrice: wholesalePricePerKg, exportPrice: exportPricePerKg }
+          },
           variants: parsedVariants,
           variantsString: variantsRaw || '',
           type,
@@ -1493,7 +1521,7 @@ const BulkImportModal = ({ isOpen, onClose, onImportSuccess }) => {
               <div className="flex items-center gap-2">
                 <HelpCircle size={18} className={importMode === 'sweets' ? 'text-amber-500' : 'text-primary'} />
                 <span className="text-sm font-semibold text-text-main">
-                  {importMode === 'sweets' ? '🍬 Sweet Shop Fields & Format' : t("Fields & Excel Format Requirements")}
+                  {importMode === 'sweets' ? 'Sweet Shop Fields & Format' : t("Fields & Excel Format Requirements")}
                 </span>
               </div>
               <div className="flex flex-wrap items-center gap-2">
@@ -1533,7 +1561,7 @@ const BulkImportModal = ({ isOpen, onClose, onImportSuccess }) => {
               </div>
               <div className="p-2 bg-surface rounded-lg border border-border/50">
                 <span className="font-bold text-sky-400 block">Selling Unit *</span>
-                <span className="text-[11px] text-text-muted">Kg, Box, Piece (Default: Kg)</span>
+                <span className="text-[11px] text-text-muted">Box, Kg, Piece (Default: Box)</span>
               </div>
               <div className="p-2 bg-surface rounded-lg border border-border/50">
                 <span className="font-bold text-sky-400 block">Purchase Price</span>
@@ -1642,7 +1670,7 @@ const BulkImportModal = ({ isOpen, onClose, onImportSuccess }) => {
               <div className="space-y-1.5">
                 <div className="flex items-center justify-between text-[11px] text-sky-400/80 px-1 sm:hidden">
                   <span className="flex items-center gap-1 font-medium animate-pulse">
-                    👉 Swipe left / right to view all columns (Price, Stock, Image)
+                    Swipe left / right to view all columns (Price, Stock, Image)
                   </span>
                 </div>
                 <div className="border border-[#E8DCCB] rounded-xl overflow-hidden shadow-xs max-h-[360px] overflow-y-auto overflow-x-auto overscroll-contain bg-white">
@@ -1726,7 +1754,7 @@ const BulkImportModal = ({ isOpen, onClose, onImportSuccess }) => {
                                   className="w-full h-full object-cover transition-transform duration-200 group-hover:scale-110"
                                   onError={(e) => {
                                     e.currentTarget.style.display = 'none';
-                                    e.currentTarget.parentElement.innerHTML = '<span class="text-xs text-slate-400">🐟</span>';
+                                    e.currentTarget.parentElement.innerHTML = '<span class="text-xs text-slate-400 font-bold">Fish</span>';
                                   }}
                                 />
                               </div>

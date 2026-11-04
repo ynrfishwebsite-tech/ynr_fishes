@@ -74,14 +74,14 @@ export default function ProductsSection() {
   }, []);
 
   const getFallbackProducts = () => [
-    { _id: '1', title: 'Wallago / వాలగ (ఆల)', scientificName: 'Wallago attu', price: 200, boxPackingKg: 60, boxRate: 12000, category: 'Fresh Water', description: 'Fresh water river shark Wallago / Valuga fish', imgUrl: '/valuga.png', badge: 'Bestseller' },
-    { _id: '2', title: 'Rani / గులివిందలు', scientificName: 'Nemipterus japonicus', price: 300, boxPackingKg: 50, boxRate: 15000, category: 'Sea Water', description: 'Pink perch / Rani fish fresh coastal catch', imgUrl: '/valuga.png' },
-    { _id: '3', title: 'Pothi Gini / చిన్న చేపలు', scientificName: 'Puntius sophore', price: 250, boxPackingKg: 40, boxRate: 10000, category: 'Fresh Water', description: 'Fresh small pool barb fish, great for fry', imgUrl: '/valuga.png' },
-    { _id: '4', title: 'Koli / కోలి చేప', scientificName: 'Otolithes ruber', price: 100, boxPackingKg: 60, boxRate: 6000, category: 'Sea Water', description: 'Tiger toothed croaker fish', imgUrl: '/valuga.png' },
-    { _id: '5', title: 'Bangaru Theega / Golden Fish', scientificName: 'Carassius auratus', price: 150, boxPackingKg: 60, boxRate: 9000, category: 'Fresh Water', description: 'Golden carp fresh water catch', imgUrl: '/valuga.png', badge: 'Value Pack' },
-    { _id: '6', title: 'Black Pomfret (నల్ల చందువా)', scientificName: 'Parastromateus niger', price: 800, boxPackingKg: 50, boxRate: 40000, category: 'Sea Water', description: 'Premium fresh black pomfret', imgUrl: '/valuga.png', badge: 'Premium' },
-    { _id: '7', title: 'Sea Crabs / పీతలు', scientificName: 'Portunus pelagicus', price: 350, boxPackingKg: 40, boxRate: 14000, category: 'Crabs & Shellfish', description: 'Fresh succulent sea crabs', imgUrl: '/valuga.png' },
-    { _id: '8', title: 'Sheelavathi / శీలావతి ఫిష్', scientificName: 'Labeo rohita hybrid', price: 300, boxPackingKg: 60, boxRate: 18000, category: 'Fresh Water', description: 'Fresh freshwater carp delicacy', imgUrl: '/valuga.png' }
+    { _id: '1', title: 'Wallago / వాలగ (ఆల)', scientificName: 'Wallago attu', price: 200, boxPackingKg: 60, boxRate: 12000, category: 'Fresh Water', description: 'Fresh water river shark Wallago / Valuga fish', imgUrl: 'https://ik.imagekit.io/uy5estwss/menus/wallago_valuga.png', badge: 'Bestseller' },
+    { _id: '2', title: 'Rani / గులివిందలు', scientificName: 'Nemipterus japonicus', price: 300, boxPackingKg: 50, boxRate: 15000, category: 'Sea Water', description: 'Pink perch / Rani fish fresh coastal catch', imgUrl: 'https://ik.imagekit.io/uy5estwss/menus/rani_gulivindalu.png' },
+    { _id: '3', title: 'Pothi Gini / చిన్న చేపలు', scientificName: 'Puntius sophore', price: 250, boxPackingKg: 40, boxRate: 10000, category: 'Fresh Water', description: 'Fresh small pool barb fish, great for fry', imgUrl: 'https://ik.imagekit.io/uy5estwss/menus/pothi_gini.png' },
+    { _id: '4', title: 'Koli / కోలి చేప', scientificName: 'Otolithes ruber', price: 100, boxPackingKg: 60, boxRate: 6000, category: 'Sea Water', description: 'Tiger toothed croaker fish', imgUrl: 'https://ik.imagekit.io/uy5estwss/menus/koli_croaker.png' },
+    { _id: '5', title: 'Bangaru Theega / Golden Fish', scientificName: 'Carassius auratus', price: 150, boxPackingKg: 60, boxRate: 9000, category: 'Fresh Water', description: 'Golden carp fresh water catch', imgUrl: 'https://ik.imagekit.io/uy5estwss/menus/bangaru_theega.png', badge: 'Value Pack' },
+    { _id: '6', title: 'Black Pomfret (నల్ల చందువా)', scientificName: 'Parastromateus niger', price: 800, boxPackingKg: 50, boxRate: 40000, category: 'Sea Water', description: 'Premium fresh black pomfret', imgUrl: 'https://ik.imagekit.io/uy5estwss/menus/black_pomfret.png', badge: 'Premium' },
+    { _id: '7', title: 'Sea Crabs / పీతలు', scientificName: 'Portunus pelagicus', price: 350, boxPackingKg: 40, boxRate: 14000, category: 'Crabs & Shellfish', description: 'Fresh succulent sea crabs', imgUrl: 'https://ik.imagekit.io/uy5estwss/menus/sea_crabs.jpg' },
+    { _id: '8', title: 'Sheelavathi / శీలావతి ఫిష్', scientificName: 'Labeo rohita hybrid', price: 300, boxPackingKg: 60, boxRate: 18000, category: 'Fresh Water', description: 'Fresh freshwater carp delicacy', imgUrl: 'https://ik.imagekit.io/uy5estwss/menus/rohu.png' }
   ];
 
   const cutYieldMap = {

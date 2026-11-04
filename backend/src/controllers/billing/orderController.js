@@ -283,6 +283,7 @@ export const getActiveOrder = asyncHandler(async (req, res, next) => {
       const taxAmount = Number(((taxable * taxRate) / 100).toFixed(2));
       const dCharge = Number(order.deliveryCharge) || 0;
       const cCharge = Number(order.containerCharge) || 0;
+      const cutCharge = Number(order.cuttingCharge) || 0;
       order.tax = taxRate;
       const boxSummary = computeBoxesSummary(order.items);
       order.boxes = boxSummary.boxes;
@@ -293,7 +294,9 @@ export const getActiveOrder = asyncHandler(async (req, res, next) => {
       order.discount = calculatedDiscount;
       order.deliveryCharge = dCharge;
       order.containerCharge = cCharge;
-      order.total = Math.round(taxable + taxAmount + dCharge + cCharge);
+      order.cuttingCharge = cutCharge;
+      order.cuttingCharge = cutCharge;
+      order.total = Math.round(taxable + taxAmount + dCharge + cCharge + cutCharge);
     }
   }
 
@@ -311,6 +314,14 @@ export const saveOrder = async (req, res) => {
       items,
       customerName,
       customerPhone,
+      customerCategory,
+      exportSubCategory,
+      customerPhoto,
+      customerAddress,
+      isOrderLocked,
+      orderLockedAt,
+      orderDateFormatted,
+      orderTimeFormatted,
       kitchenNotes,
       billType,
       orderSource,
@@ -324,6 +335,7 @@ export const saveOrder = async (req, res) => {
       tax,
       deliveryCharge,
       containerCharge,
+      cuttingCharge,
       restaurantDetails,
       showLogo
     } = req.body;
@@ -609,7 +621,8 @@ export const saveOrder = async (req, res) => {
       const calculatedTax = (taxableAmount * tRate) / 100;
       const dCharge = deliveryCharge !== undefined ? (Number(deliveryCharge) || 0) : (Number(order.deliveryCharge) || 0);
       const cCharge = containerCharge !== undefined ? (Number(containerCharge) || 0) : (Number(order.containerCharge) || 0);
-      const calculatedTotal = Math.round(taxableAmount + calculatedTax + dCharge + cCharge);
+      const cutCharge = cuttingCharge !== undefined ? (Number(cuttingCharge) || 0) : (Number(order.cuttingCharge) || 0);
+      const calculatedTotal = Math.round(taxableAmount + calculatedTax + dCharge + cCharge + cutCharge);
 
       // Check if actual items, quantities, or prices changed compared to the previous state
       const cleanOldItems = (order.items || [])
@@ -627,6 +640,7 @@ export const saveOrder = async (req, res) => {
       const amountActuallyChanged = Math.abs((order.total || 0) - calculatedTotal) > 0.01 ||
         Math.abs((order.deliveryCharge || 0) - dCharge) > 0.01 ||
         Math.abs((order.containerCharge || 0) - cCharge) > 0.01 ||
+        Math.abs((order.cuttingCharge || 0) - cutCharge) > 0.01 ||
         Math.abs((order.discount || 0) - calculatedDiscount) > 0.01;
 
       // An order is recorded in editHistory if it was ALREADY BILLED (locked) AND items OR charges/discounts changed!
@@ -638,6 +652,7 @@ export const saveOrder = async (req, res) => {
           totalTax: ((Math.max(0, (order.subtotal || 0) - (order.discount || 0))) * (order.tax || 0)) / 100,
           deliveryCharge: order.deliveryCharge || 0,
           containerCharge: order.containerCharge || 0,
+          cuttingCharge: order.cuttingCharge || 0,
           total: order.total || 0,
           discountType: order.discountType || 'flat',
           discountValue: order.discountValue || 0
@@ -650,6 +665,7 @@ export const saveOrder = async (req, res) => {
           totalTax: calculatedTax,
           deliveryCharge: dCharge,
           containerCharge: cCharge,
+          cuttingCharge: cutCharge,
           total: calculatedTotal,
           discountType: dType,
           discountValue: dValue
@@ -667,8 +683,17 @@ export const saveOrder = async (req, res) => {
       order.items = updatedItems;
       if (customerName !== undefined) order.customerName = customerName;
       if (customerPhone !== undefined) order.customerPhone = customerPhone;
+      if (customerCategory) order.customerCategory = customerCategory;
+      if (exportSubCategory !== undefined) order.exportSubCategory = exportSubCategory;
+      if (customerPhoto !== undefined) order.customerPhoto = customerPhoto;
+      if (customerAddress !== undefined) order.customerAddress = customerAddress;
+      if (isOrderLocked !== undefined) order.isOrderLocked = isOrderLocked;
+      if (orderLockedAt !== undefined) order.orderLockedAt = orderLockedAt;
+      if (orderDateFormatted) order.orderDateFormatted = orderDateFormatted;
+      if (orderTimeFormatted) order.orderTimeFormatted = orderTimeFormatted;
+
       if (order.customerPhone) {
-        syncCustomer(req, order.customerPhone, order.customerName, billType || order.billType).catch(() => { });
+        syncCustomer(req, order.customerPhone, order.customerName, billType || order.billType, customerCategory, exportSubCategory).catch(() => { });
       }
       order.kitchenNotes = kitchenNotes;
       order.billType = billType || order.billType;
@@ -743,6 +768,7 @@ export const saveOrder = async (req, res) => {
             freshOrder.taxBreakdown = order.taxBreakdown;
             freshOrder.deliveryCharge = dCharge;
             freshOrder.containerCharge = cCharge;
+            freshOrder.cuttingCharge = cutCharge;
             freshOrder.total = calculatedTotal;
             if (freshOrder.status !== 'Billed' && freshOrder.status !== 'Paid') {
               freshOrder.status = 'Open';
@@ -765,6 +791,7 @@ export const saveOrder = async (req, res) => {
               taxBreakdown: order.taxBreakdown,
               deliveryCharge: dCharge,
               containerCharge: cCharge,
+              cuttingCharge: cutCharge,
               total: calculatedTotal,
               status: 'Open'
             };
@@ -816,7 +843,8 @@ export const saveOrder = async (req, res) => {
       const calculatedTax = (taxableAmount * tRate) / 100;
       const dChargeNew = Number(deliveryCharge) || 0;
       const cChargeNew = Number(containerCharge) || 0;
-      const calculatedTotal = Math.round(taxableAmount + calculatedTax + dChargeNew + cChargeNew);
+      const cutChargeNew = Number(cuttingCharge) || 0;
+      const calculatedTotal = Math.round(taxableAmount + calculatedTax + dChargeNew + cChargeNew + cutChargeNew);
 
       let nextQueueNo = 1;
       try {
@@ -843,11 +871,20 @@ export const saveOrder = async (req, res) => {
         tax: tRate,
         deliveryCharge: dChargeNew,
         containerCharge: cChargeNew,
+        cuttingCharge: cutChargeNew,
         total: calculatedTotal,
         status: 'Open',
-        billType: billType || 'Dine-In',
+        billType: billType || 'Retail',
         customerName,
         customerPhone,
+        customerCategory: customerCategory || (billType === 'Wholesale' ? 'Wholesale' : (billType === 'Export' ? 'Export' : 'Retail')),
+        exportSubCategory: exportSubCategory || null,
+        customerPhoto: customerPhoto || '',
+        customerAddress: customerAddress || '',
+        isOrderLocked: isOrderLocked || false,
+        orderLockedAt: orderLockedAt || (isOrderLocked ? new Date() : null),
+        orderDateFormatted: orderDateFormatted || '',
+        orderTimeFormatted: orderTimeFormatted || '',
         kitchenNotes,
         queueNumber: nextQueueNo,
         tokenNo: nextQueueNo
@@ -889,7 +926,7 @@ export const saveOrder = async (req, res) => {
     }
     // Immediate CRM update in background
     if (order.customerPhone) {
-      syncCustomer(req, order.customerPhone, order.customerName).catch(err => console.error('Immediate CRM sync error:', err));
+      syncCustomer(req, order.customerPhone, order.customerName, order.billType, order.customerCategory, order.exportSubCategory).catch(err => console.error('Immediate CRM sync error:', err));
     }
 
     res.status(200).json(order);
@@ -906,7 +943,7 @@ export const generateBill = async (req, res) => {
   try {
     const Bill = getTenantModel(req, 'Bill', BillDefault);
     const { id } = req.params;
-    const { items, discount, discountType, discountValue, discountName, applicableTo, targetCategory, tax, taxBreakdown, orderSource, customerName, customerPhone, deliveryCharge, containerCharge, restaurantDetails, billType, showLogo } = req.body;
+    const { items, discount, discountType, discountValue, discountName, applicableTo, targetCategory, tax, taxBreakdown, orderSource, customerName, customerPhone, deliveryCharge, containerCharge, cuttingCharge, restaurantDetails, billType, showLogo } = req.body;
 
     // ⚡⚡ OPTIMISTIC INSTANT NOTIFICATION — emit immediately before any DB work so the UI shows the toast the moment the user clicks Save & Print.
     // If the save somehow fails later, the toast has already shown (tradeoff: very rare, acceptable).
@@ -979,10 +1016,13 @@ export const generateBill = async (req, res) => {
     const prevDiscount = order.discount || 0;
     const prevDeliveryCharge = order.deliveryCharge || 0;
     const prevContainerCharge = order.containerCharge || 0;
+    const prevCuttingCharge = order.cuttingCharge || 0;
     const prevItems = (order.items || []).map(i => ({ name: i.name, quantity: i.quantity, price: i.price, total: i.total }));
 
     if (deliveryCharge !== undefined) order.deliveryCharge = Number(deliveryCharge) || 0;
     if (containerCharge !== undefined) order.containerCharge = Number(containerCharge) || 0;
+    if (cuttingCharge !== undefined) order.cuttingCharge = Number(cuttingCharge) || 0;
+    if (cuttingCharge !== undefined) order.cuttingCharge = Number(cuttingCharge) || 0;
     if (orderSource) order.orderSource = orderSource;
     if (customerName) order.customerName = customerName;
     if (customerPhone) order.customerPhone = customerPhone;
@@ -1009,12 +1049,13 @@ export const generateBill = async (req, res) => {
     // Calculate final total with delivery & container charges
     const taxableAmount = Math.max(0, (order.subtotal || 0) - (order.discount || 0));
     const taxAmount = (taxableAmount * (order.tax || 0)) / 100;
-    const computedTotal = Math.round(taxableAmount + taxAmount + (Number(order.deliveryCharge) || 0) + (Number(order.containerCharge) || 0));
+    const computedTotal = Math.round(taxableAmount + taxAmount + (Number(order.deliveryCharge) || 0) + (Number(order.containerCharge) || 0) + (Number(order.cuttingCharge) || 0));
     order.total = (req.body.total !== undefined && Number(req.body.total) > 0) ? Number(req.body.total) : computedTotal;
 
     const amountChanged = Math.abs(prevTotal - order.total) > 0.01 ||
       Math.abs(prevDeliveryCharge - (Number(order.deliveryCharge) || 0)) > 0.01 ||
       Math.abs(prevContainerCharge - (Number(order.containerCharge) || 0)) > 0.01 ||
+      Math.abs(prevCuttingCharge - (Number(order.cuttingCharge) || 0)) > 0.01 ||
       Math.abs(prevDiscount - (Number(order.discount) || 0)) > 0.01;
 
     let billNumber = order.billNumber;
@@ -1033,6 +1074,7 @@ export const generateBill = async (req, res) => {
           totalTax: ((Math.max(0, prevSubtotal - prevDiscount)) * (order.tax || 0)) / 100,
           deliveryCharge: prevDeliveryCharge,
           containerCharge: prevContainerCharge,
+          cuttingCharge: prevCuttingCharge,
           total: prevTotal,
           discountType: order.discountType || 'flat',
           discountValue: order.discountValue || 0
@@ -1044,6 +1086,7 @@ export const generateBill = async (req, res) => {
           totalTax: taxAmount,
           deliveryCharge: order.deliveryCharge || 0,
           containerCharge: order.containerCharge || 0,
+          cuttingCharge: order.cuttingCharge || 0,
           total: order.total,
           discountType: order.discountType || 'flat',
           discountValue: order.discountValue || 0
@@ -1151,7 +1194,7 @@ export const settleBill = async (req, res) => {
   try {
     const Bill = getTenantModel(req, 'Bill', BillDefault);
     const { id } = req.params;
-    const { paymentMode, splitPayments, upiApp, amountPaid, changeAmount, discount, discountType, discountValue, discountName, applicableTo, targetCategory, tax, taxBreakdown, total, subtotal, orderSource, customerName, customerPhone, deliveryCharge, containerCharge, restaurantDetails, showLogo, walletRedemption } = req.body;
+    const { paymentMode, splitPayments, upiApp, amountPaid, changeAmount, discount, discountType, discountValue, discountName, applicableTo, targetCategory, tax, taxBreakdown, total, subtotal, orderSource, customerName, customerPhone, deliveryCharge, containerCharge, cuttingCharge, restaurantDetails, showLogo, walletRedemption } = req.body;
 
     let order = null;
     if (id && id !== 'new' && mongoose.Types.ObjectId.isValid(id)) {
@@ -1242,7 +1285,7 @@ export const settleBill = async (req, res) => {
     if (!order.total || order.total <= 0) {
       const taxable = Math.max(0, (order.subtotal || 0) - (order.discount || 0));
       const taxAmt = (taxable * (order.tax || 0)) / 100;
-      order.total = Math.round(taxable + taxAmt + (Number(order.deliveryCharge) || 0) + (Number(order.containerCharge) || 0));
+      order.total = Math.round(taxable + taxAmt + (Number(order.deliveryCharge) || 0) + (Number(order.containerCharge) || 0) + (Number(order.cuttingCharge) || 0));
     }
 
     // Set status to 'Paid' or 'Unpaid' - this makes it appear in billing history
@@ -1456,7 +1499,7 @@ export const getOpenOrders = async (req, res) => {
     const orders = await Bill.find({
       status: { $in: ['Open', 'Billed'] }
     })
-      .select('tableNo items total subtotal tax discount discountType discountValue discountName applicableTo targetCategory deliveryCharge containerCharge customerName customerPhone status billNumber billType orderSource queueNumber tokenNo createdAt')
+      .select('tableNo items total subtotal tax discount discountType discountValue discountName applicableTo targetCategory deliveryCharge containerCharge cuttingCharge customerName customerPhone status billNumber billType orderSource queueNumber tokenNo createdAt')
       .sort({ createdAt: -1 })
       .limit(100)
       .lean();
@@ -1479,7 +1522,8 @@ export const getOpenOrders = async (req, res) => {
         const taxAmount = Number(((taxable * taxRate) / 100).toFixed(2));
         const dCharge = Number(order.deliveryCharge) || 0;
         const cCharge = Number(order.containerCharge) || 0;
-        const computedTotal = Math.round(taxable + taxAmount + dCharge + cCharge);
+        const cutCharge = Number(order.cuttingCharge) || 0;
+        const computedTotal = Math.round(taxable + taxAmount + dCharge + cCharge + cutCharge);
         const finalTotal = (order.total !== undefined && Number(order.total) > 0) ? Number(order.total) : computedTotal;
         return {
           ...order,
@@ -1487,6 +1531,7 @@ export const getOpenOrders = async (req, res) => {
           tax: taxRate,
           deliveryCharge: dCharge,
           containerCharge: cCharge,
+          cuttingCharge: cutCharge,
           total: finalTotal
         };
       });

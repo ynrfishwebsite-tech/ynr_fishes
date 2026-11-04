@@ -4,25 +4,28 @@ import React, { useState, useEffect } from 'react';
 import BackButton from '../common/BackButton';
 import { getOpenOrders } from '../../../api/billing/billing';
 import { getCachedOpenOrders } from '../../../db/offlineDb';
-import { Clock, ChevronRight, FileText, CheckCircle, ShoppingBag, Fish, RefreshCw, AlertCircle } from 'lucide-react';
+import { 
+  Clock, ChevronRight, FileText, CheckCircle, ShoppingBag, 
+  Fish, RefreshCw, AlertCircle, User, Lock, MapPin, Package, Building, ArrowUpRight,
+  Truck, X, Navigation, Phone, Car, ArrowLeft
+} from 'lucide-react';
+import { getVehicles, logTrip } from '../../../api/operations/vehicle';
 import realtimeService from '../../../services/realtimeService';
 import { formatTime12 } from '../../../utils/formatters/timeFormat';
 
 const STATUS_STYLES = {
   'Billed': {
-    cardBg: 'bg-[#FDFBF7] border-emerald-300 hover:border-emerald-400 shadow-sm hover:shadow-md',
-    topBar: 'bg-emerald-500',
-    badge: 'bg-emerald-100 text-emerald-800 border border-emerald-300 font-bold',
-    button: 'bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-black shadow-sm active:scale-95',
+    badge: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+    dot: 'bg-emerald-500',
+    button: 'bg-emerald-600 hover:bg-emerald-700 text-white',
     icon: CheckCircle,
     label: 'Ready to Settle'
   },
   'Open': {
-    cardBg: 'bg-[#FDFBF7] border-[#E8DCCB] hover:border-[#fed7aa] shadow-sm hover:shadow-md',
-    topBar: 'bg-[#ea580c]',
-    badge: 'bg-amber-100 text-amber-800 border border-amber-300 font-bold',
-    button: 'bg-gradient-to-r from-[#ea580c] to-[#c2410c] hover:from-[#f97316] hover:to-[#ea580c] text-white font-black shadow-sm active:scale-95',
-    icon: ShoppingBag,
+    badge: 'bg-amber-50 text-amber-700 border-amber-200',
+    dot: 'bg-amber-500',
+    button: 'bg-[#ea580c] hover:bg-[#c2410c] text-white',
+    icon: Clock,
     label: 'In Progress'
   }
 };
@@ -40,12 +43,89 @@ const ActiveOrders = ({ onSelectOrder, onNavigate, onGoBack }) => {
   const { t } = useLanguage();
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [filterType, setFilterType] = useState('All'); // 'All', 'Billed', 'Open'
+  const [statusFilter, setStatusFilter] = useState('All'); // 'All' | 'Billed' | 'Open'
+  const [channelFilter, setChannelFilter] = useState('All'); // 'All' | 'Retail' | 'Wholesale' | 'Export - Local' | 'Export - DAM'
+
+  // Vehicle Dispatch Sync Modal State
+  const [dispatchOrder, setDispatchOrder] = useState(null);
+  const [fleetVehicles, setFleetVehicles] = useState([]);
+  const [selectedVehicleId, setSelectedVehicleId] = useState('');
+  const [dispatchKm, setDispatchKm] = useState({ startKm: '', endKm: '' });
+  const [dispatchRouteTo, setDispatchRouteTo] = useState('');
+  const [isDispatching, setIsDispatching] = useState(false);
+  const [dispatchToast, setDispatchToast] = useState(null);
+
+  const handleOpenDispatch = async (order) => {
+    setDispatchOrder(order);
+    setDispatchRouteTo(order.customerAddress || 'Kadapa Local Market');
+    try {
+      const vList = await getVehicles();
+      const list = Array.isArray(vList) ? vList : [];
+      setFleetVehicles(list);
+      if (list.length > 0) {
+        setSelectedVehicleId(list[0]._id);
+        setDispatchKm({
+          startKm: String(list[0].currentKm || 0),
+          endKm: String((list[0].currentKm || 0) + 35)
+        });
+      }
+    } catch (e) {
+      console.error('Failed to fetch vehicles for dispatch', e);
+    }
+  };
+
+  const handleConfirmDispatch = async () => {
+    if (!dispatchOrder || !selectedVehicleId) return;
+    const veh = fleetVehicles.find(v => v._id === selectedVehicleId);
+    if (!veh) return;
+    setIsDispatching(true);
+    try {
+      const sub = dispatchOrder.exportSubCategory || (dispatchOrder.orderMode === 'export' ? 'Local' : 'General');
+      await logTrip({
+        vehicleId: veh._id,
+        driverName: veh.driverName,
+        date: new Date().toISOString().split('T')[0],
+        startKm: dispatchKm.startKm || String(veh.currentKm || 0),
+        endKm: dispatchKm.endKm || String((veh.currentKm || 0) + 35),
+        purpose: `${sub === 'DAM' ? 'DAM Consignment' : 'Local Delivery'} • Order #${dispatchOrder.tableNo}`,
+        routeFrom: 'Kadapa City Depot',
+        routeTo: dispatchRouteTo || 'Local Market',
+        exportType: sub,
+        orderId: dispatchOrder._id,
+        orderTableNo: dispatchOrder.tableNo,
+        customerName: dispatchOrder.customerName,
+        customerPhone: dispatchOrder.customerPhone,
+        customerAddress: dispatchOrder.customerAddress,
+        boxesCount: Number(dispatchOrder.totalBoxes) || 0,
+        totalWeightKg: Number(dispatchOrder.totalWeight) || 0,
+        status: 'In Transit'
+      });
+      setDispatchToast(`Consignment dispatched via ${veh.vehicleNumber} (${veh.driverName || 'Assigned Driver'})!`);
+      setTimeout(() => setDispatchToast(null), 4000);
+      setDispatchOrder(null);
+    } catch (err) {
+      alert('Error dispatching consignment: ' + (err.response?.data?.message || err.message));
+    } finally {
+      setIsDispatching(false);
+    }
+  };
 
   const filteredOrders = orders.filter((o) => {
     if (!o) return false;
-    if (filterType === 'All') return true;
-    return o.status === filterType;
+    // Status check
+    if (statusFilter !== 'All' && o.status !== statusFilter) return false;
+
+    // Channel check
+    if (channelFilter !== 'All') {
+      const cat = o.customerCategory || (o.billType === 'Wholesale' ? 'Wholesale' : (o.billType === 'Export' ? 'Export' : 'Retail'));
+      const sub = o.exportSubCategory || 'Local';
+
+      if (channelFilter === 'Retail' && cat !== 'Retail') return false;
+      if (channelFilter === 'Wholesale' && cat !== 'Wholesale') return false;
+      if (channelFilter === 'Export - Local' && (cat !== 'Export' || sub !== 'Local')) return false;
+      if (channelFilter === 'Export - DAM' && (cat !== 'Export' || sub !== 'DAM')) return false;
+    }
+    return true;
   });
 
   const typeCounts = {
@@ -71,7 +151,7 @@ const ActiveOrders = ({ onSelectOrder, onNavigate, onGoBack }) => {
     if (onSelectOrder) {
       onSelectOrder(tableNo, action);
     } else if (onNavigate) {
-      onNavigate('billing');
+      onNavigate('billing', { table: tableNo, action });
     }
   };
 
@@ -101,18 +181,13 @@ const ActiveOrders = ({ onSelectOrder, onNavigate, onGoBack }) => {
         fetchOrders(true);
       }
     };
-
-    const unsub1 = realtimeService.subscribe ? realtimeService.subscribe('order:created', handleRealtimeOrders) : null;
-    const unsub2 = realtimeService.subscribe ? realtimeService.subscribe('order:updated', handleRealtimeOrders) : null;
-    const unsub3 = realtimeService.subscribe ? realtimeService.subscribe('order:settled', handleRealtimeOrders) : null;
-    const unsub4 = realtimeService.subscribe ? realtimeService.subscribe('order:cancelled', handleRealtimeOrders) : null;
+    realtimeService.on('orderUpdated', handleRealtimeOrders);
+    realtimeService.on('newOrder', handleRealtimeOrders);
 
     return () => {
       clearInterval(interval);
-      if (typeof unsub1 === 'function') unsub1();
-      if (typeof unsub2 === 'function') unsub2();
-      if (typeof unsub3 === 'function') unsub3();
-      if (typeof unsub4 === 'function') unsub4();
+      realtimeService.off('orderUpdated', handleRealtimeOrders);
+      realtimeService.off('newOrder', handleRealtimeOrders);
     };
   }, []);
 
@@ -131,6 +206,42 @@ const ActiveOrders = ({ onSelectOrder, onNavigate, onGoBack }) => {
     }
   };
 
+  const getChannelBadge = (order) => {
+    const cat = order.customerCategory || (order.billType === 'Wholesale' ? 'Wholesale' : (order.billType === 'Export' ? 'Export' : 'Retail'));
+    const sub = order.exportSubCategory || 'Local';
+
+    if (cat === 'Wholesale') {
+      return (
+        <span className="inline-flex items-center gap-0.5 sm:gap-1 px-1.5 sm:px-2 py-0.5 rounded-md text-[9px] sm:text-[10px] font-semibold bg-amber-50 text-amber-800 border border-amber-200 whitespace-nowrap shrink-0">
+          <Building size={9} className="sm:w-2.5 sm:h-2.5" />
+          {t("Wholesale")}
+        </span>
+      );
+    }
+    if (cat === 'Export') {
+      if (sub === 'DAM') {
+        return (
+          <span className="inline-flex items-center gap-0.5 sm:gap-1 px-1.5 sm:px-2 py-0.5 rounded-md text-[9px] sm:text-[10px] font-semibold bg-purple-50 text-purple-800 border border-purple-200 whitespace-nowrap shrink-0">
+            <ArrowUpRight size={9} className="sm:w-2.5 sm:h-2.5" />
+            {t("Export DAM")}
+          </span>
+        );
+      }
+      return (
+        <span className="inline-flex items-center gap-0.5 sm:gap-1 px-1.5 sm:px-2 py-0.5 rounded-md text-[9px] sm:text-[10px] font-semibold bg-sky-50 text-sky-800 border border-sky-200 whitespace-nowrap shrink-0">
+          <ArrowUpRight size={9} className="sm:w-2.5 sm:h-2.5" />
+          {t("Export Local")}
+        </span>
+      );
+    }
+    return (
+      <span className="inline-flex items-center gap-0.5 sm:gap-1 px-1.5 sm:px-2 py-0.5 rounded-md text-[9px] sm:text-[10px] font-semibold bg-slate-100 text-slate-700 border border-slate-200 whitespace-nowrap shrink-0">
+        <Fish size={9} className="sm:w-2.5 sm:h-2.5" />
+        {t("Retail")}
+      </span>
+    );
+  };
+
   if (loading && orders.length === 0) {
     return (
       <div className="h-full flex flex-col bg-[#F7EFE2] text-slate-800">
@@ -140,16 +251,16 @@ const ActiveOrders = ({ onSelectOrder, onNavigate, onGoBack }) => {
             <div className="w-32 h-6 bg-[#FAF0E4] rounded-lg animate-pulse"></div>
           </div>
         </div>
-        <div className="flex-1 overflow-y-auto p-4 sm:p-6">
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-6">
+        <div className="flex-1 overflow-y-auto p-2 sm:p-4 md:p-6">
+          <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-2 sm:gap-3.5 md:gap-4 lg:gap-5">
             {[...Array(6)].map((_, i) => (
-              <div key={i} className="bg-[#FDFBF7] rounded-2xl border border-[#E8DCCB] p-5 animate-pulse space-y-4">
+              <div key={i} className="bg-white rounded-xl border border-slate-200 p-3 sm:p-4 animate-pulse space-y-3 shadow-xs">
                 <div className="flex justify-between items-start">
-                  <div className="w-24 h-5 bg-[#FAF0E4] rounded"></div>
-                  <div className="w-16 h-5 bg-[#FAF0E4] rounded-full"></div>
+                  <div className="w-16 sm:w-24 h-4 sm:h-5 bg-slate-100 rounded"></div>
+                  <div className="w-12 sm:w-16 h-4 sm:h-5 bg-slate-100 rounded-full"></div>
                 </div>
-                <div className="h-16 bg-[#F7EFE2] rounded-xl"></div>
-                <div className="h-10 bg-[#FAF0E4] rounded-xl"></div>
+                <div className="h-10 sm:h-12 bg-slate-100 rounded-lg"></div>
+                <div className="h-7 sm:h-8 bg-slate-100 rounded-lg"></div>
               </div>
             ))}
           </div>
@@ -160,98 +271,110 @@ const ActiveOrders = ({ onSelectOrder, onNavigate, onGoBack }) => {
 
   return (
     <div className="h-full flex flex-col bg-[#F7EFE2] text-slate-800">
-      {/* Top Header */}
-      <div className="p-3 sm:p-4 border-b border-[#E8DCCB] bg-[#FDFBF7] sticky top-0 z-10 shadow-xs">
-        <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-3">
-          <div className="flex items-center gap-3 flex-wrap">
+      {/* Ultra-Compact Low-Height Top Header */}
+      <div className="px-2.5 py-1.5 sm:px-4 sm:py-2 border-b border-[#E8DCCB] bg-[#FDFBF7] sticky top-0 z-10 shadow-2xs">
+        {/* Row 1: Back + Title + Status Pills + Refresh Button in 1 Tight Row */}
+        <div className="flex items-center justify-between gap-1.5 sm:gap-2">
+          {/* Left: Back Arrow + Active Orders + Count */}
+          <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
             {(onGoBack || onNavigate) && (
-              <BackButton onClick={onGoBack || (() => onNavigate('dashboard'))} />
+              <button
+                type="button"
+                onClick={onGoBack || (() => onNavigate('dashboard'))}
+                className="p-1 sm:px-2.5 sm:py-1 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold flex items-center gap-1 cursor-pointer shrink-0"
+                title={t('Back')}
+              >
+                <ArrowLeft size={13} />
+                <span className="hidden sm:inline">{t('Back')}</span>
+              </button>
             )}
-            <div className="flex items-center gap-2.5">
-              <div className="w-9 h-9 rounded-xl bg-[#FAF0E4] border border-[#fed7aa] flex items-center justify-center text-[#ea580c] shadow-xs">
-                <Fish size={20} />
-              </div>
-              <div>
-                <h2 className="text-xl sm:text-2xl font-black text-slate-800 flex items-center gap-2 tracking-tight">
-                  {t("Active Orders")}
-                  <span className="bg-[#FAF0E4] text-[#7c3f1d] text-xs px-2.5 py-0.5 rounded-full font-mono font-bold border border-[#E8DCCB]">
-                    {filteredOrders.length}{filterType !== 'All' && <span className="text-slate-500"> / {orders.length}</span>}
-                  </span>
-                </h2>
-                <p className="text-[11px] text-slate-600 font-medium">YNR Fish Store Live Counter Operations</p>
-              </div>
-            </div>
 
-            {/* Quick Status Pill Indicators */}
-            <div className="flex items-center gap-2 ml-1 sm:ml-4 flex-wrap text-[11px] font-bold">
-              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300 shadow-2xs">
-                <span className="w-2 h-2 rounded-full bg-emerald-600 animate-pulse"></span>
-                {t("Ready to Settle")}: {typeCounts.Billed}
-              </span>
-              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-100 text-amber-800 border border-amber-300 shadow-2xs">
-                <span className="w-2 h-2 rounded-full bg-amber-600"></span>
-                {t("In Progress")}: {typeCounts.Open}
+            <div className="flex items-center gap-1.5 min-w-0">
+              <h2 className="text-xs sm:text-sm md:text-base font-extrabold text-slate-800 tracking-tight truncate">
+                {t("Active Orders")}
+              </h2>
+              <span className="px-1.5 py-0.2 rounded-full bg-slate-200/80 text-slate-700 text-[10px] font-mono font-bold shrink-0">
+                {filteredOrders.length}{orders.length !== filteredOrders.length && `/${orders.length}`}
               </span>
             </div>
           </div>
 
-          {/* Filter Tabs & Manual Refresh */}
-          <div className="flex items-center gap-2 self-stretch lg:self-auto justify-between lg:justify-end">
-            <div className="flex bg-[#FAF0E4] p-1 rounded-xl border border-[#E8DCCB] gap-1">
-              {[
-                { id: 'All', label: 'All Orders', count: typeCounts.All },
-                { id: 'Billed', label: 'Ready to Settle', count: typeCounts.Billed },
-                { id: 'Open', label: 'In Progress', count: typeCounts.Open }
-              ].map((tab) => {
-                const isActive = filterType === tab.id;
-                return (
-                  <button
-                    key={tab.id}
-                    onClick={() => setFilterType(tab.id)}
-                    className={`px-3 sm:px-4 py-1.5 rounded-lg text-xs sm:text-sm font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
-                      isActive
-                        ? 'bg-gradient-to-r from-[#ea580c] to-[#c2410c] text-white shadow-xs font-extrabold'
-                        : 'text-slate-600 hover:text-slate-900 hover:bg-[#FDFBF7]'
-                    }`}
-                  >
-                    <span>{t(tab.label)}</span>
-                    {tab.count > 0 && (
-                      <span className={`text-[10px] font-extrabold px-1.5 py-0.5 rounded-full leading-none min-w-[18px] text-center ${
-                        isActive ? 'bg-white/25 text-white' : 'bg-[#FAF0E4] text-[#7c3f1d]'
-                      }`}>
-                        {tab.count}
-                      </span>
-                    )}
-                  </button>
-                );
-              })}
-            </div>
+          {/* Right: Compact Status Toggle Pills & Refresh */}
+          <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
+            <button
+              type="button"
+              onClick={() => setStatusFilter(statusFilter === 'Billed' ? 'All' : 'Billed')}
+              className={`inline-flex items-center gap-1 px-1.5 sm:px-2 py-0.5 rounded-full text-[10px] sm:text-xs font-semibold transition-all cursor-pointer ${
+                statusFilter === 'Billed'
+                  ? 'bg-emerald-600 text-white shadow-2xs'
+                  : 'bg-emerald-50 text-emerald-800 border border-emerald-200 hover:bg-emerald-100'
+              }`}
+            >
+              <span className={`w-1.5 h-1.5 rounded-full ${statusFilter === 'Billed' ? 'bg-white' : 'bg-emerald-500'}`}></span>
+              <span>{typeCounts.Billed} {t("Ready")}</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setStatusFilter(statusFilter === 'Open' ? 'All' : 'Open')}
+              className={`inline-flex items-center gap-1 px-1.5 sm:px-2 py-0.5 rounded-full text-[10px] sm:text-xs font-semibold transition-all cursor-pointer ${
+                statusFilter === 'Open'
+                  ? 'bg-amber-600 text-white shadow-2xs'
+                  : 'bg-amber-50 text-amber-800 border border-amber-200 hover:bg-amber-100'
+              }`}
+            >
+              <span className={`w-1.5 h-1.5 rounded-full ${statusFilter === 'Open' ? 'bg-white' : 'bg-amber-500'}`}></span>
+              <span>{typeCounts.Open} {t("Open")}</span>
+            </button>
 
             <button
               onClick={() => fetchOrders(false)}
-              title="Refresh Orders"
-              className="p-2 rounded-xl bg-[#FAF0E4] border border-[#E8DCCB] text-[#7c3f1d] hover:bg-[#FDFBF7] transition-all cursor-pointer shadow-xs"
+              title={t("Refresh Orders")}
+              className="p-1 sm:p-1.5 rounded-lg bg-white border border-slate-200 text-slate-600 hover:text-slate-900 hover:bg-slate-50 transition-all cursor-pointer shrink-0"
             >
-              <RefreshCw size={16} />
+              <RefreshCw size={12} />
             </button>
           </div>
+        </div>
+
+        {/* Row 2: Very Low-Height Compact Filter Buttons Bar with Small Text */}
+        <div className="flex items-center gap-1 mt-1 sm:mt-1.5 overflow-x-auto no-scrollbar">
+          {[
+            { id: 'All', label: t('All') },
+            { id: 'Retail', label: t('Retail') },
+            { id: 'Wholesale', label: t('Wholesale') },
+            { id: 'Export - Local', label: t('Export Local') },
+            { id: 'Export - DAM', label: t('Export DAM') }
+          ].map(tab => (
+            <button
+              key={tab.id}
+              onClick={() => setChannelFilter(tab.id)}
+              className={`px-2 py-0.5 rounded-md text-[10px] sm:text-[11px] font-semibold transition-all cursor-pointer whitespace-nowrap shrink-0 ${
+                channelFilter === tab.id
+                  ? 'bg-[#ea580c] text-white shadow-2xs font-bold'
+                  : 'bg-white/80 text-slate-600 hover:text-slate-900 border border-slate-200/80 hover:bg-white'
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
         </div>
       </div>
 
       {/* Orders Grid */}
-      <div className="flex-1 overflow-y-auto p-3 sm:p-5 md:p-6">
+      <div className="flex-1 overflow-y-auto p-2 sm:p-4 md:p-6">
         {filteredOrders.length === 0 ? (
           <div className="h-full flex flex-col items-center justify-center py-20 px-4 text-center">
             <div className="w-20 h-20 rounded-2xl bg-[#FAF0E4] border border-[#fed7aa] flex items-center justify-center text-[#ea580c] mb-4 shadow-xs">
               <Fish size={40} className="opacity-80" />
             </div>
             <h3 className="text-xl font-black text-slate-800 mb-1">
-              {t("No Active Orders")}
+              {t("No Active Orders Found")}
             </h3>
             <p className="text-sm text-slate-600 max-w-sm mb-5 leading-relaxed">
-              {filterType === 'All'
-                ? t("No open or pending orders at the moment. Create a new sale from the New Order page.")
-                : `${t("No orders found with status")} "${filterType}".`}
+              {channelFilter !== 'All' 
+                ? t(`No active orders in ${channelFilter}. Switch filters or create a new order.`)
+                : t("No open or pending orders at the moment. Create a new sale from the New Order page.")}
             </p>
             <div className="flex items-center gap-3">
               <button
@@ -270,106 +393,151 @@ const ActiveOrders = ({ onSelectOrder, onNavigate, onGoBack }) => {
             </div>
           </div>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-6">
+          /* Mobile: 2 per row (grid-cols-2) | Tablet: 3 per row (md:grid-cols-3) | Desktop: 4 per row (xl:grid-cols-4) */
+          <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-2 sm:gap-3.5 md:gap-4 lg:gap-5">
             {filteredOrders.map((order) => {
               if (!order) return null;
               const statusKey = order.status === 'Billed' ? 'Billed' : 'Open';
               const style = STATUS_STYLES[statusKey];
               const StatusIcon = style.icon;
               const isBilled = order.status === 'Billed';
+              const displayTableNo = order.tableNo 
+                ? (order.tableNo.includes('-') ? order.tableNo.replace(/^#+/, '') : (order.tableNo.startsWith('#') ? order.tableNo : `#${order.tableNo}`))
+                : 'ORDER';
 
               return (
                 <div
                   key={order._id || order.tableNo}
                   onClick={() => handleSelect(order.tableNo, isBilled ? 'settle' : 'open')}
-                  className={`rounded-2xl border ${style.cardBg} transition-all duration-200 overflow-hidden group relative cursor-pointer flex flex-col justify-between hover:-translate-y-0.5`}
+                  className="bg-white rounded-xl border border-slate-200 hover:border-slate-300 transition-all p-2 sm:p-3 md:p-4 flex flex-col justify-between shadow-xs hover:shadow-md cursor-pointer group"
                 >
-                  {/* Top Status Indicator Strip */}
-                  <div className={`h-1.5 ${style.topBar} w-full shadow-2xs`}></div>
-
-                  <div className="p-4 sm:p-5 flex-1 flex flex-col justify-between">
-                    <div>
-                      {/* Order Header / Identifier */}
-                      <div className="flex justify-between items-start mb-3 gap-2">
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-1.5 mb-1 flex-wrap">
-                            <span className={`inline-flex items-center gap-1 text-[10px] px-2.5 py-0.5 rounded-full uppercase tracking-wider ${style.badge}`}>
-                              <StatusIcon size={11} />
-                              {t(style.label)}
-                            </span>
-                            {order.orderSource && (
-                              <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded bg-[#FAF0E4] text-[#7c3f1d] border border-[#E8DCCB]">
-                                {order.orderSource}
-                              </span>
-                            )}
-                          </div>
-                          
-                          <h3 className="text-lg font-black text-slate-900 font-mono tracking-wide truncate">
-                            {order.tableNo || 'COUNTER-1'}
-                          </h3>
-                          
-                          <p className="text-[11px] text-slate-500 font-mono font-medium mt-1 flex items-center gap-1 truncate">
-                            <Clock size={12} className="shrink-0 text-[#ea580c] opacity-80" />
-                            <span>{formatOrderDateTime(order.createdAt)}</span>
-                          </p>
-                        </div>
-
-                        {/* Status Badge */}
-                        <span className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider shrink-0 shadow-2xs ${
-                          isBilled 
-                            ? 'bg-emerald-100 text-emerald-800 border border-emerald-300' 
-                            : 'bg-amber-100 text-amber-800 border border-amber-300'
-                        }`}>
-                          {t(order.status || 'Open')}
+                  <div>
+                    {/* Top Header: Order No on left, Clean Status Pill on right (Never crops) */}
+                    <div className="flex items-center justify-between gap-1 mb-1.5 sm:mb-2">
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <span className="font-mono text-xs sm:text-sm md:text-base font-black text-slate-900 tracking-tight whitespace-nowrap shrink-0 select-all">
+                          {displayTableNo}
                         </span>
-                      </div>
-
-                      {/* Customer Info (if present) */}
-                      {(order.customerName || order.customerPhone) && (
-                        <div className="mb-3 px-2.5 py-1 rounded-lg bg-[#FAF0E4] border border-[#E8DCCB] text-xs text-slate-700 truncate">
-                          <span className="font-bold text-[#ea580c]">{order.customerName || 'Customer'}: </span>
-                          <span className="font-mono text-slate-600">{order.customerPhone || ''}</span>
-                        </div>
-                      )}
-
-                      {/* Items & Total Box */}
-                      <div className="space-y-2 my-3 bg-[#FAF0E4] p-3.5 rounded-xl border border-[#E8DCCB]">
-                        <div className="flex justify-between text-xs items-center">
-                          <span className="text-slate-600 font-medium">{t("Fish Items")}</span>
-                          <span className="font-bold text-slate-800 bg-white px-2 py-0.5 rounded-md border border-[#E8DCCB]">
-                            {order.items?.filter(i => !i.isCancelled).length || 0}
-                          </span>
-                        </div>
-                        <div className="flex justify-between text-sm pt-2 border-t border-[#E8DCCB] items-baseline">
-                          <span className="text-slate-700 font-bold">{t("Grand Total")}</span>
-                          <span className="font-black text-emerald-700 text-lg font-mono tracking-tight">
-                            ₹{(order.total || 0).toLocaleString()}
-                          </span>
+                        {/* Channel Badge inline on tablet/desktop */}
+                        <div className="hidden sm:block shrink-0">
+                          {getChannelBadge(order)}
                         </div>
                       </div>
+
+                      {/* Single, clean status pill */}
+                      <span className={`inline-flex items-center gap-1 px-1.5 sm:px-2 py-0.5 rounded-full text-[9px] sm:text-[10px] md:text-xs font-semibold border ${style.badge} shrink-0 whitespace-nowrap`}>
+                        <span className={`w-1.5 h-1.5 rounded-full ${style.dot} ${isBilled ? 'animate-pulse' : ''}`}></span>
+                        <span className="hidden sm:inline">{t(style.label)}</span>
+                        <span className="sm:hidden">{isBilled ? t('Ready') : t('Open')}</span>
+                      </span>
                     </div>
 
-                    {/* Action Button */}
+                    {/* Mobile: Channel Badge + Timestamp (Balanced 2-column header) */}
+                    <div className="flex items-center justify-between text-[9px] sm:text-[10px] md:text-[11px] text-slate-500 mb-1.5 sm:mb-2 font-mono gap-1">
+                      <div className="sm:hidden shrink-0">
+                        {getChannelBadge(order)}
+                      </div>
+                      <div className="hidden sm:flex items-center gap-0.5 text-slate-400 font-sans">
+                        <Clock size={10} className="shrink-0" />
+                        <span>Time:</span>
+                      </div>
+                      <span className="font-semibold text-slate-600 truncate text-right text-[9px] sm:text-[10px]">
+                        {order.orderDateFormatted || order.orderTimeFormatted
+                          ? `${order.orderDateFormatted || ''} ${order.orderTimeFormatted || ''}`.trim()
+                          : formatOrderDateTime(order.orderLockedAt || order.createdAt)}
+                      </span>
+                    </div>
+
+                    {/* Customer Information (Clean card) */}
+                    {(order.customerName || order.customerPhone) ? (
+                      <div className="mb-2 p-1.5 sm:p-2 rounded-lg bg-slate-50 border border-slate-100 flex items-center gap-1.5 sm:gap-2">
+                        {order.customerPhoto ? (
+                          <img
+                            src={order.customerPhoto}
+                            alt={order.customerName}
+                            className="w-6 h-6 sm:w-7 sm:h-7 rounded-full object-cover border border-slate-200 shrink-0"
+                          />
+                        ) : (
+                          <div className="w-6 h-6 sm:w-7 sm:h-7 rounded-full bg-slate-200 text-slate-700 font-bold text-[10px] sm:text-xs flex items-center justify-center shrink-0">
+                            {(order.customerName || 'C').charAt(0).toUpperCase()}
+                          </div>
+                        )}
+
+                        <div className="min-w-0 flex-1">
+                          <div className="font-bold text-[11px] sm:text-xs text-slate-900 truncate">
+                            {order.customerName || 'Customer'}
+                          </div>
+                          <div className="font-mono text-[9.5px] sm:text-[10.5px] text-slate-500 truncate">
+                            {order.customerPhone || '—'}
+                          </div>
+                          {order.customerAddress && (
+                            <div className="text-[9px] sm:text-[10px] text-slate-400 truncate flex items-center gap-0.5 mt-0.5">
+                              <MapPin size={8} className="shrink-0" />
+                              <span className="truncate">{order.customerAddress}</span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="text-[10px] sm:text-[11px] text-slate-400 font-medium py-1 mb-1.5 sm:mb-2 truncate">
+                        Counter Walk-in Order
+                      </div>
+                    )}
+
+                    {/* Items & Total Summary */}
+                    <div className="pt-1.5 pb-2 border-t border-slate-100 flex items-baseline justify-between gap-1">
+                      <div>
+                        <span className="text-[9px] sm:text-[10px] text-slate-400 uppercase tracking-wider block font-medium">Qty</span>
+                        <span className="font-bold text-[11px] sm:text-xs text-slate-800 truncate block">
+                          {order.totalBoxes > 0 ? `${order.totalBoxes} Boxes` : `${order.items?.filter(i => !i.isCancelled).length || 0} Items`}
+                        </span>
+                      </div>
+                      <div className="text-right">
+                        <span className="text-[9px] sm:text-[10px] text-slate-400 uppercase tracking-wider block font-medium">Total</span>
+                        <span className="font-mono text-xs sm:text-sm md:text-base font-extrabold text-slate-900 whitespace-nowrap">
+                          ₹{(order.total || 0).toLocaleString()}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Actions Area */}
+                  <div className="space-y-1 sm:space-y-1.5 pt-1 border-t border-slate-100">
+                    {/* Consignment Vehicle Dispatch button (if export or boxes) */}
+                    {(order.orderMode === 'export' || order.exportSubCategory || order.customerCategory === 'Export' || (Number(order.totalBoxes) > 0)) && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleOpenDispatch(order);
+                        }}
+                        className="w-full py-1 sm:py-1.5 px-2 rounded-lg font-semibold text-[10px] sm:text-xs bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200 flex items-center justify-center gap-1 transition-colors cursor-pointer"
+                      >
+                        <Truck size={12} className="text-slate-600 shrink-0" />
+                        <span className="truncate">{t("Dispatch Vehicle")}</span>
+                      </button>
+                    )}
+
+                    {/* Main Action Button */}
                     <button
                       type="button"
                       onClick={(e) => {
                         e.stopPropagation();
                         handleSelect(order.tableNo, isBilled ? 'settle' : 'open');
                       }}
-                      className={`w-full py-3 rounded-xl font-black text-xs sm:text-sm flex items-center justify-center gap-2 transition-all cursor-pointer ${style.button}`}
+                      className={`w-full py-1.5 sm:py-2 md:py-2.5 rounded-lg font-bold text-[11px] sm:text-xs md:text-sm flex items-center justify-center gap-1 sm:gap-1.5 transition-colors cursor-pointer ${style.button}`}
                     >
                       {isBilled ? (
                         <>
-                          <CheckCircle size={16} />
-                          <span>{t("SETTLE BILL")}</span>
+                          <CheckCircle size={13} className="shrink-0" />
+                          <span>{t("Settle Bill")}</span>
                         </>
                       ) : (
                         <>
-                          <FileText size={16} />
-                          <span>{t("MAKE BILL / VIEW")}</span>
+                          <FileText size={13} className="shrink-0" />
+                          <span>{t("Open Order")}</span>
                         </>
                       )}
-                      <ChevronRight size={15} className="opacity-70 group-hover:translate-x-1 transition-transform" />
                     </button>
                   </div>
                 </div>
@@ -378,6 +546,155 @@ const ActiveOrders = ({ onSelectOrder, onNavigate, onGoBack }) => {
           </div>
         )}
       </div>
+
+      {/* Floating Dispatch Success Notification */}
+      {dispatchToast && (
+        <div className="fixed bottom-6 right-6 z-50 bg-emerald-700 text-white px-4 py-3 rounded-2xl shadow-xl flex items-center gap-2 text-xs sm:text-sm font-bold animate-bounce">
+          <Truck size={18} />
+          <span>{dispatchToast}</span>
+        </div>
+      )}
+
+      {/* Consignment Vehicle Dispatch Modal */}
+      {dispatchOrder && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-lg w-full border border-amber-200 shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+            {/* Modal Header */}
+            <div className="p-4 bg-gradient-to-r from-orange-500 to-[#ea580c] text-white flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="p-2 bg-white/20 rounded-xl">
+                  <Truck size={18} />
+                </div>
+                <div>
+                  <h3 className="font-black text-base leading-tight">
+                    Dispatch Consignment Vehicle
+                  </h3>
+                  <p className="text-[11px] text-white/80">
+                    Order #{dispatchOrder.tableNo} • {dispatchOrder.exportSubCategory === 'DAM' ? 'DAM Consignment' : 'Local Delivery'}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setDispatchOrder(null)}
+                className="p-1.5 rounded-full hover:bg-white/20 transition-colors cursor-pointer"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Consignment Info */}
+            <div className="p-4 bg-[#FAF0E4]/60 border-b border-[#fed7aa]/60 flex items-center justify-between text-xs">
+              <div>
+                <div className="font-black text-slate-800 text-sm">
+                  {dispatchOrder.customerName || 'Registered Dealer'}
+                </div>
+                <div className="font-mono text-slate-500 text-[11px]">
+                  {dispatchOrder.customerPhone || 'No Phone Registered'}
+                </div>
+              </div>
+              <div className="text-right">
+                <span className="px-2 py-1 bg-amber-100 text-amber-900 border border-amber-300 font-extrabold rounded-lg text-xs">
+                  {dispatchOrder.totalBoxes > 0 ? `${dispatchOrder.totalBoxes} Boxes` : `${dispatchOrder.items?.length || 1} Lots`}
+                </span>
+                <div className="font-mono font-bold text-emerald-700 text-xs mt-1">
+                  ₹{(dispatchOrder.total || 0).toLocaleString()}
+                </div>
+              </div>
+            </div>
+
+            {/* Form */}
+            <div className="p-4 space-y-3.5">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  Select Fleet Vehicle & Driver *
+                </label>
+                {fleetVehicles.length === 0 ? (
+                  <div className="text-xs text-rose-500 p-2 bg-rose-50 rounded-xl border border-rose-200">
+                    No vehicles found in fleet. Please add vehicles in Fleet Management first.
+                  </div>
+                ) : (
+                  <select
+                    value={selectedVehicleId}
+                    onChange={(e) => {
+                      const selId = e.target.value;
+                      setSelectedVehicleId(selId);
+                      const sel = fleetVehicles.find(v => v._id === selId);
+                      if (sel) {
+                        setDispatchKm({
+                          startKm: String(sel.currentKm || 0),
+                          endKm: String((sel.currentKm || 0) + 35)
+                        });
+                      }
+                    }}
+                    className="w-full p-2.5 bg-[#fffaf5] border border-[#fed7aa] rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#ea580c]"
+                  >
+                    {fleetVehicles.map(v => (
+                      <option key={v._id} value={v._id}>
+                        {v.vehicleNumber} ({v.modelName || 'Vehicle'}) — Driver: {v.driverName || 'Depot Staff'} (Odo: {v.currentKm || 0} KM)
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  Delivery Destination Route
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g. Nellore Harbour / Dealer Shop"
+                  value={dispatchRouteTo}
+                  onChange={(e) => setDispatchRouteTo(e.target.value)}
+                  className="w-full p-2.5 bg-[#fffaf5] border border-[#fed7aa] rounded-xl text-xs font-medium focus:outline-none focus:ring-2 focus:ring-[#ea580c]"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3 bg-[#FAF0E4]/40 p-3 rounded-xl border border-[#fed7aa]">
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-600 mb-1">Start Odometer (KM)</label>
+                  <input
+                    type="number"
+                    value={dispatchKm.startKm}
+                    onChange={(e) => setDispatchKm({ ...dispatchKm, startKm: e.target.value })}
+                    className="w-full p-2 bg-white border border-[#fed7aa] rounded-xl text-xs font-mono font-bold"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-600 mb-1">Estimated End (KM)</label>
+                  <input
+                    type="number"
+                    value={dispatchKm.endKm}
+                    onChange={(e) => setDispatchKm({ ...dispatchKm, endKm: e.target.value })}
+                    className="w-full p-2 bg-white border border-[#fed7aa] rounded-xl text-xs font-mono font-bold"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-4 bg-slate-50 border-t border-slate-100 flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setDispatchOrder(null)}
+                className="px-4 py-2 border border-slate-200 rounded-xl text-xs font-bold text-slate-600 hover:bg-white"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={isDispatching || fleetVehicles.length === 0}
+                onClick={handleConfirmDispatch}
+                className="px-5 py-2.5 bg-[#ea580c] hover:bg-[#c2410c] disabled:opacity-50 text-white rounded-xl text-xs font-bold shadow flex items-center gap-1.5 cursor-pointer"
+              >
+                <Truck size={14} />
+                <span>{isDispatching ? 'Dispatching...' : 'Confirm & Log Consignment Trip'}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

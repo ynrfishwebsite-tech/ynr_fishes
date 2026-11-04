@@ -4,8 +4,9 @@ import axios from 'axios';
 import { getApiUrl } from '../../../config.js';
 import { getCachedMenuItems } from '../../../db/offlineDb';
 import { useLanguage } from '../../../context/LanguageContext';
-import { Trash2, Plus, Minus, Search, User, Users, Clipboard, X, CheckCircle, UserCheck, ChevronUp, ChevronDown, PieChart, Loader2, Gift, Tags, Clock, AlertTriangle, Sparkles, CheckCircle2, Edit3, ShoppingBag } from 'lucide-react';
+import { Trash2, Plus, Minus, Search, User, Users, Clipboard, X, CheckCircle, UserCheck, ChevronUp, ChevronDown, PieChart, Loader2, Gift, Tags, Clock, AlertTriangle, Sparkles, CheckCircle2, Edit3, ShoppingBag, Scissors, ArrowLeft } from 'lucide-react';
 import { getOfferCategoryMeta, OFFER_CATEGORIES } from '../finance/DiscountConfig';
+import PredefinedCustomerBar from './PredefinedCustomerBar';
 
 const BillSummary = ({
   orderId,
@@ -53,18 +54,29 @@ const BillSummary = ({
   setDeliveryCharge,
   containerCharge,
   setContainerCharge,
+  cuttingCharge = '0',
+  setCuttingCharge,
+  isCuttingChargeEnabled = false,
+  setIsCuttingChargeEnabled,
   hasUnprintedItems = true,
   hasPendingChanges = false,
   openOrders = [],
   reservations = [],
   onOpenCustomerModal,
+  onBackToMenu,
   onNavigate,
   onClearCart,
   showToast,
   autoWhatsappEnabled = false,
   onToggleAutoWhatsapp,
   isWhatsAppConnected = false,
-  whatsappBillSentIds = new Set()
+  whatsappBillSentIds = new Set(),
+  fishOrderMode = 'individual',
+  isOrderLocked = false,
+  setIsOrderLocked,
+  lockedTimestamp = '',
+  setLockedTimestamp,
+  onCustomerSelect
 }) => {
   const { t, language } = useLanguage();
   const isBilledLocked = orderStatus === 'Billed' && !hasPendingChanges;
@@ -72,6 +84,35 @@ const BillSummary = ({
   const isCaptain = userRole === 'Captain';
 
   const cartEndRef = React.useRef(null);
+
+  // Cutting charges slab calculation
+  const totalFishWeight = React.useMemo(() => {
+    return (cart || []).reduce((sum, item) => {
+      if (item.isCancelled) return sum;
+      const w = parseFloat(item.enteredWeight || item.netWeightKg || item.weightKg || (item.sellingUnit === 'Kg' ? item.quantity : 0) || 0);
+      return sum + w;
+    }, 0);
+  }, [cart]);
+
+  const cuttingRate = React.useMemo(() => {
+    try {
+      const s = JSON.parse(localStorage.getItem('restaurantSettings') || '{}');
+      return Number(s.cuttingChargePerKg) > 0 ? Number(s.cuttingChargePerKg) : 10;
+    } catch {
+      return 10;
+    }
+  }, []);
+
+  const calculateCuttingCharge = (w, rate = 10) => {
+    const num = Number(w) || 0;
+    const r = Number(rate) || 10;
+    if (num <= 0) return 0;
+    if (num <= 1.5) return r;
+    return (1 + Math.ceil(num - 1.5)) * r;
+  };
+
+  const cuttingTiers = totalFishWeight <= 0 ? 0 : (totalFishWeight <= 1.5 ? 1 : 1 + Math.ceil(totalFishWeight - 1.5));
+  const suggestedCuttingCharge = calculateCuttingCharge(totalFishWeight, cuttingRate);
 
   const { groupedBoxes, individualItems } = React.useMemo(() => {
     const boxes = {};
@@ -118,6 +159,18 @@ const BillSummary = ({
     };
     window.addEventListener('printConfigChanged', handleConfigChange);
     return () => window.removeEventListener('printConfigChanged', handleConfigChange);
+  }, []);
+
+  const [isTablet, setIsTablet] = useState(() => {
+    return typeof window !== 'undefined' ? (window.innerWidth >= 768 && window.innerWidth < 1280) : false;
+  });
+
+  useEffect(() => {
+    const handleResize = () => {
+      setIsTablet(window.innerWidth >= 768 && window.innerWidth < 1280);
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
   }, []);
 
   const handleClearAllClick = () => {
@@ -232,8 +285,12 @@ const BillSummary = ({
   const [editingPriceValue, setEditingPriceValue] = useState('');
   const [useLoyalty, setUseLoyalty] = useState(true);
   const [sendSms, setSendSms] = useState(true);
-  const [showCharges, setShowCharges] = useState(false);
-  const [showDiscountInput, setShowDiscountInput] = useState(false);
+  const [showDiscountDropdown, setShowDiscountDropdown] = useState(false);
+  const [showChargesDropdown, setShowChargesDropdown] = useState(false);
+  const showCharges = showChargesDropdown;
+  const setShowCharges = (val) => setShowChargesDropdown(val);
+  const showDiscountInput = showDiscountDropdown;
+  const setShowDiscountInput = (val) => setShowDiscountDropdown(val);
   const [settlementAmount, setSettlementAmount] = useState('');
   const [isPrintConfigOpen, setIsPrintConfigOpen] = useState(false);
 
@@ -679,94 +736,11 @@ const BillSummary = ({
   };
 
 
-  return (
-    <div className="counter-sale-cart flex flex-col h-full bg-[#FDFBF7] border-l border-[#E8DCCB] w-full max-w-full overflow-hidden text-slate-800">
 
-      {/* Ocean Header / Counter Title */}
-      <div className="flex items-center justify-between px-3 py-2 bg-[#F7EFE2] border-b border-[#E8DCCB] shrink-0">
-        <div className="flex items-center gap-2">
-          <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-          <span className="font-extrabold text-xs text-[#0f2942] tracking-wide uppercase font-black">{t("Counter Sale / Direct Order")}
-          </span>
-        </div>
-        <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-[#fff7ed] text-[#c2410c] border border-[#fed7aa] font-bold">
-          {activeTable ? `#${activeTable.replace(/^(TAK-|DEL-|ORD-)/i, '')}` : t("Active Cart")}
-        </span>
-      </div>
-
-      {/* Info Bar - CRM & Notes */}
-      <div className="flex items-center justify-between px-2.5 sm:px-3 py-1.5 border-b border-[#E8DCCB] bg-[#F7EFE2] overflow-x-auto no-scrollbar gap-2">
-        <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
-          {/* Customer CRM Badge */}
-          <div
-            onClick={onOpenCustomerModal}
-            title={customerPhone || customerName ? `${customerName || 'Customer'} (${customerPhone || 'CRM'}) - ${t("Click to edit")}` : t("Customer CRM - Link Phone & Name")}
-            className={`flex items-center justify-center gap-1 min-w-[32px] max-w-[120px] h-7 px-2 rounded-lg cursor-pointer transition-all active:scale-95 shrink-0 border ${customerPhone || customerName
-              ? 'bg-amber-500/20 border-amber-500/40 text-amber-300 font-bold'
-              : 'bg-[#FDFBF7] hover:bg-[#F5E8D8] border-[#E8DCCB] text-[#334155]'
-              }`}
-          >
-            <User size={12} className={`shrink-0 ${customerPhone || customerName ? 'text-amber-400' : 'text-sky-400'}`} />
-            <span className="text-[10px] font-bold truncate">
-              {customerName || customerPhone || t("CRM")}
-            </span>
-          </div>
-
-          {/* Special Note Badge */}
-          {(() => {
-            const hasAnyNote = (cart || []).some(item => !!item.specialNote) || (selectedCartItemForNote && selectedCartItemForNote.specialNote);
-            return (
-              <div
-                onClick={handleNoteClick}
-                title={hasAnyNote ? t("Special Notes Active (Click to edit)") : t("Add Special Note")}
-                className={`flex items-center justify-center gap-1 min-w-[30px] max-w-[75px] h-7 px-1.5 rounded-lg cursor-pointer shadow-2xs transition-all shrink-0 ${hasAnyNote
-                  ? 'bg-amber-950/80 hover:bg-amber-900 border border-amber-500/50 text-amber-300 font-bold'
-                  : 'bg-[#FDFBF7] hover:bg-[#F5E8D8] border border-[#E8DCCB] text-[#334155]'
-                  }`}
-              >
-                <Clipboard size={11} className="opacity-80 shrink-0" />
-                <span className="text-[9px] font-bold truncate">{hasAnyNote ? `📝 ${t("Note")}` : t("Note")}</span>
-              </div>
-            );
-          })()}
-
-          {/* Instant Stat Badge */}
-          {cart.length > 0 && (
-            <div className="flex items-center gap-1 px-1.5 py-0.5 bg-orange-50 border border-orange-200 rounded-md text-orange-700 text-[9px] font-bold shadow-2xs ml-0.5 shrink-0 animate-in fade-in duration-150">
-              <span>{cart.length} {cart.length === 1 ? t("Item") : t("Items")}</span>
-              <span className="text-orange-300 font-normal">|</span>
-              <span>{cart.reduce((sum, item) => sum + (parseInt(item.quantity, 10) || 0), 0)} {t("Qty")}</span>
-            </div>
-          )}
-          {orderStatus === 'Billed' && (
-            <div className="flex items-center gap-1 px-1.5 py-0.5 bg-amber-100 border border-amber-300 rounded-md text-amber-800 text-[9px] font-black uppercase tracking-wider shadow-2xs ml-0.5 shrink-0 animate-in fade-in duration-150">
-              <span>{t("BILLED")}</span>
-            </div>
-          )}
-        </div>
-
-        {/* Clear All Button with F8 shortcut */}
-        {cart.length > 0 && (
-          <button
-            type="button"
-            onClick={handleClearAllClick}
-            title={isBilledLocked ? t("Order is saved & printed. Click EDIT to modify.") : t("Clear all items (F8)")}
-            className={`flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] font-bold transition-all active:scale-95 shrink-0 shadow-2xs ${
-              isBilledLocked
-                ? 'bg-amber-100/80 hover:bg-amber-200 text-amber-900 border border-amber-300'
-                : 'bg-red-50 hover:bg-red-100 text-red-600 border border-red-200'
-            }`}
-          >
-            <kbd className="px-1.5 py-0.5 rounded bg-white text-slate-800 border border-slate-300 font-mono text-[9px] font-black shadow-2xs">F8</kbd>
-            <Trash2 size={11} className={isBilledLocked ? 'text-amber-700' : 'text-red-500'} />
-            <span>{t("Clear All")}</span>
-          </button>
-        )}
-      </div>
-
-      {/* Table Headers */}
+  // --- Render Helpers for Flexible Tablet & Mobile/Desktop Layouts ---
+  const renderCartTableHeader = () => (
       <div id="cart-items-header" className="flex items-center px-2 py-1.5 bg-[#F7EFE2] border-b border-[#E8DCCB] text-[#475569] text-[9px] font-bold uppercase tracking-wider shrink-0">
-        <div className="w-[44%] flex items-center gap-1.5 min-w-0">
+        <div className="w-[55%] xl:w-[44%] flex items-center gap-1.5 min-w-0">
           <span className="shrink-0">{t("Items")}</span>
           {cart.length > 0 && (() => {
             const boxKeys = Object.keys(groupedBoxes);
@@ -777,14 +751,14 @@ const BillSummary = ({
             if (totalBoxes > 0 && individualQty > 0) {
               return (
                 <span className="inline-flex items-center px-1.5 py-0.2 rounded-full text-[8.5px] font-black bg-amber-100 text-amber-900 border border-amber-300 shadow-2xs truncate">
-                  📦 {totalBoxes} {totalBoxes === 1 ? 'Box' : 'Boxes'} + 🐟 {individualQty} Loose
+                  📦 {totalBoxes} {totalBoxes === 1 ? 'Box' : 'Boxes'}<span className="hidden sm:inline"> + 🐟 {individualQty} Loose</span>
                 </span>
               );
             }
             if (totalBoxes > 0) {
               return (
                 <span className="inline-flex items-center px-1.5 py-0.2 rounded-full text-[8.5px] font-black bg-amber-100 text-amber-900 border border-amber-300 shadow-2xs truncate">
-                  📦 {totalBoxes} {totalBoxes === 1 ? 'Box' : 'Boxes'} ({cart.length} items{totalBoxKg > 0 ? ` • ${totalBoxKg.toFixed(1).replace(/\.0$/, '')} Kg` : ''})
+                  📦 {totalBoxes} {totalBoxes === 1 ? 'Box' : 'Boxes'}<span className="hidden sm:inline"> ({cart.length} items{totalBoxKg > 0 ? ` • ${totalBoxKg.toFixed(1).replace(/\.0$/, '')} Kg` : ''})</span>
                 </span>
               );
             }
@@ -796,15 +770,13 @@ const BillSummary = ({
           })()}
         </div>
         <div className="w-[14%] text-center hidden xl:block">{t("Check")}</div>
-        <div className="w-[26%] text-center">{t("Qty.")}</div>
-        <div className="w-[16%] text-right pr-1">{t("Price")}</div>
+        <div className="w-[25%] xl:w-[26%] text-center">{t("Qty.")}</div>
+        <div className="w-[20%] xl:w-[16%] text-right pr-1">{t("Price")}</div>
       </div>
+  );
 
-      {/* Single scrollable area: Cart Items + Bottom charges/totals (action buttons pinned below) */}
-      <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden bg-[#FDFBF7]">
-
-        {/* Cart Items List */}
-        <div id="cart-items-container" data-billing-cart="true" className="counter-sale-cart bill-cart-items bg-[#FDFBF7] p-0.5 relative">
+  const renderCartItems = (containerId = "cart-items-container") => (
+    <div id={containerId} data-billing-cart="true" className="counter-sale-cart bill-cart-items bg-[#FDFBF7] p-0.5 relative">
           {loading && (orderId || orderStatus === 'Billed' || cart.length > 0) ? (
             <div className="p-3 space-y-2.5 animate-in fade-in duration-150">
               {/* Dynamic Status Header */}
@@ -1253,243 +1225,388 @@ const BillSummary = ({
             </>
           )}
           <div ref={cartEndRef} />
-        </div>
-        {/* END Cart Items */}
+    </div>
+  );
 
-        {/* Bottom Action Area - inside the single scrollable wrapper */}
+  const renderBottomActionArea = () => (
         <div className="flex flex-col w-full bg-[#F7EFE2] border-t border-[#E8DCCB] shadow-sm z-20">
 
-          {/* Collapsible Charges Section - scrollable so buttons stay visible */}
-          <div className="bg-[#F7EFE2] flex flex-col relative w-full border-b border-[#E8DCCB]">
-            <button
-              className="w-full h-6 bg-[#F7EFE2] hover:bg-[#F5E8D8] flex items-center justify-center text-slate-500 transition-colors border-t border-[#E8DCCB] cursor-pointer"
-              onClick={() => setShowCharges(!showCharges)}>
-
-              {showCharges ? <ChevronUp size={16} className="text-slate-500 stroke-[2.2]" /> : <ChevronDown size={16} className="text-slate-500 stroke-[2.2]" />}
-            </button>
-
-            {showCharges &&
-              <div className="flex flex-col px-4 py-3 space-y-3 text-sm text-slate-700 overflow-y-auto max-h-[42vh] bg-[#F7EFE2]">
-                <div className="flex items-center justify-between font-bold">
-                  <span className="w-1/3">{t("Sub Total")}</span>
-                  <span className="w-1/3 text-center">{cart.reduce((acc, item) => acc + item.quantity, 0)}</span>
-                  <span className="w-1/3 text-right">{subtotal.toFixed(2)}</span>
-                </div>
-                <div className={`flex items-center justify-between ${discountAmount > 0 ? 'font-black text-emerald-700 bg-emerald-50/80 p-1.5 rounded-lg border border-emerald-200/60' : 'font-bold'}`}>
-                  <span className="w-1/2 flex items-center gap-1 min-w-0">
-                    <span className="truncate">
-                      {t("Discount")}
-                      {discount?.name ? (
-                        <span className="inline-flex items-center gap-1 ml-1 flex-wrap">
-                          <span className="text-[10px] font-bold text-emerald-800 bg-emerald-100/90 px-1.5 py-0.5 rounded-md border border-emerald-300/70 inline-block truncate max-w-[140px]" title={discount.name}>
-                            {discount.name}{discount.type === 'percentage' && discount.value ? ` (${discount.value}%)` : (discount.type === 'flat' && discount.value ? ` (${currencySymbol}${discount.value})` : '')}
-                          </span>
-                          {discount.offerCategory && (() => {
-                            const catMeta = getOfferCategoryMeta(discount.offerCategory);
-                            return (
-                              <span className={`inline-flex items-center gap-0.5 text-[9px] font-bold px-1.5 py-0.2 rounded-full border ${catMeta.badgeColor}`}>
-                                <span>{catMeta.icon}</span>
-                                <span>{catMeta.label}</span>
-                              </span>
-                            );
-                          })()}
-                        </span>
-                      ) : (
-                        discount?.type === 'percentage' && discount?.value ? ` (${discount.value}%)` : (discount?.type === 'complimentary' ? ' (100%)' : '')
-                      )}
-                    </span>
-                    <button disabled={isLocked} className="text-primary underline text-[11px] ml-1 hover:text-red-700 font-bold disabled:opacity-50 cursor-pointer shrink-0" onClick={() => setShowDiscountInput(!showDiscountInput)}>{showDiscountInput ? t("Less") : t("More")}</button>
-                    {discountAmount > 0 && !isLocked && (
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setDiscount({ type: 'flat', value: '', name: '' });
-                        }}
-                        className="text-red-500 hover:text-red-700 p-0.5 rounded-full hover:bg-red-100 transition-colors ml-1 cursor-pointer shrink-0"
-                        title={t("Remove Discount / Offer")}
-                      >
-                        <X size={12} />
-                      </button>
+          {/* Unified Operations Bar: Single row for Discount, Extra Charges, Offers, Complimentary, and Total */}
+          <div className="bg-[#FAF0E4] flex flex-col relative w-full border-t border-b border-[#E8DCCB]">
+            <div className="flex items-center justify-between px-1.5 sm:px-2.5 py-1 sm:py-1.5 gap-1 sm:gap-1.5 w-full min-w-0 overflow-hidden">
+              <div className="flex items-center gap-1 sm:gap-1.5 min-w-0 flex-1 overflow-hidden">
+                {/* 1. SINGLE UNIFIED DISCOUNT & OFFERS BUTTON */}
+                <button
+                  type="button"
+                  disabled={isLocked}
+                  onClick={() => {
+                    setShowDiscountDropdown(prev => !prev);
+                    setShowChargesDropdown(false);
+                  }}
+                  className={`px-1.5 sm:px-2.5 py-0.5 sm:py-1 rounded-md sm:rounded-lg text-[10px] sm:text-[11px] font-bold border transition-all cursor-pointer flex items-center gap-1 sm:gap-1.5 shrink min-w-0 ${
+                    discount?.type === 'complimentary'
+                      ? 'bg-rose-600 text-white border-rose-700 shadow-2xs'
+                      : discountAmount > 0
+                        ? 'bg-emerald-600 text-white border-emerald-700 shadow-2xs'
+                        : showDiscountDropdown
+                          ? 'bg-amber-700 text-white border-amber-800 shadow-2xs'
+                          : 'bg-white hover:bg-amber-100 text-slate-800 border-slate-300'
+                  }`}
+                  title={t("Discounts, active store offers, and complimentary settings (F6)")}
+                >
+                  <kbd className="hidden lg:inline-block px-1.5 py-0.5 rounded bg-white text-slate-800 border border-slate-300 font-mono text-[9px] font-black shadow-2xs">F6</kbd>
+                  <Tags size={12} className={`shrink-0 ${discountAmount > 0 || discount?.type === 'complimentary' || showDiscountDropdown ? 'text-white' : 'text-amber-800'}`} />
+                  <span className="truncate">
+                    {discount?.type === 'complimentary' ? (
+                      <>
+                        <span className="sm:hidden">{t("Free")}</span>
+                        <span className="hidden sm:inline">{t("Complimentary (100% Free)")}</span>
+                      </>
+                    ) : discount?.name ? (
+                      <span>{discount.name} (-{currencySymbol}{discountAmount.toFixed(0)})</span>
+                    ) : discountAmount > 0 ? (
+                      <>
+                        <span className="sm:hidden">-{currencySymbol}{discountAmount.toFixed(0)}</span>
+                        <span className="hidden sm:inline">{t("Discount")}: -{currencySymbol}{discountAmount.toFixed(0)}</span>
+                      </>
+                    ) : (
+                      <>
+                        <span className="sm:hidden">{t("Discount")}</span>
+                        <span className="hidden sm:inline">{t("Discount & Offers")}</span>
+                      </>
                     )}
                   </span>
-                  <span className={`w-1/2 text-right ${discountAmount > 0 ? 'text-emerald-700 font-black text-sm' : 'text-green-600'}`}>
-                    {discountAmount > 0 ? `-${currencySymbol}${discountAmount.toFixed(2)}` : `(${discountAmount.toFixed(2)})`}
-                  </span>
-                </div>
-                {showDiscountInput &&
-                  <div className="flex items-center justify-between bg-gray-200/50 p-2 rounded-lg gap-2 border border-border">
-                    <select
-                      disabled={isLocked}
-                      className={`${discount?.type === 'complimentary' ? 'w-full' : 'w-1/2'} bg-white border border-gray-300 rounded text-[12px] h-7 outline-none focus:border-primary px-1 disabled:opacity-50`}
-                      value={discount?.type || 'percentage'}
-                      onChange={(e) => {
-                        const selectedVal = e.target.value;
-                        if (selectedVal.startsWith('preset_')) {
-                          const presetId = selectedVal.replace('preset_', '');
-                          const found = (tenantDiscounts || []).find(d => d._id === presetId);
-                          if (found) {
-                            applyPresetOffer(found);
-                          }
-                        } else {
-                          let currentVal = discount?.value;
-                          if (selectedVal === 'percentage' && Number(currentVal) > 100) {
-                            currentVal = '';
-                          }
-                          setDiscount({ ...(discount || {}), type: selectedVal, value: currentVal, applicableTo: 'all', targetCategory: '', name: '' });
-                        }
-                      }}>
+                  <ChevronDown size={10} className={`shrink-0 transition-transform duration-200 ${showDiscountDropdown ? 'rotate-180' : ''}`} />
+                  {(discountAmount > 0 || discount?.type === 'complimentary') && !isLocked && (
+                    <span
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setDiscount({ type: 'flat', value: '', name: '' });
+                      }}
+                      className="ml-0.5 hover:bg-black/20 p-0.5 rounded text-white shrink-0"
+                      title={t("Remove Discount")}
+                    >
+                      <X size={10} />
+                    </span>
+                  )}
+                </button>
 
-                      <option value="percentage">{t("% Percent")}</option>
-                      <option value="flat">{currencySymbol}{t("Flat")}</option>
-                      <option value="complimentary">{t("Complimentary")}</option>
-                      {(tenantDiscounts || []).filter(d => isOfferValid(d)).length > 0 && (
-                        <optgroup label={t("Active Store Offers")}>
-                          {(tenantDiscounts || []).filter(d => isOfferValid(d)).map(d => {
-                            const catLabel = d.applicableTo === 'category' && d.targetCategory ? ` on ${d.targetCategory}` : '';
-                            const statusInfo = getOfferValidityStatus(d);
-                            const timeStr = statusInfo.timeRemaining ? ` • ${statusInfo.timeRemaining}` : '';
-                            const catName = d.offerCategory ? `[${d.offerCategory}] ` : '';
-                            return (
-                              <option key={d._id} value={`preset_${d._id}`}>
-                                {catName}{d.name} ({d.type === 'percentage' ? `${d.value}%` : (d.type === 'bogo' ? 'BOGO' : `${currencySymbol}${d.value}`)}{catLabel}{timeStr})
-                              </option>
-                            );
-                          })}
-                        </optgroup>
-                      )}
-                    </select>
-                    {discount?.type !== 'complimentary' && (
+                {/* 2. EXTRA CHARGES BUTTON (Includes Delivery, Container, and Cutting Charges) */}
+                {(() => {
+                  const totalExtraCharges = (Number(deliveryCharge) || 0) + (Number(containerCharge) || 0) + (Number(cuttingCharge) || 0);
+                  return (
+                    <button
+                      type="button"
+                      disabled={isLocked}
+                      onClick={() => {
+                        setShowChargesDropdown(prev => !prev);
+                        setShowDiscountDropdown(false);
+                      }}
+                      className={`px-1.5 sm:px-2.5 py-0.5 sm:py-1 rounded-md sm:rounded-lg text-[10px] sm:text-[11px] font-bold border transition-all cursor-pointer flex items-center gap-1 sm:gap-1.5 shrink min-w-0 ${
+                        totalExtraCharges > 0
+                          ? 'bg-amber-800 text-white border-amber-900 shadow-2xs'
+                          : showChargesDropdown
+                            ? 'bg-amber-700 text-white border-amber-800 shadow-2xs'
+                            : 'bg-white hover:bg-amber-100 text-slate-800 border-slate-300'
+                      }`}
+                      title={t("Delivery, container, and fish cutting charges")}
+                    >
+                      <Plus size={12} className={`shrink-0 ${totalExtraCharges > 0 || showChargesDropdown ? 'text-white' : 'text-amber-800'}`} />
+                      <span className="truncate">
+                        {totalExtraCharges > 0 ? (
+                          <>
+                            <span className="sm:hidden">+{currencySymbol}{totalExtraCharges.toFixed(0)}</span>
+                            <span className="hidden sm:inline">{t("Charges")}: +{currencySymbol}{totalExtraCharges.toFixed(0)}</span>
+                          </>
+                        ) : (
+                          <>
+                            <span className="sm:hidden">{t("Charges")}</span>
+                            <span className="hidden sm:inline">{t("Extra Charges")}</span>
+                          </>
+                        )}
+                      </span>
+                      <ChevronDown size={10} className={`shrink-0 transition-transform duration-200 ${showChargesDropdown ? 'rotate-180' : ''}`} />
+                    </button>
+                  );
+                })()}
+              </div>
+
+              {/* TOTAL DISPLAY ON RIGHT - ALWAYS ANCHORED & NEVER CUT OFF */}
+              <div className="flex items-center gap-1 sm:gap-1.5 shrink-0 ml-auto pl-1 sm:pl-2 select-none">
+                <span className="text-text-muted text-[9px] sm:text-[11px] font-bold uppercase tracking-wider shrink-0">{t("Total")}</span>
+                {loading && (orderId || orderStatus === 'Billed' || cart.length > 0) ? (
+                  <div className="h-5 w-12 sm:w-14 bg-orange-100/80 rounded-md animate-pulse shrink-0" />
+                ) : (
+                  <span className="text-primary text-sm sm:text-base md:text-lg font-black font-mono shrink-0 whitespace-nowrap">{currencySymbol}{total.toFixed(0)}</span>
+                )}
+              </div>
+            </div>
+
+            {/* SEPARATE DROPDOWN 1: DISCOUNT DROPDOWN UI */}
+            {showDiscountDropdown && (
+              <div className="px-2.5 sm:px-3 py-2 bg-[#FFFBF2] border-t border-amber-200 space-y-1.5 animate-in fade-in duration-150">
+                <div className="flex justify-between items-center text-xs font-bold text-slate-800">
+                  <span className="flex items-center gap-1 text-amber-900 font-black">
+                    <Tags size={12} className="text-amber-800" />
+                    {t("Discount Settings")}
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] sm:text-[11px] font-bold text-slate-500">
+                      Subtotal: <strong className="text-slate-800 font-mono">{currencySymbol}{subtotal.toFixed(2)}</strong>
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setShowDiscountDropdown(false)}
+                      className="text-slate-400 hover:text-slate-700 p-0.5 rounded cursor-pointer"
+                    >
+                      <X size={14} />
+                    </button>
+                  </div>
+                </div>
+
+                {/* SINGLE ROW: Percentage select field + number input field + offers button */}
+                <div className="flex items-center gap-1 sm:gap-1.5 w-full">
+                  <select
+                    disabled={isLocked}
+                    className="flex-1 min-w-0 bg-white border border-slate-300 rounded-lg text-[10.5px] sm:text-xs font-bold h-7 sm:h-8 px-1.5 outline-none focus:border-amber-600 text-slate-800"
+                    value={discount?.type || 'percentage'}
+                    onChange={(e) => {
+                      const selectedVal = e.target.value;
+                      if (selectedVal.startsWith('preset_')) {
+                        const presetId = selectedVal.replace('preset_', '');
+                        const found = (tenantDiscounts || []).find(d => d._id === presetId);
+                        if (found) applyPresetOffer(found);
+                      } else {
+                        let currentVal = discount?.value;
+                        if (selectedVal === 'percentage' && Number(currentVal) > 100) currentVal = '';
+                        setDiscount({ ...(discount || {}), type: selectedVal, value: currentVal, applicableTo: 'all', targetCategory: '', name: '' });
+                      }
+                    }}
+                  >
+                    <option value="percentage">% Percent</option>
+                    <option value="flat">{currencySymbol} Flat Cash</option>
+                    <option value="complimentary">Free (100%)</option>
+                    {(tenantDiscounts || []).filter(d => isOfferValid(d)).length > 0 && (
+                      <optgroup label={t("Active Store Offers")}>
+                        {(tenantDiscounts || []).filter(d => isOfferValid(d)).map(d => (
+                          <option key={d._id} value={`preset_${d._id}`}>
+                            {d.name} ({d.type === 'percentage' ? `${d.value}%` : `${currencySymbol}${d.value}`})
+                          </option>
+                        ))}
+                      </optgroup>
+                    )}
+                  </select>
+
+                  {discount?.type !== 'complimentary' && (
+                    <input
+                      type="number"
+                      min="0"
+                      max={discount?.type === 'percentage' ? '100' : undefined}
+                      disabled={isLocked}
+                      placeholder={discount?.type === 'percentage' ? '0-100%' : 'Amount'}
+                      value={discount?.value ?? ''}
+                      onChange={(e) => {
+                        const raw = e.target.value;
+                        if (raw === '') {
+                          setDiscount({ ...(discount || {}), value: '' });
+                          return;
+                        }
+                        let num = parseFloat(raw);
+                        if (isNaN(num)) num = 0;
+                        if (discount?.type === 'percentage') num = Math.min(100, Math.max(0, num));
+                        else num = Math.max(0, num);
+                        setDiscount({ ...(discount || {}), value: num });
+                      }}
+                      className="w-14 sm:w-20 shrink-0 bg-white border border-slate-300 rounded-lg px-1.5 h-7 sm:h-8 text-right font-mono font-bold text-[11px] sm:text-xs outline-none focus:border-amber-600 text-slate-900"
+                    />
+                  )}
+
+                  <button
+                    type="button"
+                    disabled={isLocked}
+                    onClick={() => {
+                      setShowDiscountDropdown(false);
+                      handleOpenOffersModal();
+                    }}
+                    className="h-7 sm:h-8 px-2 sm:px-2.5 rounded-lg bg-sky-50 hover:bg-sky-100 border border-sky-200 text-sky-800 font-bold text-[10.5px] sm:text-xs flex items-center justify-center gap-1 cursor-pointer transition-colors shadow-2xs shrink-0 whitespace-nowrap"
+                    title={t("Browse Active Store Offers, Promo Deals & BOGO (F6)")}
+                  >
+                    <Tags size={11} className="text-sky-600 shrink-0" />
+                    <span>
+                      <span className="sm:hidden">{t("Offers")}</span>
+                      <span className="hidden sm:inline">{t("Offers (F6)")}</span>
+                    </span>
+                  </button>
+                </div>
+
+                {/* Quick Percent Presets */}
+                {discount?.type === 'percentage' && (
+                  <div className="flex items-center gap-1 sm:gap-1.5 pt-0.5 flex-wrap">
+                    <span className="text-[10px] sm:text-[10.5px] text-slate-500 font-bold shrink-0">Quick %:</span>
+                    {['5', '10', '15', '20', '25', '50'].map(pct => (
+                      <button
+                        key={pct}
+                        type="button"
+                        onClick={() => setDiscount({ ...(discount || {}), type: 'percentage', value: parseFloat(pct) })}
+                        className={`px-1.5 sm:px-2 py-0.5 rounded text-[9.5px] sm:text-[10px] font-bold border transition-all cursor-pointer ${
+                          String(discount?.value) === pct
+                            ? 'bg-emerald-600 text-white border-emerald-700 shadow-2xs'
+                            : 'bg-white text-slate-700 border-slate-300 hover:bg-amber-100'
+                        }`}
+                      >
+                        {pct}%
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                {discountAmount > 0 && (
+                  <div className="p-1.5 bg-emerald-50 border border-emerald-200 rounded-lg text-xs font-bold text-emerald-900 flex justify-between items-center">
+                    <span>Applied Discount Deduction:</span>
+                    <span className="font-mono text-sm font-black text-emerald-700">-{currencySymbol}{discountAmount.toFixed(2)}</span>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* SEPARATE DROPDOWN 2: EXTRA CHARGES DROPDOWN UI */}
+            {showChargesDropdown && (
+              <div className="px-2.5 sm:px-3 py-2 sm:py-2.5 bg-[#FFFBF2] border-t border-amber-200 space-y-2 sm:space-y-2.5 animate-in fade-in duration-150 text-xs">
+                <div className="flex justify-between items-center font-bold text-slate-800">
+                  <span className="flex items-center gap-1 text-amber-900 font-black">
+                    <Plus size={13} className="text-amber-800" />
+                    {t("Extra Charges & Packaging")}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setShowChargesDropdown(false)}
+                    className="text-slate-400 hover:text-slate-700 p-0.5 rounded cursor-pointer"
+                  >
+                    <X size={14} />
+                  </button>
+                </div>
+
+                {/* All 3 charges in a SINGLE ROW of 3 columns */}
+                <div className="grid grid-cols-3 gap-1 sm:gap-2">
+                  {/* 1. Delivery Charge */}
+                  <div className="bg-white p-1 sm:p-2 rounded-lg sm:rounded-xl border border-slate-300 min-w-0">
+                    <label className="text-[10px] sm:text-[11px] font-bold text-slate-700 block mb-0.5 truncate" title={t("Delivery Charge")}>
+                      <span className="sm:hidden">{t("Delivery")}</span>
+                      <span className="hidden sm:inline">{t("Delivery")}</span>
+                    </label>
+                    <div className="flex items-center gap-0.5">
+                      <span className="text-slate-400 font-mono text-[10px] sm:text-xs shrink-0">{currencySymbol}</span>
                       <input
                         type="number"
                         min="0"
-                        max={discount?.type === 'percentage' ? '100' : undefined}
+                        placeholder="0"
                         disabled={isLocked}
                         onWheel={(e) => e.target.blur()}
                         onKeyDown={(e) => { if (e.key === '-' || e.key === 'e' || e.key === 'E') e.preventDefault(); }}
-                        className="w-1/2 bg-[#FDFBF7] border border-[#E8DCCB] text-slate-900 text-right px-2 rounded h-7 outline-none focus:border-primary text-[12px] font-bold disabled:opacity-50"
-                        placeholder={discount?.type === 'percentage' ? t('0-100%') : t('Value')}
-                        value={discount?.value ?? ''}
+                        value={deliveryCharge === '0' || deliveryCharge === 0 ? '' : deliveryCharge}
+                        onChange={(e) => setDeliveryCharge && setDeliveryCharge(e.target.value === '' ? '' : Math.max(0, parseFloat(e.target.value) || 0))}
+                        className="w-full bg-slate-50 border border-slate-200 rounded px-1 py-0.5 text-right font-mono font-bold text-[11px] sm:text-xs text-slate-900 focus:outline-none focus:bg-white focus:border-amber-600"
+                      />
+                    </div>
+                  </div>
+
+                  {/* 2. Container / Box Charge */}
+                  <div className="bg-white p-1 sm:p-2 rounded-lg sm:rounded-xl border border-slate-300 min-w-0">
+                    <label className="text-[10px] sm:text-[11px] font-bold text-slate-700 block mb-0.5 truncate" title={t("Container / Box Charge")}>
+                      <span className="sm:hidden">{t("Box/Pack")}</span>
+                      <span className="hidden sm:inline">{t("Container / Box")}</span>
+                    </label>
+                    <div className="flex items-center gap-0.5">
+                      <span className="text-slate-400 font-mono text-[10px] sm:text-xs shrink-0">{currencySymbol}</span>
+                      <input
+                        type="number"
+                        min="0"
+                        placeholder="0"
+                        disabled={isLocked}
+                        onWheel={(e) => e.target.blur()}
+                        onKeyDown={(e) => { if (e.key === '-' || e.key === 'e' || e.key === 'E') e.preventDefault(); }}
+                        value={containerCharge === '0' || containerCharge === 0 ? '' : containerCharge}
+                        onChange={(e) => setContainerCharge && setContainerCharge(e.target.value === '' ? '' : Math.max(0, parseFloat(e.target.value) || 0))}
+                        className="w-full bg-slate-50 border border-slate-200 rounded px-1 py-0.5 text-right font-mono font-bold text-[11px] sm:text-xs text-slate-900 focus:outline-none focus:bg-white focus:border-amber-600"
+                      />
+                    </div>
+                  </div>
+
+                  {/* 3. Fish Cutting Charges (Slab-based) */}
+                  <div className={`p-1 sm:p-2 rounded-lg sm:rounded-xl border transition-all min-w-0 ${isCuttingChargeEnabled || Number(cuttingCharge) > 0 ? 'bg-amber-50/70 border-amber-300' : 'bg-white border-slate-300'}`}>
+                    <div className="flex items-center justify-between mb-0.5 gap-0.5 min-w-0">
+                      <label className="text-[10px] sm:text-[11px] font-bold text-slate-700 flex items-center gap-0.5 truncate min-w-0" title={t("Cutting Charges")}>
+                        <Scissors size={10} className="text-amber-800 shrink-0" />
+                        <span className="truncate">{t("Cutting")}</span>
+                      </label>
+                      <button
+                        type="button"
+                        disabled={isLocked}
+                        onClick={() => {
+                          const nextState = !isCuttingChargeEnabled;
+                          if (setIsCuttingChargeEnabled) setIsCuttingChargeEnabled(nextState);
+                          if (setCuttingCharge) {
+                            if (nextState) {
+                              setCuttingCharge(suggestedCuttingCharge);
+                            } else {
+                              setCuttingCharge(0);
+                            }
+                          }
+                        }}
+                        className={`text-[8px] sm:text-[9px] font-black px-1 py-0.2 rounded cursor-pointer transition-all shrink-0 ${
+                          isCuttingChargeEnabled || Number(cuttingCharge) > 0
+                            ? 'bg-amber-700 text-white shadow-2xs'
+                            : 'bg-slate-200 text-slate-700 hover:bg-slate-300'
+                        }`}
+                      >
+                        {isCuttingChargeEnabled || Number(cuttingCharge) > 0 ? 'ON' : 'OFF'}
+                      </button>
+                    </div>
+
+                    <div className="flex items-center gap-0.5">
+                      <span className="text-slate-400 font-mono text-[10px] sm:text-xs shrink-0">{currencySymbol}</span>
+                      <input
+                        type="number"
+                        min="0"
+                        placeholder="0"
+                        disabled={isLocked}
+                        onWheel={(e) => e.target.blur()}
+                        onKeyDown={(e) => { if (e.key === '-' || e.key === 'e' || e.key === 'E') e.preventDefault(); }}
+                        value={cuttingCharge === '0' || cuttingCharge === 0 ? '' : cuttingCharge}
                         onChange={(e) => {
-                          const raw = e.target.value;
-                          if (raw === '') {
-                            setDiscount({ ...(discount || {}), value: '' });
-                            return;
+                          const val = e.target.value === '' ? '' : Math.max(0, parseFloat(e.target.value) || 0);
+                          if (setCuttingCharge) setCuttingCharge(val);
+                          if (setIsCuttingChargeEnabled) {
+                            if (val > 0) setIsCuttingChargeEnabled(true);
+                            else if (val === 0 || val === '') setIsCuttingChargeEnabled(false);
                           }
-                          let num = parseFloat(raw);
-                          if (isNaN(num)) num = 0;
-                          if (discount?.type === 'percentage') {
-                            num = Math.min(100, Math.max(0, num));
-                          } else {
-                            num = Math.max(0, num);
-                          }
-                          setDiscount({ ...(discount || {}), value: num });
-                        }} />
+                        }}
+                        className="w-full bg-slate-50 border border-slate-200 rounded px-1 py-0.5 text-right font-mono font-bold text-[11px] sm:text-xs text-slate-900 focus:outline-none focus:bg-white focus:border-amber-600"
+                      />
+                    </div>
+                    {suggestedCuttingCharge > 0 && (
+                      <div className="text-[7.5px] sm:text-[8px] text-amber-900 font-bold truncate mt-0.5">
+                        {totalFishWeight.toFixed(1).replace(/\.0$/, '')}k • {currencySymbol}{suggestedCuttingCharge}
+                      </div>
                     )}
                   </div>
-                }
-                <div className="flex items-center justify-between font-bold">
-                  <span className="w-1/3">{t("GST")} {taxRate ? `(${taxRate}%)` : ''}</span>
-                  <span className="w-1/3 text-center"></span>
-                  <span className="w-1/3 text-right">{(taxAmount || 0).toFixed(2)}</span>
                 </div>
-                <div className="flex items-center justify-between font-bold">
-                  <span className="w-2/3">{t("Delivery Charge")}</span>
-                  <span className="w-1/3 text-right">
-                    <input
-                      type="number"
-                      min="0"
-                      placeholder="0"
-                      disabled={isLocked}
-                      onWheel={(e) => e.target.blur()}
-                      onKeyDown={(e) => { if (e.key === '-' || e.key === 'e' || e.key === 'E') e.preventDefault(); }}
-                      value={deliveryCharge === '0' || deliveryCharge === 0 ? '' : deliveryCharge}
-                      onChange={(e) => setDeliveryCharge && setDeliveryCharge(e.target.value === '' ? '' : Math.max(0, parseFloat(e.target.value) || 0))}
-                      className="w-[80px] bg-[#F7EFE2] border border-[#E8DCCB] text-[#1e293b] text-right px-1 rounded h-7 outline-none focus:border-primary font-bold text-xs disabled:opacity-50" />
-                  </span>
-                </div>
-                <div className="flex items-center justify-between font-bold">
-                  <span className="w-2/3 flex items-center gap-1"><span className="w-3 h-3 border border-gray-400 bg-gray-100 rounded-full inline-block"></span>{t("Container Charge")}</span>
-                  <span className="w-1/3 text-right">
-                    <input
-                      type="number"
-                      min="0"
-                      placeholder="0"
-                      disabled={isLocked}
-                      onWheel={(e) => e.target.blur()}
-                      onKeyDown={(e) => { if (e.key === '-' || e.key === 'e' || e.key === 'E') e.preventDefault(); }}
-                      value={containerCharge === '0' || containerCharge === 0 ? '' : containerCharge}
-                      onChange={(e) => setContainerCharge && setContainerCharge(e.target.value === '' ? '' : Math.max(0, parseFloat(e.target.value) || 0))}
-                      className="w-[80px] bg-[#F7EFE2] border border-[#E8DCCB] text-[#1e293b] text-right px-1 rounded h-7 outline-none focus:border-primary font-bold text-xs disabled:opacity-50" />
-                  </span>
-                </div>
+
+                {taxRate > 0 && (
+                  <div className="flex justify-between items-center px-1 font-bold text-slate-600 text-xs">
+                    <span>GST ({taxRate}%):</span>
+                    <span className="font-mono text-slate-900">{currencySymbol}{(taxAmount || 0).toFixed(2)}</span>
+                  </div>
+                )}
               </div>
-            }
-            {showCharges &&
-              <div className="w-full h-3 bg-[#f7f1ea] flex items-center justify-center text-text-muted border-t border-border">
-              </div>
-            }
+            )}
           </div>
-
-          <div className="flex items-center justify-between px-2.5 py-1.5 border-b border-border overflow-x-auto no-scrollbar w-full gap-1">
-            <div className="flex items-center gap-1 shrink-0">
-              <button
-                disabled={isLocked}
-                onClick={handleOpenOffersModal}
-                className={`px-2 py-0.5 rounded-md text-[11px] font-bold border transition-colors whitespace-nowrap disabled:opacity-50 flex items-center gap-1 cursor-pointer ${discount?.name
-                  ? 'bg-emerald-600 text-white border-emerald-500 shadow-sm hover:bg-emerald-500'
-                  : 'bg-sky-500/15 text-[#ea580c] border-[#E8DCCB] hover:bg-sky-500/25'
-                  }`}
-                title={t("Browse & apply active discounts, percentage offers, and BOGO deals (F6)")}
-              >
-                <kbd className="px-1.5 py-0.5 rounded bg-white text-slate-800 border border-slate-300 font-mono text-[9px] font-black shadow-2xs">F6</kbd>
-                <Tags size={12} />
-                <span>{discount?.name ? `${discount.name}` : t("Offers")}</span>
-              </button>
-
-              <button
-                disabled={isLocked}
-                onClick={() => {
-                  if (discount?.type === 'complimentary') {
-                    setDiscount({ type: 'flat', value: '', name: '' });
-                  } else {
-                    setDiscount({ type: 'complimentary', value: '', name: 'Complimentary' });
-                  }
-                }}
-                className={`${discount?.type === 'complimentary' ? 'bg-rose-600 text-white border-rose-500 hover:bg-rose-500' : 'bg-[#fef2f2] text-[#dc2626] border-[#fecaca] hover:bg-[#fee2e2]'} px-2 py-0.5 rounded-md text-[11px] font-bold border transition-colors whitespace-nowrap disabled:opacity-50 flex items-center gap-1`}
-                title={t("100% Complimentary order (F7)")}
-              >
-                <kbd className="px-1.5 py-0.5 rounded bg-white text-slate-800 border border-slate-300 font-mono text-[9px] font-black shadow-2xs">F7</kbd>
-                <span>{t("Complimentary")}</span>
-              </button>
-
-              {discount?.name && (
-                <button
-                  disabled={isLocked}
-                  onClick={() => setDiscount && setDiscount({ type: 'flat', value: '', name: '' })}
-                  className="px-1.5 py-0.5 rounded-md text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100 transition-colors whitespace-nowrap flex items-center gap-1"
-                  title="Clear applied offer"
-                >
-                  <X size={10} />
-                  <span>Clear Offer</span>
-                </button>
-              )}
-            </div>
-            <div className="flex items-center gap-1.5 shrink-0 ml-auto">
-              <span className="text-text-muted text-[10px] sm:text-[11px] font-bold uppercase tracking-wider">{t("Total")}</span>
-              {loading && (orderId || orderStatus === 'Billed' || cart.length > 0) ? (
-                <div className="h-5 w-14 bg-orange-100/80 rounded-md animate-pulse" />
-              ) : (
-                <span className="text-primary text-base sm:text-lg font-black">{currencySymbol}{total.toFixed(0)}</span>
-              )}
-            </div>
-          </div>
-
           {/* Row 3: Settlement */}
-          <div className="flex items-center justify-between px-2.5 py-1.5 border-b border-border overflow-x-auto no-scrollbar w-full gap-1">
+          <div className="flex items-center justify-between px-2 sm:px-2.5 py-1 sm:py-1.5 border-b border-border w-full gap-1 min-w-0">
             <div className="flex flex-col min-w-0">
               <span className="text-text-muted text-[10px] sm:text-[11px] font-bold uppercase tracking-wider shrink-0">{t("Settlement Amount")}</span>
             </div>
-            <div className="flex items-center gap-1.5 ml-1 shrink-0">
+            <div className="flex items-center gap-1 sm:gap-1.5 ml-1 shrink-0">
               <input
                 type="number"
                 min="0"
@@ -1498,7 +1615,7 @@ const BillSummary = ({
                 value={settlementAmount}
                 onChange={(e) => setSettlementAmount(Math.max(0, parseFloat(e.target.value) || 0))}
                 disabled={isLocked || cart.length === 0}
-                className="w-[75px] sm:w-[85px] h-7 bg-[#F7EFE2] border border-[#E8DCCB] text-[#1e293b] text-right px-1.5 rounded-lg outline-none focus:border-[#ea580c] font-black font-mono text-xs sm:text-sm disabled:opacity-50" />
+                className="w-[70px] sm:w-[85px] h-7 bg-[#F7EFE2] border border-[#E8DCCB] text-[#1e293b] text-right px-1.5 rounded-lg outline-none focus:border-[#ea580c] font-black font-mono text-xs sm:text-sm disabled:opacity-50" />
               <button
                 onClick={(e) => {
                   e.preventDefault();
@@ -1506,7 +1623,7 @@ const BillSummary = ({
                   if (onSettleBill) onSettleBill();
                 }}
                 disabled={cart.length === 0 || orderStatus === 'Paid' || loading || actionLoading !== null}
-                className="bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-500 hover:to-teal-400 text-white px-2.5 py-1 rounded-lg text-xs font-bold shadow-sm hover:shadow-md active:scale-95 transition-all whitespace-nowrap disabled:opacity-50 flex items-center justify-center gap-1 cursor-pointer">
+                className="bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-500 hover:to-teal-400 text-white px-2 sm:px-2.5 py-1 rounded-lg text-xs font-bold shadow-sm hover:shadow-md active:scale-95 transition-all whitespace-nowrap disabled:opacity-50 flex items-center justify-center gap-1 cursor-pointer">
                 {actionLoading === 'settle' ? (
                   <>
                     <Loader2 size={11} className="animate-spin" />
@@ -1514,7 +1631,7 @@ const BillSummary = ({
                   </>
                 ) : (
                   <>
-                    <kbd className="px-1.5 py-0.5 rounded bg-white text-slate-800 border border-slate-300 font-mono text-[9px] font-black shadow-2xs">F5</kbd>
+                    <kbd className="hidden lg:inline-block px-1.5 py-0.5 rounded bg-white text-slate-800 border border-slate-300 font-mono text-[9px] font-black shadow-2xs">F5</kbd>
                     <span>{t("Settle")}</span>
                   </>
                 )}
@@ -1522,172 +1639,87 @@ const BillSummary = ({
             </div>
           </div>
 
-          {/* Row 4: Checkboxes & WhatsApp Auto/Manual Toggle */}
-          <div className="flex items-center justify-between px-3 py-1.5 bg-white border-t border-b border-border w-full overflow-x-auto no-scrollbar gap-2">
-            <label className="flex items-center gap-1.5 text-text-muted text-xs font-bold cursor-pointer select-none shrink-0">
-              <div className={`w-3.5 h-3.5 flex items-center justify-center rounded border-2 transition-colors ${isPaid ? 'border-sky-400 bg-sky-500' : 'border-[#E8DCCB] bg-white'}`}>
+          {/* Row 4: Clean, Easy-to-use Unified Payment & WhatsApp/CRM Bar */}
+          <div className="flex items-center justify-between px-2 sm:px-3 py-1 sm:py-1.5 bg-white border-t border-b border-border w-full gap-1.5 sm:gap-2 min-w-0">
+            {/* It's Paid Checkbox */}
+            <label className="flex items-center gap-1.5 text-slate-700 text-xs font-bold cursor-pointer select-none shrink-0">
+              <div className={`w-3.5 h-3.5 flex items-center justify-center rounded border-2 transition-colors ${isPaid ? 'border-sky-500 bg-sky-500' : 'border-[#E8DCCB] bg-white'}`}>
                 {isPaid && <CheckCircle size={9} className="text-white shrink-0" strokeWidth={3} />}
               </div>
               <input type="checkbox" checked={isPaid} onChange={(e) => setIsPaid(e.target.checked)} className="hidden" />
               <span>{t("It's Paid")}</span>
             </label>
 
-            {/* WhatsApp Mode Toggle: Automatic vs Manual */}
-            {onToggleAutoWhatsapp && (
-              <div className="flex items-center gap-1 shrink-0">
-                <button
-                  type="button"
-                  onClick={() => onToggleAutoWhatsapp(!autoWhatsappEnabled)}
-                  title={
-                    autoWhatsappEnabled
-                      ? (!isWhatsAppConnected
-                        ? t("WhatsApp is not connected in Settings. Auto-send will be skipped.")
-                        : (!customerPhone)
-                          ? t("Auto WhatsApp is ON, but customer Phone is required in CRM to auto-send.")
-                          : t("Auto WhatsApp is ON — Bill will be sent automatically to customer on payment."))
-                      : t("Manual WhatsApp — Click to switch to Auto WhatsApp on payment.")
-                  }
-                  className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold border transition-all cursor-pointer select-none shadow-xs active:scale-95 ${autoWhatsappEnabled
-                    ? isWhatsAppConnected && customerPhone
-                      ? 'bg-emerald-600 border-emerald-700 text-white shadow-emerald-200'
-                      : !isWhatsAppConnected
-                        ? 'bg-amber-500 border-amber-600 text-white'
-                        : 'bg-emerald-600/90 border-emerald-700 text-white'
-                    : 'bg-[#FDFBF7] border-[#E8DCCB] text-slate-700 hover:bg-[#F5E8D8] hover:text-[#7c3f1d] hover:border-[#ea580c]'
-                    }`}
-                >
-                  <span>{autoWhatsappEnabled ? (isWhatsAppConnected && customerPhone ? '⚡' : !isWhatsAppConnected ? '⚠️' : '📱') : '💬'}</span>
-                  <span>
-                    {autoWhatsappEnabled
-                      ? !isWhatsAppConnected
-                        ? 'Auto WA (Offline)'
-                        : (!customerPhone)
-                          ? 'Auto WA (+CRM)'
-                          : 'WhatsApp: Auto'
-                      : 'WhatsApp: Manual'}
-                  </span>
-                  {/* Visual toggle switch knob */}
-                  <span className={`w-3.5 h-2 rounded-full flex items-center p-0.5 ml-0.5 transition-colors ${autoWhatsappEnabled ? 'bg-white/40 justify-end' : 'bg-gray-300 justify-start'}`}>
-                    <span className={`w-1.5 h-1.5 rounded-full ${autoWhatsappEnabled ? 'bg-white' : 'bg-slate-400'}`} />
-                  </span>
-                </button>
-              </div>
-            )}
-          </div>
-
-          {/* Dynamic WhatsApp Connection & CRM Status Message */}
-          <div className="px-3 py-1.5 bg-[#F7EFE2] border-b border-border flex flex-col gap-1 text-[11px] animate-in fade-in duration-200">
-            {/* Status Indicators */}
-            <div className="flex items-center justify-between gap-1.5 flex-wrap">
+            {/* Right Side Controls: Loyalty, WhatsApp Status/Toggle, CRM */}
+            <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
               {customerPhone && (
                 <button
                   type="button"
                   onClick={() => setShowLoyaltyModal(true)}
-                  className="flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white rounded-lg text-[10px] font-bold transition-all shadow-sm active:scale-95"
+                  className="flex items-center gap-1 px-1.5 py-0.5 bg-gradient-to-r from-amber-500 to-orange-500 text-white rounded-full text-[9px] sm:text-[10px] font-bold shadow-2xs active:scale-95 cursor-pointer"
+                  title="Redeem Loyalty"
                 >
-                  <Sparkles size={12} className="shrink-0" />
-                  Redeem Loyalty
+                  <Sparkles size={10} className="shrink-0" />
+                  <span className="hidden sm:inline">Loyalty</span>
                 </button>
               )}
-              {/* WhatsApp Status Badge */}
-              <div className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold border ${isWhatsAppConnected
-                ? 'bg-emerald-50 text-emerald-700 border-emerald-200 shadow-2xs'
-                : 'bg-red-50 text-red-600 border-red-200 shadow-2xs'
-                }`}>
-                <span className={`w-1.5 h-1.5 rounded-full ${isWhatsAppConnected ? 'bg-emerald-500 animate-pulse' : 'bg-red-500'}`} />
-                <span>{isWhatsAppConnected ? t("WhatsApp: Connected") : t("WhatsApp: Not Connected")}</span>
+
+              {/* WhatsApp Online / Offline Dot */}
+              <div
+                title={isWhatsAppConnected ? t("WhatsApp: Connected") : t("WhatsApp: Not Connected")}
+                className={`inline-flex items-center gap-1 px-1.5 sm:px-2 py-0.5 rounded-full text-[9px] sm:text-[10px] font-bold border ${isWhatsAppConnected
+                  ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                  : 'bg-red-50 text-red-600 border-red-200'
+                }`}
+              >
+                <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${isWhatsAppConnected ? 'bg-emerald-500 animate-pulse' : 'bg-red-500'}`} />
+                <span className="hidden sm:inline">{isWhatsAppConnected ? 'WA: Ready' : 'WA: Offline'}</span>
+                <span className="sm:hidden">{isWhatsAppConnected ? 'WA' : 'Offline'}</span>
               </div>
 
-              {/* CRM Status Badge */}
+              {/* WhatsApp Auto Toggle Button */}
+              {onToggleAutoWhatsapp && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const nextVal = !autoWhatsappEnabled;
+                    if (nextVal && !customerPhone && showToast) {
+                      showToast(t("Auto WhatsApp enabled. Please enter customer phone in CRM (+CRM) to auto-send."), "info");
+                    }
+                    if (onToggleAutoWhatsapp) onToggleAutoWhatsapp(nextVal);
+                  }}
+                  title={autoWhatsappEnabled ? t("Auto WhatsApp is ON — Click to switch to Manual") : t("Manual WhatsApp — Click to switch to Auto")}
+                  className={`flex items-center gap-1 px-1.5 sm:px-2 py-0.5 rounded-full text-[10px] sm:text-[10.5px] font-bold border transition-all cursor-pointer select-none shadow-2xs active:scale-95 ${autoWhatsappEnabled
+                    ? 'bg-emerald-600 border-emerald-700 text-white'
+                    : 'bg-[#FDFBF7] border-[#E8DCCB] text-slate-700 hover:bg-[#F5E8D8]'
+                  }`}
+                >
+                  <span>{autoWhatsappEnabled ? 'Auto WA' : 'Manual'}</span>
+                  <span className={`w-3 h-1.5 rounded-full flex items-center p-0.5 ${autoWhatsappEnabled ? 'bg-white/40 justify-end' : 'bg-gray-300 justify-start'}`}>
+                    <span className={`w-1 h-1 rounded-full ${autoWhatsappEnabled ? 'bg-white' : 'bg-slate-400'}`} />
+                  </span>
+                </button>
+              )}
+
+              {/* CRM Button */}
               <button
                 type="button"
                 onClick={onOpenCustomerModal}
-                className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold border transition-all cursor-pointer shadow-2xs active:scale-95 ${customerPhone
+                className={`inline-flex items-center gap-1 px-1.5 sm:px-2 py-0.5 rounded-full text-[10px] sm:text-[10.5px] font-bold border transition-all cursor-pointer shadow-2xs active:scale-95 ${customerPhone
                   ? 'bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100'
-                  : 'bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100 animate-pulse'
-                  }`}
+                  : 'bg-amber-100/90 text-amber-900 border-amber-300 hover:bg-amber-200 animate-pulse'
+                }`}
                 title={customerPhone ? `${customerName ? `${customerName} • ` : ''}${customerPhone} (${t("Click to edit CRM")})` : t("Click to add Customer in CRM")}
               >
-                <User size={10} className={customerPhone ? 'text-blue-600' : 'text-amber-600'} />
-                <span>{customerPhone ? `${t("CRM")}: ${customerPhone}` : t("CRM: Not Entered (+)")}</span>
+                <User size={10} className={customerPhone ? 'text-blue-600' : 'text-amber-800'} />
+                <span className="max-w-[85px] sm:max-w-none truncate">{customerPhone ? customerPhone : t("+CRM")}</span>
               </button>
-            </div>
-
-            {/* Dynamic User-Friendly Message */}
-            <div className="text-[10px] leading-tight font-medium">
-              {autoWhatsappEnabled ? (
-                isWhatsAppConnected && customerPhone ? (
-                  <span className="text-emerald-700 flex items-center gap-1">
-                    <CheckCircle2 size={11} className="text-emerald-600 shrink-0" />
-                    <span>{t("Auto WhatsApp Ready: Bill will be sent to")} <strong className="font-bold">{customerPhone}</strong> {t("on payment.")}</span>
-                  </span>
-                ) : !isWhatsAppConnected && !customerPhone ? (
-                  <span className="text-red-700 flex items-center gap-1">
-                    <AlertTriangle size={11} className="text-red-500 shrink-0" />
-                    <span>{t("WhatsApp is not connected & CRM phone is missing.")}</span>
-                  </span>
-                ) : !isWhatsAppConnected ? (
-                  <span className="text-amber-800 flex items-center gap-1">
-                    <AlertTriangle size={11} className="text-amber-600 shrink-0" />
-                    <span>{t("WhatsApp not connected in Settings. Connect to auto-send bill.")}</span>
-                  </span>
-                ) : (
-                  <span className="text-amber-800 flex items-center gap-1">
-                    <AlertTriangle size={11} className="text-amber-600 shrink-0" />
-                    <span>
-                      {t("WhatsApp is connected, but customer phone is required in CRM.")}{' '}
-                      <button
-                        type="button"
-                        onClick={onOpenCustomerModal}
-                        className="text-orange-600 font-bold underline hover:text-orange-700 cursor-pointer ml-0.5"
-                      >
-                        {t("+ Enter CRM")}
-                      </button>
-                    </span>
-                  </span>
-                )
-              ) : (
-                <span className="text-text-muted flex items-center gap-1">
-                  <span>💬</span>
-                  <span>
-                    {isWhatsAppConnected ? t("WhatsApp is connected (Manual mode).") : t("WhatsApp is not connected.")}
-                    {customerPhone ? ` ${t("CRM")}: ${customerPhone}.` : ` ${t("CRM not entered.")}`}
-                  </span>
-                </span>
-              )}
             </div>
           </div>
-
-          {/* User-friendly Unsaved Items & Navigation Reminder */}
-          {isBilledLocked && (
-            <div className="mx-2 my-1 px-2.5 py-1.5 bg-amber-50 border border-amber-200 rounded-lg flex items-center justify-between text-amber-800 text-[10px] sm:text-[11px] font-bold shadow-2xs animate-in fade-in duration-200">
-              <div className="flex items-center gap-1.5">
-                <span className="text-amber-600 font-bold text-xs">🔒</span>
-                <span>{t("Billed order is locked. Click EDIT to modify.")}</span>
-              </div>
-              <button
-                type="button"
-                onClick={onReopenOrder}
-                disabled={loading || actionLoading !== null}
-                className="px-2 py-0.5 bg-amber-600 hover:bg-amber-700 text-white rounded text-[10px] font-bold transition-all shadow-2xs cursor-pointer ml-1.5"
-              >
-                {actionLoading === 'edit' ? t("Editing...") : t("EDIT")}
-              </button>
-            </div>
-          )}
-          {cart.length > 0 && !isLocked && (
-            <div className="mx-2 my-1 px-2.5 py-1.5 bg-amber-50 border border-amber-300 rounded-lg flex items-start gap-1.5 text-[10px] sm:text-[11px] text-amber-900 shadow-2xs">
-              <span className="text-amber-700 font-bold shrink-0 text-[12px] leading-tight">⚠️</span>
-              <span className="leading-tight font-bold text-amber-900">
-                {t("Unsaved changes will be cleared if you navigate away before saving.")}
-              </span>
-            </div>
-          )}
         </div>
-        {/* END: Bottom action area + unified scrollable area */}
-      </div>
+  );
 
-      {/* Action Buttons - Pin at bottom */}
+  const renderActionButtons = () => (
       <div className="grid grid-cols-2 gap-2 px-2.5 py-2.5 bg-[#F7EFE2] border-t border-[#E8DCCB] w-full shrink-0">
         <button
           onClick={() => onSaveOrder && onSaveOrder()}
@@ -1700,7 +1732,7 @@ const BillSummary = ({
             </>
           ) : (
             <>
-              <kbd className="px-1.5 py-0.5 rounded bg-white text-slate-800 border border-slate-300 font-mono text-[9px] font-black mr-1 shadow-2xs">F1</kbd>
+              <kbd className="hidden lg:inline-block px-1.5 py-0.5 rounded bg-white text-slate-800 border border-slate-300 font-mono text-[9px] font-black mr-1 shadow-2xs">F1</kbd>
               <span>
                 {orderId
                   ? (directPrintOnSave ? t("UPDATE & PRINT") : t("UPDATE"))
@@ -1720,7 +1752,7 @@ const BillSummary = ({
             </>
           ) : (
             <>
-              <kbd className="px-1.5 py-0.5 rounded bg-white text-slate-800 border border-slate-300 font-mono text-[9px] font-black mr-1 shadow-2xs">F2</kbd>
+              <kbd className="hidden lg:inline-block px-1.5 py-0.5 rounded bg-white text-slate-800 border border-slate-300 font-mono text-[9px] font-black mr-1 shadow-2xs">F2</kbd>
               {(orderStatus === 'Billed' && !hasPendingChanges)
                 ? <><span>🧾</span><span>{t("PRINT BILL")}</span></>
                 : <span>{t("SAVE & PRINT")}</span>}
@@ -1738,7 +1770,7 @@ const BillSummary = ({
             </>
           ) : (
             <>
-              <kbd className="px-1.5 py-0.5 rounded bg-white text-slate-800 border border-slate-300 font-mono text-[9px] font-black mr-1 shadow-2xs">F3</kbd>
+              <kbd className="hidden lg:inline-block px-1.5 py-0.5 rounded bg-white text-slate-800 border border-slate-300 font-mono text-[9px] font-black mr-1 shadow-2xs">F3</kbd>
               <span>{t("EDIT")}</span>
             </>
           )}
@@ -1754,14 +1786,15 @@ const BillSummary = ({
             </>
           ) : (
             <>
-              <kbd className="px-1.5 py-0.5 rounded bg-white text-slate-800 border border-slate-300 font-mono text-[9px] font-black mr-1 shadow-2xs">F4</kbd>
+              <kbd className="hidden lg:inline-block px-1.5 py-0.5 rounded bg-white text-slate-800 border border-slate-300 font-mono text-[9px] font-black mr-1 shadow-2xs">F4</kbd>
               <span>{t("CANCEL")}</span>
             </>
           )}
         </button>
       </div>
+  );
 
-      {/* Direct Print Configuration Dropdown - Small Settings Gear */}
+  const renderPrintConfig = () => (
       <div className="px-2 py-1 bg-[#F7EFE2] border-t border-[#E8DCCB] flex justify-end">
         <div className="relative">
           <button
@@ -1816,11 +1849,129 @@ const BillSummary = ({
           </div>
         </div>
       </div>
+  );
 
+  return (
+    <div className="counter-sale-cart flex flex-col h-full bg-[#FDFBF7] border-l border-[#E8DCCB] w-full max-w-full overflow-hidden text-slate-800">
 
+      {/* Ocean Header / Counter Title */}
+      <div className="flex items-center justify-between px-3 py-2 bg-[#F7EFE2] border-b border-[#E8DCCB] shrink-0">
+        <div className="flex items-center gap-2">
+          {onBackToMenu && (
+            <button
+              type="button"
+              onClick={() => {
+                if (typeof window !== 'undefined' && window.innerWidth >= 768 && window.innerWidth < 1280) {
+                  const scrollParent = document.querySelector('.flex-1.flex.flex-col.xl\\:flex-row') || window;
+                  scrollParent.scrollTo({ top: 0, behavior: 'smooth' });
+                }
+                if (onBackToMenu) onBackToMenu();
+              }}
+              className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-[#ea580c] hover:bg-[#c2410c] active:scale-95 text-white font-black text-xs shadow-xs transition-all cursor-pointer mr-1"
+              title="Return to Menu Dial"
+            >
+              <ArrowLeft size={13} className="stroke-[3]" />
+              <span>Back</span>
+            </button>
+          )}
+          <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+          <span className="font-extrabold text-xs text-[#0f2942] tracking-wide uppercase font-black">{t("Counter Sale / Direct Order")}
+          </span>
+        </div>
+        <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-[#fff7ed] text-[#c2410c] border border-[#fed7aa] font-bold">
+          {activeTable ? `#${activeTable.replace(/^(TAK-|DEL-|ORD-)/i, '')}` : t("Active Cart")}
+        </span>
+      </div>
 
+      {/* Predefined Dealer Bar for Wholesale, Export & Retail */}
+      <div className="px-2.5 pt-2 pb-1 bg-[#F7EFE2] border-b border-[#E8DCCB] shrink-0">
+        <PredefinedCustomerBar
+          orderMode={fishOrderMode}
+          customerName={customerName}
+          setCustomerName={setCustomerName}
+          customerPhone={customerPhone}
+          setCustomerPhone={setCustomerPhone}
+          customerInfo={customerInfo}
+          onCustomerSelect={onCustomerSelect}
+          isLocked={isOrderLocked}
+          setIsLocked={setIsOrderLocked}
+          lockedTimestamp={lockedTimestamp}
+          setLockedTimestamp={setLockedTimestamp}
+          showToast={showToast}
+        />
+      </div>
 
+      {/* Info Bar - Quick Stats & Actions */}
+      <div className="flex items-center justify-between px-2.5 sm:px-3 py-1 border-b border-[#E8DCCB] bg-[#FDFBF7] overflow-x-auto no-scrollbar gap-2">
+        <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+          {/* Instant Stat Badge */}
+          {cart.length > 0 && (
+            <div className="flex items-center gap-1 px-1.5 py-0.5 bg-orange-50 border border-orange-200 rounded-md text-orange-700 text-[9px] font-bold shadow-2xs ml-0.5 shrink-0 animate-in fade-in duration-150">
+              <span>{cart.length} {cart.length === 1 ? t("Item") : t("Items")}</span>
+              <span className="text-orange-300 font-normal">|</span>
+              <span>{cart.reduce((sum, item) => sum + (parseInt(item.quantity, 10) || 0), 0)} {t("Qty")}</span>
+            </div>
+          )}
+          {orderStatus === 'Billed' && (
+            <div className="flex items-center gap-1 px-1.5 py-0.5 bg-amber-100 border border-amber-300 rounded-md text-amber-800 text-[9px] font-black uppercase tracking-wider shadow-2xs ml-0.5 shrink-0 animate-in fade-in duration-150">
+              <span>{t("BILLED")}</span>
+            </div>
+          )}
+        </div>
 
+        {/* Clear All Button with F8 shortcut */}
+        {cart.length > 0 && (
+          <button
+            type="button"
+            onClick={handleClearAllClick}
+            title={isBilledLocked ? t("Order is saved & printed. Click EDIT to modify.") : t("Clear all items (F8)")}
+            className={`flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] font-bold transition-all active:scale-95 shrink-0 shadow-2xs ${
+              isBilledLocked
+                ? 'bg-amber-100/80 hover:bg-amber-200 text-amber-900 border border-amber-300'
+                : 'bg-red-50 hover:bg-red-100 text-red-600 border border-red-200'
+            }`}
+          >
+            <kbd className="hidden lg:inline-block px-1.5 py-0.5 rounded bg-white text-slate-800 border border-slate-300 font-mono text-[9px] font-black shadow-2xs">F8</kbd>
+            <Trash2 size={11} className={isBilledLocked ? 'text-amber-700' : 'text-red-500'} />
+            <span>{t("Clear All")}</span>
+          </button>
+        )}
+      </div>
+
+      {/* TABLET VIEW (768px <= width < 1280px): 2 Dedicated Columns */}
+      {isTablet ? (
+        <div className="flex-1 min-h-0 flex flex-row overflow-hidden bg-[#FDFBF7]">
+          {/* COLUMN 1: Cart Items List (Left 50%) */}
+          <div className="w-1/2 h-full flex flex-col min-h-0 border-r border-[#E8DCCB] overflow-hidden bg-[#FDFBF7]">
+            {renderCartTableHeader()}
+            <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden bg-[#FDFBF7]">
+              {renderCartItems("cart-items-container-tablet")}
+            </div>
+          </div>
+
+          {/* COLUMN 2: Settlement Totals & Action Buttons (Right 50%) */}
+          <div className="w-1/2 h-full flex flex-col min-h-0 overflow-y-auto bg-[#F7EFE2] justify-between">
+            <div className="flex flex-col w-full">
+              {renderBottomActionArea()}
+            </div>
+            <div className="w-full shrink-0">
+              {renderActionButtons()}
+              {renderPrintConfig()}
+            </div>
+          </div>
+        </div>
+      ) : (
+        /* MOBILE (< md) & DESKTOP (>= xl): 100% Undisturbed Original Layout */
+        <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
+          {renderCartTableHeader()}
+          <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden bg-[#FDFBF7]">
+            {renderCartItems("cart-items-container")}
+            {renderBottomActionArea()}
+          </div>
+          {renderActionButtons()}
+          {renderPrintConfig()}
+        </div>
+      )}
 
       {showNoteModal && typeof document !== 'undefined' && createPortal(
         <div

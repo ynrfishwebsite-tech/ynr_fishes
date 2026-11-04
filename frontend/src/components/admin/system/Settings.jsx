@@ -53,6 +53,8 @@ const Settings = ({ user, setUser, onNavigate, onGoBack }) => {
     sgstRate: 2.5,
     enableGst: false,
     gstRate: 5,
+    enableCuttingCharges: false,
+    cuttingChargePerKg: 10,
     logo: '',
     showLogo: true,
     printFormat: '80mm',
@@ -1248,6 +1250,118 @@ const Settings = ({ user, setUser, onNavigate, onGoBack }) => {
                           <span className="text-xs font-bold text-slate-400">%</span>
                         </div>
                       }
+                    </div>
+                  </div>
+
+                  {/* Fish Cutting Charges */}
+                  <div className="p-4 bg-[#FDFBF7] rounded-xl border border-slate-200 shadow-md space-y-4">
+                    <div className="flex items-center justify-between">
+                      <div className="space-y-0.5">
+                        <div className="flex items-center gap-2">
+                          <label className="text-sm font-bold text-slate-800 flex items-center gap-2">
+                            <UtensilsCrossed size={16} className="text-amber-800" />
+                            {t("Fish Cutting & Cleaning Charges")}
+                          </label>
+                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                            settings.enableCuttingCharges
+                              ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                              : 'bg-slate-200 text-slate-600'
+                          }`}>
+                            {settings.enableCuttingCharges ? t("Active") : t("Disabled")}
+                          </span>
+                        </div>
+                        <p className="text-xs text-slate-500">
+                          {t("Automatically add cleaning and cutting fees based on fish weight during billing")}
+                        </p>
+                      </div>
+                      <label className="relative inline-flex items-center cursor-pointer">
+                        <input
+                          type="checkbox"
+                          className="sr-only peer"
+                          checked={settings.enableCuttingCharges === true}
+                          onChange={(e) => handleInputChange('enableCuttingCharges', e.target.checked)}
+                        />
+                        <div className="w-11 h-6 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-amber-600"></div>
+                      </label>
+                    </div>
+
+                    {/* Rate Input & Friendly Slab Breakdown */}
+                    <div className={`space-y-3 pt-3 border-t border-slate-200 transition-opacity ${settings.enableCuttingCharges ? 'opacity-100' : 'opacity-70'}`}>
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                        <div>
+                          <span className="text-xs font-bold text-slate-800 block">
+                            {t("Base Cutting Rate")}
+                          </span>
+                          <span className="text-[11px] text-slate-500">
+                            {t("Fee charged for the first 1.5 Kg and each additional 1 Kg")}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-1.5 self-start sm:self-auto">
+                          <span className="text-xs font-bold text-slate-500">₹</span>
+                          <input
+                            type="number"
+                            min="0"
+                            step="1"
+                            value={settings.cuttingChargePerKg !== undefined ? settings.cuttingChargePerKg : 10}
+                            onChange={(e) => handleInputChange('cuttingChargePerKg', Math.max(0, parseFloat(e.target.value) || 0))}
+                            className="w-20 px-2 py-1.5 border border-slate-300 rounded-lg text-sm font-mono font-bold text-center bg-white text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-500/30 focus:border-amber-600 shadow-2xs"
+                          />
+                          <span className="text-xs text-slate-500 font-medium">{t("per step")}</span>
+                        </div>
+                      </div>
+
+                      {/* Visual Slab Cards: 100% User-Friendly */}
+                      {(() => {
+                        const rate = Number(settings.cuttingChargePerKg) || 10;
+                        return (
+                          <div className="bg-[#FAF0E4]/80 border border-[#E8DCCB] rounded-xl p-2.5 sm:p-3 space-y-2">
+                            <div className="flex items-center justify-between text-xs font-bold text-amber-900">
+                              <span className="flex items-center gap-1.5">
+                                <span>💡</span>
+                                <span>{t("How it calculates on customer bill:")}</span>
+                              </span>
+                              <span className="text-[10.5px] font-medium text-slate-500 hidden sm:inline">
+                                {t("Auto-calculated from total weight")}
+                              </span>
+                            </div>
+
+                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 sm:gap-2">
+                              <div className="bg-white rounded-lg p-2 border border-amber-200 text-center shadow-2xs">
+                                <span className="text-[10px] text-slate-600 font-medium block">
+                                  {t("Up to 1.5 Kg")}
+                                </span>
+                                <span className="text-sm font-black text-amber-900 font-mono mt-0.5 block">
+                                  ₹{rate}
+                                </span>
+                              </div>
+                              <div className="bg-white rounded-lg p-2 border border-amber-200 text-center shadow-2xs">
+                                <span className="text-[10px] text-slate-600 font-medium block">
+                                  {t("1.6 to 2.5 Kg")}
+                                </span>
+                                <span className="text-sm font-black text-amber-900 font-mono mt-0.5 block">
+                                  ₹{rate * 2}
+                                </span>
+                              </div>
+                              <div className="bg-white rounded-lg p-2 border border-amber-200 text-center shadow-2xs">
+                                <span className="text-[10px] text-slate-600 font-medium block">
+                                  {t("2.6 to 3.5 Kg")}
+                                </span>
+                                <span className="text-sm font-black text-amber-900 font-mono mt-0.5 block">
+                                  ₹{rate * 3}
+                                </span>
+                              </div>
+                              <div className="bg-white rounded-lg p-2 border border-amber-200 text-center shadow-2xs">
+                                <span className="text-[10px] text-slate-600 font-medium block">
+                                  {t("Extra each +1 Kg")}
+                                </span>
+                                <span className="text-sm font-black text-emerald-700 font-mono mt-0.5 block">
+                                  +₹{rate}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })()}
                     </div>
                   </div>
 

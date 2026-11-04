@@ -128,6 +128,14 @@ const MenuManagement = ({ user, onNavigate, onGoBack }) => {
     price: '',
     boxPrice: '',
     wholesalePricePerKg: '',
+    exportPricePerKg: '',
+    waterType: 'sea_water',
+    speciesType: 'fish',
+    sizeGrades: {
+      small: { minKg: 0, maxKg: 1, price: '', wholesalePrice: '', exportPrice: '' },
+      medium: { minKg: 1, maxKg: 4, price: '', wholesalePrice: '', exportPrice: '' },
+      big: { minKg: 4, maxKg: 99, price: '', wholesalePrice: '', exportPrice: '' }
+    },
     openingStock: '',
     boxPackingKg: 60,
     type: 'non-veg',
@@ -189,6 +197,11 @@ const MenuManagement = ({ user, onNavigate, onGoBack }) => {
     setIsViewMode(viewMode);
     if (item) {
       setCurrentItem(item);
+      const catName = String(item.category?.name || item.category || '').toLowerCase();
+      const itemName = String(item.name || '').toLowerCase();
+      const inferredWater = item.waterType || (catName.includes('fresh') || catName.includes('river') || catName.includes('sweet') ? 'fresh_water' : 'sea_water');
+      const inferredSpecies = item.speciesType || (itemName.includes('prawn') || catName.includes('prawn') || itemName.includes('shrimp') ? 'prawn' : itemName.includes('crab') || catName.includes('crab') ? 'crab' : 'fish');
+
       setFormData({
         name: item.name || '',
         scientificName: item.scientificName || '',
@@ -196,6 +209,16 @@ const MenuManagement = ({ user, onNavigate, onGoBack }) => {
         sellingUnit: item.sellingUnit || 'Kg',
         purchasePrice: item.purchasePrice !== undefined && item.purchasePrice !== null ? item.purchasePrice : '',
         price: item.price !== undefined && item.price !== null ? item.price : '',
+        boxPrice: item.boxPrice !== undefined && item.boxPrice !== null ? item.boxPrice : '',
+        wholesalePricePerKg: item.wholesalePricePerKg !== undefined && item.wholesalePricePerKg !== null ? item.wholesalePricePerKg : '',
+        exportPricePerKg: item.exportPricePerKg !== undefined && item.exportPricePerKg !== null ? item.exportPricePerKg : '',
+        waterType: inferredWater,
+        speciesType: inferredSpecies,
+        sizeGrades: item.sizeGrades || {
+          small: { minKg: 0, maxKg: 1, price: item.price || '', wholesalePrice: item.wholesalePricePerKg || '', exportPrice: item.exportPricePerKg || '' },
+          medium: { minKg: 1, maxKg: 4, price: item.price || '', wholesalePrice: item.wholesalePricePerKg || '', exportPrice: item.exportPricePerKg || '' },
+          big: { minKg: 4, maxKg: 99, price: item.price || '', wholesalePrice: item.wholesalePricePerKg || '', exportPrice: item.exportPricePerKg || '' }
+        },
         openingStock: item.stock ?? item.openingStock ?? '',
         boxPackingKg: item.boxPackingKg || 0,
         type: item.type || 'non-veg',
@@ -218,6 +241,14 @@ const MenuManagement = ({ user, onNavigate, onGoBack }) => {
         price: '',
         boxPrice: '',
         wholesalePricePerKg: '',
+        exportPricePerKg: '',
+        waterType: 'sea_water',
+        speciesType: 'fish',
+        sizeGrades: {
+          small: { minKg: 0, maxKg: 1, price: '', wholesalePrice: '', exportPrice: '' },
+          medium: { minKg: 1, maxKg: 4, price: '', wholesalePrice: '', exportPrice: '' },
+          big: { minKg: 4, maxKg: 99, price: '', wholesalePrice: '', exportPrice: '' }
+        },
         openingStock: '',
         boxPackingKg: 60,
         type: 'non-veg',
@@ -350,6 +381,7 @@ const MenuManagement = ({ user, onNavigate, onGoBack }) => {
 
       const boxPrice = parseFloat(formData.boxPrice) || (price * boxPackingKg);
       const wholesalePricePerKg = parseFloat(formData.wholesalePricePerKg) || price;
+      const exportPricePerKg = parseFloat(formData.exportPricePerKg) || wholesalePricePerKg;
 
       const itemData = {
         ...formData,
@@ -361,6 +393,32 @@ const MenuManagement = ({ user, onNavigate, onGoBack }) => {
         boxPackingKg,
         boxPrice,
         wholesalePricePerKg,
+        exportPricePerKg,
+        waterType: formData.waterType || 'sea_water',
+        speciesType: formData.speciesType || 'fish',
+        sizeGrades: {
+          small: {
+            minKg: parseFloat(formData.sizeGrades?.small?.minKg) || 0,
+            maxKg: parseFloat(formData.sizeGrades?.small?.maxKg) || 1,
+            price: parseFloat(formData.sizeGrades?.small?.price) || price,
+            wholesalePrice: parseFloat(formData.sizeGrades?.small?.wholesalePrice) || wholesalePricePerKg,
+            exportPrice: parseFloat(formData.sizeGrades?.small?.exportPrice) || exportPricePerKg
+          },
+          medium: {
+            minKg: parseFloat(formData.sizeGrades?.medium?.minKg) || 1,
+            maxKg: parseFloat(formData.sizeGrades?.medium?.maxKg) || 4,
+            price: parseFloat(formData.sizeGrades?.medium?.price) || price,
+            wholesalePrice: parseFloat(formData.sizeGrades?.medium?.wholesalePrice) || wholesalePricePerKg,
+            exportPrice: parseFloat(formData.sizeGrades?.medium?.exportPrice) || exportPricePerKg
+          },
+          big: {
+            minKg: parseFloat(formData.sizeGrades?.big?.minKg) || 4,
+            maxKg: parseFloat(formData.sizeGrades?.big?.maxKg) || 99,
+            price: parseFloat(formData.sizeGrades?.big?.price) || price,
+            wholesalePrice: parseFloat(formData.sizeGrades?.big?.wholesalePrice) || wholesalePricePerKg,
+            exportPrice: parseFloat(formData.sizeGrades?.big?.exportPrice) || exportPricePerKg
+          }
+        },
         category: finalCategory,
         image: formatImageUrl(formData.image),
         price,
@@ -1094,8 +1152,8 @@ const MenuManagement = ({ user, onNavigate, onGoBack }) => {
                                 />
                               </div>
                             ) : (
-                              <div className="w-9 h-9 rounded-lg bg-primary/10 text-primary flex items-center justify-center font-bold text-sm shrink-0">
-                                🐟
+                              <div className="w-9 h-9 rounded-lg bg-primary/10 text-primary flex items-center justify-center shrink-0 font-bold text-xs uppercase">
+                                Fish
                               </div>
                             )}
                             <div className="flex flex-col min-w-0">
@@ -1518,7 +1576,7 @@ const MenuManagement = ({ user, onNavigate, onGoBack }) => {
       {/* Edit / Add Item Form Modal */}
       {isModalOpen && !isViewMode && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-xs flex items-center justify-center z-[99999] p-4 animate-in fade-in duration-150">
-          <div className="bg-surface w-full max-w-md rounded-2xl shadow-2xl border border-border flex flex-col max-h-[90vh] animate-in zoom-in-95 duration-150">
+          <div className="bg-surface w-full max-w-3xl rounded-2xl shadow-2xl border border-border flex flex-col max-h-[92vh] animate-in zoom-in-95 duration-150">
             <div className="flex justify-between items-center p-5 border-b border-border">
               <h2 className="text-lg sm:text-xl font-bold text-text-main">
                 {currentItem ? t('Edit Item') : t('Add New Item')}
@@ -1631,46 +1689,398 @@ const MenuManagement = ({ user, onNavigate, onGoBack }) => {
                     onChange={(e) => setFormData({ ...formData, sellingUnit: e.target.value })}
                     className="w-full bg-background border border-border rounded-xl px-3 py-2 text-xs sm:text-sm text-text-main focus:outline-none focus:border-primary font-medium"
                   >
-                    <option value="Kg">⚖️ Kg (Per Kilogram)</option>
-                    <option value="Box">📦 Box (Wholesale Packing)</option>
-                    <option value="Piece">🐟 Piece (Count)</option>
+                    <option value="Kg">Kg (Per Kilogram)</option>
+                    <option value="Box">Box (Wholesale Packing)</option>
+                    <option value="Piece">Piece (Count)</option>
                   </select>
                 </div>
               </div>
 
-              {/* Purchase Price & Selling Price */}
-              <div className="grid grid-cols-2 gap-3">
+              {/* Seafood Type & Water Environment */}
+              <div className="grid grid-cols-2 gap-3 bg-amber-50/50 p-3 rounded-xl border border-amber-200/60">
                 <div className="space-y-1">
-                  <label className="text-xs sm:text-sm font-medium text-text-muted">{t("Purchase Price (₹/Kg)")}</label>
-                  <input
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    value={formData.purchasePrice}
-                    onChange={(e) => setFormData({ ...formData, purchasePrice: e.target.value })}
-                    className="w-full bg-background border border-border rounded-xl px-3 py-2 text-xs sm:text-sm text-text-main focus:outline-none focus:border-primary"
-                    placeholder="e.g. 550"
-                  />
+                  <label className="text-xs font-bold text-amber-900">{t("Water Environment")}</label>
+                  <select
+                    value={formData.waterType || 'sea_water'}
+                    onChange={(e) => setFormData({ ...formData, waterType: e.target.value })}
+                    className="w-full bg-white border border-amber-300 rounded-xl px-3 py-2 text-xs text-slate-800 font-bold focus:outline-none focus:border-amber-600"
+                  >
+                    <option value="sea_water">Sea Water (Marine / Ocean)</option>
+                    <option value="fresh_water">Fresh Water (River / Lake)</option>
+                    <option value="all">All / General</option>
+                  </select>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-amber-900">{t("Seafood Species")}</label>
+                  <select
+                    value={formData.speciesType || 'fish'}
+                    onChange={(e) => setFormData({ ...formData, speciesType: e.target.value })}
+                    className="w-full bg-white border border-amber-300 rounded-xl px-3 py-2 text-xs text-slate-800 font-bold focus:outline-none focus:border-amber-600"
+                  >
+                    <option value="fish">Fish (Fish Varieties)</option>
+                    <option value="prawn">Prawns & Shrimps</option>
+                    <option value="crab">Crabs & Shellfish</option>
+                    <option value="other">Other Seafood</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* 3 Sale Price Tiers: Retail, Wholesale, Export */}
+              <div className="bg-sky-50/60 p-4 rounded-2xl border border-sky-200 space-y-2.5">
+                <div className="flex justify-between items-center">
+                  <span className="text-xs sm:text-sm font-bold text-sky-950">Standard Selling Rates (₹ / Kg)</span>
+                  <span className="text-[11px] text-sky-800 font-semibold">Base Price per Sale Mode</span>
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  <div className="space-y-1">
+                    <label className="text-xs font-semibold text-slate-700 block">{t("Purchase Rate")}</label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={formData.purchasePrice}
+                      onChange={(e) => setFormData({ ...formData, purchasePrice: e.target.value })}
+                      className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 focus:outline-none focus:border-sky-500"
+                      placeholder="e.g. 500"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-emerald-800 block">{t("Retail (₹/Kg)")} *</label>
+                    <input
+                      type="number"
+                      required
+                      min="0"
+                      step="0.01"
+                      value={formData.price}
+                      onChange={(e) => {
+                        setFormData({ ...formData, price: e.target.value });
+                        if (validationErrors.price) setValidationErrors({ ...validationErrors, price: null });
+                      }}
+                      className={`w-full bg-white border rounded-xl px-3 py-2 text-xs font-bold text-emerald-950 focus:outline-none focus:border-emerald-600 ${validationErrors.price ? 'border-danger' : 'border-emerald-300'}`}
+                      placeholder="e.g. 700"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-amber-800 block">{t("Wholesale (₹/Kg)")}</label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={formData.wholesalePricePerKg}
+                      onChange={(e) => setFormData({ ...formData, wholesalePricePerKg: e.target.value })}
+                      className="w-full bg-white border border-amber-300 rounded-xl px-3 py-2 text-xs font-bold text-amber-950 focus:outline-none focus:border-amber-600"
+                      placeholder={formData.price || 'Wholesale rate'}
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-indigo-800 block">{t("Export (₹/Kg)")}</label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={formData.exportPricePerKg}
+                      onChange={(e) => setFormData({ ...formData, exportPricePerKg: e.target.value })}
+                      className="w-full bg-white border border-indigo-300 rounded-xl px-3 py-2 text-xs font-bold text-indigo-950 focus:outline-none focus:border-indigo-600"
+                      placeholder={formData.wholesalePricePerKg || formData.price || 'Export rate'}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Fish Size Grading (Small, Medium, Big) */}
+              <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-3">
+                <div className="flex justify-between items-center">
+                  <div>
+                    <span className="text-xs sm:text-sm font-bold text-slate-900">Size Grades & Weight Ranges</span>
+                    <span className="text-[11px] text-slate-500 block">Customize weight boundaries (Kg) and individual grade prices</span>
+                  </div>
                 </div>
 
-                <div className="space-y-1">
-                  <label className="text-xs sm:text-sm font-medium text-text-muted">{t("Selling Price (₹/Kg)")} *</label>
-                  <input
-                    type="number"
-                    required
-                    min="0"
-                    step="0.01"
-                    value={formData.price}
-                    onChange={(e) => {
-                      setFormData({ ...formData, price: e.target.value });
-                      if (validationErrors.price) setValidationErrors({ ...validationErrors, price: null });
-                    }}
-                    className={`w-full bg-background border rounded-xl px-3 py-2 text-xs sm:text-sm text-text-main focus:outline-none focus:border-primary font-bold ${validationErrors.price ? 'border-danger' : 'border-border'}`}
-                    placeholder="e.g. 700"
-                  />
-                  {validationErrors.price && (
-                    <p className="text-xs text-danger">{validationErrors.price}</p>
-                  )}
+                {/* Table Header Row (Desktop) */}
+                <div className="hidden sm:grid sm:grid-cols-12 gap-2 text-[11px] font-bold text-slate-600 px-3 py-1 bg-slate-200/60 rounded-lg">
+                  <div className="col-span-2">Grade</div>
+                  <div className="col-span-4 text-center">Weight Range (Kg)</div>
+                  <div className="col-span-2 text-center">Retail (₹/Kg)</div>
+                  <div className="col-span-2 text-center">Wholesale (₹/Kg)</div>
+                  <div className="col-span-2 text-center">Export (₹/Kg)</div>
+                </div>
+
+                <div className="space-y-2.5 text-xs">
+                  {/* Small Grade Row */}
+                  <div className="bg-white p-3 rounded-xl border border-slate-200 grid grid-cols-1 sm:grid-cols-12 gap-2 items-center shadow-2xs">
+                    <div className="col-span-2 font-bold text-slate-800 flex items-center gap-2">
+                      <span className="w-3 h-3 rounded-full bg-amber-400 shrink-0"></span>
+                      <span className="text-xs sm:text-sm">Small</span>
+                    </div>
+
+                    <div className="col-span-4 flex items-center justify-center gap-1.5 text-xs text-slate-600 whitespace-nowrap">
+                      <span className="text-[11px] font-medium text-slate-400">From</span>
+                      <input
+                        type="number"
+                        step="0.1"
+                        value={formData.sizeGrades?.small?.minKg ?? 0}
+                        onChange={(e) => setFormData({
+                          ...formData,
+                          sizeGrades: {
+                            ...formData.sizeGrades,
+                            small: { ...formData.sizeGrades?.small, minKg: e.target.value }
+                          }
+                        })}
+                        className="w-14 bg-slate-50 border border-slate-300 rounded-lg px-1.5 py-1 text-center font-bold text-xs text-slate-800 focus:outline-none focus:border-amber-500"
+                      />
+                      <span className="text-[11px] font-medium text-slate-400">to</span>
+                      <input
+                        type="number"
+                        step="0.1"
+                        value={formData.sizeGrades?.small?.maxKg ?? 1}
+                        onChange={(e) => setFormData({
+                          ...formData,
+                          sizeGrades: {
+                            ...formData.sizeGrades,
+                            small: { ...formData.sizeGrades?.small, maxKg: e.target.value }
+                          }
+                        })}
+                        className="w-14 bg-slate-50 border border-slate-300 rounded-lg px-1.5 py-1 text-center font-bold text-xs text-slate-800 focus:outline-none focus:border-amber-500"
+                      />
+                      <span className="text-xs font-semibold text-slate-500">Kg</span>
+                    </div>
+
+                    <div className="col-span-2">
+                      <input
+                        type="number"
+                        step="1"
+                        value={formData.sizeGrades?.small?.price ?? ''}
+                        onChange={(e) => setFormData({
+                          ...formData,
+                          sizeGrades: {
+                            ...formData.sizeGrades,
+                            small: { ...formData.sizeGrades?.small, price: e.target.value }
+                          }
+                        })}
+                        placeholder={formData.price ? `₹${formData.price}` : 'Retail ₹'}
+                        className="w-full bg-slate-50 border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs text-slate-800 font-bold focus:outline-none focus:border-emerald-500 text-center"
+                      />
+                    </div>
+
+                    <div className="col-span-2">
+                      <input
+                        type="number"
+                        step="1"
+                        value={formData.sizeGrades?.small?.wholesalePrice ?? ''}
+                        onChange={(e) => setFormData({
+                          ...formData,
+                          sizeGrades: {
+                            ...formData.sizeGrades,
+                            small: { ...formData.sizeGrades?.small, wholesalePrice: e.target.value }
+                          }
+                        })}
+                        placeholder={formData.wholesalePricePerKg ? `₹${formData.wholesalePricePerKg}` : 'Wholesale ₹'}
+                        className="w-full bg-slate-50 border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs text-slate-800 font-bold focus:outline-none focus:border-amber-500 text-center"
+                      />
+                    </div>
+
+                    <div className="col-span-2">
+                      <input
+                        type="number"
+                        step="1"
+                        value={formData.sizeGrades?.small?.exportPrice ?? ''}
+                        onChange={(e) => setFormData({
+                          ...formData,
+                          sizeGrades: {
+                            ...formData.sizeGrades,
+                            small: { ...formData.sizeGrades?.small, exportPrice: e.target.value }
+                          }
+                        })}
+                        placeholder={formData.exportPricePerKg ? `₹${formData.exportPricePerKg}` : 'Export ₹'}
+                        className="w-full bg-slate-50 border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs text-slate-800 font-bold focus:outline-none focus:border-indigo-500 text-center"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Medium Grade Row */}
+                  <div className="bg-white p-3 rounded-xl border border-slate-200 grid grid-cols-1 sm:grid-cols-12 gap-2 items-center shadow-2xs">
+                    <div className="col-span-2 font-bold text-slate-800 flex items-center gap-2">
+                      <span className="w-3 h-3 rounded-full bg-blue-500 shrink-0"></span>
+                      <span className="text-xs sm:text-sm">Medium</span>
+                    </div>
+
+                    <div className="col-span-4 flex items-center justify-center gap-1.5 text-xs text-slate-600 whitespace-nowrap">
+                      <span className="text-[11px] font-medium text-slate-400">From</span>
+                      <input
+                        type="number"
+                        step="0.1"
+                        value={formData.sizeGrades?.medium?.minKg ?? 1}
+                        onChange={(e) => setFormData({
+                          ...formData,
+                          sizeGrades: {
+                            ...formData.sizeGrades,
+                            medium: { ...formData.sizeGrades?.medium, minKg: e.target.value }
+                          }
+                        })}
+                        className="w-14 bg-slate-50 border border-slate-300 rounded-lg px-1.5 py-1 text-center font-bold text-xs text-slate-800 focus:outline-none focus:border-blue-500"
+                      />
+                      <span className="text-[11px] font-medium text-slate-400">to</span>
+                      <input
+                        type="number"
+                        step="0.1"
+                        value={formData.sizeGrades?.medium?.maxKg ?? 4}
+                        onChange={(e) => setFormData({
+                          ...formData,
+                          sizeGrades: {
+                            ...formData.sizeGrades,
+                            medium: { ...formData.sizeGrades?.medium, maxKg: e.target.value }
+                          }
+                        })}
+                        className="w-14 bg-slate-50 border border-slate-300 rounded-lg px-1.5 py-1 text-center font-bold text-xs text-slate-800 focus:outline-none focus:border-blue-500"
+                      />
+                      <span className="text-xs font-semibold text-slate-500">Kg</span>
+                    </div>
+
+                    <div className="col-span-2">
+                      <input
+                        type="number"
+                        step="1"
+                        value={formData.sizeGrades?.medium?.price ?? ''}
+                        onChange={(e) => setFormData({
+                          ...formData,
+                          sizeGrades: {
+                            ...formData.sizeGrades,
+                            medium: { ...formData.sizeGrades?.medium, price: e.target.value }
+                          }
+                        })}
+                        placeholder={formData.price ? `₹${formData.price}` : 'Retail ₹'}
+                        className="w-full bg-slate-50 border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs text-slate-800 font-bold focus:outline-none focus:border-emerald-500 text-center"
+                      />
+                    </div>
+
+                    <div className="col-span-2">
+                      <input
+                        type="number"
+                        step="1"
+                        value={formData.sizeGrades?.medium?.wholesalePrice ?? ''}
+                        onChange={(e) => setFormData({
+                          ...formData,
+                          sizeGrades: {
+                            ...formData.sizeGrades,
+                            medium: { ...formData.sizeGrades?.medium, wholesalePrice: e.target.value }
+                          }
+                        })}
+                        placeholder={formData.wholesalePricePerKg ? `₹${formData.wholesalePricePerKg}` : 'Wholesale ₹'}
+                        className="w-full bg-slate-50 border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs text-slate-800 font-bold focus:outline-none focus:border-amber-500 text-center"
+                      />
+                    </div>
+
+                    <div className="col-span-2">
+                      <input
+                        type="number"
+                        step="1"
+                        value={formData.sizeGrades?.medium?.exportPrice ?? ''}
+                        onChange={(e) => setFormData({
+                          ...formData,
+                          sizeGrades: {
+                            ...formData.sizeGrades,
+                            medium: { ...formData.sizeGrades?.medium, exportPrice: e.target.value }
+                          }
+                        })}
+                        placeholder={formData.exportPricePerKg ? `₹${formData.exportPricePerKg}` : 'Export ₹'}
+                        className="w-full bg-slate-50 border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs text-slate-800 font-bold focus:outline-none focus:border-indigo-500 text-center"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Big Grade Row */}
+                  <div className="bg-white p-3 rounded-xl border border-slate-200 grid grid-cols-1 sm:grid-cols-12 gap-2 items-center shadow-2xs">
+                    <div className="col-span-2 font-bold text-slate-800 flex items-center gap-2">
+                      <span className="w-3 h-3 rounded-full bg-emerald-600 shrink-0"></span>
+                      <span className="text-xs sm:text-sm">Big</span>
+                    </div>
+
+                    <div className="col-span-4 flex items-center justify-center gap-1.5 text-xs text-slate-600 whitespace-nowrap">
+                      <span className="text-[11px] font-medium text-slate-400">From</span>
+                      <input
+                        type="number"
+                        step="0.1"
+                        value={formData.sizeGrades?.big?.minKg ?? 4}
+                        onChange={(e) => setFormData({
+                          ...formData,
+                          sizeGrades: {
+                            ...formData.sizeGrades,
+                            big: { ...formData.sizeGrades?.big, minKg: e.target.value }
+                          }
+                        })}
+                        className="w-14 bg-slate-50 border border-slate-300 rounded-lg px-1.5 py-1 text-center font-bold text-xs text-slate-800 focus:outline-none focus:border-emerald-600"
+                      />
+                      <span className="text-[11px] font-medium text-slate-400">to</span>
+                      <input
+                        type="number"
+                        step="0.1"
+                        value={formData.sizeGrades?.big?.maxKg ?? 99}
+                        onChange={(e) => setFormData({
+                          ...formData,
+                          sizeGrades: {
+                            ...formData.sizeGrades,
+                            big: { ...formData.sizeGrades?.big, maxKg: e.target.value }
+                          }
+                        })}
+                        className="w-14 bg-slate-50 border border-slate-300 rounded-lg px-1.5 py-1 text-center font-bold text-xs text-slate-800 focus:outline-none focus:border-emerald-600"
+                      />
+                      <span className="text-xs font-semibold text-slate-500">Kg</span>
+                    </div>
+
+                    <div className="col-span-2">
+                      <input
+                        type="number"
+                        step="1"
+                        value={formData.sizeGrades?.big?.price ?? ''}
+                        onChange={(e) => setFormData({
+                          ...formData,
+                          sizeGrades: {
+                            ...formData.sizeGrades,
+                            big: { ...formData.sizeGrades?.big, price: e.target.value }
+                          }
+                        })}
+                        placeholder={formData.price ? `₹${formData.price}` : 'Retail ₹'}
+                        className="w-full bg-slate-50 border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs text-slate-800 font-bold focus:outline-none focus:border-emerald-500 text-center"
+                      />
+                    </div>
+
+                    <div className="col-span-2">
+                      <input
+                        type="number"
+                        step="1"
+                        value={formData.sizeGrades?.big?.wholesalePrice ?? ''}
+                        onChange={(e) => setFormData({
+                          ...formData,
+                          sizeGrades: {
+                            ...formData.sizeGrades,
+                            big: { ...formData.sizeGrades?.big, wholesalePrice: e.target.value }
+                          }
+                        })}
+                        placeholder={formData.wholesalePricePerKg ? `₹${formData.wholesalePricePerKg}` : 'Wholesale ₹'}
+                        className="w-full bg-slate-50 border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs text-slate-800 font-bold focus:outline-none focus:border-amber-500 text-center"
+                      />
+                    </div>
+
+                    <div className="col-span-2">
+                      <input
+                        type="number"
+                        step="1"
+                        value={formData.sizeGrades?.big?.exportPrice ?? ''}
+                        onChange={(e) => setFormData({
+                          ...formData,
+                          sizeGrades: {
+                            ...formData.sizeGrades,
+                            big: { ...formData.sizeGrades?.big, exportPrice: e.target.value }
+                          }
+                        })}
+                        placeholder={formData.exportPricePerKg ? `₹${formData.exportPricePerKg}` : 'Export ₹'}
+                        className="w-full bg-slate-50 border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs text-slate-800 font-bold focus:outline-none focus:border-indigo-500 text-center"
+                      />
+                    </div>
+                  </div>
                 </div>
               </div>
 
@@ -1937,7 +2347,7 @@ const MenuManagement = ({ user, onNavigate, onGoBack }) => {
               {/* ── Fish Wholesale & Box Packaging Settings ── */}
               <div className="space-y-3 border-t border-border pt-3">
                 <label className="text-xs sm:text-sm font-bold text-sky-400 flex items-center gap-1.5">
-                  📦 <span>Fish Wholesale Box & Pricing Settings</span>
+                  <span>Fish Wholesale Box & Pricing Settings</span>
                 </label>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 bg-[#f7f1ea] border border-sky-500/30 rounded-xl p-3">
                   <div className="space-y-1">

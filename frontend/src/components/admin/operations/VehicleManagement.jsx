@@ -82,6 +82,7 @@ export default function VehicleManagement({ onNavigate, onGoBack }) {
   const [toast, setToast] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedVehicleFilter, setSelectedVehicleFilter] = useState('all');
+  const [tripChannelFilter, setTripChannelFilter] = useState('ALL'); // 'ALL' | 'LOCAL' | 'DAM'
 
   // Main Data States
   const [vehicles, setVehicles] = useState([]);
@@ -130,6 +131,13 @@ export default function VehicleManagement({ onNavigate, onGoBack }) {
     routeFrom: 'Kadapa City Depot',
     routeTo: '',
     tollCharges: '0',
+    exportType: 'Local',
+    customerName: '',
+    customerPhone: '',
+    customerAddress: '',
+    boxesCount: '0',
+    totalWeightKg: '0',
+    status: 'Assigned',
     updateStatus: 'Available',
     notes: ''
   });
@@ -211,14 +219,23 @@ export default function VehicleManagement({ onNavigate, onGoBack }) {
   const filteredTrips = useMemo(() => {
     return trips.filter((t) => {
       const matchVehicle = selectedVehicleFilter === 'all' || t.vehicleId === selectedVehicleFilter;
+      const matchChannel =
+        tripChannelFilter === 'ALL'
+          ? true
+          : tripChannelFilter === 'LOCAL'
+          ? (t.exportType === 'Local' || t.purpose?.toLowerCase().includes('local'))
+          : (t.exportType === 'DAM' || t.purpose?.toLowerCase().includes('dam'));
+
       const matchSearch =
         t.vehicleNumber?.toLowerCase().includes(searchQuery.toLowerCase()) ||
         t.driverName?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        t.customerName?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        t.customerPhone?.toLowerCase().includes(searchQuery.toLowerCase()) ||
         t.purpose?.toLowerCase().includes(searchQuery.toLowerCase()) ||
         t.routeTo?.toLowerCase().includes(searchQuery.toLowerCase());
-      return matchVehicle && matchSearch;
+      return matchVehicle && matchChannel && matchSearch;
     });
-  }, [trips, selectedVehicleFilter, searchQuery]);
+  }, [trips, selectedVehicleFilter, tripChannelFilter, searchQuery]);
 
   const filteredFuelLogs = useMemo(() => {
     return fuelLogs.filter((f) => {
@@ -328,10 +345,17 @@ export default function VehicleManagement({ onNavigate, onGoBack }) {
       endTime: '',
       startKm: targetVeh ? String(targetVeh.currentKm || 0) : '0',
       endKm: targetVeh ? String((targetVeh.currentKm || 0) + 45) : '',
-      purpose: 'Fish Supply & Market Distribution',
+      purpose: tripChannelFilter === 'DAM' ? 'Inter-District Bulk Consignment' : 'Local Fish Supply & Distribution',
       routeFrom: 'Kadapa City Depot',
-      routeTo: 'Nellore Coastal Harbour',
+      routeTo: tripChannelFilter === 'DAM' ? 'Hyderabad Central Market' : 'Kadapa Local Market',
       tollCharges: '0',
+      exportType: tripChannelFilter === 'DAM' ? 'DAM' : 'Local',
+      customerName: '',
+      customerPhone: '',
+      customerAddress: '',
+      boxesCount: '0',
+      totalWeightKg: '0',
+      status: 'Assigned',
       updateStatus: 'Available',
       notes: ''
     });
@@ -926,6 +950,36 @@ export default function VehicleManagement({ onNavigate, onGoBack }) {
             </button>
           </div>
 
+          {/* Consignment Channel Filter Pills */}
+          <div className="px-3 sm:px-4 py-2 bg-[#FAF0E4]/60 border-b border-[#FED7AA]/60 flex items-center gap-1.5 sm:gap-2 overflow-x-auto">
+            <span className="text-[11px] font-black text-slate-500 uppercase tracking-wider shrink-0 mr-1">
+              Consignment Channel:
+            </span>
+            {[
+              { id: 'ALL', label: 'All Trips', count: trips.length },
+              { id: 'LOCAL', label: 'Export - Local', count: trips.filter(t => t.exportType === 'Local' || t.purpose?.toLowerCase().includes('local')).length },
+              { id: 'DAM', label: 'Export - DAM Bulk', count: trips.filter(t => t.exportType === 'DAM' || t.purpose?.toLowerCase().includes('dam')).length }
+            ].map(pill => (
+              <button
+                key={pill.id}
+                type="button"
+                onClick={() => setTripChannelFilter(pill.id)}
+                className={`px-3 py-1 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 shrink-0 cursor-pointer ${
+                  tripChannelFilter === pill.id
+                    ? 'bg-[#ea580c] text-white shadow-xs'
+                    : 'bg-white text-slate-600 hover:bg-orange-50 border border-[#FED7AA]'
+                }`}
+              >
+                <span>{pill.label}</span>
+                <span className={`px-1.5 py-0.2 rounded-full text-[10px] ${
+                  tripChannelFilter === pill.id ? 'bg-white/25 text-white' : 'bg-slate-100 text-slate-500'
+                }`}>
+                  {pill.count}
+                </span>
+              </button>
+            ))}
+          </div>
+
           {/* Dynamic Mobile Cards (sm:hidden) */}
           <div className="block sm:hidden p-3 space-y-3 bg-[#fffdfa]">
             {filteredTrips.length === 0 ? (
@@ -965,10 +1019,19 @@ export default function VehicleManagement({ onNavigate, onGoBack }) {
 
                   {/* Route & Purpose Box */}
                   <div className="bg-[#FAF0E4]/40 p-2.5 rounded-lg border border-[#FED7AA]/60 space-y-1.5">
-                    <div className="text-xs font-bold text-slate-900 flex items-center gap-1.5 flex-wrap">
-                      <span>{t.routeFrom || 'Kadapa City Depot'}</span>
-                      <ArrowRight size={12} className="text-[#ea580c] shrink-0" />
-                      <span className="text-[#ea580c]">{t.routeTo || 'Local Market'}</span>
+                    <div className="flex items-center justify-between gap-1 flex-wrap">
+                      <div className="text-xs font-bold text-slate-900 flex items-center gap-1.5 flex-wrap">
+                        <span>{t.routeFrom || 'Kadapa City Depot'}</span>
+                        <ArrowRight size={12} className="text-[#ea580c] shrink-0" />
+                        <span className="text-[#ea580c]">{t.routeTo || 'Local Market'}</span>
+                      </div>
+                      {t.exportType && (
+                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${
+                          t.exportType === 'DAM' ? 'bg-purple-100 text-purple-800 border border-purple-200' : 'bg-blue-100 text-blue-800 border border-blue-200'
+                        }`}>
+                          {t.exportType === 'DAM' ? 'Export (DAM)' : 'Export (Local)'}
+                        </span>
+                      )}
                     </div>
                     <div className="flex items-center justify-between gap-2 text-[11px] text-slate-600 flex-wrap">
                       <span className="flex items-center gap-1 text-slate-700 font-medium">
@@ -978,6 +1041,28 @@ export default function VehicleManagement({ onNavigate, onGoBack }) {
                         {t.purpose}
                       </span>
                     </div>
+
+                    {/* Consignment Dealer & Boxes info */}
+                    {t.customerName && (
+                      <div className="pt-1.5 mt-1 border-t border-[#fed7aa]/60 flex items-center justify-between text-[11px] flex-wrap gap-1">
+                        <div className="font-bold text-slate-800">
+                          Dealer: <span className="text-[#c2410c]">{t.customerName}</span>
+                          {t.customerPhone && <span className="text-slate-500 font-normal"> ({t.customerPhone})</span>}
+                        </div>
+                        <div className="flex items-center gap-1">
+                          {t.boxesCount > 0 && (
+                            <span className="px-1.5 py-0.2 bg-amber-100 text-amber-900 font-extrabold rounded text-[10px]">
+                              {t.boxesCount} Boxes
+                            </span>
+                          )}
+                          <span className={`px-1.5 py-0.2 rounded font-black text-[10px] uppercase ${
+                            t.status === 'Delivered' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'
+                          }`}>
+                            {t.status || 'Assigned'}
+                          </span>
+                        </div>
+                      </div>
+                    )}
                   </div>
 
                   {/* Metrics Odometer Row */}
@@ -1040,10 +1125,28 @@ export default function VehicleManagement({ onNavigate, onGoBack }) {
                       </td>
                       <td className="py-3 px-4 font-medium text-slate-800">{t.driverName || '—'}</td>
                       <td className="py-3 px-4">
-                        <div className="font-semibold text-slate-900">{t.purpose}</div>
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="font-semibold text-slate-900">{t.purpose}</span>
+                          {t.exportType && (
+                            <span className={`px-1.5 py-0.2 rounded text-[10px] font-black uppercase tracking-wider ${
+                              t.exportType === 'DAM' ? 'bg-purple-100 text-purple-700' : 'bg-blue-100 text-blue-700'
+                            }`}>
+                              {t.exportType}
+                            </span>
+                          )}
+                        </div>
                         <div className="text-[11px] text-slate-500">
                           {t.routeFrom} → {t.routeTo || 'Local Market'}
                         </div>
+                        {t.customerName && (
+                          <div className="text-[11px] font-bold text-amber-900 mt-0.5 flex items-center gap-1.5">
+                            <span>Dealer: {t.customerName}</span>
+                            {t.boxesCount > 0 && <span className="bg-amber-100 text-amber-800 px-1 rounded text-[10px]">{t.boxesCount} Boxes</span>}
+                            <span className={`text-[10px] uppercase font-black ${t.status === 'Delivered' ? 'text-emerald-600' : 'text-amber-600'}`}>
+                              • {t.status || 'Assigned'}
+                            </span>
+                          </div>
+                        )}
                       </td>
                       <td className="py-3 px-4 text-right font-mono text-slate-600">
                         {t.startKm?.toLocaleString('en-IN')}
@@ -1697,6 +1800,7 @@ export default function VehicleManagement({ onNavigate, onGoBack }) {
                 />
               </div>
 
+
               <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-100">
                 <button
                   type="button"
@@ -1854,6 +1958,69 @@ export default function VehicleManagement({ onNavigate, onGoBack }) {
                     onChange={(e) => setTripForm({ ...tripForm, tollCharges: e.target.value })}
                     className="w-full p-2.5 bg-[#fffaf5] border border-[#fed7aa] rounded-xl text-sm font-mono focus:outline-none focus:ring-2 focus:ring-[#ea580c]"
                   />
+                </div>
+              </div>
+
+              {/* Consignment Channel & Dealer Integration */}
+              <div className="bg-[#fffaf5] p-3 rounded-xl border border-[#fed7aa] space-y-3">
+                <div className="text-xs font-bold text-[#c2410c] uppercase tracking-wide">
+                  📦 Consignment & Dealer Link
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-[11px] font-semibold text-slate-700 mb-1">Consignment Channel</label>
+                    <select
+                      value={tripForm.exportType}
+                      onChange={(e) => setTripForm({ ...tripForm, exportType: e.target.value })}
+                      className="w-full p-2 bg-white border border-[#fed7aa] rounded-xl text-xs font-bold text-slate-800"
+                    >
+                      <option value="Local">Export - Local Transport</option>
+                      <option value="DAM">Export - DAM Consignment</option>
+                      <option value="General">General / Depot Run</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-semibold text-slate-700 mb-1">Dealer / Customer Name</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. Ramesh Reddy (DAM)"
+                      value={tripForm.customerName}
+                      onChange={(e) => setTripForm({ ...tripForm, customerName: e.target.value })}
+                      className="w-full p-2 bg-white border border-[#fed7aa] rounded-xl text-xs"
+                    />
+                  </div>
+                </div>
+                <div className="grid grid-cols-3 gap-2">
+                  <div>
+                    <label className="block text-[11px] font-semibold text-slate-700 mb-1">Phone</label>
+                    <input
+                      type="tel"
+                      placeholder="10-digit phone"
+                      value={tripForm.customerPhone}
+                      onChange={(e) => setTripForm({ ...tripForm, customerPhone: e.target.value })}
+                      className="w-full p-2 bg-white border border-[#fed7aa] rounded-xl text-xs"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-semibold text-slate-700 mb-1">Boxes Count</label>
+                    <input
+                      type="number"
+                      placeholder="0"
+                      value={tripForm.boxesCount}
+                      onChange={(e) => setTripForm({ ...tripForm, boxesCount: e.target.value })}
+                      className="w-full p-2 bg-white border border-[#fed7aa] rounded-xl text-xs font-mono font-bold"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-semibold text-slate-700 mb-1">Weight (Kg)</label>
+                    <input
+                      type="number"
+                      placeholder="0"
+                      value={tripForm.totalWeightKg}
+                      onChange={(e) => setTripForm({ ...tripForm, totalWeightKg: e.target.value })}
+                      className="w-full p-2 bg-white border border-[#fed7aa] rounded-xl text-xs font-mono font-bold"
+                    />
+                  </div>
                 </div>
               </div>
 
@@ -2019,6 +2186,7 @@ export default function VehicleManagement({ onNavigate, onGoBack }) {
                   Sync automatically into <strong>Finance Expenses & Day Book</strong> under Maintenance
                 </label>
               </div>
+
 
               <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-100">
                 <button
@@ -2191,6 +2359,7 @@ export default function VehicleManagement({ onNavigate, onGoBack }) {
                   Sync repair bill automatically into <strong>Finance Expenses & Day Book</strong>
                 </label>
               </div>
+
 
               <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-100">
                 <button

@@ -7,10 +7,33 @@ import { resolveTenantInfo } from "../communication/whatsappController.js";
 
 export const searchCustomers = async (req, res) => {
   try {
-    const { q } = req.query;
-    if (!q) return res.json([]);
+    const { q, category, exportSubCategory } = req.query;
     const Customer = getTenantModel(req, 'Customer', CustomerSchema);
-    const customers = await Customer.find({ phone: new RegExp(`^${q}`, 'i') }).select('phone name lastOrderType').limit(10).lean();
+
+    const filter = {};
+    if (category && category !== 'All') {
+      filter.category = category;
+    }
+    if (exportSubCategory && exportSubCategory !== 'All') {
+      filter.exportSubCategory = exportSubCategory;
+    }
+
+    if (q && q.trim()) {
+      const escaped = q.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const regex = new RegExp(escaped, 'i');
+      filter.$or = [
+        { phone: new RegExp(`^${escaped}|${escaped}`, 'i') },
+        { name: regex },
+        { businessName: regex }
+      ];
+    }
+
+    const customers = await Customer.find(filter)
+      .select('phone name businessName category exportSubCategory photo address lastOrderType totalVisits totalSpend')
+      .sort({ lastVisit: -1 })
+      .limit(30)
+      .lean();
+
     res.json(customers);
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -22,7 +45,8 @@ export const getCustomerInfo = async (req, res) => {
     const { phone } = req.params;
     const Customer = getTenantModel(req, 'Customer', CustomerSchema);
 
-    const customer = await Customer.findOne({ phone });
+    const cleanPhone = phone.trim().replace(/\D/g, '').slice(-10);
+    const customer = await Customer.findOne({ phone: cleanPhone });
     if (!customer) {
       return res.status(200).json({ isNew: true });
     }
@@ -47,12 +71,33 @@ export const getCustomerInfo = async (req, res) => {
 
 export const getAllCustomers = async (req, res) => {
   try {
+    const { category, exportSubCategory, search } = req.query;
     const Customer = getTenantModel(req, 'Customer', CustomerSchema);
     const Bill = getTenantModel(req, 'Bill', BillDefault);
-    const customers = await Customer.find({}).sort({ lastVisit: -1 }).lean();
 
-    // If some customers don't have lastOrderType set yet, lookup their latest bill
-    const phonesToLookup = customers.filter(c => !c.lastOrderType).map(c => c.phone);
+    const filter = {};
+    if (category && category !== 'All') {
+      filter.category = category;
+    }
+    if (exportSubCategory && exportSubCategory !== 'All') {
+      filter.exportSubCategory = exportSubCategory;
+    }
+    if (search && search.trim()) {
+      const escaped = search.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const regex = new RegExp(escaped, 'i');
+      filter.$or = [
+        { phone: regex },
+        { name: regex },
+        { businessName: regex },
+        { 'address.city': regex },
+        { 'address.district': regex }
+      ];
+    }
+
+    const customers = await Customer.find(filter).sort({ lastVisit: -1 }).lean();
+
+    // Fallback migration / mapping for legacy records without category
+    const phonesToLookup = customers.filter(c => !c.lastOrderType || !c.category).map(c => c.phone);
     if (phonesToLookup.length > 0) {
       const recentBills = await Bill.find({
         customerPhone: { $in: phonesToLookup }
@@ -61,13 +106,22 @@ export const getAllCustomers = async (req, res) => {
       const phoneToBillType = {};
       recentBills.forEach(b => {
         if (b.customerPhone && !phoneToBillType[b.customerPhone]) {
-          phoneToBillType[b.customerPhone] = b.billType || 'Dine-In';
+          phoneToBillType[b.customerPhone] = b.billType || 'Retail';
         }
       });
 
       customers.forEach(c => {
         if (!c.lastOrderType) {
-          c.lastOrderType = phoneToBillType[c.phone] || 'Dine-In';
+          c.lastOrderType = phoneToBillType[c.phone] || 'Retail';
+        }
+        if (!c.category) {
+          if (c.lastOrderType === 'Wholesale') c.category = 'Wholesale';
+          else if (c.lastOrderType === 'Export') {
+            c.category = 'Export';
+            if (!c.exportSubCategory) c.exportSubCategory = 'Local';
+          } else {
+            c.category = 'Retail';
+          }
         }
       });
     }
@@ -78,18 +132,24 @@ export const getAllCustomers = async (req, res) => {
   }
 };
 
-export const syncCustomer = async (req, phone, name, orderType = 'Dine-In') => {
+export const syncCustomer = async (req, phone, name, orderType = 'Retail', category = 'Retail', exportSubCategory = null) => {
   try {
     if (!phone) return;
     const cleanPhone = phone.trim().replace(/\D/g, '').slice(-10);
     const Customer = getTenantModel(req, 'Customer', CustomerSchema);
     let customer = await Customer.findOne({ phone: cleanPhone });
     
+    const determinedCategory = ['Retail', 'Wholesale', 'Export'].includes(category) 
+      ? category 
+      : (['Wholesale', 'Export'].includes(orderType) ? orderType : 'Retail');
+
     if (!customer) {
       customer = new Customer({
         phone: cleanPhone,
         name: name || 'Guest',
-        lastOrderType: orderType || 'Dine-In'
+        lastOrderType: orderType || 'Retail',
+        category: determinedCategory,
+        exportSubCategory: determinedCategory === 'Export' ? (exportSubCategory || 'Local') : null
       });
       await customer.save();
     } else {
@@ -98,6 +158,12 @@ export const syncCustomer = async (req, phone, name, orderType = 'Dine-In') => {
       }
       if (orderType) {
         customer.lastOrderType = orderType;
+      }
+      if (determinedCategory && (!customer.category || customer.category === 'Retail')) {
+        customer.category = determinedCategory;
+        if (determinedCategory === 'Export') {
+          customer.exportSubCategory = exportSubCategory || customer.exportSubCategory || 'Local';
+        }
       }
       await customer.save();
     }
@@ -115,13 +181,17 @@ export const updateCustomerFromBill = async (req, bill) => {
     const Setting = getTenantModel(req, 'Setting', SettingDefault);
 
     let customer = await Customer.findOne({ phone: cleanPhone });
-    const isFirstVisit = !customer;
+
+    const orderCategory = ['Wholesale', 'Export'].includes(bill.billType) ? bill.billType : 'Retail';
+    const subCat = bill.exportSubCategory || (orderCategory === 'Export' ? 'Local' : null);
 
     if (!customer) {
       customer = new Customer({
         phone: cleanPhone,
         name: bill.customerName || 'Guest',
-        lastOrderType: bill.billType || 'Dine-In'
+        lastOrderType: bill.billType || 'Retail',
+        category: orderCategory,
+        exportSubCategory: subCat
       });
     } else {
       if (bill.customerName && (customer.name === 'Guest' || !customer.name)) {
@@ -130,10 +200,16 @@ export const updateCustomerFromBill = async (req, bill) => {
       if (bill.billType) {
         customer.lastOrderType = bill.billType;
       }
+      if (orderCategory && (!customer.category || customer.category === 'Retail')) {
+        customer.category = orderCategory;
+        if (orderCategory === 'Export' && !customer.exportSubCategory) {
+          customer.exportSubCategory = subCat;
+        }
+      }
     }
 
     customer.totalVisits += 1;
-    customer.totalSpend += bill.total;
+    customer.totalSpend += (Number(bill.total) || 0);
     customer.lastVisit = new Date();
 
     // Fetch dynamic VIP thresholds from settings
@@ -180,28 +256,74 @@ export const updateCustomerFromBill = async (req, bill) => {
 
 export const createOrUpdateCustomer = async (req, res) => {
   try {
-    const { name, phone, orderType } = req.body;
+    const {
+      name,
+      phone,
+      businessName,
+      category,
+      exportSubCategory,
+      address,
+      photo,
+      orderType
+    } = req.body;
+
     if (!phone || !phone.trim()) {
       return res.status(400).json({ message: 'Phone number is required' });
     }
     const cleanPhone = phone.trim().replace(/\D/g, '').slice(-10);
-    const Customer = getTenantModel(req, 'Customer', CustomerSchema);
+    if (cleanPhone.length !== 10) {
+      return res.status(400).json({ message: 'Valid 10-digit phone number is required' });
+    }
 
+    const Customer = getTenantModel(req, 'Customer', CustomerSchema);
     let customer = await Customer.findOne({ phone: cleanPhone });
+
+    const determinedCategory = ['Retail', 'Wholesale', 'Export'].includes(category)
+      ? category
+      : (['Wholesale', 'Export'].includes(orderType) ? orderType : 'Retail');
+
+    const determinedSubCat = determinedCategory === 'Export'
+      ? (exportSubCategory === 'DAM' ? 'DAM' : 'Local')
+      : null;
+
+    let addressObj = {};
+    if (typeof address === 'string') {
+      addressObj = { line1: address.trim(), fullAddress: address.trim() };
+    } else if (address && typeof address === 'object') {
+      addressObj = {
+        line1: address.line1 || '',
+        area: address.area || '',
+        city: address.city || '',
+        district: address.district || '',
+        state: address.state || 'Andhra Pradesh',
+        pincode: address.pincode || '',
+        fullAddress: [address.line1, address.area, address.city, address.district, address.pincode].filter(Boolean).join(', ')
+      };
+    }
+
     if (!customer) {
       customer = new Customer({
         phone: cleanPhone,
         name: (name || 'Guest').trim(),
-        lastOrderType: orderType || 'Dine-In'
+        businessName: (businessName || '').trim(),
+        category: determinedCategory,
+        exportSubCategory: determinedSubCat,
+        address: addressObj,
+        photo: photo || '',
+        lastOrderType: orderType || determinedCategory
       });
     } else {
-      if (name && name.trim()) {
-        customer.name = name.trim();
+      if (name !== undefined) customer.name = (name || '').trim();
+      if (businessName !== undefined) customer.businessName = (businessName || '').trim();
+      if (category !== undefined) customer.category = determinedCategory;
+      if (exportSubCategory !== undefined || determinedCategory === 'Export') {
+        customer.exportSubCategory = determinedSubCat;
       }
-      if (orderType) {
-        customer.lastOrderType = orderType;
-      }
+      if (address !== undefined) customer.address = addressObj;
+      if (photo !== undefined) customer.photo = photo;
+      if (orderType) customer.lastOrderType = orderType;
     }
+
     await customer.save();
     res.status(200).json({ success: true, customer });
   } catch (error) {
@@ -213,7 +335,7 @@ export const createOrUpdateCustomer = async (req, res) => {
 export const updateCustomerType = async (req, res) => {
   try {
     const { phone } = req.params;
-    const { orderType } = req.body;
+    const { orderType, category, exportSubCategory } = req.body;
     if (!phone) return res.status(400).json({ message: 'Phone is required' });
 
     const cleanPhone = phone.trim().replace(/\D/g, '').slice(-10);
@@ -224,7 +346,13 @@ export const updateCustomerType = async (req, res) => {
       return res.status(404).json({ message: 'Customer not found' });
     }
 
-    customer.lastOrderType = orderType;
+    if (orderType) customer.lastOrderType = orderType;
+    if (category && ['Retail', 'Wholesale', 'Export'].includes(category)) {
+      customer.category = category;
+    }
+    if (exportSubCategory !== undefined) {
+      customer.exportSubCategory = exportSubCategory;
+    }
     await customer.save();
 
     res.json({ success: true, customer });
@@ -234,3 +362,22 @@ export const updateCustomerType = async (req, res) => {
   }
 };
 
+export const deleteCustomer = async (req, res) => {
+  try {
+    const { phone } = req.params;
+    if (!phone) return res.status(400).json({ message: 'Phone is required' });
+
+    const cleanPhone = phone.trim().replace(/\D/g, '').slice(-10);
+    const Customer = getTenantModel(req, 'Customer', CustomerSchema);
+
+    const deleted = await Customer.findOneAndDelete({ phone: cleanPhone });
+    if (!deleted) {
+      return res.status(404).json({ message: 'Customer not found' });
+    }
+
+    res.json({ success: true, message: 'Customer removed successfully' });
+  } catch (err) {
+    console.error('Error deleting customer:', err);
+    res.status(500).json({ message: err.message });
+  }
+};

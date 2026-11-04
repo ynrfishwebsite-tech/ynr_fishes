@@ -92,7 +92,7 @@ export const getBills = async (req, res) => {
     // Run query and count concurrently in parallel for 2x faster execution
     const [bills, total] = await Promise.all([
       Bill.find(query)
-        .select('billNumber tableNo billType paymentMode splitPayments upiApp amountPaid changeAmount subtotal tax taxBreakdown discount discountType discountValue deliveryCharge containerCharge total orderSource status customerName customerPhone items billedAt settledAt createdAt updatedAt whatsappSent whatsappSentAt')
+        .select('billNumber tableNo billType paymentMode splitPayments upiApp amountPaid changeAmount subtotal tax taxBreakdown discount discountType discountValue deliveryCharge containerCharge cuttingCharge total orderSource status customerName customerPhone items billedAt settledAt createdAt updatedAt whatsappSent whatsappSentAt')
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(limit)
@@ -294,7 +294,7 @@ export const getEditedBills = async (req, res) => {
         const prevItems = (e.previousState?.items || []).filter(i => (i.quantity || 0) > 0).map(i => `${(i.name || '').trim()}:${i.quantity}`).sort().join(',');
         const newItems = (e.newState?.items || []).filter(i => (i.quantity || 0) > 0).map(i => `${(i.name || '').trim()}:${i.quantity}`).sort().join(',');
         const totalChanged = Math.abs((e.previousState?.total || 0) - (e.newState?.total || 0)) > 0.01;
-        const chargesChanged = Math.abs((e.previousState?.deliveryCharge || 0) - (e.newState?.deliveryCharge || 0)) > 0.01 || Math.abs((e.previousState?.containerCharge || 0) - (e.newState?.containerCharge || 0)) > 0.01;
+        const chargesChanged = Math.abs((e.previousState?.deliveryCharge || 0) - (e.newState?.deliveryCharge || 0)) > 0.01 || Math.abs((e.previousState?.containerCharge || 0) - (e.newState?.containerCharge || 0)) > 0.01 || Math.abs((e.previousState?.cuttingCharge || 0) - (e.newState?.cuttingCharge || 0)) > 0.01;
         return prevItems !== newItems || totalChanged || chargesChanged;
       });
     });

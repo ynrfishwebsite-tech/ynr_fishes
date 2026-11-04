@@ -197,6 +197,8 @@ export const getRestaurantInfo = async (req, res) => {
       cgstRate: restaurantSettings.cgstRate !== undefined ? restaurantSettings.cgstRate : 2.5,
       enableSgst: restaurantSettings.enableSgst !== undefined ? restaurantSettings.enableSgst : true,
       sgstRate: restaurantSettings.sgstRate !== undefined ? restaurantSettings.sgstRate : 2.5,
+      enableCuttingCharges: restaurantSettings.enableCuttingCharges !== undefined ? restaurantSettings.enableCuttingCharges : false,
+      cuttingChargePerKg: (restaurantSettings.cuttingChargePerKg !== undefined && restaurantSettings.cuttingChargePerKg !== null && restaurantSettings.cuttingChargePerKg !== '') ? Number(restaurantSettings.cuttingChargePerKg) : 10,
       enableGst: restaurantSettings.enableGst !== undefined ? restaurantSettings.enableGst : false,
       gstRate: restaurantSettings.gstRate !== undefined ? restaurantSettings.gstRate : 5,
       logo: restaurantSettings.logo === '[logo_stored]' ? '' : (restaurantSettings.logo || ''),

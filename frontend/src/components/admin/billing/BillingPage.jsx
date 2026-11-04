@@ -1,5 +1,5 @@
 import { getApiUrl, getSuperadminApiUrl } from "../../../config.js";
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import MenuGrid from '../catalog/MenuGrid';
 import BillSummary from './BillSummary';
 import PaymentModal from './PaymentModal';
@@ -9,7 +9,7 @@ import { getActiveOrder, saveOrder, generateBill, settleBill, apiReopenOrder, ap
 import { sendWhatsAppBill, getWhatsAppStatus } from '../../../api/communication/whatsapp';
 import api from '../../../api/system/axios';
 import { getCachedOpenOrders, upsertCachedOpenOrder, removeCachedOpenOrder } from '../../../db/offlineDb';
-import { Search, UtensilsCrossed, Maximize, Minimize, TrendingUp, ShoppingBag, LayoutGrid, Menu, ChevronLeft, ChevronRight, ChevronDown, Lock, Unlock, X, User, UserPlus, Phone, Loader2 } from 'lucide-react';
+import { Search, UtensilsCrossed, Maximize, Minimize, TrendingUp, ShoppingBag, LayoutGrid, Menu, ChevronLeft, ChevronRight, ChevronDown, Lock, Unlock, X, User, UserPlus, Phone, Loader2, Plus } from 'lucide-react';
 import useDebounce from '../../../hooks/useDebounce';
 import Invoice from './Invoice';
 import CancelOrderModal from './CancelOrderModal';
@@ -19,6 +19,7 @@ import html2canvas from 'html2canvas';
 import { QRCodeSVG } from 'qrcode.react';
 // Pre-load canvas-confetti so it's ready instantly when payment succeeds (no cold-start lag)
 import 'canvas-confetti';
+import BackButton from '../common/BackButton';
 
 // Animated count-up component for Sales Badge
 const AnimatedSalesCount = ({ value, duration = 1500 }) => {
@@ -96,10 +97,25 @@ const isTableMatching = (tableA, tableB) => {
 
   if (spaceA === spaceB) return true;
 
-  // 3. Compare alphanumeric normalization (e.g. "H-1" <-> "h1", "T-8" <-> "t8")
+  // 3. Compare alphanumeric normalization (e.g. "H-1" <-> "h1", "T-8" <-> "t8", "#008" <-> "008")
   const normA = spaceA.replace(/[^a-z0-9]/g, '');
   const normB = spaceB.replace(/[^a-z0-9]/g, '');
-  if (normA && normB && normA === normB) return true;
+  if (normA && normB) {
+    if (normA === normB) return true;
+    const intA = parseInt(normA, 10);
+    const intB = parseInt(normB, 10);
+    if (!isNaN(intA) && !isNaN(intB) && intA === intB && String(intA) === normA.replace(/^0+/, '') && String(intB) === normB.replace(/^0+/, '')) {
+      return true;
+    }
+  }
+
+  // Support prefix like TAK-008 / DEL-008 matching #008 or 008
+  const takDelMatchA = spaceA.match(/^(tak|del)[-\s]?0*(\d+)$/i);
+  const numOnlyMatchB = spaceB.match(/^#?0*(\d+)$/);
+  if (takDelMatchA && numOnlyMatchB && parseInt(takDelMatchA[2], 10) === parseInt(numOnlyMatchB[1], 10)) return true;
+  const takDelMatchB = spaceB.match(/^(tak|del)[-\s]?0*(\d+)$/i);
+  const numOnlyMatchA = spaceA.match(/^#?0*(\d+)$/);
+  if (takDelMatchB && numOnlyMatchA && parseInt(takDelMatchB[2], 10) === parseInt(numOnlyMatchA[1], 10)) return true;
 
   // 4. Standard space types (table, cabin, sofa, room, bar)
   const stdMatchA = spaceA.match(/^(table|cabin|sofa|room|bar)\s*0*(\d+)$/i);
@@ -143,9 +159,10 @@ const removeClearedTableRecord = (table) => {
   } catch (e) { }
 };
 
-const BillingPage = ({ initialTable, onOrderUpdate, onNavigate, onGoBack, userRole = 'Admin' }) => {
+const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individual', onOrderUpdate, onNavigate, onGoBack, userRole = 'Admin' }) => {
   const { t } = useLanguage();
-  const [activeTable, setActiveTable] = useState(initialTable || '');
+  const effectiveInitialTable = initialTable || (typeof window !== 'undefined' ? sessionStorage.getItem('ms_initial_table') : '') || '';
+  const [activeTable, setActiveTable] = useState(effectiveInitialTable);
   const [floors, setFloors] = useState([]);
   const [openOrdersList, setOpenOrdersList] = useState([]);
   const [reservations, setReservations] = useState([]);
@@ -258,7 +275,7 @@ const BillingPage = ({ initialTable, onOrderUpdate, onNavigate, onGoBack, userRo
     const unsubBillSettled = realtimeService.subscribe('billSettled', fetchOpenOrdersList);
 
     const handleOfflineSave = (e) => {
-      showToast(`⚠️ ${e.detail?.message || 'Order saved offline. Will sync when backend reconnects.'}`, 'error');
+      showToast(`${e.detail?.message || 'Order saved offline. Will sync when backend reconnects.'}`, 'error');
     };
     window.addEventListener('offlineOrderSaved', handleOfflineSave);
 
@@ -353,7 +370,12 @@ const BillingPage = ({ initialTable, onOrderUpdate, onNavigate, onGoBack, userRo
     }
   };
 
-  const [billType, setBillType] = useState('Takeaway');
+  const [billType, setBillType] = useState(() => {
+    if (effectiveInitialTable.startsWith('DEL-')) return 'Delivery';
+    if (effectiveInitialTable.startsWith('TAK-')) return 'Takeaway';
+    if (effectiveInitialTable) return 'Dine-In';
+    return 'Takeaway';
+  });
   const [taxRate, setTaxRate] = useState(() => {
     const tot = getDynamicTaxRateFromSettings();
     return tot > 0 ? tot : '';
@@ -376,9 +398,22 @@ const BillingPage = ({ initialTable, onOrderUpdate, onNavigate, onGoBack, userRo
   const [customerPhone, setCustomerPhone] = useState('');
   const [customerName, setCustomerName] = useState('');
   const [customerInfo, setCustomerInfo] = useState(null);
+  const [customerCategory, setCustomerCategory] = useState('Retail');
+  const [exportSubCategory, setExportSubCategory] = useState(null);
+  const [customerPhoto, setCustomerPhoto] = useState('');
+  const [customerAddress, setCustomerAddress] = useState('');
+  const [isOrderLocked, setIsOrderLocked] = useState(false);
+  const [lockedTimestamp, setLockedTimestamp] = useState('');
 
   const [deliveryCharge, setDeliveryCharge] = useState('0');
   const [containerCharge, setContainerCharge] = useState('0');
+  const [cuttingCharge, setCuttingCharge] = useState('0');
+  const [isCuttingChargeEnabled, setIsCuttingChargeEnabled] = useState(() => {
+    try {
+      const s = JSON.parse(localStorage.getItem('restaurantSettings') || '{}');
+      return s.enableCuttingCharges === true;
+    } catch { return false; }
+  });
 
   const [showPayment, setShowPayment] = useState(false);
   const [showInvoice, setShowInvoice] = useState(() => {
@@ -413,7 +448,7 @@ const BillingPage = ({ initialTable, onOrderUpdate, onNavigate, onGoBack, userRo
   };
 
   const [searchTerm, setSearchTerm] = useState('');
-  const [fishOrderMode, setFishOrderMode] = useState('individual'); // 'individual' (retail kg/grams) | 'bulk' (wholesale boxes)
+  const [fishOrderMode, setFishOrderMode] = useState(initialFishMode || 'individual'); // 'individual' (retail) | 'bulk' (wholesale) | 'export' (export bulk)
   const [foodTypeFilter, setFoodTypeFilter] = useState('all'); // legacy compatibility
   const [sweetModeFilter, setSweetModeFilter] = useState('all');
   const [menuFilterCounts, setMenuFilterCounts] = useState({ all: 0, veg: 0, nonVeg: 0, sweet: 0 }); // live counts from MenuGrid
@@ -561,7 +596,7 @@ const BillingPage = ({ initialTable, onOrderUpdate, onNavigate, onGoBack, userRo
       (customerName ? `*Customer:* ${customerName}\n` : '') +
       (customerPhone ? `*Phone:* ${customerPhone}\n` : '') +
       `━━━━━━━━━━━━━━━━━━━━\n` +
-      `🛒 *ITEMS ORDERED (${totalQty} Qty):*\n` +
+      `*ITEMS ORDERED (${totalQty} Qty):*\n` +
       `${itemsList}\n` +
       `━━━━━━━━━━━━━━━━━━━━\n` +
       `• *Subtotal:* ₹${subtotal}` +
@@ -846,7 +881,7 @@ const BillingPage = ({ initialTable, onOrderUpdate, onNavigate, onGoBack, userRo
           setOrderSource(existingOrder.orderSource);
         }
         fetchActiveOrder(existingOrder.tableNo, true);
-      } else if (!hasLocalCart) {
+      } else if (!hasLocalCart && !initialTable) {
         const generatedOrderNo = generateSequentialOrderNo(billType);
         newlyGeneratedTables.current.add(generatedOrderNo);
         setCart([]);
@@ -862,7 +897,7 @@ const BillingPage = ({ initialTable, onOrderUpdate, onNavigate, onGoBack, userRo
         setContainerCharge('');
         setActiveTable(generatedOrderNo);
       }
-    } else if (billType === 'Dine-In' && activeTable && (activeTable.startsWith('DEL-') || activeTable.startsWith('TAK-'))) {
+    } else if (billType === 'Dine-In' && activeTable && (activeTable.startsWith('DEL-') || activeTable.startsWith('TAK-')) && !initialTable) {
       if (!hasLocalCart) {
         setActiveTable('');
         setCart([]);
@@ -900,7 +935,9 @@ const BillingPage = ({ initialTable, onOrderUpdate, onNavigate, onGoBack, userRo
       return isTableMatching(o.tableNo, activeTable);
     });
 
-    if (isTableChanged && !isExistingInOpenOrders) {
+    const isExplicitInitial = Boolean(initialTable && isTableMatching(activeTable, initialTable));
+
+    if (isTableChanged && !isExistingInOpenOrders && !isExplicitInitial) {
       // ⚡ Immediate 0ms cart clear on switching to an empty table — no loading spinner
       setLoading(false);
       setCart([]);
@@ -917,7 +954,7 @@ const BillingPage = ({ initialTable, onOrderUpdate, onNavigate, onGoBack, userRo
       setContainerCharge('');
     }
 
-    if (activeTable && (isExistingInOpenOrders || !newlyGeneratedTables.current.has(activeTable))) {
+    if (activeTable && (isExistingInOpenOrders || isExplicitInitial || !newlyGeneratedTables.current.has(activeTable))) {
       newlyGeneratedTables.current.delete(activeTable);
       fetchActiveOrder(activeTable, isTableChanged);
     } else if (activeTable && newlyGeneratedTables.current.has(activeTable)) {
@@ -1192,6 +1229,42 @@ const BillingPage = ({ initialTable, onOrderUpdate, onNavigate, onGoBack, userRo
     })();
   };
 
+  const handlePredefinedCustomerSelect = (cust) => {
+    if (!cust) return;
+    const cleanPhone = cust.phone ? cust.phone.trim().replace(/\D/g, '') : '';
+    setCustomerPhone(cleanPhone);
+    setCustomerName(cust.name || 'Guest');
+    setCustomerCategory(cust.category || (fishOrderMode === 'bulk' ? 'Wholesale' : (fishOrderMode === 'export' ? 'Export' : 'Retail')));
+    setExportSubCategory(cust.exportSubCategory || null);
+    setCustomerPhoto(cust.photo || '');
+    const addr = typeof cust.address === 'string' ? cust.address : (cust.address?.fullAddress || cust.address?.line1 || '');
+    setCustomerAddress(addr);
+    setIsOrderLocked(true);
+
+    const now = new Date();
+    const dateFormatted = now.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+    const timeFormatted = now.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
+    setLockedTimestamp(`${dateFormatted}, ${timeFormatted}`);
+
+    hasPendingLocalChanges.current = true;
+    lastLocalEditTime.current = Date.now();
+
+    if (activeTable) {
+      setOpenOrdersList(prev => prev.map(o => isTableMatching(o.tableNo, activeTable) ? {
+        ...o,
+        customerPhone: cleanPhone,
+        customerName: cust.name || 'Guest',
+        customerCategory: cust.category || (fishOrderMode === 'bulk' ? 'Wholesale' : (fishOrderMode === 'export' ? 'Export' : 'Retail')),
+        exportSubCategory: cust.exportSubCategory || null,
+        customerPhoto: cust.photo || '',
+        customerAddress: addr,
+        isOrderLocked: true,
+        orderDateFormatted: dateFormatted,
+        orderTimeFormatted: timeFormatted
+      } : o));
+    }
+  };
+
   const handleOrderSourceChange = async (newSource) => {
     setOrderSource(newSource);
     hasPendingLocalChanges.current = true;
@@ -1344,6 +1417,8 @@ const BillingPage = ({ initialTable, onOrderUpdate, onNavigate, onGoBack, userRo
           }
           setDeliveryCharge(cached.deliveryCharge !== undefined ? String(cached.deliveryCharge) : '0');
           setContainerCharge(cached.containerCharge !== undefined ? String(cached.containerCharge) : '0');
+          setCuttingCharge(cached.cuttingCharge !== undefined ? String(cached.cuttingCharge) : '0');
+          setIsCuttingChargeEnabled(Number(cached.cuttingCharge) > 0);
           if (cached.discountType || cached.discountValue !== undefined || cached.discountName) {
             setDiscount({
               type: cached.discountType || 'percentage',
@@ -1354,6 +1429,11 @@ const BillingPage = ({ initialTable, onOrderUpdate, onNavigate, onGoBack, userRo
             });
           }
           setLoading(false);
+          const currentAction = initialAction || (typeof window !== 'undefined' ? sessionStorage.getItem('ms_initial_action') : null);
+          if (currentAction === 'settle') {
+            try { sessionStorage.removeItem('ms_initial_action'); } catch (e) {}
+            setShowPayment(true);
+          }
           return true;
         }
       }
@@ -1394,9 +1474,11 @@ const BillingPage = ({ initialTable, onOrderUpdate, onNavigate, onGoBack, userRo
       return isTableMatching(o.tableNo, tableToFetch);
     });
 
+    const isExplicitInitial = Boolean(initialTable && isTableMatching(tableToFetch, initialTable));
+
     // ⚡ EMPTY TABLE FAST-PATH: If table has no active order in open orders, it is an EMPTY table.
     // Instantly reset the cart to 0 items with 0ms latency. NEVER show loading spinner or skeleton!
-    if (!isKnownOrder) {
+    if (!isKnownOrder && !isExplicitInitial && openOrdersList && openOrdersList.length > 0) {
       newlyGeneratedTables.current.delete(tableToFetch);
       if (hasLocalEdits() && isTableMatching(tableToFetch, prevActiveTableRef.current)) {
         return;
@@ -1513,6 +1595,8 @@ const BillingPage = ({ initialTable, onOrderUpdate, onNavigate, onGoBack, userRo
         }
         setDeliveryCharge(order.deliveryCharge !== undefined ? String(order.deliveryCharge) : '0');
         setContainerCharge(order.containerCharge !== undefined ? String(order.containerCharge) : '0');
+        setCuttingCharge(order.cuttingCharge !== undefined ? String(order.cuttingCharge) : '0');
+        setIsCuttingChargeEnabled(Number(order.cuttingCharge) > 0);
         if (!isBackground || forceReset) {
           if (order.discountType || order.discountValue !== undefined || order.discountName) {
             setDiscount({
@@ -1534,6 +1618,11 @@ const BillingPage = ({ initialTable, onOrderUpdate, onNavigate, onGoBack, userRo
         } catch (error) {
           console.error('Error parsing settings:', error);
           setTaxRate('');
+        }
+        const currentAction = initialAction || (typeof window !== 'undefined' ? sessionStorage.getItem('ms_initial_action') : null);
+        if (currentAction === 'settle') {
+          try { sessionStorage.removeItem('ms_initial_action'); } catch (e) {}
+          setShowPayment(true);
         }
       } else {
         // If user has local cart items or pending local changes, NEVER reset cart!
@@ -1700,7 +1789,7 @@ const BillingPage = ({ initialTable, onOrderUpdate, onNavigate, onGoBack, userRo
   const taxableAmount = subtotal - discountAmount;
   const taxVal = taxRate === '' ? 0 : parseFloat(taxRate) || 0;
   const taxAmount = taxableAmount * taxVal / 100;
-  const additionalCharges = parseFloat(deliveryCharge || 0) + parseFloat(containerCharge || 0);
+  const additionalCharges = parseFloat(deliveryCharge || 0) + parseFloat(containerCharge || 0) + parseFloat(cuttingCharge || 0);
   const total = Math.max(0, Math.round(taxableAmount + taxAmount + additionalCharges) - walletRedemption);
 
   const syncTimeoutRef = useRef(null);
@@ -1991,7 +2080,7 @@ const BillingPage = ({ initialTable, onOrderUpdate, onNavigate, onGoBack, userRo
       const sub = Number(billData?.subtotal || 0);
       const disc = Number(billData?.discount || 0);
       const taxable = Math.max(0, sub - disc);
-      const taxRupees = Number(billData?.total || 0) - taxable - Number(billData?.deliveryCharge || 0) - Number(billData?.containerCharge || 0);
+      const taxRupees = Number(billData?.total || 0) - taxable - Number(billData?.deliveryCharge || 0) - Number(billData?.containerCharge || 0) - Number(billData?.cuttingCharge || 0);
       const header = custName
         ? `👋 Dear *${custName}*, thank you for dining with us!\n🧾 *e-Bill #${billNo}* | *${restName.toUpperCase()}*`
         : `🧾 *DIGITAL e-BILL RECEIPT* 🧾\n🏨 *${restName.toUpperCase()}* | Bill #${billNo}`;
@@ -1999,6 +2088,7 @@ const BillingPage = ({ initialTable, onOrderUpdate, onNavigate, onGoBack, userRo
       const taxText = taxRupees > 0 ? `\n• *Tax:* +₹${taxRupees.toFixed(2)}` : '';
       const dlvText = Number(billData?.deliveryCharge || 0) > 0 ? `\n• *Delivery:* +₹${Number(billData.deliveryCharge).toFixed(2)}` : '';
       const ctnText = Number(billData?.containerCharge || 0) > 0 ? `\n• *Container:* +₹${Number(billData.containerCharge).toFixed(2)}` : '';
+      const cutText = Number(billData?.cuttingCharge || 0) > 0 ? `\n• *Cutting Charges:* +₹${Number(billData.cuttingCharge).toFixed(2)}` : '';
       const payMode = billData?.paymentMode || 'Cash';
       const footer = s.footerMessage || '*** Thank You! Visit Again ***';
       return `${header}\n` +
@@ -2009,7 +2099,7 @@ const BillingPage = ({ initialTable, onOrderUpdate, onNavigate, onGoBack, userRo
         (billData?.customerPhone ? `*Phone:* ${billData.customerPhone}\n` : '') +
         `━━━━━━━━━━━━━━━━━━━━\n🛒 *ITEMS ORDERED:*\n${itemsList}\n` +
         `━━━━━━━━━━━━━━━━━━━━\n• *Subtotal:* ₹${sub.toFixed(2)}` +
-        discText + taxText + dlvText + ctnText +
+        discText + taxText + dlvText + ctnText + cutText +
         `\n• *GRAND TOTAL:* *₹${Number(billData?.total || 0).toFixed(2)}*\n• *Payment Mode:* ${payMode}\n` +
         `━━━━━━━━━━━━━━━━━━━━\n_${footer}_`;
     } catch (e) { return ''; }
@@ -2052,9 +2142,17 @@ const BillingPage = ({ initialTable, onOrderUpdate, onNavigate, onGoBack, userRo
     const orderData = {
       tableNo: tableNo,
       items: cart,
-      billType,
+      billType: billType || (fishOrderMode === 'bulk' ? 'Wholesale' : (fishOrderMode === 'export' ? 'Export' : 'Retail')),
       customerName,
       customerPhone,
+      customerCategory: customerCategory || (fishOrderMode === 'bulk' ? 'Wholesale' : (fishOrderMode === 'export' ? 'Export' : 'Retail')),
+      exportSubCategory: exportSubCategory || (fishOrderMode === 'export' ? 'Local' : null),
+      customerPhoto: customerPhoto || '',
+      customerAddress: customerAddress || '',
+      isOrderLocked: isOrderLocked || false,
+      orderLockedAt: isOrderLocked ? new Date() : null,
+      orderDateFormatted: lockedTimestamp ? lockedTimestamp.split(',')[0]?.trim() : '',
+      orderTimeFormatted: lockedTimestamp ? lockedTimestamp.split(',')[1]?.trim() : '',
       discount: discountAmount,
       discountType: discount.type,
       discountValue: discount.value === '' ? 0 : parseFloat(discount.value) || 0,
@@ -2064,6 +2162,7 @@ const BillingPage = ({ initialTable, onOrderUpdate, onNavigate, onGoBack, userRo
       tax: taxVal,
       deliveryCharge: parseFloat(deliveryCharge || 0),
       containerCharge: parseFloat(containerCharge || 0),
+      cuttingCharge: parseFloat(cuttingCharge || 0),
       isHold: isHoldStrict,
       skipNotification: !isHoldStrict, // Frontend already broadcast instantly via WebSocket — skip backend duplicate
       ...(orderId && !orderId.startsWith('offline_') && { id: orderId }),
@@ -2219,6 +2318,92 @@ const BillingPage = ({ initialTable, onOrderUpdate, onNavigate, onGoBack, userRo
     lastLocalEditTime.current = Date.now();
   };
 
+  const handleCuttingChargeChange = (val) => {
+    if (orderStatus === 'Billed' && !hasPendingLocalChanges.current) {
+      showToast(t('Order is billed. Click EDIT to modify.', { defaultValue: 'Order is billed. Click EDIT to modify.' }), 'warning');
+      return;
+    }
+    setCuttingCharge(val);
+    hasPendingLocalChanges.current = true;
+    lastLocalEditTime.current = Date.now();
+  };
+
+  // Slab-based cutting charge calculation:
+  // <= 1.5 Kg = 1 tier (₹10), 1.55 to 2.5 Kg = 2 tiers (₹20), 2.51 to 3.5 Kg = 3 tiers (₹30), etc.
+  const calculateCuttingCharge = (weightKg, ratePerKg = 10) => {
+    const w = Number(weightKg) || 0;
+    const rate = Number(ratePerKg) || 10;
+    if (w <= 0) return 0;
+    if (w <= 1.5) return rate;
+    return (1 + Math.ceil(w - 1.5)) * rate;
+  };
+
+  const totalCartFishWeight = useMemo(() => {
+    return cart.reduce((sum, item) => {
+      if (item.isCancelled) return sum;
+      const w = parseFloat(item.enteredWeight || item.netWeightKg || item.weightKg || (item.sellingUnit === 'Kg' ? item.quantity : 0) || 0);
+      return sum + w;
+    }, 0);
+  }, [cart]);
+
+  const activeCuttingRate = useMemo(() => {
+    try {
+      const s = JSON.parse(localStorage.getItem('restaurantSettings') || '{}');
+      return Number(s.cuttingChargePerKg) > 0 ? Number(s.cuttingChargePerKg) : 10;
+    } catch { return 10; }
+  }, []);
+
+  useEffect(() => {
+    if (isCuttingChargeEnabled && totalCartFishWeight > 0) {
+      const calculated = calculateCuttingCharge(totalCartFishWeight, activeCuttingRate);
+      setCuttingCharge(String(calculated));
+    }
+  }, [isCuttingChargeEnabled, totalCartFishWeight, activeCuttingRate]);
+
+  // Immediately generates a new sequential order with an empty cart and resets all state
+  const handleCreateNewOrder = useCallback(() => {
+    if (activeTable) {
+      newlyGeneratedTables.current.add(activeTable);
+    }
+    const newOrderNo = generateSequentialOrderNo(billType || 'Takeaway');
+    newlyGeneratedTables.current.add(newOrderNo);
+
+    // ⚡ 0ms instant reset of cart and order states
+    setCart([]);
+    cartRef.current = [];
+    hasPendingLocalChanges.current = false;
+    lastLocalEditTime.current = Date.now();
+    setOrderId(null);
+    setOrderStatus('Open');
+    setBillNumber(null);
+    setCompletedBill(null);
+
+    // Reset customer, discount, extra charges
+    setDiscount({ type: 'percentage', value: '', name: '' });
+    setCustomerPhone('');
+    setCustomerName('');
+    setCustomerInfo(null);
+    setIsOrderLocked(false);
+    setLockedTimestamp('');
+    setCustomerPhoto('');
+    setCustomerAddress('');
+    setCustomerCategory(fishOrderMode === 'bulk' ? 'Wholesale' : (fishOrderMode === 'export' ? 'Export' : 'Retail'));
+    setExportSubCategory(fishOrderMode === 'export' ? 'Local' : null);
+    setDeliveryCharge('');
+    setContainerCharge('');
+    setCuttingCharge('');
+    setIsCuttingChargeEnabled(false);
+    setIsPaid(false);
+
+    // Set new active table immediately
+    setActiveTable(newOrderNo);
+
+    // Switch to menu tab on mobile
+    setMobileTab('menu');
+
+    showToast(`${t('newOrder')} #${newOrderNo.replace(/^(TAK-|DEL-|ORD-)/i, '')}`, 'success');
+  }, [billType, activeTable, showToast, t, generateSequentialOrderNo]);
+
   const handleGenerateBill = async () => {
     let tableToUse = activeTable;
     if (!tableToUse) {
@@ -2286,6 +2471,8 @@ const BillingPage = ({ initialTable, onOrderUpdate, onNavigate, onGoBack, userRo
         tax: taxVal,
         deliveryCharge: parseFloat(deliveryCharge || 0),
         containerCharge: parseFloat(containerCharge || 0),
+        cuttingCharge: parseFloat(cuttingCharge || 0),
+        cuttingCharge: parseFloat(cuttingCharge || 0),
         total: total,
         billType,
         orderSource: billType === 'Delivery' ? orderSource : undefined,
@@ -2337,6 +2524,7 @@ const BillingPage = ({ initialTable, onOrderUpdate, onNavigate, onGoBack, userRo
           customerPhone: customerPhone || billedOrder.customerPhone || '',
           deliveryCharge: deliveryCharge,
           containerCharge: containerCharge,
+          cuttingCharge: cuttingCharge,
           restaurantDetails: s,
           billNumber: confirmedBillNumber,
           status: 'Billed',
@@ -2413,10 +2601,6 @@ const BillingPage = ({ initialTable, onOrderUpdate, onNavigate, onGoBack, userRo
   };
 
   const completeSettlement = async (paymentData) => {
-    if (orderStatus === 'Billed' && !hasPendingLocalChanges.current) {
-      showToast(t('Order is saved & printed. Click EDIT to modify or cancel.', { defaultValue: 'Order is saved & printed. Click EDIT to modify or cancel.' }), 'warning');
-      return;
-    }
     if (orderStatus === 'Paid') {
       showToast(t('billAlreadySettled'), 'info');
       setShowPayment(false);
@@ -2468,6 +2652,7 @@ const BillingPage = ({ initialTable, onOrderUpdate, onNavigate, onGoBack, userRo
       customerPhone: customerPhone || (openOrdersList?.find(o => isTableMatching(o.tableNo, tableToUse))?.customerPhone || ''),
       deliveryCharge,
       containerCharge,
+      cuttingCharge,
       restaurantDetails: s,
       showLogo: s.showLogo !== false,
       settledAt: new Date(),
@@ -2522,7 +2707,7 @@ const BillingPage = ({ initialTable, onOrderUpdate, onNavigate, onGoBack, userRo
 
     try {
       if (directPrintConfigs.settle) {
-        const optimisticSettleBill = { ...optimisticBill, status: 'Paid', paymentMode: paymentData.mode, amountPaid: paymentData.amountPaid, billNumber: billNumber || 'MS0001', tableNo: tableToUse, subtotal, tax: taxVal, discount: discountAmount, total, billType, customerName, customerPhone, deliveryCharge, containerCharge, restaurantDetails: { ...s }, settledAt: new Date(), createdAt: new Date() };
+        const optimisticSettleBill = { ...optimisticBill, status: 'Paid', paymentMode: paymentData.mode, amountPaid: paymentData.amountPaid, billNumber: billNumber || 'MS0001', tableNo: tableToUse, subtotal, tax: taxVal, discount: discountAmount, total, billType, customerName, customerPhone, deliveryCharge, containerCharge, cuttingCharge, restaurantDetails: { ...s }, settledAt: new Date(), createdAt: new Date() };
         setCompletedBill(optimisticSettleBill);
         isViewingInvoiceRef.current = true;
         setShowInvoice(true);
@@ -2557,6 +2742,7 @@ const BillingPage = ({ initialTable, onOrderUpdate, onNavigate, onGoBack, userRo
         customerPhone: customerPhone || settledOrder?.customerPhone || optimisticBill.customerPhone,
         deliveryCharge,
         containerCharge,
+        cuttingCharge,
         restaurantDetails: {
           ...(settledOrder?.restaurantDetails || s),
           logo: (s.logo && s.logo !== '[logo_stored]') ? s.logo : (settledOrder?.restaurantDetails?.logo || '')
@@ -2810,6 +2996,12 @@ const BillingPage = ({ initialTable, onOrderUpdate, onNavigate, onGoBack, userRo
     setCustomerPhone('');
     setCustomerName('');
     setCustomerInfo(null);
+    setIsOrderLocked(false);
+    setLockedTimestamp('');
+    setCustomerPhoto('');
+    setCustomerAddress('');
+    setCustomerCategory(fishOrderMode === 'bulk' ? 'Wholesale' : (fishOrderMode === 'export' ? 'Export' : 'Retail'));
+    setExportSubCategory(fishOrderMode === 'export' ? 'Local' : null);
     setDeliveryCharge('0');
     setContainerCharge('0');
     setOrderSource('Direct');
@@ -2934,146 +3126,215 @@ const BillingPage = ({ initialTable, onOrderUpdate, onNavigate, onGoBack, userRo
 
   return (
     <div className="h-full flex flex-col overflow-hidden bg-background">
-      <div className="h-12 sm:h-14 flex items-center justify-between px-2 sm:px-3 lg:px-6 bg-surface border-b border-border/50 shrink-0 relative z-30 gap-1 sm:gap-2">
+      {/* Header Navigation & Action Bar: 2 rows on Tablet, 1 row on Desktop */}
+      <div className="flex flex-col xl:flex-row xl:h-14 xl:items-center xl:justify-between px-2 sm:px-3 lg:px-6 bg-surface border-b border-border/50 shrink-0 relative z-30 gap-1.5 py-1.5 xl:py-0">
 
-        {/* Left Section: Active / New Order Selector */}
-        <div className="flex items-center gap-1.5 sm:gap-2 shrink-0 z-30">
-          <div className="relative flex items-center gap-2 bg-white border border-slate-300 rounded-xl px-3 py-1.5 hover:bg-[#fff7ed] transition-colors focus-within:ring-2 focus-within:ring-slate-300 cursor-pointer w-auto max-w-[260px] sm:max-w-[340px] shrink-0 shadow-xs">
-            <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" />
-            <div className="flex items-center pointer-events-none min-w-0 flex-1">
-              <span className="font-extrabold text-slate-800 text-xs sm:text-sm whitespace-nowrap truncate">
-                {activeTable ? `#${activeTable.replace(/^(TAK-|DEL-|ORD-)/i, '')} Order` : `+ ${t('newOrder')}`}
-              </span>
-              <ChevronDown size={13} className="text-slate-500 ml-1.5 shrink-0" />
-            </div>
-
-            <select
-              value={activeTable || 'NEW_ORDER'}
-              onChange={(e) => {
-                if (e.target.value === 'NEW_ORDER') {
-                  const generatedOrderNo = generateSequentialOrderNo('Takeaway');
-                  newlyGeneratedTables.current.add(generatedOrderNo);
-                  setActiveTable(generatedOrderNo);
-                } else {
-                  const chosenTable = e.target.value;
-                  setActiveTable(chosenTable);
-                }
-              }}
-              className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-20"
-              style={{ backgroundColor: '#ffffff', color: '#1e293b' }}
-            >
-              <option
-                value="NEW_ORDER"
-                style={{ backgroundColor: '#ffffff', color: '#c2410c', fontWeight: 'bold' }}
-              >
-                + {t('newOrder')}
-              </option>
-              {openOrdersList.map((o) => (
-                <option
-                  key={o._id}
-                  value={o.tableNo}
-                  style={{ backgroundColor: '#ffffff', color: '#1e293b' }}
-                >
-                  #{o.tableNo?.replace(/^(TAK-|DEL-|ORD-)/i, '')} ({o.status === 'Billed' ? t('Billed') : t('Open')} - ₹{o.total || 0})
-                </option>
-              ))}
-              {activeTable && !openOrdersList.some((o) => isTableMatching(o.tableNo, activeTable)) && (
-                <option
-                  value={activeTable}
-                  style={{ backgroundColor: '#ffffff', color: '#c2410c' }}
-                >
-                  #{activeTable.replace(/^(TAK-|DEL-|ORD-)/i, '')} ({t('Current')})
-                </option>
-              )}
-            </select>
-          </div>
-        </div>
-
-        {/* Center Section: Search Bar (Desktop/Tablet, centered with Cancel/Clear button) */}
-        <div className="hidden md:flex flex-1 items-center justify-center px-1 sm:px-2 lg:px-4 max-w-xs lg:max-w-md xl:max-w-xl mx-auto z-20 min-w-[100px]">
-          <div className="relative w-full items-center">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted pointer-events-none" size={14} />
-            <input
-              ref={searchInputRef}
-              type="text"
-              placeholder={t('Search all menu items...')}
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-8 pr-8 py-1.5 bg-background border border-border rounded-xl focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 text-xs sm:text-sm text-text-main transition-all shadow-xs"
-            />
-            {searchTerm && (
-              <button
-                type="button"
-                onClick={() => setSearchTerm('')}
-                className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-text-muted bg-gray-200 hover:bg-gray-300 rounded-full p-1 transition-all cursor-pointer shadow-2xs"
-                title={t("Clear search")}
-              >
-                <X size={11} />
-              </button>
+        {/* ROW 1: (On Tablet: Back, Order Selector, New Order, Lock, Fullscreen) / (On Desktop: Left Section) */}
+        <div className="flex items-center justify-between w-full xl:w-auto gap-2">
+          {/* Left Section: Active / New Order Selector & Back Button */}
+          <div className="flex items-center gap-1 sm:gap-2 shrink-0 z-30">
+            {(onGoBack || mobileTab === 'cart') && (
+              <BackButton
+                onClick={() => {
+                  if (mobileTab === 'cart') {
+                    setMobileTab('menu');
+                  } else if (onGoBack) {
+                    onGoBack();
+                  }
+                }}
+                label="Back"
+                className="shrink-0 !px-2 sm:!px-3.5 !py-1 sm:!py-1.5 !text-xs !gap-1 sm:!gap-2"
+              />
             )}
-          </div>
-        </div>
+            <div className="relative flex items-center gap-1.5 sm:gap-2 bg-white border border-slate-300 rounded-lg sm:rounded-xl px-2 sm:px-3 py-1 sm:py-1.5 hover:bg-[#fff7ed] transition-colors focus-within:ring-2 focus-within:ring-slate-300 cursor-pointer w-auto max-w-[150px] sm:max-w-[260px] md:max-w-[340px] shrink-0 shadow-xs">
+              <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" />
+              <div className="flex items-center pointer-events-none min-w-0 flex-1">
+                <span className="font-extrabold text-slate-800 text-xs sm:text-sm whitespace-nowrap truncate">
+                  {activeTable ? `#${activeTable.replace(/^(TAK-|DEL-|ORD-)/i, '')} Order` : `+ ${t('newOrder')}`}
+                </span>
+                <ChevronDown size={12} className="text-slate-500 ml-1 sm:ml-1.5 shrink-0" />
+              </div>
 
-        <div className="flex items-center gap-1 sm:gap-2 shrink-0">
-          {/* Fish Order Mode Toggle (Individual Retail Kg vs Bulk Wholesale Boxes) */}
-          <div className="flex items-center bg-white p-0.5 rounded-xl border border-slate-300 shadow-xs shrink-0 gap-1 z-30">
+              <select
+                value={activeTable || 'NEW_ORDER'}
+                onChange={(e) => {
+                  if (e.target.value === 'NEW_ORDER') {
+                    handleCreateNewOrder();
+                  } else {
+                    const chosenTable = e.target.value;
+                    setActiveTable(chosenTable);
+                  }
+                }}
+                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-20"
+                style={{ backgroundColor: '#ffffff', color: '#1e293b' }}
+              >
+                <option
+                  value="NEW_ORDER"
+                  style={{ backgroundColor: '#ffffff', color: '#c2410c', fontWeight: 'bold' }}
+                >
+                  + {t('newOrder')}
+                </option>
+                {openOrdersList.map((o) => (
+                  <option
+                    key={o._id}
+                    value={o.tableNo}
+                    style={{ backgroundColor: '#ffffff', color: '#1e293b' }}
+                  >
+                    #{o.tableNo?.replace(/^(TAK-|DEL-|ORD-)/i, '')} ({o.status === 'Billed' ? t('Billed') : t('Open')} - ₹{o.total || 0})
+                  </option>
+                ))}
+                {activeTable && !openOrdersList.some((o) => isTableMatching(o.tableNo, activeTable)) && (
+                  <option
+                    value={activeTable}
+                    style={{ backgroundColor: '#ffffff', color: '#c2410c' }}
+                  >
+                    #{activeTable.replace(/^(TAK-|DEL-|ORD-)/i, '')} ({t('Current')})
+                  </option>
+                )}
+              </select>
+            </div>
+          </div>
+
+          {/* Mobile Only (< md): Fish Order Mode Toggle */}
+          <div className="flex md:hidden items-center bg-white p-0.5 rounded-lg border border-slate-300 shadow-xs shrink-0 gap-0.5 z-30">
             <button
               type="button"
               onClick={() => setFishOrderMode('individual')}
-              className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${fishOrderMode === 'individual'
-                ? 'bg-[#994d1c] text-white shadow-xs font-black'
-                : 'text-slate-600 hover:text-orange-800 hover:bg-orange-50'
+              className={`px-1.5 sm:px-2 py-0.5 sm:py-1 rounded text-[10px] sm:text-[10.5px] font-bold transition-all cursor-pointer ${fishOrderMode === 'individual'
+                ? 'bg-[#059669] text-white shadow-xs font-black'
+                : 'text-slate-600 hover:text-emerald-800'
                 }`}
             >
-              <span>🐟</span>
-              <span className="hidden sm:inline">Individual (Kg / Grams)</span>
-              <span className="sm:hidden">Individual</span>
+              <span>Retail</span>
             </button>
             <button
               type="button"
               onClick={() => setFishOrderMode('bulk')}
-              className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${fishOrderMode === 'bulk'
-                ? 'bg-amber-500 text-white shadow-sm shadow-amber-500/30 font-black'
-                : 'text-slate-600 hover:text-amber-800 hover:bg-amber-50'
+              className={`px-1 sm:px-1.5 py-0.5 sm:py-1 rounded text-[10px] sm:text-[10.5px] font-bold transition-all cursor-pointer ${fishOrderMode === 'bulk'
+                ? 'bg-[#d97706] text-white shadow-xs font-black'
+                : 'text-slate-600 hover:text-amber-800'
                 }`}
             >
-              <span>📦</span>
-              <span className="hidden sm:inline">Bulk (Wholesale Boxes)</span>
-              <span className="sm:hidden">Bulk</span>
+              <span>Wholesale</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setFishOrderMode('export')}
+              className={`px-1 sm:px-1.5 py-0.5 sm:py-1 rounded text-[10px] sm:text-[10.5px] font-bold transition-all cursor-pointer ${fishOrderMode === 'export'
+                ? 'bg-[#0284c7] text-white shadow-xs font-black'
+                : 'text-slate-600 hover:text-blue-800'
+                }`}
+            >
+              <span>Export</span>
             </button>
           </div>
 
-          <div className="items-center gap-1.5 sm:gap-2 lg:gap-3 hidden sm:flex shrink-0">
-
-
-            {/* Sales stat badge - visible on sm, md, lg screens with smooth number counting animation */}
+          {/* Tablet Only Right: New Order, Lock, Fullscreen */}
+          <div className="hidden md:flex xl:hidden items-center gap-1.5 sm:gap-2 shrink-0">
             <button
               type="button"
-              onClick={fetchDailyStats}
-              disabled={isStatsLoading}
-              className="hidden sm:flex items-center gap-2 bg-emerald-50/70 hover:bg-emerald-100/80 text-emerald-950 px-2.5 py-1.5 rounded-xl border border-emerald-200/80 shadow-2xs shrink-0 cursor-pointer transition-all duration-200 group relative overflow-hidden active:scale-95 select-none"
-              title={t('Click to refresh live sales')}
+              onClick={handleCreateNewOrder}
+              className="flex items-center gap-1.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white px-2.5 sm:px-3 py-1.5 rounded-xl font-bold text-xs shadow-sm hover:shadow-md active:scale-95 transition-all cursor-pointer shrink-0 select-none"
+              title={t('Start a brand new empty order')}
             >
-              <div className="flex flex-col items-end leading-none">
-                <div className="text-[9px] text-emerald-700 font-extrabold uppercase tracking-wider flex items-center gap-1">
-                  <span>{t('sales')}</span>
-                  <TrendingUp size={10} className={`text-emerald-600 group-hover:translate-y-[-1px] group-hover:scale-110 transition-transform ${isStatsLoading ? 'animate-pulse' : ''}`} />
-                </div>
-                <AnimatedSalesCount value={dailyStats.sales} duration={1500} />
-              </div>
+              <Plus size={15} strokeWidth={2.5} />
+              <span>{t('New Order')}</span>
             </button>
-
             <button
               onClick={toggleLayoutLock}
               className={`p-1.5 rounded-lg transition-all shrink-0 cursor-pointer ${isLayoutLocked ? 'text-primary bg-primary/10' : 'text-text-muted hover:text-primary hover:bg-primary/5'}`}
               title={isLayoutLocked ? t("Unlock Layout") : t("Lock Layout")}>
-
               {isLayoutLocked ? <Lock size={16} /> : <Unlock size={16} />}
             </button>
             <button
               onClick={toggleFullScreen}
               className="p-1.5 text-text-muted hover:text-primary hover:bg-primary/5 rounded-lg transition-all shrink-0">
+              {isFullScreen ? <Minimize size={16} /> : <Maximize size={16} />}
+            </button>
+          </div>
+        </div>
 
+        {/* ROW 2 (On Tablet) / CENTER + RIGHT (On Desktop): Search Bar + Fish Order Mode Toggle */}
+        <div className="hidden md:flex xl:flex flex-1 items-center justify-between w-full xl:w-auto gap-2 xl:gap-4">
+          {/* Search Bar */}
+          <div className="flex-1 max-w-none xl:max-w-md xl:mx-auto z-20 min-w-[120px]">
+            <div className="relative w-full items-center">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted pointer-events-none" size={14} />
+              <input
+                ref={searchInputRef}
+                type="text"
+                placeholder={t('Search all menu items...')}
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full pl-8 pr-8 py-1.5 bg-background border border-border rounded-xl focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 text-xs sm:text-sm text-text-main transition-all shadow-xs"
+              />
+              {searchTerm && (
+                <button
+                  type="button"
+                  onClick={() => setSearchTerm('')}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-text-muted bg-gray-200 hover:bg-gray-300 rounded-full p-1 transition-all cursor-pointer shadow-2xs"
+                  title={t("Clear search")}
+                >
+                  <X size={11} />
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Fish Order Mode Toggle */}
+          <div className="flex items-center bg-white p-0.5 rounded-lg sm:rounded-xl border border-slate-300 shadow-xs shrink-0 gap-0.5 sm:gap-1 z-30">
+            <button
+              type="button"
+              onClick={() => setFishOrderMode('individual')}
+              className={`px-2 sm:px-3 py-1 sm:py-1.5 rounded-md sm:rounded-lg text-[10.5px] sm:text-xs font-bold transition-all cursor-pointer ${fishOrderMode === 'individual'
+                ? 'bg-[#059669] text-white shadow-xs font-black'
+                : 'text-slate-600 hover:text-emerald-800 hover:bg-emerald-50'
+                }`}
+            >
+              <span>Retail (Kg)</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setFishOrderMode('bulk')}
+              className={`px-1.5 sm:px-3 py-1 sm:py-1.5 rounded-md sm:rounded-lg text-[10.5px] sm:text-xs font-bold transition-all cursor-pointer ${fishOrderMode === 'bulk'
+                ? 'bg-[#d97706] text-white shadow-sm shadow-amber-500/30 font-black'
+                : 'text-slate-600 hover:text-amber-800 hover:bg-amber-50'
+                }`}
+            >
+              <span>Wholesale (Boxes)</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setFishOrderMode('export')}
+              className={`px-2 sm:px-3 py-1 sm:py-1.5 rounded-md sm:rounded-lg text-[10.5px] sm:text-xs font-bold transition-all cursor-pointer ${fishOrderMode === 'export'
+                ? 'bg-[#0284c7] text-white shadow-sm shadow-blue-500/30 font-black'
+                : 'text-slate-600 hover:text-blue-800 hover:bg-blue-50'
+                }`}
+            >
+              <span>Export (Bulk)</span>
+            </button>
+          </div>
+
+          {/* Desktop Only Right Controls: New Order, Lock, Fullscreen */}
+          <div className="hidden xl:flex items-center gap-1.5 sm:gap-2 lg:gap-3 shrink-0">
+            <button
+              type="button"
+              onClick={handleCreateNewOrder}
+              className="flex items-center gap-1.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white px-2.5 sm:px-3 py-1.5 rounded-xl font-bold text-xs shadow-sm hover:shadow-md active:scale-95 transition-all cursor-pointer shrink-0 select-none"
+              title={t('Start a brand new empty order')}
+            >
+              <Plus size={15} strokeWidth={2.5} />
+              <span>{t('New Order')}</span>
+            </button>
+            <button
+              onClick={toggleLayoutLock}
+              className={`p-1.5 rounded-lg transition-all shrink-0 cursor-pointer ${isLayoutLocked ? 'text-primary bg-primary/10' : 'text-text-muted hover:text-primary hover:bg-primary/5'}`}
+              title={isLayoutLocked ? t("Unlock Layout") : t("Lock Layout")}>
+              {isLayoutLocked ? <Lock size={16} /> : <Unlock size={16} />}
+            </button>
+            <button
+              onClick={toggleFullScreen}
+              className="p-1.5 text-text-muted hover:text-primary hover:bg-primary/5 rounded-lg transition-all shrink-0">
               {isFullScreen ? <Minimize size={16} /> : <Maximize size={16} />}
             </button>
           </div>
@@ -3081,6 +3342,36 @@ const BillingPage = ({ initialTable, onOrderUpdate, onNavigate, onGoBack, userRo
       </div>
 
       <div className="flex flex-col md:hidden px-3 pt-2 gap-2 shrink-0 bg-background border-b border-border/50 pb-2.5">
+        {/* Mobile Dealer / Customer Pill Bar for Wholesale / Export */}
+        {(fishOrderMode === 'bulk' || fishOrderMode === 'export' || customerName) && (
+          <div 
+            onClick={() => setMobileTab('cart')}
+            className={`px-3 py-1.5 rounded-xl border flex items-center justify-between text-xs cursor-pointer active:scale-98 transition-all ${
+              isOrderLocked 
+                ? 'bg-amber-500/10 border-amber-500/30 text-amber-900 shadow-xs' 
+                : 'bg-[#FAF0E4] border-[#E8DCCB] text-slate-700 hover:border-amber-400'
+            }`}
+          >
+            <div className="flex items-center gap-1.5 min-w-0">
+              <span className="font-black text-[9.5px] uppercase px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-900 shrink-0">
+                {fishOrderMode === 'export' ? (exportSubCategory === 'DAM' ? 'DAM Export' : 'Local Export') : (fishOrderMode === 'bulk' ? 'Wholesale' : 'Dealer')}
+              </span>
+              <span className="font-bold truncate text-[11px] text-slate-800">
+                {customerName || 'Tap to assign Predefined Dealer'}
+              </span>
+            </div>
+            <div className="flex items-center gap-1 shrink-0 text-[10px] font-bold">
+              {isOrderLocked ? (
+                <span className="text-emerald-700 font-extrabold flex items-center gap-0.5">
+                  🔒 {lockedTimestamp ? (lockedTimestamp.split(',')[1] || 'Locked') : 'Locked'}
+                </span>
+              ) : (
+                <span className="text-[#ea580c] font-black">{customerName ? 'Tap to Lock' : 'Select'} &rarr;</span>
+              )}
+            </div>
+          </div>
+        )}
+
         <div className="flex gap-2">
           <button
             onClick={() => setMobileTab('menu')}
@@ -3089,7 +3380,7 @@ const BillingPage = ({ initialTable, onOrderUpdate, onNavigate, onGoBack, userRo
               'bg-surface text-text-muted border border-border hover:bg-surface-hover'}`
             }>
 
-            <span>🍽️ {t('menuItems') === 'menuItems' ? 'Menu Items' : (t('menuItems') || 'Menu Items')}</span>
+            <span>{t('menuItems') === 'menuItems' ? 'Menu Items' : (t('menuItems') || 'Menu Items')}</span>
           </button>
           <button
             id="mobile-cart-tab"
@@ -3132,34 +3423,40 @@ const BillingPage = ({ initialTable, onOrderUpdate, onNavigate, onGoBack, userRo
               )}
             </div>
 
-            {/* Mobile Sales stat badge - in same row as search bar */}
+            {/* Mobile New Order (+) button replacing old Sales button on mobile */}
             <button
               type="button"
-              onClick={fetchDailyStats}
-              disabled={isStatsLoading}
-              className="flex sm:hidden items-center gap-1.5 bg-emerald-50/70 hover:bg-emerald-100/80 text-emerald-950 px-2.5 py-1.5 rounded-xl border border-emerald-200/80 shadow-2xs shrink-0 cursor-pointer transition-all duration-200 group relative overflow-hidden active:scale-95 select-none"
-              title={t('Click to refresh live sales')}
+              onClick={handleCreateNewOrder}
+              className="flex sm:hidden items-center justify-center gap-1 bg-gradient-to-r from-emerald-600 to-teal-600 active:from-emerald-700 active:to-teal-700 text-white px-2.5 py-1.5 rounded-xl font-bold text-xs shadow-xs active:scale-95 transition-all cursor-pointer shrink-0 select-none"
+              title={t('Start a brand new empty order')}
             >
-              <div className="flex flex-col items-end leading-none">
-                <div className="text-[9px] text-emerald-700 font-extrabold uppercase tracking-wider flex items-center gap-1">
-                  <span>{t('sales')}</span>
-                  <TrendingUp size={10} className={`text-emerald-600 group-hover:translate-y-[-1px] group-hover:scale-110 transition-transform ${isStatsLoading ? 'animate-pulse' : ''}`} />
-                </div>
-                <AnimatedSalesCount value={dailyStats.sales} duration={1500} />
-              </div>
+              <Plus size={15} strokeWidth={2.5} />
+              <span className="text-[11px] font-black">{t('New')}</span>
             </button>
           </div>
         )}
       </div>
 
       <div className="flex-1 flex flex-col overflow-hidden">
-        <div className="flex-1 flex flex-col md:flex-row overflow-hidden relative">
-          <div className={`flex flex-col overflow-hidden bg-surface border-r border-border/50 ${mobileTab === 'cart' ? 'hidden md:flex' : 'flex'} flex-1 transition-all duration-300`
+        <div className="flex-1 flex flex-col xl:flex-row overflow-y-auto xl:overflow-hidden relative">
+          <div className={`flex flex-col bg-surface border-b xl:border-b-0 xl:border-r border-border/50 ${mobileTab === 'cart' ? 'hidden md:flex' : 'flex'} w-full md:min-h-[580px] xl:min-h-0 xl:flex-1 shrink-0 xl:shrink transition-all duration-300`
           }>
             <MenuGrid
               onSelectItem={addToCart}
               onAddBox={addBoxToCart}
               cart={cart}
+              cartTotal={total}
+              onViewOrder={() => {
+                setMobileTab('cart');
+                if (typeof window !== 'undefined' && window.innerWidth >= 768 && window.innerWidth < 1280) {
+                  setTimeout(() => {
+                    const billEl = document.querySelector('.bill-summary-container') || document.querySelector('.counter-sale-cart');
+                    if (billEl) {
+                      billEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    }
+                  }, 280);
+                }
+              }}
               activeTable={activeTable}
               billType={billType}
               fishOrderMode={fishOrderMode}
@@ -3181,26 +3478,26 @@ const BillingPage = ({ initialTable, onOrderUpdate, onNavigate, onGoBack, userRo
           </div>
 
           <div
-            style={typeof window !== 'undefined' && window.innerWidth >= 768 ? {
-              width: isCartCollapsed ? 0 : (window.innerWidth < 1024 ? Math.min(rightPanelWidth, 360) : rightPanelWidth),
+            style={typeof window !== 'undefined' && window.innerWidth >= 1280 ? {
+              width: isCartCollapsed ? 0 : rightPanelWidth,
               maxWidth: '45vw',
-              minWidth: isCartCollapsed ? 0 : (window.innerWidth < 1024 ? '300px' : '360px')
+              minWidth: isCartCollapsed ? 0 : '360px'
             } : { width: '100%', maxWidth: '100vw' }}
-            className={`flex flex-col bg-surface h-full ${mobileTab === 'menu' ? 'hidden md:flex' : 'flex'} ${isCartCollapsed ? 'md:w-0 lg:w-0 border-none opacity-0 md:opacity-100 overflow-visible' : 'border-l border-border/50 overflow-visible'} shrink-0 md:shrink-0 w-full md:w-auto transition-none relative`}>
+            className={`flex flex-col bg-surface ${mobileTab === 'menu' ? 'hidden md:flex' : 'flex'} ${isCartCollapsed ? 'xl:w-0 border-none opacity-0 xl:opacity-100 overflow-visible' : 'border-t md:border-t-2 xl:border-t-0 xl:border-l border-border/50 overflow-visible'} shrink-0 w-full xl:w-auto xl:h-full md:min-h-[500px] md:h-[540px] transition-none relative`}>
 
 
-            {/* Drag Handle */}
+            {/* Drag Handle (Desktop only) */}
             {!isCartCollapsed && !isLayoutLocked &&
               <div
                 onMouseDown={startResizing}
-                className="absolute left-0 top-0 bottom-0 w-1.5 cursor-col-resize hover:bg-primary/50 bg-transparent z-40 transition-colors" />
+                className="hidden xl:block absolute left-0 top-0 bottom-0 w-1.5 cursor-col-resize hover:bg-primary/50 bg-transparent z-40 transition-colors" />
 
             }
 
             <button
               type="button"
               onClick={() => setIsCartCollapsed(!isCartCollapsed)}
-              className={`hidden md:flex absolute top-1/2 -translate-y-1/2 z-30 bg-white/95 text-slate-700 hover:text-[#8b4513] hover:bg-[#FAF0E4] shadow-md rounded-l-xl py-2.5 px-1.5 transition-all items-center border-y border-l border-[#E8DCCB] cursor-pointer group ${isCartCollapsed ? 'right-0' : 'left-0 -translate-x-full'
+              className={`hidden xl:flex absolute top-1/2 -translate-y-1/2 z-30 bg-white/95 text-slate-700 hover:text-[#8b4513] hover:bg-[#FAF0E4] shadow-md rounded-l-xl py-2.5 px-1.5 transition-all items-center border-y border-l border-[#E8DCCB] cursor-pointer group ${isCartCollapsed ? 'right-0' : 'left-0 -translate-x-full'
                 }`}
               title={isCartCollapsed ? t('expandCart') : t('collapseCart')}>
               {isCartCollapsed ? (
@@ -3213,6 +3510,7 @@ const BillingPage = ({ initialTable, onOrderUpdate, onNavigate, onGoBack, userRo
               <BillSummary
                 orderId={orderId}
                 cart={cart}
+                onBackToMenu={() => setMobileTab('menu')}
                 hasUnprintedItems={hasUnprintedItems}
                 updateQuantity={updateQuantity}
                 removeBoxFromCart={removeBoxFromCart}
@@ -3259,6 +3557,10 @@ const BillingPage = ({ initialTable, onOrderUpdate, onNavigate, onGoBack, userRo
                 setDeliveryCharge={handleDeliveryChargeChange}
                 containerCharge={containerCharge}
                 setContainerCharge={handleContainerChargeChange}
+                cuttingCharge={cuttingCharge}
+                setCuttingCharge={handleCuttingChargeChange}
+                isCuttingChargeEnabled={isCuttingChargeEnabled}
+                setIsCuttingChargeEnabled={setIsCuttingChargeEnabled}
                 hasPendingChanges={hasPendingLocalChanges.current}
                 openOrders={openOrdersList}
                 reservations={reservations}
@@ -3274,13 +3576,19 @@ const BillingPage = ({ initialTable, onOrderUpdate, onNavigate, onGoBack, userRo
                 }}
                 isWhatsAppConnected={isWhatsAppConnected}
                 whatsappBillSentIds={whatsappBillSentIds.current}
+                fishOrderMode={fishOrderMode}
+                isOrderLocked={isOrderLocked}
+                setIsOrderLocked={setIsOrderLocked}
+                lockedTimestamp={lockedTimestamp}
+                setLockedTimestamp={setLockedTimestamp}
+                onCustomerSelect={handlePredefinedCustomerSelect}
               />
             </div>
 
           </div>
         </div>
 
-        {cart.length > 0 && mobileTab === 'menu' &&
+        {cart.length > 0 && mobileTab === 'menu' && (typeof window !== 'undefined' && localStorage.getItem('menuGrid_displayMode') === 'grid') &&
           <div className="md:hidden p-3 bg-surface border border-border rounded-2xl shadow-xl flex items-center justify-between shrink-0 animate-bounce-short">
             <div className="flex flex-col">
               <span className="text-[10px] text-text-muted font-bold uppercase">{t('total')} ({cart.reduce((sum, item) => item.isCancelled ? sum : sum + item.quantity - (item.cancelledQuantity || 0), 0)} {t('items')})</span>
@@ -3343,6 +3651,7 @@ const BillingPage = ({ initialTable, onOrderUpdate, onNavigate, onGoBack, userRo
           customerPhone: customerPhone,
           deliveryCharge: deliveryCharge,
           containerCharge: containerCharge,
+          cuttingCharge: cuttingCharge,
           restaurantDetails: JSON.parse(localStorage.getItem('restaurantSettings') || '{}'),
           createdAt: new Date()
         };
@@ -3357,6 +3666,11 @@ const BillingPage = ({ initialTable, onOrderUpdate, onNavigate, onGoBack, userRo
             onSave={() => {
               setAutoSendWhatsAppToInvoice(false);
               handleFinish();
+            }}
+            onSettle={() => {
+              setAutoSendWhatsAppToInvoice(false);
+              setShowInvoice(false);
+              setShowPayment(true);
             }}
             whatsappBillSentIds={whatsappBillSentIds.current}
             onWhatsAppSent={(id) => {

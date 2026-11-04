@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { useLanguage } from '../../../context/LanguageContext';
-import { Printer, ArrowLeft, Save, Download, X, Smartphone, Loader2, UserRound, ChevronDown, ChevronUp, Phone } from 'lucide-react';
+import { Printer, ArrowLeft, Save, Download, X, Smartphone, Loader2, UserRound, ChevronDown, ChevronUp, Phone, CreditCard } from 'lucide-react';
 import { QRCodeCanvas } from 'qrcode.react';
 import Toast from '../system/Toast';
 import { sendWhatsAppBill } from '../../../api/communication/whatsapp';
@@ -11,7 +11,7 @@ import { formatTime12 } from '../../../utils/formatters/timeFormat';
 import { getReceiptFontMetrics, findReceiptFont } from '../../../utils/formatters/receiptFonts';
 import { renderElementToESCPOSRaster, renderElementToPNGBase64, autoTrimCanvasBottom } from '../../../utils/formatters/escposRaster';
 
-const Invoice = ({ bill, onClose, onSave, whatsappBillSentIds, onWhatsAppSent, autoSendWhatsApp = false, isHistoryView = false, isDirectPrint = false, onGlobalToast }) => {
+const Invoice = ({ bill, onClose, onSave, onSettle, whatsappBillSentIds, onWhatsAppSent, autoSendWhatsApp = false, isHistoryView = false, isDirectPrint = false, onGlobalToast }) => {
   const { t } = useLanguage();
   const currencySymbol = localStorage.getItem('primaryCurrency') === 'USD' ? '$' : '₹';
   const primaryCurrency = localStorage.getItem('primaryCurrency') || 'INR';
@@ -689,9 +689,10 @@ const Invoice = ({ bill, onClose, onSave, whatsappBillSentIds, onWhatsAppSent, a
 
     const deliveryCharge = Number(bill?.deliveryCharge || 0) > 0 ? `\n• *Delivery Charge:* +₹${Number(bill.deliveryCharge).toFixed(2)}` : '';
     const containerCharge = Number(bill?.containerCharge || 0) > 0 ? `\n• *Container Charge:* +₹${Number(bill.containerCharge).toFixed(2)}` : '';
+    const cuttingCharge = Number(bill?.cuttingCharge || 0) > 0 ? `\n• *Cutting Charge:* +₹${Number(bill.cuttingCharge).toFixed(2)}` : '';
 
     let finalTotal = Number(bill?.total || 0);
-    const addCharges = Number(bill?.deliveryCharge || 0) + Number(bill?.containerCharge || 0);
+    const addCharges = Number(bill?.deliveryCharge || 0) + Number(bill?.containerCharge || 0) + Number(bill?.cuttingCharge || 0);
     if (!finalTotal || isNaN(finalTotal) || (finalTotal <= 0 && sub > 0)) {
       finalTotal = taxable + taxRupees + addCharges;
     }
@@ -749,6 +750,7 @@ const Invoice = ({ bill, onClose, onSave, whatsappBillSentIds, onWhatsAppSent, a
       taxBreakdown +
       deliveryCharge +
       containerCharge +
+      cuttingCharge +
       roundOffText +
       `\n• *GRAND TOTAL:* *₹${total}*\n` +
       `• *Payment Mode:* ${paymentInfo}\n` +
@@ -1060,15 +1062,39 @@ const Invoice = ({ bill, onClose, onSave, whatsappBillSentIds, onWhatsAppSent, a
       </style>
 
       {/* Controls - Hidden on Print */}
-      <div className="sticky top-4 flex flex-wrap items-center justify-center gap-2.5 print:hidden w-full max-w-2xl mx-auto z-30 px-4 py-2.5 bg-transparent mb-4">
-        {onSave &&
-          <button
-            onClick={onSave}
-            className="flex items-center gap-1.5 px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl transition-all shadow-md font-black text-xs sm:text-sm active:scale-95 cursor-pointer border border-emerald-700">
-            <Save size={16} />
-            <span>{t("Finish")}</span>
-          </button>
-        }
+      <div className="sticky top-2 sm:top-4 print:hidden w-full max-w-xl mx-auto z-30 px-2 sm:px-4 mb-2 sm:mb-4">
+        <div className="bg-white/95 backdrop-blur-md border border-[#E8DCCB] shadow-md rounded-2xl p-1.5 sm:p-2">
+          <div className="flex items-center justify-center gap-1.5 sm:gap-2.5 flex-nowrap overflow-x-auto no-scrollbar py-0.5">
+            {/* 1. Close Button (Icon Only) */}
+            <button
+              onClick={onClose}
+              className="p-2 sm:p-2.5 bg-white hover:bg-slate-100 text-slate-700 rounded-xl transition-all shadow-xs active:scale-95 cursor-pointer border border-[#E8DCCB] shrink-0"
+              title={t("Close")}
+              aria-label={t("Close")}
+            >
+              <ArrowLeft size={18} className="text-slate-700 shrink-0" />
+            </button>
+
+            {/* 2. Settle or Finish Button (Icon Only) */}
+            {onSettle && bill?.status !== 'Paid' ? (
+              <button
+                onClick={onSettle}
+                className="p-2 sm:p-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-xl transition-all shadow-md active:scale-95 cursor-pointer border border-emerald-500/50 shrink-0"
+                title={t("Settle Bill")}
+                aria-label={t("Settle Bill")}
+              >
+                <CreditCard size={18} className="shrink-0" />
+              </button>
+            ) : onSave ? (
+              <button
+                onClick={onSave}
+                className="p-2 sm:p-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl transition-all shadow-md active:scale-95 cursor-pointer border border-emerald-700 shrink-0"
+                title={t("Finish")}
+                aria-label={t("Finish")}
+              >
+                <Save size={18} className="shrink-0" />
+              </button>
+            ) : null}
         {isAlreadySent ? (
           <div className="flex items-center bg-emerald-700/90 rounded-xl shadow-md overflow-hidden border border-emerald-600/60">
             <div
@@ -1099,7 +1125,7 @@ const Invoice = ({ bill, onClose, onSave, whatsappBillSentIds, onWhatsAppSent, a
             </button>
           </div>
         ) : (
-          <div className="flex items-center bg-[#25D366] rounded-xl shadow-md overflow-hidden">
+          <div className="flex items-center bg-[#25D366] rounded-xl shadow-md overflow-hidden shrink-0">
             <button
               onClick={() => {
                 if (!whatsappPhone && !bill?.customerPhone) {
@@ -1110,35 +1136,32 @@ const Invoice = ({ bill, onClose, onSave, whatsappBillSentIds, onWhatsAppSent, a
                 }
               }}
               disabled={sendingAutomated}
-              className="flex items-center gap-1.5 px-3.5 py-2 text-text-main font-bold text-xs sm:text-sm active:scale-95 cursor-pointer hover:bg-[#20bd5a] transition-all disabled:opacity-75 disabled:cursor-wait"
-              title={t("Send e-Bill directly on WhatsApp (1-Click)")}>
+              className="p-2 sm:p-2.5 text-text-main active:scale-95 cursor-pointer hover:bg-[#20bd5a] transition-all disabled:opacity-75 disabled:cursor-wait flex items-center justify-center"
+              title={t("Send WhatsApp e-Bill")}
+              aria-label={t("Send WhatsApp e-Bill")}
+            >
               {sendingAutomated ? (
-                <>
-                  <Loader2 size={15} className="animate-spin shrink-0" />
-                  <span className="animate-pulse">{t('Sending...')}</span>
-                </>
+                <Loader2 size={18} className="animate-spin text-white shrink-0" />
               ) : (
-                <>
-                  <svg className="w-4 h-4 fill-current shrink-0" viewBox="0 0 24 24">
-                    <path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946.003-6.556 5.338-11.891 11.893-11.891 3.181.001 6.167 1.24 8.413 3.488 2.245 2.248 3.481 5.236 3.48 8.414-.003 6.557-5.338 11.892-11.893 11.892-1.99-.001-3.951-.5-5.688-1.448l-6.305 1.654zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884-.001 2.225.651 3.891 1.746 5.634l-.999 3.648 3.742-.981zm11.387-5.464c-.074-.124-.272-.198-.57-.347-.297-.149-1.758-.868-2.031-.967-.272-.099-.47-.149-.669.149-.198.297-.768.967-.941 1.165-.173.198-.347.223-.644.074-.297-.149-1.255-.462-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.297-.347.446-.521.151-.172.2-.296.3-.495.099-.198.05-.372-.025-.521-.075-.148-.669-1.611-.916-2.206-.242-.579-.487-.501-.669-.51l-.57-.01c-.198 0-.52.074-.792.372s-1.04 1.016-1.04 2.479 1.065 2.876 1.213 3.074c.149.198 2.095 3.2 5.076 4.487.709.306 1.263.489 1.694.626.712.226 1.36.194 1.872.118.571-.085 1.758-.719 2.006-1.413.248-.695.248-1.29.173-1.414z" />
-                  </svg>
-                  <span>{t("WhatsApp e-Bill")}</span>
-                </>
+                <svg className="w-4 h-4 sm:w-5 sm:h-5 fill-current shrink-0" viewBox="0 0 24 24">
+                  <path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946.003-6.556 5.338-11.891 11.893-11.891 3.181.001 6.167 1.24 8.413 3.488 2.245 2.248 3.481 5.236 3.48 8.414-.003 6.557-5.338 11.892-11.893 11.892-1.99-.001-3.951-.5-5.688-1.448l-6.305 1.654zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884-.001 2.225.651 3.891 1.746 5.634l-.999 3.648 3.742-.981zm11.387-5.464c-.074-.124-.272-.198-.57-.347-.297-.149-1.758-.868-2.031-.967-.272-.099-.47-.149-.669.149-.198.297-.768.967-.941 1.165-.173.198-.347.223-.644.074-.297-.149-1.255-.462-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.297-.347.446-.521.151-.172.2-.296.3-.495.099-.198.05-.372-.025-.521-.075-.148-.669-1.611-.916-2.206-.242-.579-.487-.501-.669-.51l-.57-.01c-.198 0-.52.074-.792.372s-1.04 1.016-1.04 2.479 1.065 2.876 1.213 3.074c.149.198 2.095 3.2 5.076 4.487.709.306 1.263.489 1.694.626.712.226 1.36.194 1.872.118.571-.085 1.758-.719 2.006-1.413.248-.695.248-1.29.173-1.414z" />
+                </svg>
               )}
             </button>
             <button
               onClick={() => { setShowWhatsAppModal(true); setMsgExpanded(false); }}
-              className="px-2 py-2 text-text-main/80 hover:text-text-main hover:bg-[#20bd5a] border-l border-white/25 transition-colors cursor-pointer"
-              title={t("Edit mobile number")}>
+              className="p-2 sm:p-2.5 text-text-main/80 hover:text-text-main hover:bg-[#20bd5a] border-l border-white/25 transition-colors cursor-pointer shrink-0"
+              title={t("Edit customer mobile number")}
+            >
               <Smartphone size={15} />
             </button>
           </div>
         )}
-        <div className="flex items-center bg-[#FDFBF7] border border-[#E8DCCB] shadow-sm rounded-xl overflow-hidden">
+        <div className="flex items-center bg-[#FDFBF7] border border-[#E8DCCB] shadow-sm rounded-xl overflow-hidden shrink-0">
           <button
             onClick={() => handlePrint(false)}
             disabled={isPrinting}
-            className={`flex items-center gap-1.5 px-4 py-2 font-black text-xs sm:text-sm transition-all duration-150 active:scale-95 cursor-pointer min-w-[110px] justify-center ${
+            className={`p-2 sm:p-2.5 font-black transition-all duration-150 active:scale-95 cursor-pointer flex items-center justify-center ${
               printStatus === 'success'
                 ? 'bg-emerald-600 text-white shadow-xs'
                 : printStatus === 'failed'
@@ -1149,38 +1172,29 @@ const Invoice = ({ bill, onClose, onSave, whatsappBillSentIds, onWhatsAppSent, a
                       ? 'bg-amber-500 text-white animate-pulse'
                       : 'bg-gradient-to-r from-[#994d1c] to-[#7c3f1d] hover:from-[#884318] hover:to-[#6c3618] text-white shadow-xs'
             }`}
-            title={activeReceiptPrinter ? `${t("Print directly to")} ${activeReceiptPrinter.name} (${activeReceiptPrinter.connectionType === 'usb' ? activeReceiptPrinter.usbPort : activeReceiptPrinter.connectionType === 'bluetooth' ? (activeReceiptPrinter.bluetoothAddress || 'Bluetooth') : activeReceiptPrinter.ipAddress})` : t("Print Bill")}>
+            title={activeReceiptPrinter ? `${t("Print")} (${activeReceiptPrinter.name})` : t("Print Bill")}
+            aria-label={t("Print Bill")}
+          >
             {printStatus === 'printing' && (
-              <svg className="animate-spin shrink-0 text-white" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M21 12a9 9 0 1 1-6.219-8.56" /></svg>
+              <svg className="animate-spin shrink-0 text-white" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M21 12a9 9 0 1 1-6.219-8.56" /></svg>
             )}
-            {printStatus === 'success' && <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="text-white shrink-0"><path d="M20 6L9 17l-5-5" /></svg>}
-            {printStatus === 'failed' && <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="text-white shrink-0"><circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" /></svg>}
-            {printStatus === 'not_connected' && <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="text-white shrink-0"><line x1="1" y1="1" x2="23" y2="23" /><path d="M16.72 11.06A10.94 10.94 0 0 1 19 12.55" /><path d="M5 12.55a10.94 10.94 0 0 1 5.17-2.39" /><path d="M10.71 5.05A16 16 0 0 1 22.56 9" /><path d="M1.42 9a15.91 15.91 0 0 1 4.7-2.88" /><path d="M8.53 16.11a6 6 0 0 1 6.95 0" /><line x1="12" y1="20" x2="12.01" y2="20" /></svg>}
-            {!printStatus && <Printer size={16} className="text-white shrink-0" />}
-            <span>
-              {printStatus === 'printing' ? t('Printing...')
-                : printStatus === 'success' ? t('Printed! ✓')
-                  : printStatus === 'failed' ? t('Print Failed')
-                    : printStatus === 'not_connected' ? t('Not Connected')
-                      : activeReceiptPrinter ? `${t("Print")} (${activeReceiptPrinter.name})` : t("Print Bill")}
-            </span>
+            {printStatus === 'success' && <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="text-white shrink-0"><path d="M20 6L9 17l-5-5" /></svg>}
+            {printStatus === 'failed' && <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="text-white shrink-0"><circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" /></svg>}
+            {printStatus === 'not_connected' && <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="text-white shrink-0"><line x1="1" y1="1" x2="23" y2="23" /><path d="M16.72 11.06A10.94 10.94 0 0 1 19 12.55" /><path d="M5 12.55a10.94 10.94 0 0 1 5.17-2.39" /><path d="M10.71 5.05A16 16 0 0 1 22.56 9" /><path d="M1.42 9a15.91 15.91 0 0 1 4.7-2.88" /><path d="M8.53 16.11a6 6 0 0 1 6.95 0" /><line x1="12" y1="20" x2="12.01" y2="20" /></svg>}
+            {!printStatus && <Printer size={18} className="text-white shrink-0" />}
           </button>
           {activeReceiptPrinter && (
             <button
               onClick={() => handlePrint(true)}
-              className="px-3 py-2 bg-white text-slate-700 hover:text-slate-900 hover:bg-slate-100 border-l border-[#E8DCCB] transition-colors cursor-pointer text-xs font-black"
+              className="px-2.5 py-2 bg-white text-slate-700 hover:text-slate-900 hover:bg-slate-100 border-l border-[#E8DCCB] transition-colors cursor-pointer text-xs font-black shrink-0"
               title={t("Open browser print dialog (PDF / Office Printer)")}>
               PDF
             </button>
           )}
         </div>
-        <button
-          onClick={onClose}
-          className="flex items-center gap-1.5 px-4 py-2 bg-white hover:bg-slate-100 text-slate-700 rounded-xl transition-all shadow-sm font-black text-xs sm:text-sm active:scale-95 cursor-pointer border border-[#E8DCCB]">
-          <ArrowLeft size={16} className="text-slate-600" />
-          <span>{t("Close")}</span>
-        </button>
       </div>
+    </div>
+  </div>
 
       {/* WhatsApp Quick Modal rendered via Portal */}
       {showWhatsAppModal && typeof document !== 'undefined' && createPortal(
@@ -1709,6 +1723,12 @@ const Invoice = ({ bill, onClose, onSave, whatsappBillSentIds, onWhatsAppSent, a
                   <span>{Number(bill.containerCharge).toFixed(2)}</span>
                 </div>
               )}
+              {Number(bill.cuttingCharge || 0) > 0 && (
+                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '1px 0' }}>
+                  <span>{t("Cutting Charge:")}</span>
+                  <span>{Number(bill.cuttingCharge).toFixed(2)}</span>
+                </div>
+              )}
 
               {(() => {
                 const sub = Number(bill.subtotal || bill.items?.reduce((acc, curr) => acc + ((curr.price || 0) * (curr.quantity || 1)), 0) || 0);
@@ -1723,7 +1743,7 @@ const Invoice = ({ bill, onClose, onSave, whatsappBillSentIds, onWhatsAppSent, a
                 const taxRupees = bill.tax !== undefined && bill.tax !== null && Number(bill.tax) > 0
                   ? (Number(bill.tax) <= 100 ? (taxable * Number(bill.tax)) / 100 : Number(bill.tax))
                   : (totRate > 0 ? (taxable * totRate) / 100 : 0);
-                const addCharges = Number(bill.deliveryCharge || 0) + Number(bill.containerCharge || 0);
+                const addCharges = Number(bill.deliveryCharge || 0) + Number(bill.containerCharge || 0) + Number(bill.cuttingCharge || 0);
                 if (!finalTotal || isNaN(finalTotal) || (finalTotal <= 0 && sub > 0)) {
                   finalTotal = taxable + taxRupees + addCharges;
                 }
@@ -1755,7 +1775,7 @@ const Invoice = ({ bill, onClose, onSave, whatsappBillSentIds, onWhatsAppSent, a
               const taxRupees = bill.tax !== undefined && bill.tax !== null && Number(bill.tax) > 0
                 ? (Number(bill.tax) <= 100 ? (taxable * Number(bill.tax)) / 100 : Number(bill.tax))
                 : (totRate > 0 ? (taxable * totRate) / 100 : 0);
-              const addCharges = Number(bill.deliveryCharge || 0) + Number(bill.containerCharge || 0);
+              const addCharges = Number(bill.deliveryCharge || 0) + Number(bill.containerCharge || 0) + Number(bill.cuttingCharge || 0);
               if (!finalTotal || isNaN(finalTotal) || (finalTotal <= 0 && sub > 0)) {
                 finalTotal = taxable + taxRupees + addCharges;
               }
@@ -2100,7 +2120,7 @@ const Invoice = ({ bill, onClose, onSave, whatsappBillSentIds, onWhatsAppSent, a
                   ? (Number(bill.tax) <= 100 ? (taxable * Number(bill.tax)) / 100 : Number(bill.tax))
                   : (totRate > 0 ? (taxable * totRate) / 100 : 0);
 
-                const addCharges = Number(bill.deliveryCharge || 0) + Number(bill.containerCharge || 0);
+                const addCharges = Number(bill.deliveryCharge || 0) + Number(bill.containerCharge || 0) + Number(bill.cuttingCharge || 0);
 
                 // Safeguard: If bill.total is missing, 0, NaN or <= 0 while sub > 0, compute dynamically
                 if (!finalTotal || isNaN(finalTotal) || (finalTotal <= 0 && sub > 0)) {
@@ -2122,6 +2142,12 @@ const Invoice = ({ bill, onClose, onSave, whatsappBillSentIds, onWhatsAppSent, a
                       <div style={{ display: 'flex', width: '100%', justifyContent: 'space-between', alignItems: 'center', fontWeight: 'bold' }}>
                         <span style={{ textAlign: 'left', flex: 1 }}>{t("Container Charge")}</span>
                         <span style={{ textAlign: 'right', flexShrink: 0, minWidth: '48px' }}>{Number(bill.containerCharge).toFixed(2)}</span>
+                      </div>
+                    )}
+                    {Number(bill.cuttingCharge || 0) > 0 && (
+                      <div style={{ display: 'flex', width: '100%', justifyContent: 'space-between', alignItems: 'center', fontWeight: 'bold' }}>
+                        <span style={{ textAlign: 'left', flex: 1 }}>{t("Cutting Charge")}</span>
+                        <span style={{ textAlign: 'right', flexShrink: 0, minWidth: '48px' }}>{Number(bill.cuttingCharge).toFixed(2)}</span>
                       </div>
                     )}
                     {roundOff !== 0 && (

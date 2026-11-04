@@ -462,3 +462,207 @@ export const getFishInventory = async (req, res) => {
     res.status(500).json({ message: error.message || 'Error fetching fish inventory' });
   }
 };
+
+// 16. Local Stock-In (Fishermen / Local Market Catch)
+export const recordLocalStockIn = async (req, res) => {
+  try {
+    const { Menu, StockLog } = getModels(req);
+    const {
+      menuItemId,
+      supplierName,
+      supplierPhone,
+      sizeBracket = 'Medium', // 'Big' | 'Medium' | 'Small'
+      weightOption = '1+',    // '1+' | '0-1'
+      kg = 0,
+      grams = 0,
+      ratePerKg = 0,
+      iceCharges = 0,
+      boxTapeCharges = 0,
+      advanceAmount = 0,
+      notes = ''
+    } = req.body;
+
+    const totalWeightKg = Number((Number(kg) + Number(grams) / 1000).toFixed(3));
+    if (!menuItemId || totalWeightKg <= 0) {
+      return res.status(400).json({ message: 'Valid fish variety and weight (Kg/Grams) are required' });
+    }
+
+    const fishDoc = await Menu.findById(menuItemId);
+    if (!fishDoc) {
+      return res.status(404).json({ message: 'Fish item not found' });
+    }
+
+    const baseAmount = Number((totalWeightKg * Number(ratePerKg || 0)).toFixed(2));
+    const subtotal = Number((baseAmount - Number(iceCharges || 0) + Number(boxTapeCharges || 0)).toFixed(2));
+    const netPayable = Number((subtotal - Number(advanceAmount || 0)).toFixed(2));
+
+    const prevStock = Number(fishDoc.stock ?? fishDoc.openingStock ?? 0);
+    const newStock = Number((prevStock + totalWeightKg).toFixed(3));
+    fishDoc.stock = newStock;
+    if (ratePerKg && Number(ratePerKg) > 0) {
+      fishDoc.purchasePrice = Number(ratePerKg);
+    }
+    if (supplierName) {
+      fishDoc.lastSupplier = supplierName.trim();
+    }
+    fishDoc.lastProcurementDate = new Date();
+    await fishDoc.save();
+
+    const logNotes = `Local Catch (${weightOption}, ${sizeBracket}): +${totalWeightKg}kg @ ₹${ratePerKg}/kg. Base: ₹${baseAmount}, Ice: -₹${iceCharges}, Box/Tape: +₹${boxTapeCharges}, Adv: ₹${advanceAmount}, Net: ₹${netPayable}.${notes ? ' Note: ' + notes : ''}`;
+
+    const log = await StockLog.create({
+      fishItem: fishDoc._id,
+      itemName: fishDoc.name,
+      type: 'Procurement (Stock-In)',
+      quantityChange: totalWeightKg,
+      grossKgChange: totalWeightKg,
+      finalStock: newStock,
+      balanceGrossKg: newStock,
+      unit: 'kg',
+      supplierName: supplierName ? supplierName.trim() : 'Local Fisherman',
+      notes: logNotes,
+      performedBy: req.user?.username || req.user?.name || 'Procurement Incharge'
+    });
+
+    emitSocketEvent(req, 'fishStockUpdated', {
+      menuItemId: fishDoc._id,
+      name: fishDoc.name,
+      previousStock: prevStock,
+      newStock,
+      grossAdded: totalWeightKg
+    });
+
+    res.status(200).json({
+      success: true,
+      message: `Local Stock-In recorded: +${totalWeightKg}kg of ${fishDoc.name} (Net ₹${netPayable})`,
+      stock: newStock,
+      calculation: {
+        totalWeightKg,
+        baseAmount,
+        subtotal,
+        netPayable
+      },
+      log
+    });
+  } catch (error) {
+    console.error('[InventoryController] Local Stock-In error:', error);
+    res.status(500).json({ message: error.message || 'Error recording local stock-in' });
+  }
+};
+
+// 17. DAM Consignment Stock-In (Multi-Fish A4 Sheet Tally & 5-Point Cr/Dr Settlement)
+export const recordDamStockIn = async (req, res) => {
+  try {
+    const { Menu, StockLog } = getModels(req);
+    const {
+      contractorId,
+      contractorName,
+      contractorPhone,
+      tallyItems = [],
+      settlements = {
+        advance: { type: 'Dr', amount: 0 },
+        khata: { type: 'Dr', amount: 0 },
+        od: { type: 'Dr', amount: 0 },
+        expense: { type: 'Dr', amount: 0 },
+        festivalExpense: { type: 'Dr', amount: 0 }
+      },
+      notes = ''
+    } = req.body;
+
+    if (!Array.isArray(tallyItems) || tallyItems.length === 0) {
+      return res.status(400).json({ message: 'At least one fish tally row is required for DAM Stock-In' });
+    }
+
+    let totalGrossKg = 0;
+    let catchTotalValue = 0;
+    const updatedFishes = [];
+
+    for (const item of tallyItems) {
+      const itemKg = Number((Number(item.kg || 0) + Number(item.grams || 0) / 1000).toFixed(3));
+      if (itemKg <= 0) continue;
+
+      const rate = Number(item.price || item.rate || 0);
+      const rowTotal = Number((itemKg * rate).toFixed(2));
+      totalGrossKg += itemKg;
+      catchTotalValue += rowTotal;
+
+      let fishDoc = null;
+      if (item.menuItemId && mongoose.Types.ObjectId.isValid(item.menuItemId)) {
+        fishDoc = await Menu.findById(item.menuItemId);
+      } else if (item.itemName) {
+        fishDoc = await Menu.findOne({ name: new RegExp('^' + item.itemName.trim() + '$', 'i') });
+      }
+
+      if (fishDoc) {
+        const prevStock = Number(fishDoc.stock ?? fishDoc.openingStock ?? 0);
+        const newStock = Number((prevStock + itemKg).toFixed(3));
+        fishDoc.stock = newStock;
+        if (rate > 0) fishDoc.purchasePrice = rate;
+        fishDoc.lastSupplier = contractorName ? contractorName.trim() : 'DAM Contractor';
+        fishDoc.lastProcurementDate = new Date();
+        await fishDoc.save();
+
+        await StockLog.create({
+          fishItem: fishDoc._id,
+          itemName: fishDoc.name,
+          type: 'Procurement (Stock-In)',
+          quantityChange: itemKg,
+          grossKgChange: itemKg,
+          finalStock: newStock,
+          balanceGrossKg: newStock,
+          unit: 'kg',
+          supplierName: contractorName ? contractorName.trim() : 'DAM Contractor',
+          notes: `DAM Consignment Catch: +${itemKg}kg @ ₹${rate}/kg. Total: ₹${rowTotal} (Contractor: ${contractorName || 'DAM Dealer'})`,
+          performedBy: req.user?.username || req.user?.name || 'Dam Incharge'
+        });
+
+        emitSocketEvent(req, 'fishStockUpdated', {
+          menuItemId: fishDoc._id,
+          name: fishDoc.name,
+          previousStock: prevStock,
+          newStock,
+          grossAdded: itemKg
+        });
+
+        updatedFishes.push({ name: fishDoc.name, addedKg: itemKg, newStock });
+      }
+    }
+
+    // 5-Point Cr / Dr Settlement Accounting Calculation
+    let totalCredits = 0;
+    let totalDebits = 0;
+    const settlementDetails = {};
+
+    ['advance', 'khata', 'od', 'expense', 'festivalExpense'].forEach(key => {
+      const entry = settlements[key] || { type: 'Dr', amount: 0 };
+      const amt = Number(entry.amount || 0);
+      settlementDetails[key] = { type: entry.type || 'Dr', amount: amt };
+      if (entry.type === 'Cr') {
+        totalCredits += amt;
+      } else {
+        totalDebits += amt;
+      }
+    });
+
+    const netConsignmentSettlement = Number((catchTotalValue + totalCredits - totalDebits).toFixed(2));
+
+    res.status(200).json({
+      success: true,
+      message: `DAM Consignment registered: ${totalGrossKg.toFixed(2)} Kg across ${updatedFishes.length} species. Net Settlement: ₹${netConsignmentSettlement}`,
+      consignmentSummary: {
+        contractorName: contractorName || 'DAM Contractor',
+        contractorPhone: contractorPhone || '',
+        totalGrossKg: Number(totalGrossKg.toFixed(3)),
+        catchTotalValue: Number(catchTotalValue.toFixed(2)),
+        totalCredits: Number(totalCredits.toFixed(2)),
+        totalDebits: Number(totalDebits.toFixed(2)),
+        netConsignmentSettlement,
+        settlementDetails,
+        updatedFishes
+      }
+    });
+  } catch (error) {
+    console.error('[InventoryController] DAM Stock-In error:', error);
+    res.status(500).json({ message: error.message || 'Error recording DAM stock-in' });
+  }
+};

@@ -3,13 +3,15 @@ import { createPortal } from 'react-dom';
 import {
   Search, ChevronLeft, ChevronRight, Star, X, ChevronDown, Image as ImageIcon,
   Fish, Waves, Anchor, Droplets, Box, Package, Flame, Gift, Menu as MenuIcon,
-  Plus, Minus, Loader2, RefreshCw, Sparkles, Scale, UtensilsCrossed
+  Plus, Minus, Loader2, RefreshCw, Sparkles, Scale, UtensilsCrossed, Filter, Check
 } from 'lucide-react';
 import api from '../../../api/system/axios';
 import { getMenuItems, updateMenuItem } from '../../../api/catalog/menu';
 import { getCategories } from '../../../api/catalog/category';
 import { getCachedMenuItems, getCachedCategories } from '../../../db/offlineDb';
 import realtimeService from '../../../services/realtimeService';
+import Fish3DRoller from './Fish3DRoller';
+import FishSmartwatchDial from './FishSmartwatchDial';
 
 const getCategoryIcon = (catName, isSelected = false) => {
   const name = catName.toLowerCase();
@@ -77,6 +79,103 @@ const formatImageUrl = (url) => {
 
 // In-memory set of already loaded/cached image URLs to render instantly with 0ms delay
 const loadedImageCache = new Set();
+
+// ─── Real-World Commercial Seafood Helper Functions ─────────────────────────
+export const formatKgFraction = (totalKg) => {
+  if (!totalKg || isNaN(totalKg) || totalKg <= 0) return '0 Kg';
+  const num = parseFloat(totalKg);
+  const whole = Math.floor(num);
+  const frac = Math.round((num - whole) * 1000) / 1000;
+  let fracSymbol = '';
+  if (Math.abs(frac - 0.25) < 0.02) fracSymbol = '¼';
+  else if (Math.abs(frac - 0.5) < 0.02) fracSymbol = '½';
+  else if (Math.abs(frac - 0.75) < 0.02) fracSymbol = '¾';
+
+  if (fracSymbol) {
+    return whole > 0 ? `${whole} ${fracSymbol} Kg` : `${fracSymbol} Kg`;
+  }
+  return `${num.toFixed(num % 1 === 0 ? 0 : (num * 10) % 1 === 0 ? 1 : 2)} Kg`;
+};
+
+export const getItemWaterType = (item) => {
+  if (item && item.waterType && ['sea_water', 'fresh_water'].includes(item.waterType)) {
+    return item.waterType;
+  }
+  const catName = String(item?.category?.name || item?.category || '').toLowerCase();
+  const itemName = String(item?.name || '').toLowerCase();
+  const sciName = String(item?.scientificName || '').toLowerCase();
+
+  if (
+    catName.includes('fresh') || catName.includes('river') || catName.includes('sweet') || catName.includes('lake') || catName.includes('pond') ||
+    itemName.includes('rohu') || itemName.includes('katla') || itemName.includes('catla') || itemName.includes('బొచ్చె') || itemName.includes('కాట్లా') ||
+    itemName.includes('tilapia') || itemName.includes('తిలాపియా') ||
+    itemName.includes('korramenu') || itemName.includes('murrel') || itemName.includes('కొర్రమీను') ||
+    itemName.includes('common fish') || itemName.includes('కామన్') || itemName.includes('carp') ||
+    itemName.includes('mattu') || itemName.includes('మట్టు') ||
+    itemName.includes('karimeen') || itemName.includes('కరీమీన్') ||
+    itemName.includes('sheelavathi') || itemName.includes('సీలావతి') ||
+    itemName.includes('mirayal') || itemName.includes('mrigal') || itemName.includes('మిరాయల్') ||
+    itemName.includes('bangaru theega') || itemName.includes('golden fish') ||
+    itemName.includes('pothi gini') || itemName.includes('చిన్న చేపలు') ||
+    itemName.includes('wallago') || itemName.includes('వాలగ') ||
+    sciName.includes('labeo') || sciName.includes('catla') || sciName.includes('cirrhinus') || sciName.includes('channa') || sciName.includes('oreochromis') || sciName.includes('cyprinus') || sciName.includes('wallago') || sciName.includes('puntius')
+  ) {
+    return 'fresh_water';
+  }
+  return 'sea_water';
+};
+
+export const getItemSpeciesType = (item) => {
+  if (item && item.speciesType && ['fish', 'prawn', 'crab'].includes(item.speciesType)) {
+    return item.speciesType;
+  }
+  const catName = String(item?.category?.name || item?.category || '').toLowerCase();
+  const itemName = String(item?.name || '').toLowerCase();
+  if (catName.includes('prawn') || itemName.includes('prawn') || itemName.includes('shrimp') || catName.includes('shrimp')) {
+    return 'prawn';
+  }
+  if (catName.includes('crab') || itemName.includes('crab') || itemName.includes('shell') || catName.includes('shell')) {
+    return 'crab';
+  }
+  return 'fish';
+};
+
+export const detectItemSizeGrade = (item, netKg) => {
+  if (!item) return 'medium';
+  const grades = item.sizeGrades;
+  const smallMax = parseFloat(grades?.small?.maxKg) || 1;
+  const mediumMax = parseFloat(grades?.medium?.maxKg) || 4;
+  if (netKg <= smallMax) return 'small';
+  if (netKg <= mediumMax) return 'medium';
+  return 'big';
+};
+
+export const getItemPricePerKg = (item, mode = 'individual', sizeGrade = null) => {
+  if (!item) return 0;
+  const grades = item.sizeGrades;
+  if (grades && sizeGrade && grades[sizeGrade]) {
+    const gradeObj = grades[sizeGrade];
+    if (mode === 'bulk') {
+      const p = parseFloat(gradeObj.wholesalePrice);
+      if (p && p > 0) return p;
+    } else if (mode === 'export') {
+      const p = parseFloat(gradeObj.exportPrice || gradeObj.wholesalePrice);
+      if (p && p > 0) return p;
+    } else {
+      const p = parseFloat(gradeObj.price);
+      if (p && p > 0) return p;
+    }
+  }
+
+  if (mode === 'bulk') {
+    return parseFloat(item.wholesalePricePerKg) || parseFloat(item.price) || 0;
+  }
+  if (mode === 'export') {
+    return parseFloat(item.exportPricePerKg) || parseFloat(item.wholesalePricePerKg) || parseFloat(item.price) || 0;
+  }
+  return parseFloat(item.price) || 0;
+};
+
 
 const getFoodCategoryVisual = (name = '', cat = '') => {
   const lower = (name + ' ' + cat).toLowerCase();
@@ -186,6 +285,8 @@ const MenuGrid = ({
   hasPendingChanges = false,
   showToast,
   cart = [],
+  cartTotal,
+  onViewOrder,
   onAddBox
 }) => {
   const { t, language } = useLanguage();
@@ -199,13 +300,40 @@ const MenuGrid = ({
   const [descFilter, setDescFilter] = useState('all');
   const [selectedFishItem, setSelectedFishItem] = useState(null);
   const [fishWeightGrams, setFishWeightGrams] = useState('1000');
+  const [inputKg, setInputKg] = useState('1');
+  const [inputGrams, setInputGrams] = useState('0');
+  const [selectedGradeOverride, setSelectedGradeOverride] = useState(null);
   const [selectedCutType, setSelectedCutType] = useState('Whole');
   const [tareGrams, setTareGrams] = useState(0);
   const [boxCountInput, setBoxCountInput] = useState('1');
 
+  // Two-Level Filter: Water Environment & Species Sub-Filter
+  const [waterTypeFilter, setWaterTypeFilter] = useState('all'); // 'all' | 'sea_water' | 'fresh_water'
+  const [speciesTypeFilter, setSpeciesTypeFilter] = useState('all'); // 'all' | 'fish' | 'prawn' | 'crab'
+  const [showSpeciesMenu, setShowSpeciesMenu] = useState(false);
+  const speciesMenuRef = useRef(null);
+  const [showAdminCompactControls, setShowAdminCompactControls] = useState(false);
+
+  // Close species menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (speciesMenuRef.current && !speciesMenuRef.current.contains(e.target)) {
+        setShowSpeciesMenu(false);
+      }
+    };
+    if (showSpeciesMenu) {
+      document.addEventListener('mousedown', handleClickOutside);
+      document.addEventListener('touchstart', handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('touchstart', handleClickOutside);
+    };
+  }, [showSpeciesMenu]);
+
   // Wholesale Multi-Item Box Builder State
   const [showBoxPacker, setShowBoxPacker] = useState(false);
-  const [boxSlotCount, setBoxSlotCount] = useState(3);
+  const [boxSlotCount, setBoxSlotCount] = useState(1);
   const [boxSlots, setBoxSlots] = useState([]);
 
   // Calculate current box number (Box #1, Box #2, etc.) based on existing boxes in cart
@@ -216,25 +344,17 @@ const MenuGrid = ({
 
   // Open the Wholesale Box Builder
   const openBoxPackerModal = useCallback((initialFish = null) => {
-    const defaultCount = 3;
-    setBoxSlotCount(defaultCount);
+    const defaultCount = 1;
+    setBoxSlotCount(1);
     const availableFishes = items.filter(it => it.isAvailable !== false);
-    const initialSlots = [];
-    for (let i = 0; i < defaultCount; i++) {
-      let chosenFish = null;
-      if (i === 0 && initialFish) {
-        chosenFish = initialFish;
-      } else {
-        chosenFish = availableFishes[i] || items[i % (items.length || 1)] || null;
-      }
-      initialSlots.push({
-        id: `slot_${i}_${Date.now()}_${Math.random()}`,
-        fishId: chosenFish?._id || '',
-        fish: chosenFish,
-        weightKg: '10',
-        pricePerKg: chosenFish?.price ? String(chosenFish.price) : '200'
-      });
-    }
+    const chosenFish = initialFish || availableFishes[0] || items[0] || null;
+    const initialSlots = [{
+      id: `slot_0_${Date.now()}_${Math.random()}`,
+      fishId: chosenFish?._id || '',
+      fish: chosenFish,
+      weightKg: chosenFish?.boxPackingKg ? String(chosenFish.boxPackingKg) : '10',
+      pricePerKg: chosenFish?.wholesalePricePerKg ? String(chosenFish.wholesalePricePerKg) : (chosenFish?.price ? String(chosenFish.price) : '200')
+    }];
     setBoxSlots(initialSlots);
     setShowBoxPacker(true);
   }, [items]);
@@ -355,9 +475,24 @@ const MenuGrid = ({
     }
     setShowBoxPacker(false);
   };
+  const [displayMode, setDisplayMode] = useState(() => {
+    return localStorage.getItem('menuGrid_displayMode') || '3d_roller';
+  });
+  const [activeRollerIndex, setActiveRollerIndex] = useState(0);
+
+  const handleSetDisplayMode = (mode) => {
+    setDisplayMode(mode);
+    try { localStorage.setItem('menuGrid_displayMode', mode); } catch (e) {}
+  };
+
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(30);
   const debouncedSearchTerm = useDebounce(searchTerm, 300);
+
+  // Auto-reset 3D Roller index to 0 whenever search query or any filter changes
+  useEffect(() => {
+    setActiveRollerIndex(0);
+  }, [searchTerm, debouncedSearchTerm, speciesTypeFilter, waterTypeFilter, category, sortBy, descFilter]);
   const gridContainerRef = useRef(null);
   const [showImages, setShowImages] = useState(() => {
     const saved = localStorage.getItem('menuGrid_showImages');
@@ -380,16 +515,30 @@ const MenuGrid = ({
     let targetX = window.innerWidth - 180;
     let targetY = 180;
 
-    // 1. Mobile Detection: Target the visible [ 🛒 Current Order ] tab at top of screen
+    const isTabletMode = typeof window !== 'undefined' && window.innerWidth >= 768 && window.innerWidth < 1280;
     const mobileCartTab = document.getElementById('mobile-cart-tab') || document.querySelector('[data-mobile-cart-tab="true"]');
-    const isMobileMode = window.innerWidth < 1024 || (mobileCartTab && mobileCartTab.offsetParent !== null);
+    const isMobileMode = typeof window !== 'undefined' && window.innerWidth < 768 && mobileCartTab && mobileCartTab.offsetParent !== null;
 
-    if (isMobileMode && mobileCartTab) {
+    if (isTabletMode) {
+      // 1. Tablet Mode: Cart is located in Row 2 directly BELOW the dial!
+      const tabletCart = document.getElementById('cart-items-container-tablet') ||
+                         document.querySelector('.bill-summary-container') ||
+                         document.getElementById('cart-items-container');
+      if (tabletCart && tabletCart.offsetParent !== null) {
+        const tRect = tabletCart.getBoundingClientRect();
+        targetX = tRect.left + Math.max(tRect.width / 4, 120);
+        targetY = Math.max(tRect.top + 50, window.innerHeight * 0.78);
+      } else {
+        targetX = window.innerWidth * 0.35;
+        targetY = window.innerHeight * 0.85;
+      }
+    } else if (isMobileMode && mobileCartTab) {
+      // 2. Mobile Phone Mode (< 768px): Target the visible [ 🛒 Current Order ] tab at top of screen
       const mRect = mobileCartTab.getBoundingClientRect();
       targetX = mRect.left + mRect.width / 2;
       targetY = mRect.top + mRect.height / 2;
     } else {
-      // 2. Desktop Mode: Target the exact newly added item spot at top of the items list
+      // 3. Desktop Mode (>= 1280px): Target the exact newly added item spot at top of the items list
       const cartItemsContainer = document.getElementById('cart-items-container') || document.querySelector('.bill-cart-items, [data-billing-cart="true"]');
       const cartHeader = document.getElementById('cart-items-header');
       if (cartItemsContainer && cartItemsContainer.offsetParent !== null) {
@@ -724,7 +873,13 @@ const MenuGrid = ({
         (descFilter === 'hasDesc' && item.description && item.description.trim() !== '') ||
         (descFilter === 'noDesc' && (!item.description || item.description.trim() === ''));
 
-      return matchesCategory && matchesSearch && matchesDescFilter;
+      // Water Type filter (Sea Water / Fresh Water)
+      const matchesWaterType = waterTypeFilter === 'all' || getItemWaterType(item) === waterTypeFilter;
+
+      // Species Type filter (Fish / Prawns / Crabs)
+      const matchesSpeciesType = speciesTypeFilter === 'all' || getItemSpeciesType(item) === speciesTypeFilter;
+
+      return matchesCategory && matchesSearch && matchesDescFilter && matchesWaterType && matchesSpeciesType;
     }).sort((a, b) => {
       switch (sortBy) {
         case 'latest':
@@ -743,7 +898,7 @@ const MenuGrid = ({
           return 0;
       }
     });
-  }, [items, category, debouncedSearchTerm, sortBy, categories, descFilter]);
+  }, [items, category, debouncedSearchTerm, sortBy, categories, descFilter, waterTypeFilter, speciesTypeFilter]);
 
   // categoryItemCounts has been moved above to calculate validCategories
 
@@ -888,34 +1043,10 @@ const MenuGrid = ({
           will-change: transform, opacity;
         }
       `}</style>
-      {/* Mobile & Tablet Top Category Scrollbar (Visible on screens < 1024px) */}
-      <div className="flex lg:hidden overflow-x-auto category-scroll py-2 px-3 bg-[#f7f1ea] border-b border-border shrink-0 gap-2 w-full no-scrollbar">
-        {categoryOptions.filter(cat => cat !== '⭐ Favourites').map((cat) => {
-          const isSelected = category === cat;
-          const count = categoryItemCounts[cat];
-          return (
-            <button
-              key={cat}
-              onClick={() => { setCategory(cat); if (onSearchChange) onSearchChange(''); }}
-              className={`flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-bold whitespace-nowrap shrink-0 transition-all shadow-xs ${isSelected
-                ? 'bg-gradient-to-r from-sky-500 to-sky-600 text-white shadow-sm'
-                : 'bg-[#FDFBF7] text-slate-600 hover:bg-orange-50 hover:text-orange-800 border border-orange-100'
-                }`}>
-              {getCategoryIcon(cat, isSelected)}
-              <span>{t(cat)}</span>
-              {count !== undefined && (
-                <span className={`text-[10px] font-extrabold px-1.5 py-0.5 rounded-full leading-none ${isSelected
-                    ? 'bg-white/25 text-white'
-                    : 'bg-gray-100 text-text-muted'
-                  }`}>{count}</span>
-              )}
-            </button>
-          );
-        })}
-      </div>
+      {/* Mobile Category Scrollbar hidden for compact cashier view */}
 
       {/* Desktop Left Sidebar: Categories (Visible on large screens >= 1024px) */}
-      {!isCategorySidebarCollapsed && (
+      {false && !isCategorySidebarCollapsed && (
         <div
           style={{ width: leftSidebarWidth }}
           className="hidden lg:flex flex-col bg-[#FDFBF7] shrink-0 h-full overflow-y-auto overflow-x-hidden hide-scrollbar py-3 border-r border-sky-500/20">
@@ -991,122 +1122,259 @@ const MenuGrid = ({
           </button>
         )}
 
-        {/* Filter & Sort Controls Row */}
-        <div className="flex items-center justify-between bg-[#f7f1ea] border-b border-border py-1.5 px-2 sm:px-3 gap-1.5 sm:gap-2 shrink-0 flex-nowrap overflow-x-auto no-scrollbar">
-          {/* Desktop Categories Open Button when collapsed */}
-          {isCategorySidebarCollapsed && (
+        {/* 🌊 Single Compact Filter Bar: Water & Species in Plain Text (Matches Image 1 Reference) */}
+        <div className="relative bg-[#FAF0E4] border-b border-[#E8DCCB] px-2 sm:px-3 py-1 sm:py-1.5 flex items-center justify-between gap-1.5 sm:gap-2 shrink-0 shadow-2xs">
+          {/* Mobile & Tablet Compact View: Exactly matches Image 1 */}
+          <div className="flex items-center justify-between w-full xl:w-auto gap-1 sm:gap-1.5 flex-nowrap">
+            {/* Water Type Filter Pills */}
+            <div className="flex items-center gap-1 sm:gap-1.5 shrink-0 flex-nowrap">
+              <span className="text-[10px] sm:text-[11px] font-black text-amber-950 uppercase tracking-wide mr-0.5">Water:</span>
+              <button
+                type="button"
+                onClick={() => setWaterTypeFilter('all')}
+                className={`px-2.5 sm:px-3 py-1 rounded-full text-[11px] sm:text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
+                  waterTypeFilter === 'all'
+                    ? 'bg-[#ea580c] text-white shadow-xs font-black'
+                    : 'bg-white text-slate-700 border border-slate-200/90 hover:bg-amber-50 shadow-2xs'
+                }`}
+              >
+                All Waters
+              </button>
+              <button
+                type="button"
+                onClick={() => setWaterTypeFilter('sea_water')}
+                className={`px-2.5 sm:px-3 py-1 rounded-full text-[11px] sm:text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
+                  waterTypeFilter === 'sea_water'
+                    ? 'bg-[#ea580c] text-white shadow-xs font-black'
+                    : 'bg-white text-slate-700 border border-slate-200/90 hover:bg-amber-50 shadow-2xs'
+                }`}
+              >
+                Sea Water
+              </button>
+              <button
+                type="button"
+                onClick={() => setWaterTypeFilter('fresh_water')}
+                className={`px-2.5 sm:px-3 py-1 rounded-full text-[11px] sm:text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
+                  waterTypeFilter === 'fresh_water'
+                    ? 'bg-[#ea580c] text-white shadow-xs font-black'
+                    : 'bg-white text-slate-700 border border-slate-200/90 hover:bg-amber-50 shadow-2xs'
+                }`}
+              >
+                Fresh Water
+              </button>
+            </div>
+
+            {/* Subtle Divider */}
+            <div className="h-4 w-px bg-amber-400/80 mx-0.5 sm:mx-1 shrink-0" />
+
+            {/* Species Filter with Filter Icon Button (Matches Image 1) */}
+            <div className="relative flex items-center gap-1 shrink-0">
+              <span className="text-[10px] sm:text-[11px] font-black text-amber-950 uppercase tracking-wide">
+                SPECIES
+              </span>
+              <button
+                type="button"
+                onClick={() => setShowSpeciesMenu((prev) => !prev)}
+                className={`relative w-6 h-6 rounded-full bg-white border flex items-center justify-center shadow-2xs hover:bg-amber-50 active:scale-95 cursor-pointer transition-all ${
+                  speciesTypeFilter !== 'all'
+                    ? 'border-[#ea580c] text-[#ea580c] ring-2 ring-orange-200'
+                    : 'border-slate-200/90 text-[#ea580c]'
+                }`}
+                title="Filter by Species"
+              >
+                <Filter size={12} className="text-[#ea580c] stroke-[2.5]" />
+                {speciesTypeFilter !== 'all' && (
+                  <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-[#ea580c] ring-1 ring-white" />
+                )}
+              </button>
+
+              {/* Species Popover Menu */}
+              {showSpeciesMenu && (
+                <div
+                  ref={speciesMenuRef}
+                  className="absolute right-0 top-full mt-1.5 z-50 bg-white/98 backdrop-blur-md border border-amber-300 rounded-2xl shadow-2xl p-1.5 min-w-[145px] animate-in fade-in zoom-in-95 duration-150"
+                >
+                  <div className="text-[9.5px] font-black uppercase text-slate-400 px-2 py-1 tracking-wider border-b border-amber-100 mb-1">
+                    Select Species
+                  </div>
+                  {[
+                    { key: 'all', label: 'All Species' },
+                    { key: 'fish', label: 'Fish' },
+                    { key: 'prawn', label: 'Prawns' },
+                    { key: 'crab', label: 'Crabs' }
+                  ].map((sp) => {
+                    const isSelected = speciesTypeFilter === sp.key;
+                    return (
+                      <button
+                        key={sp.key}
+                        type="button"
+                        onClick={() => {
+                          setSpeciesTypeFilter(sp.key);
+                          setShowSpeciesMenu(false);
+                        }}
+                        className={`w-full text-left px-2.5 py-1.5 rounded-xl text-xs font-bold flex items-center justify-between cursor-pointer transition-colors ${
+                          isSelected
+                            ? 'bg-[#ea580c] text-white font-black shadow-xs'
+                            : 'text-slate-700 hover:bg-amber-50'
+                        }`}
+                      >
+                        <span>{sp.label}</span>
+                        {isSelected && <Check size={12} className="stroke-[3]" />}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Desktop Only: View Mode Switcher & Admin Options */}
+          <div className="hidden xl:flex items-center gap-2 ml-auto">
+            {/* View Mode Switcher (3D Roller vs Grid) */}
+            <div className="flex items-center gap-1 bg-white/90 p-0.5 rounded-lg border border-slate-300 shrink-0">
+              <button
+                type="button"
+                onClick={() => handleSetDisplayMode('3d_roller')}
+                className={`px-2.5 py-1 rounded text-xs font-bold transition-all cursor-pointer ${
+                  displayMode === '3d_roller'
+                    ? 'bg-[#994d1c] text-white shadow-2xs font-black'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                3D Roller
+              </button>
+              <button
+                type="button"
+                onClick={() => handleSetDisplayMode('grid')}
+                className={`px-2.5 py-1 rounded text-xs font-bold transition-all cursor-pointer ${
+                  displayMode === 'grid'
+                    ? 'bg-[#994d1c] text-white shadow-2xs font-black'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                Grid
+              </button>
+            </div>
+
+            {/* Discreet Admin Options Toggle */}
             <button
               type="button"
-              onClick={toggleCategorySidebar}
-              className="hidden lg:flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-[#FDFBF7] text-slate-200 hover:bg-sky-950 hover:text-white border border-sky-500/30 shadow-xs transition-all shrink-0 cursor-pointer"
-              title={t("Open Categories Sidebar")}>
-              <MenuIcon size={14} className="text-slate-600" />
-              <span>{t("Categories")}</span>
-              <ChevronRight size={14} className="text-slate-400" />
-            </button>
-          )}
-
-          {/* Mobile Favorite Items Toggle Button (Left side on mobile) */}
-          <button
-            type="button"
-            onClick={() => { setCategory(category === '⭐ Favourites' ? 'All' : '⭐ Favourites'); if (onSearchChange) onSearchChange(''); }}
-            className={`flex sm:hidden items-center gap-1 px-2.5 py-1 rounded-xl text-xs font-bold transition-all shrink-0 border cursor-pointer ${category === '⭐ Favourites'
-              ? 'bg-amber-500 text-black border-amber-600 shadow-xs font-black'
-              : 'bg-[#FDFBF7] text-slate-300 hover:bg-sky-950 hover:text-white border-sky-500/30 shadow-xs'
+              onClick={() => setShowAdminCompactControls(!showAdminCompactControls)}
+              className={`px-2 py-0.5 rounded text-[11px] font-bold transition-all border cursor-pointer ${
+                showAdminCompactControls ? 'bg-amber-200 border-amber-400 text-amber-950 font-black' : 'bg-white/80 border-slate-300 text-slate-600 hover:bg-white'
               }`}
-          >
-            <Star size={12} className={category === '⭐ Favourites' ? 'fill-black text-black' : 'text-amber-400 fill-amber-400'} />
-            <span>{t("Favorite Items")}</span>
-          </button>
+              title="Toggle Sorting & Display Options"
+            >
+              {showAdminCompactControls ? 'Hide Options' : 'Options'}
+            </button>
+          </div>
+        </div>
 
-
-
-          {/* Right Controls: Sort, Add Item, Image Toggle */}
-          <div className="flex items-center gap-1 sm:gap-1.5 shrink-0 ml-auto justify-end">
+        {/* Collapsible Admin Options (Latest, Add Item, Image toggle, Anim toggle - Hidden by default) */}
+        {showAdminCompactControls && (
+          <div className="bg-[#f0e4d2] border-b border-[#E8DCCB] px-3 py-1.5 flex items-center justify-end gap-2 text-xs flex-wrap">
             <select
               value={sortBy}
               onChange={(e) => setSortBy(e.target.value)}
-              className="h-8 px-2 border border-sky-500/30 rounded-lg bg-[#FDFBF7] text-slate-200 text-xs font-bold focus:outline-none focus:border-sky-400 transition-all shadow-xs cursor-pointer max-w-[130px]"
+              className="h-7 px-2 border border-slate-300 rounded bg-white text-slate-800 text-xs font-bold"
             >
-              <option value="latest">{t("Latest")}</option>
-              <option value="oldest">{t("Oldest")}</option>
-              <option value="alphaAsc">{t("A-Z")}</option>
-              <option value="alphaDesc">{t("Z-A")}</option>
-              <option value="priceAsc">{t("Price: Low-High")}</option>
-              <option value="priceDesc">{t("Price: High-Low")}</option>
+              <option value="latest">Latest</option>
+              <option value="oldest">Oldest</option>
+              <option value="alphaAsc">A-Z</option>
+              <option value="alphaDesc">Z-A</option>
+              <option value="priceAsc">Price: Low-High</option>
+              <option value="priceDesc">Price: High-Low</option>
             </select>
 
             {userRole === 'Admin' && (
               <button
                 onClick={() => onNavigate && onNavigate('menu')}
-                className="flex items-center justify-center h-8 px-2 sm:px-2.5 rounded-lg bg-red-500 text-white shadow-xs hover:bg-red-600 active:scale-95 transition-all gap-1 font-bold text-xs whitespace-nowrap cursor-pointer shrink-0"
-                title={t("Add Item")}
+                className="h-7 px-2.5 rounded bg-red-600 text-white font-bold text-xs hover:bg-red-700"
               >
-                <Plus size={14} />
-                <span className="hidden xl:inline">{t("Add Item")}</span>
+                + Add Item
               </button>
             )}
 
             <button
               onClick={() => setShowImages(!showImages)}
-              className={`flex items-center justify-center h-8 px-2 sm:px-2.5 rounded-lg border shadow-xs active:scale-95 transition-all gap-1 font-bold text-xs cursor-pointer shrink-0 ${showImages
-                ? 'bg-red-50 text-red-600 border-red-200'
-                : 'bg-white text-text-muted border-border hover:bg-[#f7f1ea]'
-                }`}
-              title={showImages ? t('Images: On') : t('Images: Off')}
+              className={`h-7 px-2 rounded border font-bold text-xs ${showImages ? 'bg-white text-slate-800 border-slate-300' : 'bg-slate-200 text-slate-600'}`}
             >
-              <ImageIcon size={14} />
-              <span className="hidden xl:inline">{showImages ? t('Images: On') : t('Images: Off')}</span>
+              Images: {showImages ? 'On' : 'Off'}
             </button>
 
             <button
               onClick={() => setShowAnimation(!showAnimation)}
-              className={`flex items-center justify-center h-8 px-2 sm:px-2.5 rounded-lg border shadow-xs active:scale-95 transition-all gap-1 font-bold text-xs cursor-pointer shrink-0 ${showAnimation
-                ? 'bg-purple-50 text-purple-600 border-purple-200'
-                : 'bg-white text-text-muted border-border hover:bg-[#f7f1ea]'
-                }`}
-              title={showAnimation ? t('Animation: On') : t('Animation: Off')}
+              className={`h-7 px-2 rounded border font-bold text-xs ${showAnimation ? 'bg-white text-slate-800 border-slate-300' : 'bg-slate-200 text-slate-600'}`}
             >
-              <Sparkles size={14} />
-              <span className="hidden xl:inline">{showAnimation ? t('Anim: On') : t('Anim: Off')}</span>
+              Anim: {showAnimation ? 'On' : 'Off'}
             </button>
           </div>
-        </div>
+        )}
 
         {/* Scrollable Items Grid */}
-        <div ref={gridContainerRef} className="flex-1 overflow-y-auto p-4 relative bg-[#f7f1ea] [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
-          {/* Wholesale Box Packer Banner */}
-          {fishOrderMode === 'bulk' && (
-            <div className="bg-gradient-to-r from-amber-500/15 via-[#FAF0E4] to-amber-500/15 border-2 border-amber-500/50 rounded-2xl p-3.5 mb-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-amber-500 to-amber-600 text-white flex items-center justify-center font-black text-xl shadow-xs shrink-0">
-                  📦
-                </div>
-                <div>
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="text-[10px] font-black uppercase tracking-wider text-amber-900 bg-amber-200/90 px-2.5 py-0.5 rounded-full border border-amber-300">
-                      Wholesale Bulk Mode
-                    </span>
-                    <span className="text-xs font-black text-amber-950 bg-white border border-amber-300 px-2.5 py-0.5 rounded-lg shadow-2xs">
-                      Ready: Box #{currentBoxNumber}
-                    </span>
-                  </div>
-                  <p className="text-xs text-slate-700 mt-1 font-semibold">
-                    Pack mixed fish varieties (3 to 10 items) with custom weight & pricing into Box #{currentBoxNumber}.
-                  </p>
-                </div>
+        <div ref={gridContainerRef} className={`flex-1 overflow-y-auto relative bg-[#f7f1ea] [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none] ${displayMode === '3d_roller' ? 'p-0 sm:p-1 md:p-2' : 'p-1 sm:p-3 md:p-4'}`}>
+          {displayMode === '3d_roller' ? (
+            <>
+              {/* Mobile & Tablet View: Dedicated Smartwatch Round Dial UI */}
+              <div className="xl:hidden w-full h-full flex flex-col">
+                <FishSmartwatchDial
+                  items={filteredItems}
+                  activeIndex={activeRollerIndex}
+                  setActiveIndex={setActiveRollerIndex}
+                  fishOrderMode={fishOrderMode}
+                  getItemPricePerKg={getItemPricePerKg}
+                  detectItemSizeGrade={detectItemSizeGrade}
+                  formatKgFraction={formatKgFraction}
+                  formatImageUrl={formatImageUrl}
+                  onSelectItem={onSelectItem}
+                  onAddBox={onAddBox}
+                  triggerFlyAnimation={triggerFlyAnimation}
+                  language={language}
+                  t={t}
+                  isLocked={isLocked}
+                  orderStatus={orderStatus}
+                  hasPendingChanges={hasPendingChanges}
+                  showToast={showToast}
+                  setShowBoxPacker={setShowBoxPacker}
+                  openBoxPackerModal={openBoxPackerModal}
+                  showImages={showImages}
+                  showAnimation={showAnimation}
+                  cart={cart}
+                  cartTotal={cartTotal}
+                  onViewOrder={onViewOrder}
+                />
               </div>
 
-              <button
-                type="button"
-                onClick={() => openBoxPackerModal(null)}
-                className="px-4 py-2.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white font-black text-xs rounded-xl shadow-md cursor-pointer transition-all active:scale-95 flex items-center justify-center gap-2 shrink-0 border border-amber-600"
-              >
-                <span>📦</span>
-                <span>Pack Wholesale Box (Box #{currentBoxNumber})</span>
-              </button>
-            </div>
-          )}
+              {/* Desktop View (>= xl): 3D Horizontal Carousel (Untouched) */}
+              <div className="hidden xl:block w-full h-full">
+                <Fish3DRoller
+                  items={filteredItems}
+                  activeIndex={activeRollerIndex}
+                  setActiveIndex={setActiveRollerIndex}
+                  fishOrderMode={fishOrderMode}
+                  getItemPricePerKg={getItemPricePerKg}
+                  detectItemSizeGrade={detectItemSizeGrade}
+                  formatKgFraction={formatKgFraction}
+                  formatImageUrl={formatImageUrl}
+                  onSelectItem={onSelectItem}
+                  onAddBox={onAddBox}
+                  triggerFlyAnimation={triggerFlyAnimation}
+                  language={language}
+                  t={t}
+                  isLocked={isLocked}
+                  orderStatus={orderStatus}
+                  hasPendingChanges={hasPendingChanges}
+                  showToast={showToast}
+                  setShowBoxPacker={setShowBoxPacker}
+                  openBoxPackerModal={openBoxPackerModal}
+                  showImages={showImages}
+                  showAnimation={showAnimation}
+                />
+              </div>
+            </>
+          ) : (
+            <>
+
 
           {/* Dynamic Loading State with Animated Spinner & Pulse Skeletons */}
           {loading && items.length === 0 ? (
@@ -1148,7 +1416,7 @@ const MenuGrid = ({
                     key={item._id}
                     data-fish-card-id={item._id}
                     style={{ animationDelay: showAnimation ? `${Math.min(idx * 30, 400)}ms` : '0ms' }}
-                    className={`menu-card-item ${showAnimation ? 'menu-card-anim-enabled' : ''} bg-[#FDFBF7] transition-all border flex flex-col justify-between overflow-hidden relative rounded-2xl ${isAvailable ? 'cursor-pointer hover:shadow-lg hover:border-orange-300 hover:shadow-orange-500/10 hover:-translate-y-1 border-orange-100 shadow-md' : 'cursor-not-allowed opacity-50 bg-[#F7EFE2] border-orange-100'} ${showImages ? 'min-h-48 sm:min-h-52' : 'h-30 p-3'}`}
+                    className={`menu-card-item ${showAnimation ? 'menu-card-anim-enabled' : ''} bg-[#FDFBF7] transition-all border flex flex-col justify-between overflow-hidden relative rounded-2xl ${isAvailable ? 'cursor-pointer hover:shadow-lg hover:border-orange-300 hover:shadow-orange-500/10 hover:-translate-y-1 border-orange-100 shadow-md' : 'cursor-not-allowed opacity-50 bg-[#F7EFE2] border-orange-100'} ${showImages ? 'min-h-48 sm:min-h-52' : 'min-h-[142px] sm:min-h-[148px] p-2.5 sm:p-3'}`}
                     onClick={(e) => {
                       if (!isAvailable) return;
                       if (isLocked || (orderStatus === 'Billed' && !hasPendingChanges)) {
@@ -1163,87 +1431,158 @@ const MenuGrid = ({
                         x: rect.left + rect.width / 2,
                         y: rect.top + (showImages ? 65 : rect.height / 2)
                       };
-                      // Open Fish Weight / Box selection modal
-                      if (fishOrderMode === 'bulk') {
-                        openBoxPackerModal(item);
-                      } else {
-                        setSelectedFishItem(item);
-                        setFishWeightGrams('1000');
-                        setSelectedCutType('Whole');
-                        setTareGrams(0);
-                        setBoxCountInput('1');
-                      }
+                      // Open Fish Weight selection modal with active sale mode pricing
+                      setSelectedFishItem(item);
+                      setFishWeightGrams('1000');
+                      setInputKg('1');
+                      setInputGrams('0');
+                      setSelectedGradeOverride(null);
+                      setSelectedCutType('Whole');
+                      setTareGrams(0);
+                      setBoxCountInput('1');
                     }}>
 
-                    <div className={`flex items-start justify-between w-full h-4 z-[2] absolute ${showImages ? 'top-2.5 left-0 px-2.5' : 'top-3 left-0 px-3'}`}>
-                      <div className="flex gap-1 items-center">
-                        <span className="text-[10px] font-black uppercase px-1.5 py-0.5 rounded bg-orange-50 text-orange-700 border border-orange-200">
-                          {fishOrderMode === 'bulk' ? '📦 Box' : '🐟 Kg'}
-                        </span>
-                      </div>
+                    {/* When Images are ON: Floating badge over image banner */}
+                    {showImages ? (
+                      <>
+                        <div className="flex items-start justify-between w-full h-4 z-[2] absolute top-2.5 left-0 px-2.5">
+                          <div className="flex gap-1 items-center">
+                            <span className="text-[10px] font-black uppercase px-1.5 py-0.5 rounded bg-orange-50 text-orange-700 border border-orange-200">
+                              {(fishOrderMode === 'bulk' || fishOrderMode === 'export') ? 'Box' : 'Kg'}
+                            </span>
+                          </div>
 
-                      <div className="flex gap-1.5 items-center">
-                        {!isAvailable && <span className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded-md shadow-sm ${showImages ? 'text-white bg-red-500/90 backdrop-blur-sm' : 'text-red-500 bg-red-50'}`}>{t("Out of Stock")}</span>}
+                          <div className="flex gap-1.5 items-center">
+                            {(() => {
+                              const isSea = getItemWaterType(item) === 'sea_water';
+                              return (
+                                <span className={`inline-flex items-center gap-1 text-[9px] font-bold px-1.5 py-0.5 rounded-full border whitespace-nowrap shadow-2xs ${
+                                  isSea
+                                    ? 'bg-sky-50 text-sky-800 border-sky-200'
+                                    : 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                                }`}>
+                                  <span className={`w-1.5 h-1.5 rounded-full ${isSea ? 'bg-sky-500' : 'bg-emerald-500'}`}></span>
+                                  <span>{isSea ? t('Sea Water') : t('Fresh Water')}</span>
+                                </span>
+                              );
+                            })()}
+                            {!isAvailable && <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded-md shadow-sm text-white bg-red-500/90 backdrop-blur-sm">{t("Out of Stock")}</span>}
+                          </div>
+                        </div>
 
-                        {/* Description info button */}
-                        {item.description && (
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setActiveDescCard(activeDescCard === item._id ? null : item._id);
-                            }}
-                            className={`p-1 rounded-full backdrop-blur-sm transition-all shadow-sm flex items-center justify-center ${activeDescCard === item._id
-                                ? 'bg-blue-500 text-white border border-blue-400'
-                                : showImages
-                                  ? 'bg-black/20 text-white hover:bg-blue-500/80 border border-white/20'
-                                  : 'bg-gray-100 text-text-muted hover:bg-blue-50 hover:text-blue-600 border border-border'
-                              }`}
-                            title={t("View Description")}
-                          >
-                            <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="8" /><line x1="12" y1="12" x2="12" y2="16" /></svg>
-                          </button>
-                        )}
+                        <div className="w-full h-28 sm:h-30 shrink-0 bg-gray-100 relative overflow-hidden">
+                          <LazyMenuImage src={formatImageUrl(item.image)} alt={item.name} index={idx} />
+                          <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent pointer-events-none"></div>
+                        </div>
 
-                        <button
-                          onClick={(e) => handleToggleFavorite(e, item)}
-                          className={`p-1 rounded-full backdrop-blur-sm transition-all shadow-sm flex items-center justify-center ${item.isFavorite ?
-                            'bg-yellow-50 text-yellow-500 border border-yellow-200' :
-                            showImages ? 'bg-black/20 text-white hover:bg-black/40 border border-white/20' : 'bg-gray-100 text-gray-400 hover:bg-gray-200 border border-border'}`
-                          }>
-                          <Star size={12} className={item.isFavorite ? "fill-yellow-500" : ""} />
-                        </button>
-                      </div>
-                    </div>
+                        <div className="flex-1 flex flex-col justify-between p-2.5">
+                          <div className={`flex-1 flex flex-col items-center justify-center text-center mt-1 text-[13px] sm:text-[14px] leading-tight ${isAvailable ? 'font-bold text-slate-800' : 'font-medium text-slate-500 line-through'}`}>
+                            <span className="line-clamp-2 leading-snug">{(language !== 'en' && item.nameTranslations?.[language]) || item.name}</span>
+                            {item.scientificName && (
+                              <span className="text-[11px] text-slate-600 font-medium italic line-clamp-1 mt-0.5">{item.scientificName}</span>
+                            )}
+                          </div>
 
-                    {showImages && (
-                      <div className="w-full h-28 sm:h-30 shrink-0 bg-gray-100 relative overflow-hidden">
-                        <LazyMenuImage src={formatImageUrl(item.image)} alt={item.name} index={idx} />
-                        <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent pointer-events-none"></div>
+                          <div className="flex justify-center w-full mt-1.5">
+                            {(() => {
+                              const ratePerKg = getItemPricePerKg(item, fishOrderMode);
+                              if (fishOrderMode === 'export') {
+                                return (
+                                  <span className="text-[12px] sm:text-[13px] font-black px-2.5 py-1 rounded-full shadow-xs border bg-indigo-50 text-indigo-900 border-indigo-300 font-mono">
+                                    ₹{ratePerKg.toFixed(2)}
+                                    <span className="text-[10px] text-indigo-700 font-bold ml-0.5">/Kg (Export)</span>
+                                  </span>
+                                );
+                              }
+                              if (fishOrderMode === 'bulk') {
+                                return (
+                                  <span className="text-[12px] sm:text-[13px] font-black px-2.5 py-1 rounded-full shadow-xs border bg-amber-50 text-amber-900 border-amber-300 font-mono">
+                                    ₹{ratePerKg.toFixed(2)}
+                                    <span className="text-[10px] text-amber-700 font-bold ml-0.5">/Kg (Wholesale)</span>
+                                  </span>
+                                );
+                              }
+                              return (
+                                <span className="text-[12px] sm:text-[13px] font-black px-2.5 py-1 rounded-full shadow-xs border bg-emerald-50 text-emerald-800 border-emerald-300 font-mono font-black">
+                                  ₹{ratePerKg.toFixed(2)}
+                                  <span className="text-[10px] text-emerald-700 font-semibold ml-0.5">/Kg (Retail)</span>
+                                </span>
+                              );
+                            })()}
+                          </div>
+                        </div>
+                      </>
+                    ) : (
+                      /* When Images are OFF: Clean, Non-Overlapping Layout (Zero Text Cropping!) */
+                      <div className="flex-1 flex flex-col justify-between w-full h-full">
+                        {/* Top Inline Header Row: Unit Badge + Stock / Water Info */}
+                        <div className="flex items-center justify-between w-full pb-1 border-b border-orange-100/70 mb-1 shrink-0">
+                          <span className={`text-[9.5px] font-black uppercase px-2 py-0.5 rounded-md border tracking-wider ${
+                            fishOrderMode === 'export'
+                              ? 'bg-blue-50 text-blue-800 border-blue-200'
+                              : fishOrderMode === 'bulk'
+                                ? 'bg-amber-50 text-amber-800 border-amber-200'
+                                : 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                          }`}>
+                            {(fishOrderMode === 'bulk' || fishOrderMode === 'export') ? 'BOX' : 'KG'}
+                          </span>
+
+                          <div className="flex items-center gap-1">
+                            {(() => {
+                              const isSea = getItemWaterType(item) === 'sea_water';
+                              return (
+                                <span className={`inline-flex items-center gap-1 text-[9px] font-bold px-1.5 py-0.5 rounded-full border whitespace-nowrap shadow-2xs ${
+                                  isSea
+                                    ? 'bg-sky-50 text-sky-800 border-sky-200'
+                                    : 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                                }`}>
+                                  <span className={`w-1.5 h-1.5 rounded-full ${isSea ? 'bg-sky-500' : 'bg-emerald-500'}`}></span>
+                                  <span>{isSea ? t('Sea Water') : t('Fresh Water')}</span>
+                                </span>
+                              );
+                            })()}
+                            {!isAvailable && (
+                              <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded text-red-600 bg-red-50 border border-red-200">
+                                {t("Out of Stock")}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Middle: Clean Uncropped Fish Name + Scientific Name (Full Width) */}
+                        <div className="flex-1 flex flex-col items-center justify-center text-center my-auto px-0.5">
+                          <span className="text-[13px] sm:text-[14px] font-bold text-slate-800 leading-snug line-clamp-2">
+                            {(language !== 'en' && item.nameTranslations?.[language]) || item.name}
+                          </span>
+                          {item.scientificName && (
+                            <span className="text-[10.5px] text-slate-500 italic font-medium line-clamp-1 mt-0.5">
+                              {item.scientificName}
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Bottom: Professional Clean Price Tag */}
+                        <div className="flex justify-center w-full mt-1.5 shrink-0">
+                          {(() => {
+                            const ratePerKg = getItemPricePerKg(item, fishOrderMode);
+                            const modeLabel = fishOrderMode === 'export' ? 'Export' : fishOrderMode === 'bulk' ? 'Wholesale' : 'Retail';
+                            const themeBadge = fishOrderMode === 'export'
+                              ? 'bg-blue-50 text-blue-900 border-blue-200'
+                              : fishOrderMode === 'bulk'
+                                ? 'bg-amber-50 text-amber-900 border-amber-200'
+                                : 'bg-emerald-50 text-emerald-900 border-emerald-200';
+
+                            return (
+                              <span className={`inline-flex items-center gap-1 text-[12px] sm:text-[13px] font-mono font-black px-2.5 py-0.5 rounded-full border shadow-2xs ${themeBadge}`}>
+                                <span>₹{ratePerKg.toFixed(2)}</span>
+                                <span className="text-[10px] font-sans font-medium opacity-80">/Kg</span>
+                                <span className="text-[9px] font-sans font-semibold opacity-75 ml-0.5">({modeLabel})</span>
+                              </span>
+                            );
+                          })()}
+                        </div>
                       </div>
                     )}
-
-                    <div className={`flex-1 flex flex-col justify-between ${showImages ? 'p-2.5' : ''}`}>
-                      <div className={`flex-1 flex flex-col items-center justify-center text-center mt-1 text-[13px] sm:text-[14px] leading-tight ${isAvailable ? 'font-bold text-slate-800' : 'font-medium text-slate-500 line-through'}`}>
-                        <span className="line-clamp-2 leading-snug">{(language !== 'en' && item.nameTranslations?.[language]) || item.name}</span>
-                        {item.scientificName && (
-                          <span className="text-[11px] text-slate-600 font-medium italic line-clamp-1 mt-0.5">{item.scientificName}</span>
-                        )}
-                      </div>
-
-                      <div className={`flex justify-center w-full ${showImages ? 'mt-1.5' : 'mt-2 mb-0.5'}`}>
-                        {fishOrderMode === 'bulk' ? (
-                          <span className="text-[12px] sm:text-[13px] font-black px-2.5 py-1 rounded-full shadow-sm border bg-[#F7EFE2] text-[#C2410C] border-[#FDBA74] bg-[#FFF7ED] font-mono shadow-xs">
-                            ₹{(item.boxPrice || (item.price * (item.boxPackingKg || 60))).toFixed(0)}
-                            <span className="text-[10px] text-[#9A3412] font-bold ml-0.5">/Box ({item.boxPackingKg || 60}kg)</span>
-                          </span>
-                        ) : (
-                          <span className="text-[12px] sm:text-[13px] font-black px-2.5 py-1 rounded-full shadow-xs border bg-emerald-50 text-emerald-800 border-emerald-300 font-mono font-black">
-                            ₹{item.price ? `${item.price.toFixed(2)}` : '0.00'}
-                            <span className="text-[10px] text-emerald-700 font-semibold ml-0.5">/{item.sellingUnit || 'Kg'}</span>
-                          </span>
-                        )}
-                      </div>
-                    </div>
                   </div>
                 );
               })}
@@ -1305,10 +1644,12 @@ const MenuGrid = ({
               )}
             </>
           )}
+            </>
+          )}
         </div>
 
         {/* Pagination Navigation Footer Bar — Desktop only (hidden on mobile) */}
-        {filteredItems.length > 0 && (
+        {displayMode !== '3d_roller' && filteredItems.length > 0 && (
           <div className="hidden lg:flex flex-col sm:flex-row items-center justify-between bg-[#FDFBF7] border-t border-sky-500/20 py-2.5 px-4 gap-2.5 shrink-0 shadow-md">
             {/* Item Count Display */}
             <div className="text-xs text-slate-400 font-medium">
@@ -1484,25 +1825,47 @@ const MenuGrid = ({
             className="bg-white w-full max-w-[490px] max-h-[92vh] rounded-2xl shadow-2xl border border-slate-200 flex flex-col overflow-hidden text-slate-800 my-auto"
             onClick={(e) => e.stopPropagation()}
           >
-            {/* Header */}
-            <div className="flex justify-between items-center p-4 border-b border-[#E8DCCB] bg-[#FAF0E4]">
-              <div>
-                <span className="text-[10px] font-black uppercase tracking-wider text-[#c2410c] bg-[#FFF3E0] px-2.5 py-0.5 rounded-full border border-[#ffcc80]">
-                  🐟 Retail Weight Selection
-                </span>
-                <h2 className="text-base sm:text-lg font-black text-slate-900 mt-1 leading-tight">{selectedFishItem.name}</h2>
-                <p className="text-xs text-[#7c3f1d] font-bold mt-0.5">
-                  ₹{selectedFishItem.price} / Kg
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setSelectedFishItem(null)}
-                className="text-slate-500 hover:text-slate-800 bg-white hover:bg-[#F5E8D8] border border-[#E8DCCB] rounded-full p-1.5 transition-all cursor-pointer shadow-xs"
-              >
-                <X size={18} />
-              </button>
-            </div>
+            {/* Header with Mode-Aware Badges */}
+            {(() => {
+              const currentScaleGrams = parseFloat(fishWeightGrams) || 0;
+              const currentNetGrams = Math.max(0, currentScaleGrams - tareGrams);
+              const currentNetKg = currentNetGrams / 1000;
+              const activeGrade = selectedGradeOverride || detectItemSizeGrade(selectedFishItem, currentNetKg);
+              const activeRate = getItemPricePerKg(selectedFishItem, fishOrderMode, activeGrade);
+
+              let modeBadge = { label: 'Retail Sale (Kg & Grams)', bg: 'bg-[#FFF3E0] text-[#c2410c] border-[#ffcc80]' };
+              if (fishOrderMode === 'export') {
+                modeBadge = { label: 'Export (Bulk) Sale (Kg & Grams)', bg: 'bg-indigo-50 text-indigo-900 border-indigo-200' };
+              } else if (fishOrderMode === 'bulk') {
+                modeBadge = { label: 'Wholesale Sale (Kg & Grams)', bg: 'bg-amber-50 text-amber-900 border-amber-200' };
+              }
+
+              return (
+                <div className="flex justify-between items-center p-4 border-b border-[#E8DCCB] bg-[#FAF0E4]">
+                  <div>
+                    <span className={`text-[10px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-full border ${modeBadge.bg}`}>
+                      {modeBadge.label}
+                    </span>
+                    <h2 className="text-base sm:text-lg font-black text-slate-900 mt-1 leading-tight">{selectedFishItem.name}</h2>
+                    <p className="text-xs text-[#7c3f1d] font-bold mt-0.5 flex items-center gap-2">
+                      <span>Rate: <strong className="text-sm font-black text-emerald-800">₹{activeRate.toFixed(2)}</strong> / Kg</span>
+                      {selectedFishItem.sizeGrades && (
+                        <span className="text-[10px] text-amber-800 bg-amber-100 px-1.5 py-0.2 rounded font-semibold capitalize">
+                          Grade: {activeGrade}
+                        </span>
+                      )}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedFishItem(null)}
+                    className="text-slate-500 hover:text-slate-800 bg-white hover:bg-[#F5E8D8] border border-[#E8DCCB] rounded-full p-1.5 transition-all cursor-pointer shadow-xs"
+                  >
+                    <X size={18} />
+                  </button>
+                </div>
+              );
+            })()}
 
             <div className="p-3.5 sm:p-4 space-y-3.5 overflow-y-auto flex-1">
               {/* 🐟 Individual Retail Order (Kg / Grams / Cuts) */}
@@ -1540,57 +1903,161 @@ const MenuGrid = ({
                     </div>
                   </div>
 
-                  {/* Weighing & Scale Weight */}
-                  <div className="bg-[#F7EFE2] border border-sky-500/30 rounded-xl p-3.5 space-y-3">
-                    <div className="flex justify-between items-center">
-                      <span className="text-xs font-bold text-slate-800">Scale Weighed Grams</span>
-                      <div className="flex items-center gap-1.5">
-                        <span className="text-[10px] text-slate-400">Tare:</span>
-                        {[0, 50, 100].map(tVal => (
+                  {/* Weighing & Scale Weight: Dual Kg + Grams & Fraction Calculation */}
+                  <div className="bg-[#F7EFE2] border border-amber-300 rounded-xl p-3.5 space-y-3">
+                    {/* Size Grade Selector (Small / Medium / Big) */}
+                    {(() => {
+                      const scaleGrams = parseFloat(fishWeightGrams) || 0;
+                      const netGrams = Math.max(0, scaleGrams - tareGrams);
+                      const netKg = netGrams / 1000;
+                      const autoGrade = detectItemSizeGrade(selectedFishItem, netKg);
+                      const activeGrade = selectedGradeOverride || autoGrade;
+
+                      const smallMax = parseFloat(selectedFishItem.sizeGrades?.small?.maxKg) || 1;
+                      const mediumMax = parseFloat(selectedFishItem.sizeGrades?.medium?.maxKg) || 4;
+
+                      const gradesInfo = [
+                        { key: 'small', label: 'Small', range: `0 to ${smallMax} Kg` },
+                        { key: 'medium', label: 'Medium', range: `${smallMax} to ${mediumMax} Kg` },
+                        { key: 'big', label: 'Big', range: `${mediumMax}+ Kg` }
+                      ];
+
+                      return (
+                        <div className="bg-white/90 p-2.5 rounded-xl border border-amber-200 space-y-1.5">
+                          <div className="flex justify-between items-center text-xs">
+                            <span className="font-bold text-slate-800 flex items-center gap-1">
+                              <span>Fish Size Grade:</span>
+                            </span>
+                            <span className="text-[10px] text-slate-500 font-semibold">
+                              Auto-detected from weight
+                            </span>
+                          </div>
+                          <div className="grid grid-cols-3 gap-1.5">
+                            {gradesInfo.map(g => {
+                              const isSelected = activeGrade === g.key;
+                              const gradeRate = getItemPricePerKg(selectedFishItem, fishOrderMode, g.key);
+                              return (
+                                <button
+                                  key={g.key}
+                                  type="button"
+                                  onClick={() => setSelectedGradeOverride(g.key)}
+                                  className={`py-1.5 px-2 rounded-lg text-center transition-all cursor-pointer border ${
+                                    isSelected
+                                      ? 'bg-amber-600 text-white border-amber-700 shadow-xs font-black'
+                                      : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-amber-50'
+                                  }`}
+                                >
+                                  <div className="text-[11px] font-bold">{g.label}</div>
+                                  <div className={`text-[9px] ${isSelected ? 'text-amber-100' : 'text-slate-500'}`}>({g.range})</div>
+                                  <div className={`text-[10px] font-mono font-bold mt-0.5 ${isSelected ? 'text-white' : 'text-emerald-700'}`}>₹{gradeRate}/Kg</div>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                    })()}
+
+                    {/* Section 1: Predefined Kilograms (Kg) */}
+                    <div className="space-y-1.5">
+                      <div className="flex justify-between items-center">
+                        <span className="text-xs font-bold text-slate-800 flex items-center gap-1">
+                          <span>1. Select Kilograms (Kg)</span>
+                        </span>
+                        <div className="flex items-center gap-1">
+                          <span className="text-[10px] text-slate-500 font-semibold">Custom Kg:</span>
+                          <input
+                            type="number"
+                            min="0"
+                            step="1"
+                            value={inputKg}
+                            onChange={(e) => {
+                              const newKg = e.target.value.replace(/[^0-9]/g, '');
+                              setInputKg(newKg);
+                              const kgVal = parseInt(newKg, 10) || 0;
+                              const gVal = parseInt(inputGrams, 10) || 0;
+                              setFishWeightGrams(String(kgVal * 1000 + gVal));
+                            }}
+                            className="w-14 bg-white border border-slate-300 rounded px-1.5 py-0.5 text-center font-mono font-black text-xs text-slate-900"
+                          />
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-5 gap-1.5">
+                        {['0', '1', '2', '3', '4', '5', '10', '15', '20', '25'].map((kgPreset) => (
                           <button
-                            key={tVal}
+                            key={kgPreset}
                             type="button"
-                            onClick={() => setTareGrams(tVal)}
-                            className={`px-1.5 py-0.5 rounded text-[10px] font-bold border transition-all cursor-pointer ${
-                              tareGrams === tVal
-                                ? 'bg-amber-500 text-slate-950 border-amber-500 font-black shadow-xs'
-                                : 'bg-white text-slate-600 border-slate-300 hover:bg-slate-100'
+                            onClick={() => {
+                              setInputKg(kgPreset);
+                              const kgVal = parseInt(kgPreset, 10) || 0;
+                              const gVal = parseInt(inputGrams, 10) || 0;
+                              setFishWeightGrams(String(kgVal * 1000 + gVal));
+                            }}
+                            className={`py-1.5 px-1 rounded-lg text-xs font-bold border transition-colors cursor-pointer text-center ${
+                              inputKg === kgPreset
+                                ? 'bg-amber-700 text-white border-amber-800 font-black shadow-xs'
+                                : 'bg-white text-slate-700 border-slate-300 hover:border-amber-400 hover:bg-amber-50 font-semibold'
                             }`}
                           >
-                            {tVal === 0 ? 'Zero' : `-${tVal}g`}
+                            {kgPreset} Kg
                           </button>
                         ))}
                       </div>
                     </div>
 
-                    {/* Quick Grams Selectors */}
-                    <div className="grid grid-cols-4 gap-1.5">
-                      {[
-                        { label: '250g (¼ Kg)', val: '250' },
-                        { label: '500g (½ Kg)', val: '500' },
-                        { label: '750g (¾ Kg)', val: '750' },
-                        { label: '1000g (1 Kg)', val: '1000' },
-                        { label: '1500g (1.5 Kg)', val: '1500' },
-                        { label: '2000g (2 Kg)', val: '2000' },
-                        { label: '2500g (2.5 Kg)', val: '2500' },
-                        { label: '3000g (3 Kg)', val: '3000' }
-                      ].map((preset) => (
-                        <button
-                          key={preset.val}
-                          type="button"
-                          onClick={() => setFishWeightGrams(preset.val)}
-                          className={`py-1.5 px-1 rounded-lg text-[11px] font-bold border transition-colors cursor-pointer text-center leading-tight ${
-                            fishWeightGrams === preset.val
-                              ? 'bg-[#994d1c] text-white border-[#994d1c] font-black shadow-xs'
-                              : 'bg-white text-slate-700 border-slate-300 hover:border-sky-400 hover:bg-sky-50 font-semibold'
-                          }`}
-                        >
-                          {preset.label}
-                        </button>
-                      ))}
+                    {/* Section 2: Sub-Grams & Fractions (¼, ½, ¾ Kg) */}
+                    <div className="space-y-1.5">
+                      <div className="flex justify-between items-center">
+                        <span className="text-xs font-bold text-slate-800 flex items-center gap-1">
+                          <span>2. Select Sub-Grams / Fractions</span>
+                        </span>
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-[10px] text-slate-500 font-semibold">Tare:</span>
+                          {[0, 50, 100].map(tVal => (
+                            <button
+                              key={tVal}
+                              type="button"
+                              onClick={() => setTareGrams(tVal)}
+                              className={`px-1.5 py-0.5 rounded text-[10px] font-bold border transition-all cursor-pointer ${
+                                tareGrams === tVal
+                                  ? 'bg-amber-500 text-slate-950 border-amber-500 font-black shadow-xs'
+                                  : 'bg-white text-slate-600 border-slate-300 hover:bg-slate-100'
+                              }`}
+                            >
+                              {tVal === 0 ? 'Zero' : `-${tVal}g`}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-4 gap-1.5">
+                        {[
+                          { label: '0g (Zero)', val: '0' },
+                          { label: '250g (¼ Kg)', val: '250' },
+                          { label: '500g (½ Kg)', val: '500' },
+                          { label: '750g (¾ Kg)', val: '750' }
+                        ].map((gPreset) => (
+                          <button
+                            key={gPreset.val}
+                            type="button"
+                            onClick={() => {
+                              setInputGrams(gPreset.val);
+                              const kgVal = parseInt(inputKg, 10) || 0;
+                              const gVal = parseInt(gPreset.val, 10) || 0;
+                              setFishWeightGrams(String(kgVal * 1000 + gVal));
+                            }}
+                            className={`py-1.5 px-1 rounded-lg text-xs font-bold border transition-colors cursor-pointer text-center ${
+                              inputGrams === gPreset.val
+                                ? 'bg-amber-700 text-white border-amber-800 font-black shadow-xs'
+                                : 'bg-white text-slate-700 border-slate-300 hover:border-amber-400 hover:bg-amber-50 font-semibold'
+                            }`}
+                          >
+                            {gPreset.label}
+                          </button>
+                        ))}
+                      </div>
                     </div>
 
-                    {/* Scale Digital Reading Input */}
+                    {/* Scale Digital Reading Input (Two-Way Synchronized) */}
                     <div className="flex items-center gap-2 bg-slate-100 border border-slate-300 rounded-xl px-3 py-1.5 focus-within:border-[#994d1c] focus-within:bg-white transition-colors">
                       <Scale size={18} className="text-slate-600 shrink-0" />
                       <input
@@ -1607,11 +2074,16 @@ const MenuGrid = ({
                         onChange={(e) => {
                           const sanitized = e.target.value.replace(/[^0-9.]/g, '');
                           setFishWeightGrams(sanitized);
+                          const total = parseFloat(sanitized) || 0;
+                          const k = Math.floor(total / 1000);
+                          const g = total % 1000;
+                          setInputKg(String(k));
+                          setInputGrams(String(g));
                         }}
-                        placeholder="Scale grams"
+                        placeholder="Scale total grams"
                         className="flex-1 bg-transparent font-mono text-xl font-black text-slate-900 focus:outline-none"
                       />
-                      <span className="text-xs font-black text-slate-500 shrink-0 font-mono">GRAMS</span>
+                      <span className="text-xs font-black text-slate-500 shrink-0 font-mono">TOTAL SCALE GRAMS</span>
                     </div>
 
                     {/* Accurate Real-World Billing & Stock Breakdown */}
@@ -1619,27 +2091,39 @@ const MenuGrid = ({
                       const scaleGrams = parseFloat(fishWeightGrams) || 0;
                       const netGrams = Math.max(0, scaleGrams - tareGrams);
                       const netKg = netGrams / 1000;
-                      const calculatedPrice = (netKg * (selectedFishItem.price || 0));
+                      const activeGrade = selectedGradeOverride || detectItemSizeGrade(selectedFishItem, netKg);
+                      const activeRate = getItemPricePerKg(selectedFishItem, fishOrderMode, activeGrade);
+                      const calculatedPrice = (netKg * activeRate);
+                      const fractionLabel = formatKgFraction(netKg);
 
                       return (
                         <div className="bg-slate-100/90 border border-slate-200 rounded-xl p-3 space-y-2">
                           <div className="grid grid-cols-3 gap-2 text-center">
                             <div className="bg-white border border-slate-200 rounded-lg p-1.5 shadow-xs">
-                              <span className="text-[10px] text-slate-500 font-semibold block">Weighed</span>
-                              <span className="font-mono font-bold text-slate-800 text-xs">
-                                {netGrams >= 1000 ? `${netKg.toFixed(2)} Kg` : `${netGrams}g`}
+                              <span className="text-[10px] text-slate-500 font-semibold block">Weighed Net</span>
+                              <span className="font-mono font-black text-amber-900 text-xs block">
+                                {netKg.toFixed(3)} Kg
+                              </span>
+                              <span className="text-[11px] font-black text-slate-800 block">
+                                ({fractionLabel})
                               </span>
                             </div>
                             <div className="bg-white border border-slate-200 rounded-lg p-1.5 shadow-xs">
-                              <span className="text-[10px] text-slate-500 font-semibold block">Cut Prep</span>
+                              <span className="text-[10px] text-slate-500 font-semibold block">Preparation</span>
                               <span className="font-bold text-slate-800 text-xs truncate block">
                                 {selectedCutType}
+                              </span>
+                              <span className="text-[10px] text-slate-500 font-medium capitalize">
+                                Grade: {activeGrade}
                               </span>
                             </div>
                             <div className="bg-white border border-slate-200 rounded-lg p-1.5 shadow-xs">
                               <span className="text-[10px] text-slate-500 font-semibold block">Rate</span>
                               <span className="font-mono font-bold text-slate-800 text-xs">
-                                ₹{selectedFishItem.price}/Kg
+                                ₹{activeRate.toFixed(2)}/Kg
+                              </span>
+                              <span className="text-[10px] text-emerald-700 font-semibold capitalize">
+                                {fishOrderMode === 'export' ? 'Export' : fishOrderMode === 'bulk' ? 'Wholesale' : 'Retail'}
                               </span>
                             </div>
                           </div>
@@ -1649,7 +2133,12 @@ const MenuGrid = ({
                               <span className="text-xs font-bold text-slate-800">Total Billed:</span>
                               <span className="text-[10px] text-emerald-700 font-semibold block">1:1 Raw Stock Deducted</span>
                             </div>
-                            <span className="text-xl font-black text-emerald-700 font-mono">₹{calculatedPrice.toFixed(2)}</span>
+                            <div className="text-right">
+                              <span className="text-xl font-black text-emerald-700 font-mono">₹{calculatedPrice.toFixed(2)}</span>
+                              <span className="text-[10px] text-slate-500 font-medium block">
+                                {netKg.toFixed(2)} Kg @ ₹{activeRate}/Kg
+                              </span>
+                            </div>
                           </div>
                         </div>
                       );
@@ -1664,22 +2153,28 @@ const MenuGrid = ({
                       if (scaleGrams <= 0) return;
                       const netGrams = Math.max(0, scaleGrams - tareGrams);
                       const netKg = netGrams / 1000;
-                      const calculatedPrice = parseFloat((netKg * (selectedFishItem.price || 0)).toFixed(2));
-                      const weightLabel = netGrams >= 1000 ? `${netKg} Kg` : `${netGrams}g`;
+                      const activeGrade = selectedGradeOverride || detectItemSizeGrade(selectedFishItem, netKg);
+                      const activeRate = getItemPricePerKg(selectedFishItem, fishOrderMode, activeGrade);
+                      const calculatedPrice = parseFloat((netKg * activeRate).toFixed(2));
+                      const fractionLabel = formatKgFraction(netKg);
+                      const weightLabel = `${fractionLabel} (${netKg.toFixed(2)} Kg)`;
 
                       const itemToAdd = {
                         ...selectedFishItem,
-                        itemKey: `${selectedFishItem._id}_${selectedCutType}_${netGrams}g`,
+                        itemKey: `${selectedFishItem._id}_${selectedCutType}_${netGrams}g_${activeGrade}_${fishOrderMode}`,
                         menuItem: selectedFishItem._id,
                         originalId: selectedFishItem._id,
                         originalFishName: selectedFishItem.name,
-                        name: `${selectedFishItem.name} (${selectedCutType} - ${weightLabel})`,
+                        name: `${selectedFishItem.name} (${selectedCutType} - ${fractionLabel})`,
                         price: calculatedPrice,
                         quantity: 1,
                         sellingUnit: 'Kg',
                         enteredWeight: netKg,
                         netWeightKg: netKg,
                         grossWeightKg: netKg, // 1:1 exact raw catch deduction
+                        pricePerKg: activeRate,
+                        sizeGrade: activeGrade,
+                        orderMode: fishOrderMode,
                         cutType: selectedCutType,
                         yieldFactor: 1.0,
                         tareWeightKg: (tareGrams / 1000)
@@ -1733,8 +2228,8 @@ const MenuGrid = ({
             {/* Modal Header */}
             <div className="flex justify-between items-center px-5 py-4 border-b border-[#E8DCCB] bg-gradient-to-r from-[#FAF0E4] via-[#FFF8EE] to-[#FAF0E4]">
               <div className="flex items-center gap-3">
-                <div className="w-11 h-11 rounded-2xl bg-amber-500 text-white flex items-center justify-center text-2xl shadow-sm border border-amber-400">
-                  📦
+                <div className="w-11 h-11 rounded-2xl bg-amber-500 text-white flex items-center justify-center font-bold text-xs uppercase tracking-wider shadow-sm border border-amber-400">
+                  Box
                 </div>
                 <div>
                   <div className="flex items-center gap-2">
@@ -1839,8 +2334,8 @@ const MenuGrid = ({
                         className="bg-white border border-[#E8DCCB] hover:border-amber-400/80 rounded-2xl p-3 shadow-2xs transition-all space-y-2"
                       >
                         <div className="flex items-center justify-between gap-2">
-                          <span className="text-[11px] font-black text-amber-800 bg-[#FAF0E4] border border-[#E8DCCB] px-2 py-0.5 rounded-lg flex items-center gap-1">
-                            <span>🐟 Fish #{index + 1}</span>
+                          <span className="text-[11px] font-black text-amber-800 bg-[#FAF0E4] border border-[#E8DCCB] px-2 py-0.5 rounded-lg">
+                            Fish #{index + 1}
                           </span>
                           {boxSlots.length > 1 && (
                             <button
@@ -1951,7 +2446,7 @@ const MenuGrid = ({
                     <div className="flex items-center justify-between">
                       <div>
                         <span className="text-xs font-black text-amber-950 uppercase tracking-wider block">
-                          📦 Box #{currentBoxNumber} Summary
+                          Box #{currentBoxNumber} Summary
                         </span>
                         <span className="text-[11px] text-amber-800 font-bold">
                           {validCount} Varieties &bull; Total Weight: <strong className="font-mono text-slate-900">{totalKg.toFixed(2)} Kg</strong>
@@ -1981,9 +2476,8 @@ const MenuGrid = ({
               <button
                 type="button"
                 onClick={handleAddBoxToOrder}
-                className="flex-1 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white font-black text-xs sm:text-sm shadow-md cursor-pointer transition-all active:scale-98 flex items-center justify-center gap-2"
+                className="flex-1 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white font-black text-xs sm:text-sm shadow-md cursor-pointer transition-all active:scale-98 flex items-center justify-center"
               >
-                <span>📦</span>
                 <span>Add Box #{currentBoxNumber} to Order</span>
               </button>
             </div>
