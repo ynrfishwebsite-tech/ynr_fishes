@@ -10,7 +10,7 @@ import BackButton from '../common/BackButton';
 import WhatsAppConnectModal from '../communication/WhatsAppConnectModal';
 import CustomTimePicker from '../common/CustomTimePicker';
 import { RECEIPT_FONT_STYLES, RECEIPT_FONT_SIZES, findReceiptFont, getReceiptFontMetrics } from '../../../utils/formatters/receiptFonts';
-import { Type, Check, UtensilsCrossed, Receipt } from 'lucide-react';
+import { Type, Check, UtensilsCrossed, ReceiptIndianRupee, LayoutGrid, CircleDot } from 'lucide-react';
 import { getMenuItems } from '../../../api/catalog/menu';
 import LiveReceiptPreview from '../billing/LiveReceiptPreview';
 
@@ -70,7 +70,8 @@ const Settings = ({ user, setUser, onNavigate, onGoBack }) => {
     autoSendDaybook: false,
     autoSendTime: '14:30',
     autoSendTime2: '22:30',
-    enableGlobalNotifications: true
+    enableGlobalNotifications: true,
+    defaultBillingLayout: 'grid'
   });
 
   const [username, setUsername] = useState(user ? user.username : '');
@@ -273,7 +274,9 @@ const Settings = ({ user, setUser, onNavigate, onGoBack }) => {
       // 1. Immediately save restaurant settings locally in localStorage (0ms instant)
       const cleanSettings = { ...settings };
       if (cleanSettings.logo === '[logo_stored]') cleanSettings.logo = '';
+      cleanSettings.defaultBillingLayout = cleanSettings.defaultBillingLayout || 'grid';
       localStorage.setItem('restaurantSettings', JSON.stringify(cleanSettings));
+      localStorage.setItem('menuGrid_displayMode', cleanSettings.defaultBillingLayout);
       if (cleanSettings.vercelUrl) localStorage.setItem('resto_vercel_url', cleanSettings.vercelUrl);
       if (cleanSettings.serverIp) localStorage.setItem('resto_server_ip', cleanSettings.serverIp);
       if (cleanSettings.qrMenuMode) localStorage.setItem('resto_qr_mode', cleanSettings.qrMenuMode);
@@ -608,6 +611,100 @@ const Settings = ({ user, setUser, onNavigate, onGoBack }) => {
   };
 
   const logoDetails = getLogoDetails();
+
+  const renderCatalogLayoutToggle = () => (
+    <div className="p-4 bg-[#FDFBF7] rounded-xl border border-slate-200 shadow-md space-y-3">
+      <div className="flex items-center justify-between gap-3">
+        <div className="space-y-0.5">
+          <div className="flex items-center gap-2">
+            <label className="text-sm font-bold text-slate-800 flex items-center gap-2">
+              <LayoutGrid size={16} className="text-amber-800" />
+              {t("Default Billing Catalog Layout")}
+            </label>
+            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+              (settings.defaultBillingLayout || 'grid') === 'grid'
+                ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                : 'bg-amber-100 text-amber-800 border border-amber-300'
+            }`}>
+              {(settings.defaultBillingLayout || 'grid') === 'grid' ? t("Grid View (Default)") : t("3D Roller / Wheel")}
+            </span>
+          </div>
+          <p className="text-xs text-slate-500">
+            {t("Choose which catalog layout is default in Mobile, Tablet, and Desktop. Toggle ON for Grid layout, OFF for 3D Roller.")}
+          </p>
+        </div>
+
+        {/* Small Toggle Switch */}
+        <label className="relative inline-flex items-center cursor-pointer select-none shrink-0" title={t("Toggle default layout between Grid and 3D Roller")}>
+          <input
+            type="checkbox"
+            className="sr-only peer"
+            checked={(settings.defaultBillingLayout || 'grid') === 'grid'}
+            onChange={(e) => {
+              const newMode = e.target.checked ? 'grid' : '3d_roller';
+              handleInputChange('defaultBillingLayout', newMode);
+              try {
+                localStorage.setItem('menuGrid_displayMode', newMode);
+                const resto = JSON.parse(localStorage.getItem('restaurantSettings') || '{}');
+                resto.defaultBillingLayout = newMode;
+                localStorage.setItem('restaurantSettings', JSON.stringify(resto));
+              } catch (err) {}
+              window.dispatchEvent(new CustomEvent('settingsUpdated', { detail: { ...settings, defaultBillingLayout: newMode } }));
+            }}
+          />
+          <div className="w-11 h-6 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-amber-600"></div>
+        </label>
+      </div>
+
+      {/* Mode Selector Buttons */}
+      <div className="flex items-center gap-2 pt-2 border-t border-slate-200">
+        <span className="text-[11px] font-bold text-slate-600">{t("Active Layout:")}</span>
+        <button
+          type="button"
+          onClick={() => {
+            handleInputChange('defaultBillingLayout', 'grid');
+            try {
+              localStorage.setItem('menuGrid_displayMode', 'grid');
+              const resto = JSON.parse(localStorage.getItem('restaurantSettings') || '{}');
+              resto.defaultBillingLayout = 'grid';
+              localStorage.setItem('restaurantSettings', JSON.stringify(resto));
+            } catch (err) {}
+            window.dispatchEvent(new CustomEvent('settingsUpdated', { detail: { ...settings, defaultBillingLayout: 'grid' } }));
+          }}
+          className={`px-3 py-1 rounded-lg text-xs font-bold border transition-all cursor-pointer flex items-center gap-1.5 ${
+            (settings.defaultBillingLayout || 'grid') === 'grid'
+              ? 'bg-[#994d1c] text-white border-[#7c3f1d] shadow-xs'
+              : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100'
+          }`}
+        >
+          <LayoutGrid size={12} />
+          <span>{t("Grid Layout (Recommended)")}</span>
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            handleInputChange('defaultBillingLayout', '3d_roller');
+            try {
+              localStorage.setItem('menuGrid_displayMode', '3d_roller');
+              const resto = JSON.parse(localStorage.getItem('restaurantSettings') || '{}');
+              resto.defaultBillingLayout = '3d_roller';
+              localStorage.setItem('restaurantSettings', JSON.stringify(resto));
+            } catch (err) {}
+            window.dispatchEvent(new CustomEvent('settingsUpdated', { detail: { ...settings, defaultBillingLayout: '3d_roller' } }));
+          }}
+          className={`px-3 py-1 rounded-lg text-xs font-bold border transition-all cursor-pointer flex items-center gap-1.5 ${
+            settings.defaultBillingLayout === '3d_roller'
+              ? 'bg-[#994d1c] text-white border-[#7c3f1d] shadow-xs'
+              : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100'
+          }`}
+        >
+          <CircleDot size={12} />
+          <span>{t("3D Roller / Wheel")}</span>
+        </button>
+      </div>
+    </div>
+  );
+
 
   return (
     <div className="h-full overflow-y-auto p-1.5 sm:p-2.5 md:p-3">
@@ -1145,6 +1242,9 @@ const Settings = ({ user, setUser, onNavigate, onGoBack }) => {
                     <p className="text-[10px] text-slate-400">{t("Shown at the bottom of every printed receipt.")}</p>
                   </div>
 
+                  {/* Default Catalog Layout (Grid vs 3D Roller) */}
+                  {renderCatalogLayoutToggle()}
+
                 </div>
               </div>
             </div>
@@ -1365,6 +1465,9 @@ const Settings = ({ user, setUser, onNavigate, onGoBack }) => {
                     </div>
                   </div>
 
+                  {/* Default Catalog Layout (Grid vs 3D Roller) */}
+                  {renderCatalogLayoutToggle()}
+
                   {/* Dynamic QR Payment Toggle */}
                   <div className="flex items-center justify-between p-4 bg-[#FDFBF7] rounded-xl border border-slate-200 shadow-md">
                     <div className="space-y-0.5">
@@ -1440,7 +1543,7 @@ const Settings = ({ user, setUser, onNavigate, onGoBack }) => {
               </h2>
               {!showWhatsappSettingsModal && (
                 <div className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg bg-primary text-white shadow-sm">
-                  <Receipt size={13} />
+                  <ReceiptIndianRupee size={13} />
                   <span>{t("Receipt")}</span>
                 </div>
               )}

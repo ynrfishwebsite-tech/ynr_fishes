@@ -1,14 +1,6 @@
 name: Build Desktop Installer (.exe)
 
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - 'Desktop/**'
-      - 'frontend/**'
-      - 'backend/**'
-      - '.github/workflows/build-desktop.yml'
   workflow_dispatch:
 
 concurrency:

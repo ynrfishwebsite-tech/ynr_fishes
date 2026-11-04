@@ -2,7 +2,7 @@ import { useLanguage } from "../../../context/LanguageContext";
 import React, { useState, useEffect } from 'react';
 import Invoice from './Invoice';
 import PaymentModal from './PaymentModal';
-import { Search, Eye, EyeOff, CreditCard, Filter, Trash2, ChevronLeft, ChevronRight, RefreshCcw, ArrowLeft, Loader2, ChevronDown, Receipt, Info, CheckCircle, BookOpen } from 'lucide-react';
+import { Search, Eye, EyeOff, CreditCard, Filter, Trash2, ChevronLeft, ChevronRight, RefreshCcw, ArrowLeft, Loader2, ChevronDown, ReceiptIndianRupee, Info, CheckCircle, BookOpen } from 'lucide-react';
 import { getBills, deleteBill, getBillById, apiRefundOrder, clearUnpaidBill } from '../../../api/billing/billing';
 import { getCachedBillHistory, cacheBillHistory } from '../../../db/offlineDb';
 import useDebounce from '../../../hooks/useDebounce';
@@ -474,7 +474,7 @@ const BillHistory = ({ onNavigate, onGoBack }) => {
           <div className="flex items-center justify-between sm:justify-end gap-2 shrink-0 w-full sm:w-auto">
             {/* Total Bills Badge */}
             <div className="inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-1 rounded-xl bg-orange-50 text-orange-800 border border-orange-200 text-xs font-bold shrink-0 shadow-2xs">
-              <Receipt size={13} className="text-orange-600" />
+              <ReceiptIndianRupee size={13} className="text-orange-600" />
               <span>{pagination.totalBills || 0} {t("Total Bills")}</span>
             </div>
 

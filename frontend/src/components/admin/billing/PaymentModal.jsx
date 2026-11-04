@@ -5,7 +5,7 @@ import {
   CheckCircle,
   Wallet,
   CreditCard,
-  Banknote,
+  IndianRupee,
   PieChart,
   Loader2,
   BookOpen,
@@ -91,12 +91,12 @@ const PaymentModal = ({
 
   const getIcon = (m) => {
     switch (m) {
-      case 'Cash': return <Banknote size={20} />;
+      case 'Cash': return <IndianRupee size={20} />;
       case 'Card': return <CreditCard size={20} />;
       case 'UPI': return <Wallet size={20} />;
       case 'Mixed': return <PieChart size={20} />;
       case 'Unpaid': return <BookOpen size={20} />;
-      default: return <Banknote size={20} />;
+      default: return <IndianRupee size={20} />;
     }
   };
 

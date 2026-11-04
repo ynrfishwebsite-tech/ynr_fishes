@@ -7,9 +7,9 @@ import api from '../../../api/system/axios';
 import { sendWhatsAppBill, sendWhatsAppMessage, getWhatsAppStatus } from '../../../api/communication/whatsapp';
 import {
   TrendingUp,
-  Receipt,
+  ReceiptIndianRupee,
   ShoppingBag,
-  DollarSign,
+  IndianRupee,
   Calendar,
   BarChart3,
   CreditCard,
@@ -666,7 +666,7 @@ const Analytics = ({ onNavigate, onGoBack }) => {
           <div className="glass-card p-2.5 sm:p-3 md:p-3.5 hover:border-white/20 hover:-translate-y-1 transition-all duration-300 col-span-3 sm:col-span-2 lg:col-span-1 animate-card-entry shadow-sm min-w-0" style={{ animationDelay: '50ms' }}>
             <div className="flex items-center justify-between mb-1">
               <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-blue-500/10 flex items-center justify-center text-blue-500 shadow-[0_0_12px_rgba(59,130,246,0.15)] shrink-0">
-                <Receipt size={15} />
+                <ReceiptIndianRupee size={15} />
               </div>
             </div>
             <div className="space-y-0.5 min-w-0">
@@ -696,7 +696,7 @@ const Analytics = ({ onNavigate, onGoBack }) => {
           <div className="glass-card p-2.5 sm:p-3 md:p-3.5 hover:border-white/20 hover:-translate-y-1 transition-all duration-300 col-span-6 sm:col-span-2 lg:col-span-1 animate-card-entry shadow-sm min-w-0" style={{ animationDelay: '200ms' }}>
             <div className="flex items-center justify-between mb-1">
               <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-[#f97316]/10 flex items-center justify-center text-[#f97316] shadow-[0_0_12px_rgba(249,115,22,0.15)] shrink-0">
-                <DollarSign size={15} />
+                <IndianRupee size={15} />
               </div>
             </div>
             <div className="space-y-0.5 min-w-0">
@@ -1114,7 +1114,7 @@ const Analytics = ({ onNavigate, onGoBack }) => {
           <div className="glass-card p-3 sm:p-4 md:p-5 hover:border-white/20 hover:-translate-y-1 transition-all duration-300 animate-card-entry min-w-0" style={{ animationDelay: '500ms' }}>
             <div className="flex items-center gap-2.5 sm:gap-3 mb-3 sm:mb-4">
               <div className="w-8 h-8 sm:w-10 sm:h-10 bg-[#f97316]/10 rounded-xl flex items-center justify-center text-[#f97316] shadow-[0_0_12px_rgba(249,115,22,0.15)] shrink-0">
-                <Receipt size={18} />
+                <ReceiptIndianRupee size={18} />
               </div>
               <h3 className="font-bold text-slate-800 text-xs sm:text-sm truncate">{t("Today's Performance")}</h3>
             </div>

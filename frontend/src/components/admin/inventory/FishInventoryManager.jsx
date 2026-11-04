@@ -25,8 +25,6 @@ import {
   User,
   MapPin,
   X,
-  DollarSign,
-  Receipt
 } from 'lucide-react';
 import BackButton from '../common/BackButton';
 

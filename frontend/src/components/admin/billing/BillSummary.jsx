@@ -291,7 +291,7 @@ const BillSummary = ({
   const setShowCharges = (val) => setShowChargesDropdown(val);
   const showDiscountInput = showDiscountDropdown;
   const setShowDiscountInput = (val) => setShowDiscountDropdown(val);
-  const [settlementAmount, setSettlementAmount] = useState('');
+  const [settlementAmount, setSettlementAmount] = useState(() => (typeof total === 'number' && total > 0 ? total.toFixed(2) : '0'));
   const [isPrintConfigOpen, setIsPrintConfigOpen] = useState(false);
 
   const [showNoteModal, setShowNoteModal] = useState(false);
@@ -596,7 +596,7 @@ const BillSummary = ({
     if (total > 0) {
       setSettlementAmount(total.toFixed(2));
     } else {
-      setSettlementAmount('');
+      setSettlementAmount('0');
     }
   }, [total]);
 
@@ -1610,12 +1610,13 @@ const BillSummary = ({
               <input
                 type="number"
                 min="0"
+                placeholder="0"
                 onWheel={(e) => e.target.blur()}
                 onKeyDown={(e) => { if (e.key === '-' || e.key === 'e' || e.key === 'E') e.preventDefault(); }}
                 value={settlementAmount}
-                onChange={(e) => setSettlementAmount(Math.max(0, parseFloat(e.target.value) || 0))}
+                onChange={(e) => setSettlementAmount(e.target.value)}
                 disabled={isLocked || cart.length === 0}
-                className="w-[70px] sm:w-[85px] h-7 bg-[#F7EFE2] border border-[#E8DCCB] text-[#1e293b] text-right px-1.5 rounded-lg outline-none focus:border-[#ea580c] font-black font-mono text-xs sm:text-sm disabled:opacity-50" />
+                className="w-[70px] sm:w-[85px] h-7 bg-white border border-[#E8DCCB] text-[#1e293b] text-right px-1.5 rounded-lg outline-none focus:border-[#ea580c] font-black font-mono text-xs sm:text-sm disabled:opacity-50" />
               <button
                 onClick={(e) => {
                   e.preventDefault();

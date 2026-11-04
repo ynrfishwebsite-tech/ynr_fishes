@@ -1,6 +1,6 @@
 import { useLanguage } from "../../../context/LanguageContext";import React, { useState, useEffect } from 'react';
 import { getDayBook, downloadDayBookExcel } from '../../../api/analytics/analytics';
-import { Calendar, Download, TrendingUp, TrendingDown, RefreshCw, CreditCard, Wallet, Smartphone, Banknote, Loader2 } from 'lucide-react';
+import { Calendar, Download, TrendingUp, TrendingDown, RefreshCw, CreditCard, Wallet, Smartphone, IndianRupee, Loader2 } from 'lucide-react';
 import Toast from '../system/Toast';
 import BackButton from '../common/BackButton';
 import { sendWhatsAppMessage, sendWhatsAppBill, getWhatsAppStatus } from '../../../api/communication/whatsapp';
@@ -328,7 +328,7 @@ const DayBook = ({ onNavigate, onGoBack }) => {const { t } = useLanguage();
           <div className="space-y-2.5">
             <div className="flex justify-between items-center bg-[#F7EFE2] p-3 rounded-xl border border-[#E8DCCB]">
               <div className="flex items-center gap-2.5">
-                <Banknote className="text-[#22c55e] w-4 h-4 sm:w-5 sm:h-5" />
+                <IndianRupee className="text-[#22c55e] w-4 h-4 sm:w-5 sm:h-5" />
                 <span className="font-semibold text-slate-800 text-xs sm:text-sm">{t("Cash In")}</span>
               </div>
               <span className="font-bold text-slate-900 text-xs sm:text-sm font-mono">₹{data.cashFlow.cashIn.toLocaleString()}</span>
@@ -362,7 +362,7 @@ const DayBook = ({ onNavigate, onGoBack }) => {const { t } = useLanguage();
           <div className="space-y-2.5">
             <div className="flex justify-between items-center bg-[#F7EFE2] p-3 rounded-xl border border-[#E8DCCB]">
               <div className="flex items-center gap-2.5">
-                <Banknote className="text-red-500 w-4 h-4 sm:w-5 sm:h-5" />
+                <IndianRupee className="text-red-500 w-4 h-4 sm:w-5 sm:h-5" />
                 <span className="font-semibold text-slate-800 text-xs sm:text-sm">{t("Cash Out")}</span>
               </div>
               <span className="font-bold text-slate-900 text-xs sm:text-sm font-mono">₹{data.cashFlow.cashOut.toLocaleString()}</span>

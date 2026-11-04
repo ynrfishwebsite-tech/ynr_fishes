@@ -3,7 +3,8 @@ import { createPortal } from 'react-dom';
 import {
   Search, ChevronLeft, ChevronRight, Star, X, ChevronDown, Image as ImageIcon,
   Fish, Waves, Anchor, Droplets, Box, Package, Flame, Gift, Menu as MenuIcon,
-  Plus, Minus, Loader2, RefreshCw, Sparkles, Scale, UtensilsCrossed, Filter, Check
+  Plus, Minus, Loader2, RefreshCw, Sparkles, Scale, UtensilsCrossed, Filter, Check,
+  LayoutGrid, CircleDot
 } from 'lucide-react';
 import api from '../../../api/system/axios';
 import { getMenuItems, updateMenuItem } from '../../../api/catalog/menu';
@@ -348,16 +349,19 @@ const MenuGrid = ({
     setBoxSlotCount(1);
     const availableFishes = items.filter(it => it.isAvailable !== false);
     const chosenFish = initialFish || availableFishes[0] || items[0] || null;
+    const defaultRate = fishOrderMode === 'export'
+      ? (chosenFish?.exportPricePerKg ? String(chosenFish.exportPricePerKg) : (chosenFish?.wholesalePricePerKg ? String(chosenFish.wholesalePricePerKg) : (chosenFish?.price ? String(chosenFish.price) : '200')))
+      : (chosenFish?.wholesalePricePerKg ? String(chosenFish.wholesalePricePerKg) : (chosenFish?.price ? String(chosenFish.price) : '200'));
     const initialSlots = [{
       id: `slot_0_${Date.now()}_${Math.random()}`,
       fishId: chosenFish?._id || '',
       fish: chosenFish,
       weightKg: chosenFish?.boxPackingKg ? String(chosenFish.boxPackingKg) : '10',
-      pricePerKg: chosenFish?.wholesalePricePerKg ? String(chosenFish.wholesalePricePerKg) : (chosenFish?.price ? String(chosenFish.price) : '200')
+      pricePerKg: defaultRate
     }];
     setBoxSlots(initialSlots);
     setShowBoxPacker(true);
-  }, [items]);
+  }, [items, fishOrderMode]);
 
   // Handle changing the number of items in this box (1 to 10)
   const handleSlotCountChange = (newCount) => {
@@ -369,12 +373,15 @@ const MenuGrid = ({
       if (clamped > updated.length) {
         for (let i = updated.length; i < clamped; i++) {
           const chosen = availableFishes[i] || items[i % (items.length || 1)] || null;
+          const defaultRate = fishOrderMode === 'export'
+            ? (chosen?.exportPricePerKg ? String(chosen.exportPricePerKg) : (chosen?.wholesalePricePerKg ? String(chosen.wholesalePricePerKg) : (chosen?.price ? String(chosen.price) : '200')))
+            : (chosen?.wholesalePricePerKg ? String(chosen.wholesalePricePerKg) : (chosen?.price ? String(chosen.price) : '200'));
           updated.push({
             id: `slot_${i}_${Date.now()}_${Math.random()}`,
             fishId: chosen?._id || '',
             fish: chosen,
-            weightKg: '10',
-            pricePerKg: chosen?.price ? String(chosen.price) : '200'
+            weightKg: chosen?.boxPackingKg ? String(chosen.boxPackingKg) : '10',
+            pricePerKg: defaultRate
           });
         }
       } else if (clamped < updated.length) {
@@ -386,13 +393,17 @@ const MenuGrid = ({
 
   const handleSlotFishChange = (index, selectedFishId) => {
     const chosen = items.find(it => String(it._id) === String(selectedFishId));
+    const chosenRate = fishOrderMode === 'export'
+      ? (chosen?.exportPricePerKg ? String(chosen.exportPricePerKg) : (chosen?.wholesalePricePerKg ? String(chosen.wholesalePricePerKg) : (chosen?.price ? String(chosen.price) : '200')))
+      : (chosen?.wholesalePricePerKg ? String(chosen.wholesalePricePerKg) : (chosen?.price ? String(chosen.price) : '200'));
     setBoxSlots(prev => prev.map((slot, idx) => {
       if (idx !== index) return slot;
       return {
         ...slot,
         fishId: selectedFishId,
         fish: chosen || null,
-        pricePerKg: chosen?.price ? String(chosen.price) : slot.pricePerKg
+        weightKg: chosen?.boxPackingKg ? String(chosen.boxPackingKg) : slot.weightKg,
+        pricePerKg: chosenRate
       };
     }));
   };
@@ -422,14 +433,17 @@ const MenuGrid = ({
     const nextIdx = boxSlots.length;
     const availableFishes = items.filter(it => it.isAvailable !== false);
     const chosen = availableFishes[nextIdx] || items[nextIdx % (items.length || 1)] || null;
+    const chosenRate = fishOrderMode === 'export'
+      ? (chosen?.exportPricePerKg ? String(chosen.exportPricePerKg) : (chosen?.wholesalePricePerKg ? String(chosen.wholesalePricePerKg) : (chosen?.price ? String(chosen.price) : '200')))
+      : (chosen?.wholesalePricePerKg ? String(chosen.wholesalePricePerKg) : (chosen?.price ? String(chosen.price) : '200'));
     setBoxSlots(prev => [
       ...prev,
       {
         id: `slot_${nextIdx}_${Date.now()}_${Math.random()}`,
         fishId: chosen?._id || '',
         fish: chosen,
-        weightKg: '10',
-        pricePerKg: chosen?.price ? String(chosen.price) : '200'
+        weightKg: chosen?.boxPackingKg ? String(chosen.boxPackingKg) : '10',
+        pricePerKg: chosenRate
       }
     ]);
     setBoxSlotCount(prev => prev + 1);
@@ -455,6 +469,7 @@ const MenuGrid = ({
         boxNumber: currentBoxNumber,
         boxLabel: `Box #${currentBoxNumber}`,
         isWholesaleBox: true,
+        orderMode: fishOrderMode,
         sellingUnit: 'Kg',
         quantity: 1,
         weightKg: wt,
@@ -476,9 +491,29 @@ const MenuGrid = ({
     setShowBoxPacker(false);
   };
   const [displayMode, setDisplayMode] = useState(() => {
-    return localStorage.getItem('menuGrid_displayMode') || '3d_roller';
+    try {
+      const resto = JSON.parse(localStorage.getItem('restaurantSettings') || '{}');
+      if (resto.defaultBillingLayout) return resto.defaultBillingLayout;
+    } catch (e) {}
+    const saved = localStorage.getItem('menuGrid_displayMode');
+    if (saved && saved !== '3d_roller') return saved;
+    // Default to 'grid' across all screen sizes (mobile, tab, desktop)
+    return 'grid';
   });
   const [activeRollerIndex, setActiveRollerIndex] = useState(0);
+
+  // Sync when store settings update (e.g. from Settings page toggle)
+  useEffect(() => {
+    const handleSettingsUpdated = (e) => {
+      const updated = e.detail;
+      if (updated?.defaultBillingLayout) {
+        setDisplayMode(updated.defaultBillingLayout);
+        try { localStorage.setItem('menuGrid_displayMode', updated.defaultBillingLayout); } catch (err) {}
+      }
+    };
+    window.addEventListener('settingsUpdated', handleSettingsUpdated);
+    return () => window.removeEventListener('settingsUpdated', handleSettingsUpdated);
+  }, []);
 
   const handleSetDisplayMode = (mode) => {
     setDisplayMode(mode);
@@ -1122,17 +1157,16 @@ const MenuGrid = ({
           </button>
         )}
 
-        {/* 🌊 Single Compact Filter Bar: Water & Species in Plain Text (Matches Image 1 Reference) */}
-        <div className="relative bg-[#FAF0E4] border-b border-[#E8DCCB] px-2 sm:px-3 py-1 sm:py-1.5 flex items-center justify-between gap-1.5 sm:gap-2 shrink-0 shadow-2xs">
-          {/* Mobile & Tablet Compact View: Exactly matches Image 1 */}
-          <div className="flex items-center justify-between w-full xl:w-auto gap-1 sm:gap-1.5 flex-nowrap">
+        {/* 🌊 Single Compact Filter Bar: Water & Species + View Mode Toggle (3D Roller vs Grid) */}
+        <div className="relative bg-[#FAF0E4] border-b border-[#E8DCCB] px-1.5 sm:px-3 py-1 sm:py-1.5 flex items-center justify-between gap-1.5 sm:gap-2 shrink-0 shadow-2xs">
+          {/* Left: Water Environment & Species Filters */}
+          <div className="flex items-center gap-1 sm:gap-1.5 shrink-0 overflow-x-auto scrollbar-none py-0.5 max-w-[calc(100%-80px)] sm:max-w-none">
             {/* Water Type Filter Pills */}
             <div className="flex items-center gap-1 sm:gap-1.5 shrink-0 flex-nowrap">
-              <span className="text-[10px] sm:text-[11px] font-black text-amber-950 uppercase tracking-wide mr-0.5">Water:</span>
               <button
                 type="button"
                 onClick={() => setWaterTypeFilter('all')}
-                className={`px-2.5 sm:px-3 py-1 rounded-full text-[11px] sm:text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
+                className={`px-2 sm:px-3 py-0.5 sm:py-1 rounded-full text-[10.5px] sm:text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
                   waterTypeFilter === 'all'
                     ? 'bg-[#ea580c] text-white shadow-xs font-black'
                     : 'bg-white text-slate-700 border border-slate-200/90 hover:bg-amber-50 shadow-2xs'
@@ -1143,7 +1177,7 @@ const MenuGrid = ({
               <button
                 type="button"
                 onClick={() => setWaterTypeFilter('sea_water')}
-                className={`px-2.5 sm:px-3 py-1 rounded-full text-[11px] sm:text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
+                className={`px-2 sm:px-3 py-0.5 sm:py-1 rounded-full text-[10.5px] sm:text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
                   waterTypeFilter === 'sea_water'
                     ? 'bg-[#ea580c] text-white shadow-xs font-black'
                     : 'bg-white text-slate-700 border border-slate-200/90 hover:bg-amber-50 shadow-2xs'
@@ -1154,7 +1188,7 @@ const MenuGrid = ({
               <button
                 type="button"
                 onClick={() => setWaterTypeFilter('fresh_water')}
-                className={`px-2.5 sm:px-3 py-1 rounded-full text-[11px] sm:text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
+                className={`px-2 sm:px-3 py-0.5 sm:py-1 rounded-full text-[10.5px] sm:text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
                   waterTypeFilter === 'fresh_water'
                     ? 'bg-[#ea580c] text-white shadow-xs font-black'
                     : 'bg-white text-slate-700 border border-slate-200/90 hover:bg-amber-50 shadow-2xs'
@@ -1165,26 +1199,26 @@ const MenuGrid = ({
             </div>
 
             {/* Subtle Divider */}
-            <div className="h-4 w-px bg-amber-400/80 mx-0.5 sm:mx-1 shrink-0" />
+            <div className="h-3.5 sm:h-4 w-px bg-amber-400/80 mx-0.5 sm:mx-1 shrink-0" />
 
-            {/* Species Filter with Filter Icon Button (Matches Image 1) */}
+            {/* Species Filter with Filter Icon Button */}
             <div className="relative flex items-center gap-1 shrink-0">
-              <span className="text-[10px] sm:text-[11px] font-black text-amber-950 uppercase tracking-wide">
+              <span className="text-[9.5px] sm:text-[11px] font-black text-amber-950 uppercase tracking-wide">
                 SPECIES
               </span>
               <button
                 type="button"
                 onClick={() => setShowSpeciesMenu((prev) => !prev)}
-                className={`relative w-6 h-6 rounded-full bg-white border flex items-center justify-center shadow-2xs hover:bg-amber-50 active:scale-95 cursor-pointer transition-all ${
+                className={`relative w-5 h-5 sm:w-6 sm:h-6 rounded-full bg-white border flex items-center justify-center shadow-2xs hover:bg-amber-50 active:scale-95 cursor-pointer transition-all ${
                   speciesTypeFilter !== 'all'
                     ? 'border-[#ea580c] text-[#ea580c] ring-2 ring-orange-200'
                     : 'border-slate-200/90 text-[#ea580c]'
                 }`}
                 title="Filter by Species"
               >
-                <Filter size={12} className="text-[#ea580c] stroke-[2.5]" />
+                <Filter size={11} className="text-[#ea580c] stroke-[2.5]" />
                 {speciesTypeFilter !== 'all' && (
-                  <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-[#ea580c] ring-1 ring-white" />
+                  <span className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full bg-[#ea580c] ring-1 ring-white" />
                 )}
               </button>
 
@@ -1228,39 +1262,61 @@ const MenuGrid = ({
             </div>
           </div>
 
-          {/* Desktop Only: View Mode Switcher & Admin Options */}
-          <div className="hidden xl:flex items-center gap-2 ml-auto">
-            {/* View Mode Switcher (3D Roller vs Grid) */}
-            <div className="flex items-center gap-1 bg-white/90 p-0.5 rounded-lg border border-slate-300 shrink-0">
+          {/* Right: View Mode Switcher for All Screens (Mobile, Tablet, Desktop) */}
+          <div className="flex items-center gap-1 sm:gap-2 shrink-0 ml-auto">
+            {/* Mobile View: Very small compact toggle button */}
+            <button
+              type="button"
+              onClick={() => handleSetDisplayMode(displayMode === '3d_roller' ? 'grid' : '3d_roller')}
+              className="sm:hidden flex items-center gap-1 px-1.5 py-0.5 rounded-lg border border-amber-300/80 bg-white hover:bg-amber-50 shadow-2xs active:scale-95 transition-all cursor-pointer text-slate-800"
+              title={displayMode === '3d_roller' ? "Switch to Grid View" : "Switch to 3D Roller View"}
+            >
+              {displayMode === '3d_roller' ? (
+                <>
+                  <LayoutGrid size={11} className="text-[#994d1c]" />
+                  <span className="text-[10px] font-black text-[#994d1c]">Grid</span>
+                </>
+              ) : (
+                <>
+                  <CircleDot size={11} className="text-[#ea580c]" />
+                  <span className="text-[10px] font-black text-[#ea580c]">3D</span>
+                </>
+              )}
+            </button>
+
+            {/* Tablet & Desktop: Dual View Mode Switcher (3D Roller vs Grid) */}
+            <div className="hidden sm:flex items-center gap-1 bg-white/90 p-0.5 rounded-lg border border-slate-300 shrink-0">
               <button
                 type="button"
                 onClick={() => handleSetDisplayMode('3d_roller')}
-                className={`px-2.5 py-1 rounded text-xs font-bold transition-all cursor-pointer ${
+                className={`px-2 sm:px-2.5 py-0.5 sm:py-1 rounded text-[11px] sm:text-xs font-bold transition-all cursor-pointer flex items-center gap-1 ${
                   displayMode === '3d_roller'
                     ? 'bg-[#994d1c] text-white shadow-2xs font-black'
                     : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
-                3D Roller
+                <CircleDot size={12} className={displayMode === '3d_roller' ? 'text-amber-200' : 'text-slate-500'} />
+                <span>3D Roller</span>
               </button>
               <button
                 type="button"
                 onClick={() => handleSetDisplayMode('grid')}
-                className={`px-2.5 py-1 rounded text-xs font-bold transition-all cursor-pointer ${
+                className={`px-2 sm:px-2.5 py-0.5 sm:py-1 rounded text-[11px] sm:text-xs font-bold transition-all cursor-pointer flex items-center gap-1 ${
                   displayMode === 'grid'
                     ? 'bg-[#994d1c] text-white shadow-2xs font-black'
                     : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
-                Grid
+                <LayoutGrid size={12} className={displayMode === 'grid' ? 'text-amber-200' : 'text-slate-500'} />
+                <span>Grid</span>
               </button>
             </div>
 
-            {/* Discreet Admin Options Toggle */}
+            {/* Discreet Admin Options Toggle (Desktop >= xl) */}
             <button
               type="button"
               onClick={() => setShowAdminCompactControls(!showAdminCompactControls)}
-              className={`px-2 py-0.5 rounded text-[11px] font-bold transition-all border cursor-pointer ${
+              className={`hidden xl:inline-block px-2 py-0.5 rounded text-[11px] font-bold transition-all border cursor-pointer ${
                 showAdminCompactControls ? 'bg-amber-200 border-amber-400 text-amber-950 font-black' : 'bg-white/80 border-slate-300 text-slate-600 hover:bg-white'
               }`}
               title="Toggle Sorting & Display Options"
@@ -1431,12 +1487,19 @@ const MenuGrid = ({
                         x: rect.left + rect.width / 2,
                         y: rect.top + (showImages ? 65 : rect.height / 2)
                       };
-                      // Open Fish Weight selection modal with active sale mode pricing
+
+                      // In Wholesale (Boxes) or Export (Bulk) mode, open the Bulk / Box Packer Modal
+                      if (fishOrderMode === 'bulk' || fishOrderMode === 'export') {
+                        openBoxPackerModal(item);
+                        return;
+                      }
+
+                      // Retail Mode: Open Fish Weight selection modal with active sale mode pricing
                       setSelectedFishItem(item);
                       setFishWeightGrams('1000');
                       setInputKg('1');
                       setInputGrams('0');
-                      setSelectedGradeOverride(null);
+                      setSelectedGradeOverride(item.defaultSizeGrade || 'small');
                       setSelectedCutType('Whole');
                       setTareGrams(0);
                       setBoxCountInput('1');
@@ -1817,12 +1880,12 @@ const MenuGrid = ({
       {/* Fish Weight / Box Selection Modal (Individual Retail & Wholesale Boxes) */}
       {selectedFishItem && typeof document !== 'undefined' && createPortal(
         <div
-          className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-[9999] p-4 animate-in fade-in duration-200"
+          className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-[9999] p-2 sm:p-3 md:p-4 animate-in fade-in duration-200"
           onClick={() => setSelectedFishItem(null)}
         >
           <div
             data-fish-modal="true"
-            className="bg-white w-full max-w-[490px] max-h-[92vh] rounded-2xl shadow-2xl border border-slate-200 flex flex-col overflow-hidden text-slate-800 my-auto"
+            className="bg-white w-full max-w-[460px] max-h-[96vh] sm:max-h-[92vh] rounded-xl sm:rounded-2xl shadow-2xl border border-slate-200 flex flex-col overflow-hidden text-slate-800 my-auto"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Header with Mode-Aware Badges */}
@@ -1830,7 +1893,7 @@ const MenuGrid = ({
               const currentScaleGrams = parseFloat(fishWeightGrams) || 0;
               const currentNetGrams = Math.max(0, currentScaleGrams - tareGrams);
               const currentNetKg = currentNetGrams / 1000;
-              const activeGrade = selectedGradeOverride || detectItemSizeGrade(selectedFishItem, currentNetKg);
+              const activeGrade = selectedGradeOverride || selectedFishItem.defaultSizeGrade || 'small';
               const activeRate = getItemPricePerKg(selectedFishItem, fishOrderMode, activeGrade);
 
               let modeBadge = { label: 'Retail Sale (Kg & Grams)', bg: 'bg-[#FFF3E0] text-[#c2410c] border-[#ffcc80]' };
@@ -1841,14 +1904,14 @@ const MenuGrid = ({
               }
 
               return (
-                <div className="flex justify-between items-center p-4 border-b border-[#E8DCCB] bg-[#FAF0E4]">
+                <div className="flex justify-between items-center px-3 sm:px-4 py-2 sm:py-2.5 border-b border-[#E8DCCB] bg-[#FAF0E4] shrink-0">
                   <div>
-                    <span className={`text-[10px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-full border ${modeBadge.bg}`}>
+                    <span className={`text-[9px] sm:text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full border ${modeBadge.bg}`}>
                       {modeBadge.label}
                     </span>
-                    <h2 className="text-base sm:text-lg font-black text-slate-900 mt-1 leading-tight">{selectedFishItem.name}</h2>
-                    <p className="text-xs text-[#7c3f1d] font-bold mt-0.5 flex items-center gap-2">
-                      <span>Rate: <strong className="text-sm font-black text-emerald-800">₹{activeRate.toFixed(2)}</strong> / Kg</span>
+                    <h2 className="text-sm sm:text-base font-black text-slate-900 mt-0.5 leading-tight">{selectedFishItem.name}</h2>
+                    <p className="text-[11px] sm:text-xs text-[#7c3f1d] font-bold mt-0.5 flex items-center gap-1.5 sm:gap-2">
+                      <span>Rate: <strong className="text-xs sm:text-sm font-black text-emerald-800">₹{activeRate.toFixed(2)}</strong> / Kg</span>
                       {selectedFishItem.sizeGrades && (
                         <span className="text-[10px] text-amber-800 bg-amber-100 px-1.5 py-0.2 rounded font-semibold capitalize">
                           Grade: {activeGrade}
@@ -1861,22 +1924,22 @@ const MenuGrid = ({
                     onClick={() => setSelectedFishItem(null)}
                     className="text-slate-500 hover:text-slate-800 bg-white hover:bg-[#F5E8D8] border border-[#E8DCCB] rounded-full p-1.5 transition-all cursor-pointer shadow-xs"
                   >
-                    <X size={18} />
+                    <X size={16} className="sm:w-[18px] sm:h-[18px]" />
                   </button>
                 </div>
               );
             })()}
 
-            <div className="p-3.5 sm:p-4 space-y-3.5 overflow-y-auto flex-1">
+            <div className="p-2 sm:p-2.5 md:p-3 space-y-1.5 sm:space-y-2 overflow-y-auto flex-1">
               {/* 🐟 Individual Retail Order (Kg / Grams / Cuts) */}
-              <div className="space-y-3">
+              <div className="space-y-2 sm:space-y-2.5 md:space-y-3">
                   {/* Cut Type Selection (Balanced 5-Button Row) */}
-                  <div className="bg-[#F7EFE2] border border-sky-500/30 rounded-xl p-3 space-y-2">
+                  <div className="bg-[#F7EFE2] border border-sky-500/30 rounded-lg sm:rounded-xl p-1.5 sm:p-2 space-y-1">
                     <div className="flex justify-between items-center">
-                      <span className="text-xs font-bold text-slate-800">Cutting Style / Preparation</span>
-                      <span className="text-[10px] text-slate-400">Butcher slip instruction</span>
+                      <span className="text-[11px] sm:text-xs font-bold text-slate-800">Cutting Style / Preparation</span>
+                      <span className="text-[9px] sm:text-[10px] text-slate-400">Butcher slip instruction</span>
                     </div>
-                    <div className="grid grid-cols-5 gap-1.5">
+                    <div className="grid grid-cols-5 gap-1 sm:gap-1.5">
                       {[
                         { name: 'Whole', label: 'Whole' },
                         { name: 'Cleaned', label: 'Cleaned' },
@@ -1890,7 +1953,7 @@ const MenuGrid = ({
                             key={cut.name}
                             type="button"
                             onClick={() => setSelectedCutType(cut.name)}
-                            className={`py-2 px-1 rounded-lg text-xs font-bold border transition-colors cursor-pointer text-center ${
+                            className={`h-6 sm:h-7 px-0.5 rounded-md text-[9px] sm:text-[10px] font-bold border transition-colors cursor-pointer flex items-center justify-center ${
                               isSelected
                                 ? 'bg-[#994d1c] text-white border-[#994d1c] shadow-xs font-black'
                                 : 'bg-white text-slate-700 border-slate-300 hover:border-sky-400 hover:bg-sky-50 font-semibold'
@@ -1904,14 +1967,13 @@ const MenuGrid = ({
                   </div>
 
                   {/* Weighing & Scale Weight: Dual Kg + Grams & Fraction Calculation */}
-                  <div className="bg-[#F7EFE2] border border-amber-300 rounded-xl p-3.5 space-y-3">
+                  <div className="bg-[#F7EFE2] border border-amber-300 rounded-lg sm:rounded-xl p-1.5 sm:p-2 space-y-1.5 sm:space-y-2">
                     {/* Size Grade Selector (Small / Medium / Big) */}
                     {(() => {
                       const scaleGrams = parseFloat(fishWeightGrams) || 0;
                       const netGrams = Math.max(0, scaleGrams - tareGrams);
                       const netKg = netGrams / 1000;
-                      const autoGrade = detectItemSizeGrade(selectedFishItem, netKg);
-                      const activeGrade = selectedGradeOverride || autoGrade;
+                      const activeGrade = selectedGradeOverride || selectedFishItem.defaultSizeGrade || 'small';
 
                       const smallMax = parseFloat(selectedFishItem.sizeGrades?.small?.maxKg) || 1;
                       const mediumMax = parseFloat(selectedFishItem.sizeGrades?.medium?.maxKg) || 4;
@@ -1923,16 +1985,16 @@ const MenuGrid = ({
                       ];
 
                       return (
-                        <div className="bg-white/90 p-2.5 rounded-xl border border-amber-200 space-y-1.5">
-                          <div className="flex justify-between items-center text-xs">
+                        <div className="bg-white/90 p-1.5 sm:p-2 rounded-lg sm:rounded-xl border border-amber-200 space-y-1">
+                          <div className="flex justify-between items-center text-[10.5px] sm:text-xs">
                             <span className="font-bold text-slate-800 flex items-center gap-1">
                               <span>Fish Size Grade:</span>
                             </span>
-                            <span className="text-[10px] text-slate-500 font-semibold">
-                              Auto-detected from weight
+                            <span className="text-[9px] sm:text-[10px] text-slate-500 font-semibold">
+                              Select Grade
                             </span>
                           </div>
-                          <div className="grid grid-cols-3 gap-1.5">
+                          <div className="grid grid-cols-3 gap-1 sm:gap-1.5">
                             {gradesInfo.map(g => {
                               const isSelected = activeGrade === g.key;
                               const gradeRate = getItemPricePerKg(selectedFishItem, fishOrderMode, g.key);
@@ -1941,15 +2003,17 @@ const MenuGrid = ({
                                   key={g.key}
                                   type="button"
                                   onClick={() => setSelectedGradeOverride(g.key)}
-                                  className={`py-1.5 px-2 rounded-lg text-center transition-all cursor-pointer border ${
+                                  className={`py-1 sm:py-1.5 px-1 sm:px-2 rounded-md sm:rounded-lg text-center transition-all cursor-pointer border ${
                                     isSelected
                                       ? 'bg-amber-600 text-white border-amber-700 shadow-xs font-black'
                                       : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-amber-50'
                                   }`}
                                 >
-                                  <div className="text-[11px] font-bold">{g.label}</div>
-                                  <div className={`text-[9px] ${isSelected ? 'text-amber-100' : 'text-slate-500'}`}>({g.range})</div>
-                                  <div className={`text-[10px] font-mono font-bold mt-0.5 ${isSelected ? 'text-white' : 'text-emerald-700'}`}>₹{gradeRate}/Kg</div>
+                                  <div className="flex items-center gap-1 leading-tight">
+                                    <span className="text-[10px] sm:text-[11px] font-bold">{g.label}</span>
+                                    <span className={`text-[8px] sm:text-[8.5px] ${isSelected ? 'text-amber-100' : 'text-slate-400'}`}>({g.range})</span>
+                                  </div>
+                                  <div className={`text-[9px] sm:text-[9.5px] font-mono font-bold leading-tight ${isSelected ? 'text-white' : 'text-emerald-700'}`}>₹{gradeRate}/Kg</div>
                                 </button>
                               );
                             })}
@@ -1961,7 +2025,7 @@ const MenuGrid = ({
                     {/* Section 1: Predefined Kilograms (Kg) */}
                     <div className="space-y-1.5">
                       <div className="flex justify-between items-center">
-                        <span className="text-xs font-bold text-slate-800 flex items-center gap-1">
+                        <span className="text-[10.5px] sm:text-xs font-bold text-slate-800 flex items-center gap-1">
                           <span>1. Select Kilograms (Kg)</span>
                         </span>
                         <div className="flex items-center gap-1">
@@ -1978,11 +2042,11 @@ const MenuGrid = ({
                               const gVal = parseInt(inputGrams, 10) || 0;
                               setFishWeightGrams(String(kgVal * 1000 + gVal));
                             }}
-                            className="w-14 bg-white border border-slate-300 rounded px-1.5 py-0.5 text-center font-mono font-black text-xs text-slate-900"
+                            className="w-12 sm:w-14 bg-white border border-slate-300 rounded px-1 py-0.5 text-center font-mono font-black text-[11px] sm:text-xs text-slate-900"
                           />
                         </div>
                       </div>
-                      <div className="grid grid-cols-5 gap-1.5">
+                      <div className="grid grid-cols-5 gap-1 sm:gap-1.5">
                         {['0', '1', '2', '3', '4', '5', '10', '15', '20', '25'].map((kgPreset) => (
                           <button
                             key={kgPreset}
@@ -1993,7 +2057,7 @@ const MenuGrid = ({
                               const gVal = parseInt(inputGrams, 10) || 0;
                               setFishWeightGrams(String(kgVal * 1000 + gVal));
                             }}
-                            className={`py-1.5 px-1 rounded-lg text-xs font-bold border transition-colors cursor-pointer text-center ${
+                            className={`h-6 sm:h-7 px-0.5 rounded-md text-[10px] sm:text-[11px] font-bold border transition-colors cursor-pointer flex items-center justify-center ${
                               inputKg === kgPreset
                                 ? 'bg-amber-700 text-white border-amber-800 font-black shadow-xs'
                                 : 'bg-white text-slate-700 border-slate-300 hover:border-amber-400 hover:bg-amber-50 font-semibold'
@@ -2008,7 +2072,7 @@ const MenuGrid = ({
                     {/* Section 2: Sub-Grams & Fractions (¼, ½, ¾ Kg) */}
                     <div className="space-y-1.5">
                       <div className="flex justify-between items-center">
-                        <span className="text-xs font-bold text-slate-800 flex items-center gap-1">
+                        <span className="text-[10.5px] sm:text-xs font-bold text-slate-800 flex items-center gap-1">
                           <span>2. Select Sub-Grams / Fractions</span>
                         </span>
                         <div className="flex items-center gap-1.5">
@@ -2029,7 +2093,7 @@ const MenuGrid = ({
                           ))}
                         </div>
                       </div>
-                      <div className="grid grid-cols-4 gap-1.5">
+                      <div className="grid grid-cols-4 gap-1 sm:gap-1.5">
                         {[
                           { label: '0g (Zero)', val: '0' },
                           { label: '250g (¼ Kg)', val: '250' },
@@ -2045,7 +2109,7 @@ const MenuGrid = ({
                               const gVal = parseInt(gPreset.val, 10) || 0;
                               setFishWeightGrams(String(kgVal * 1000 + gVal));
                             }}
-                            className={`py-1.5 px-1 rounded-lg text-xs font-bold border transition-colors cursor-pointer text-center ${
+                            className={`h-6 sm:h-7 px-0.5 rounded-md text-[10px] sm:text-[11px] font-bold border transition-colors cursor-pointer flex items-center justify-center leading-tight ${
                               inputGrams === gPreset.val
                                 ? 'bg-amber-700 text-white border-amber-800 font-black shadow-xs'
                                 : 'bg-white text-slate-700 border-slate-300 hover:border-amber-400 hover:bg-amber-50 font-semibold'
@@ -2058,8 +2122,8 @@ const MenuGrid = ({
                     </div>
 
                     {/* Scale Digital Reading Input (Two-Way Synchronized) */}
-                    <div className="flex items-center gap-2 bg-slate-100 border border-slate-300 rounded-xl px-3 py-1.5 focus-within:border-[#994d1c] focus-within:bg-white transition-colors">
-                      <Scale size={18} className="text-slate-600 shrink-0" />
+                    <div className="flex items-center gap-1.5 sm:gap-2 bg-slate-100 border border-slate-300 rounded-lg sm:rounded-xl px-2.5 sm:px-3 py-1 sm:py-1.5 focus-within:border-[#994d1c] focus-within:bg-white transition-colors overflow-hidden">
+                      <Scale size={16} className="text-slate-600 shrink-0 sm:w-[18px] sm:h-[18px]" />
                       <input
                         type="number"
                         min="1"
@@ -2081,9 +2145,9 @@ const MenuGrid = ({
                           setInputGrams(String(g));
                         }}
                         placeholder="Scale total grams"
-                        className="flex-1 bg-transparent font-mono text-xl font-black text-slate-900 focus:outline-none"
+                        className="flex-1 min-w-0 bg-transparent font-mono text-base sm:text-lg font-black text-slate-900 focus:outline-none"
                       />
-                      <span className="text-xs font-black text-slate-500 shrink-0 font-mono">TOTAL SCALE GRAMS</span>
+                      <span className="text-[8.5px] sm:text-[10px] font-bold text-slate-500 shrink-0 uppercase tracking-wider bg-slate-200/80 px-2 py-0.5 rounded">Scale Grams</span>
                     </div>
 
                     {/* Accurate Real-World Billing & Stock Breakdown */}
@@ -2091,16 +2155,16 @@ const MenuGrid = ({
                       const scaleGrams = parseFloat(fishWeightGrams) || 0;
                       const netGrams = Math.max(0, scaleGrams - tareGrams);
                       const netKg = netGrams / 1000;
-                      const activeGrade = selectedGradeOverride || detectItemSizeGrade(selectedFishItem, netKg);
+                      const activeGrade = selectedGradeOverride || selectedFishItem.defaultSizeGrade || 'small';
                       const activeRate = getItemPricePerKg(selectedFishItem, fishOrderMode, activeGrade);
                       const calculatedPrice = (netKg * activeRate);
                       const fractionLabel = formatKgFraction(netKg);
 
                       return (
-                        <div className="bg-slate-100/90 border border-slate-200 rounded-xl p-3 space-y-2">
-                          <div className="grid grid-cols-3 gap-2 text-center">
-                            <div className="bg-white border border-slate-200 rounded-lg p-1.5 shadow-xs">
-                              <span className="text-[10px] text-slate-500 font-semibold block">Weighed Net</span>
+                        <div className="bg-slate-100/90 border border-slate-200 rounded-lg sm:rounded-xl p-1.5 sm:p-2 space-y-1">
+                          <div className="grid grid-cols-3 gap-1.5 text-center">
+                            <div className="bg-white border border-slate-200 rounded-md sm:rounded-lg p-1 sm:p-1.5 shadow-xs">
+                              <span className="text-[9.5px] sm:text-[10px] text-slate-500 font-semibold block leading-tight">Weighed Net</span>
                               <span className="font-mono font-black text-amber-900 text-xs block">
                                 {netKg.toFixed(3)} Kg
                               </span>
@@ -2108,8 +2172,8 @@ const MenuGrid = ({
                                 ({fractionLabel})
                               </span>
                             </div>
-                            <div className="bg-white border border-slate-200 rounded-lg p-1.5 shadow-xs">
-                              <span className="text-[10px] text-slate-500 font-semibold block">Preparation</span>
+                            <div className="bg-white border border-slate-200 rounded-md sm:rounded-lg p-1 sm:p-1.5 shadow-xs">
+                              <span className="text-[9.5px] sm:text-[10px] text-slate-500 font-semibold block leading-tight">Preparation</span>
                               <span className="font-bold text-slate-800 text-xs truncate block">
                                 {selectedCutType}
                               </span>
@@ -2117,8 +2181,8 @@ const MenuGrid = ({
                                 Grade: {activeGrade}
                               </span>
                             </div>
-                            <div className="bg-white border border-slate-200 rounded-lg p-1.5 shadow-xs">
-                              <span className="text-[10px] text-slate-500 font-semibold block">Rate</span>
+                            <div className="bg-white border border-slate-200 rounded-md sm:rounded-lg p-1 sm:p-1.5 shadow-xs">
+                              <span className="text-[9.5px] sm:text-[10px] text-slate-500 font-semibold block leading-tight">Rate</span>
                               <span className="font-mono font-bold text-slate-800 text-xs">
                                 ₹{activeRate.toFixed(2)}/Kg
                               </span>
@@ -2134,7 +2198,7 @@ const MenuGrid = ({
                               <span className="text-[10px] text-emerald-700 font-semibold block">1:1 Raw Stock Deducted</span>
                             </div>
                             <div className="text-right">
-                              <span className="text-xl font-black text-emerald-700 font-mono">₹{calculatedPrice.toFixed(2)}</span>
+                              <span className="text-sm sm:text-base md:text-lg font-black text-emerald-700 font-mono">₹{calculatedPrice.toFixed(2)}</span>
                               <span className="text-[10px] text-slate-500 font-medium block">
                                 {netKg.toFixed(2)} Kg @ ₹{activeRate}/Kg
                               </span>
@@ -2153,7 +2217,7 @@ const MenuGrid = ({
                       if (scaleGrams <= 0) return;
                       const netGrams = Math.max(0, scaleGrams - tareGrams);
                       const netKg = netGrams / 1000;
-                      const activeGrade = selectedGradeOverride || detectItemSizeGrade(selectedFishItem, netKg);
+                      const activeGrade = selectedGradeOverride || selectedFishItem.defaultSizeGrade || 'small';
                       const activeRate = getItemPricePerKg(selectedFishItem, fishOrderMode, activeGrade);
                       const calculatedPrice = parseFloat((netKg * activeRate).toFixed(2));
                       const fractionLabel = formatKgFraction(netKg);
@@ -2203,7 +2267,7 @@ const MenuGrid = ({
                       onSelectItem(itemToAdd);
                       setSelectedFishItem(null);
                     }}
-                    className="w-full bg-gradient-to-r from-[#994d1c] to-[#7c3f1d] hover:from-[#884318] hover:to-[#6c3618] disabled:opacity-40 disabled:cursor-not-allowed text-white font-black py-2.5 rounded-xl shadow-lg cursor-pointer transition-all active:scale-[0.98] text-sm"
+                    className="w-full bg-gradient-to-r from-[#994d1c] to-[#7c3f1d] hover:from-[#884318] hover:to-[#6c3618] disabled:opacity-40 disabled:cursor-not-allowed text-white font-black py-1.5 sm:py-2 md:py-2.5 rounded-lg sm:rounded-xl shadow-lg cursor-pointer transition-all active:scale-[0.98] text-xs sm:text-sm"
                   >
                     Add to Fish Order
                   </button>
@@ -2217,33 +2281,33 @@ const MenuGrid = ({
       {/* Wholesale Multi-Item Box Builder Modal */}
       {showBoxPacker && typeof document !== 'undefined' && createPortal(
         <div
-          className="fixed inset-0 bg-black/75 backdrop-blur-sm flex items-center justify-center z-[9999] p-3 sm:p-4 animate-in fade-in duration-200"
+          className="fixed inset-0 bg-black/75 backdrop-blur-sm flex items-center justify-center z-[9999] p-2 sm:p-3 md:p-4 animate-in fade-in duration-200"
           onClick={() => setShowBoxPacker(false)}
         >
           <div
             data-box-packer-modal="true"
-            className="bg-[#FDFBF7] w-full max-w-[620px] max-h-[94vh] rounded-3xl shadow-2xl border-2 border-[#E8DCCB] flex flex-col overflow-hidden text-slate-800 my-auto"
+            className="bg-[#FDFBF7] w-full max-w-[540px] max-h-[96vh] sm:max-h-[92vh] rounded-xl sm:rounded-2xl md:rounded-3xl shadow-2xl border-2 border-[#E8DCCB] flex flex-col overflow-hidden text-slate-800 my-auto"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Modal Header */}
-            <div className="flex justify-between items-center px-5 py-4 border-b border-[#E8DCCB] bg-gradient-to-r from-[#FAF0E4] via-[#FFF8EE] to-[#FAF0E4]">
+            <div className="flex justify-between items-center px-3 sm:px-4 md:px-5 py-2 sm:py-2.5 border-b border-[#E8DCCB] bg-gradient-to-r from-[#FAF0E4] via-[#FFF8EE] to-[#FAF0E4] shrink-0">
               <div className="flex items-center gap-3">
-                <div className="w-11 h-11 rounded-2xl bg-amber-500 text-white flex items-center justify-center font-bold text-xs uppercase tracking-wider shadow-sm border border-amber-400">
+                <div className="w-8 h-8 sm:w-9 sm:h-9 md:w-11 md:h-11 rounded-xl bg-amber-500 text-white flex items-center justify-center font-bold text-[10px] sm:text-xs uppercase tracking-wider shadow-sm border border-amber-400 shrink-0">
                   Box
                 </div>
                 <div>
                   <div className="flex items-center gap-2">
                     <span className="text-[10px] font-black uppercase tracking-wider text-amber-900 bg-amber-200/80 px-2.5 py-0.5 rounded-full border border-amber-300">
-                      WHOLESALE BOX PACKER
+                      {fishOrderMode === 'export' ? 'EXPORT (BULK) BOX PACKER' : 'WHOLESALE BOX PACKER'}
                     </span>
                     <span className="text-sm font-black text-amber-900 bg-amber-100 px-2 py-0.5 rounded-md">
                       Box #{currentBoxNumber}
                     </span>
                   </div>
                   <h2 className="text-base sm:text-lg font-black text-slate-900 mt-0.5">
-                    Packing Wholesale Box #{currentBoxNumber}
+                    Packing {fishOrderMode === 'export' ? 'Export' : 'Wholesale'} Box #{currentBoxNumber}
                   </h2>
-                  <p className="text-[11px] text-slate-500 font-medium">
+                  <p className="text-[10px] sm:text-[11px] text-slate-500 font-medium hidden sm:block">
                     Mix 1 to 10 fish items in this box with custom weights & prices
                   </p>
                 </div>
@@ -2258,15 +2322,15 @@ const MenuGrid = ({
             </div>
 
             {/* Modal Body */}
-            <div className="p-4 sm:p-5 space-y-4 overflow-y-auto flex-1">
+            <div className="p-2 sm:p-2.5 md:p-3 space-y-2 sm:space-y-2.5 overflow-y-auto flex-1">
               {/* Step 1: Number of Items in this Box */}
-              <div className="bg-white border border-[#E8DCCB] rounded-2xl p-3.5 shadow-2xs">
+              <div className="bg-white border border-[#E8DCCB] rounded-xl sm:rounded-2xl p-2 sm:p-2.5 shadow-2xs space-y-1.5">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-2.5">
                   <div>
-                    <span className="text-xs font-black text-slate-800 uppercase tracking-wide flex items-center gap-1.5">
+                    <span className="text-[10.5px] sm:text-xs font-black text-slate-800 uppercase tracking-wide flex items-center gap-1.5">
                       <span>1️⃣</span> Number of Fish Items in this Box:
                     </span>
-                    <span className="text-[11px] text-slate-500">
+                    <span className="text-[10px] sm:text-[11px] text-slate-500 hidden sm:inline">
                       Select how many different fish varieties will be packed into Box #{currentBoxNumber}
                     </span>
                   </div>
@@ -2277,11 +2341,11 @@ const MenuGrid = ({
                       type="button"
                       onClick={() => handleSlotCountChange(boxSlotCount - 1)}
                       disabled={boxSlotCount <= 1}
-                      className="w-7 h-7 rounded-lg bg-white hover:bg-slate-100 disabled:opacity-40 text-slate-800 font-black text-base flex items-center justify-center border border-[#E8DCCB] shadow-2xs cursor-pointer"
+                      className="w-6 h-6 sm:w-7 sm:h-7 rounded-md sm:rounded-lg bg-white hover:bg-slate-100 disabled:opacity-40 text-slate-800 font-black text-xs sm:text-base flex items-center justify-center border border-[#E8DCCB] shadow-2xs cursor-pointer"
                     >
                       -
                     </button>
-                    <span className="w-8 text-center font-black text-sm text-amber-900 font-mono">
+                    <span className="w-6 sm:w-8 text-center font-black text-xs sm:text-sm text-amber-900 font-mono">
                       {boxSlotCount}
                     </span>
                     <button
@@ -2302,7 +2366,7 @@ const MenuGrid = ({
                       key={cnt}
                       type="button"
                       onClick={() => handleSlotCountChange(cnt)}
-                      className={`py-1.5 rounded-xl text-xs font-bold border transition-all cursor-pointer ${
+                      className={`py-1 sm:py-1.5 rounded-lg sm:rounded-xl text-[10px] sm:text-xs font-bold border transition-all cursor-pointer ${
                         boxSlotCount === cnt
                           ? 'bg-amber-500 text-white border-amber-600 font-black shadow-xs scale-105'
                           : 'bg-[#FAF0E4] hover:bg-[#F5E8D8] text-slate-700 border-[#E8DCCB]'
@@ -2317,21 +2381,21 @@ const MenuGrid = ({
               {/* Step 2: Fish Items Slots */}
               <div className="space-y-2.5">
                 <div className="flex items-center justify-between px-1">
-                  <span className="text-xs font-black text-slate-800 uppercase tracking-wide flex items-center gap-1.5">
-                    <span>2️⃣</span> Fish Varieties & Weights for Box #{currentBoxNumber}:
+                  <span className="text-[10.5px] sm:text-xs font-black text-slate-800 uppercase tracking-wide flex items-center gap-1.5">
+                    <span>2️⃣</span> Fish Varieties & Weights:
                   </span>
-                  <span className="text-[11px] text-amber-800 font-bold">
+                  <span className="text-[10px] sm:text-[11px] text-amber-800 font-bold">
                     {boxSlots.length} of {boxSlotCount} slots configured
                   </span>
                 </div>
 
-                <div className="space-y-2 max-h-[38vh] overflow-y-auto pr-1">
+                <div className="space-y-1.5 sm:space-y-2 max-h-[30vh] sm:max-h-[36vh] overflow-y-auto pr-0.5 sm:pr-1">
                   {boxSlots.map((slot, index) => {
                     const itemTotal = (parseFloat(slot.weightKg) || 0) * (parseFloat(slot.pricePerKg) || 0);
                     return (
                       <div
                         key={slot.id || index}
-                        className="bg-white border border-[#E8DCCB] hover:border-amber-400/80 rounded-2xl p-3 shadow-2xs transition-all space-y-2"
+                        className="bg-white border border-[#E8DCCB] hover:border-amber-400/80 rounded-xl sm:rounded-2xl p-2 sm:p-2.5 md:p-3 shadow-2xs transition-all space-y-1 sm:space-y-1.5"
                       >
                         <div className="flex items-center justify-between gap-2">
                           <span className="text-[11px] font-black text-amber-800 bg-[#FAF0E4] border border-[#E8DCCB] px-2 py-0.5 rounded-lg">
@@ -2349,29 +2413,34 @@ const MenuGrid = ({
                           )}
                         </div>
 
-                        <div className="grid grid-cols-1 sm:grid-cols-12 gap-2 items-center">
-                          {/* Fish selector (sm:col-span-5) */}
-                          <div className="sm:col-span-5">
-                            <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">
+                        <div className="grid grid-cols-12 gap-1.5 sm:gap-2 items-center">
+                          {/* Fish selector (Row 1 on mobile, inline on tab/desktop) */}
+                          <div className="col-span-12 sm:col-span-5">
+                            <label className="text-[9.5px] sm:text-[10px] font-bold text-slate-500 uppercase block mb-0.5 sm:mb-1">
                               Select Fish Variety
                             </label>
                             <select
                               value={slot.fishId || ''}
                               onChange={(e) => handleSlotFishChange(index, e.target.value)}
-                              className="w-full bg-[#FAF0E4] border border-[#E8DCCB] rounded-xl px-2.5 py-1.5 text-xs font-bold text-slate-800 focus:outline-none focus:border-amber-500 truncate cursor-pointer"
+                              className="w-full bg-[#FAF0E4] border border-[#E8DCCB] rounded-lg sm:rounded-xl px-2 py-1 sm:py-1.5 text-[11px] sm:text-xs font-bold text-slate-800 focus:outline-none focus:border-amber-500 truncate cursor-pointer"
                             >
                               <option value="" disabled>-- Choose a fish --</option>
-                              {items.map(fish => (
-                                <option key={fish._id} value={fish._id}>
-                                  {fish.name} (₹{fish.price}/Kg)
-                                </option>
-                              ))}
+                              {items.map(fish => {
+                                const fishRate = fishOrderMode === 'export'
+                                  ? (parseFloat(fish.exportPricePerKg) || parseFloat(fish.wholesalePricePerKg) || parseFloat(fish.price) || 0)
+                                  : (parseFloat(fish.wholesalePricePerKg) || parseFloat(fish.price) || 0);
+                                return (
+                                  <option key={fish._id} value={fish._id}>
+                                    {fish.name} (₹{fishRate}/Kg)
+                                  </option>
+                                );
+                              })}
                             </select>
                           </div>
 
-                          {/* Weight (Kg) (sm:col-span-3) */}
-                          <div className="sm:col-span-3">
-                            <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">
+                          {/* Weight (Kg) (Row 2 on mobile, inline on tab/desktop) */}
+                          <div className="col-span-4 sm:col-span-3">
+                            <label className="text-[9.5px] sm:text-[10px] font-bold text-slate-500 uppercase block mb-0.5 sm:mb-1 truncate">
                               Weight (Kg)
                             </label>
                             <div className="relative">
@@ -2382,17 +2451,17 @@ const MenuGrid = ({
                                 value={slot.weightKg}
                                 onChange={(e) => handleSlotWeightChange(index, e.target.value)}
                                 placeholder="e.g. 10"
-                                className="w-full bg-white border border-[#E8DCCB] rounded-xl px-2.5 py-1.5 text-xs font-black text-slate-900 focus:outline-none focus:border-amber-500 font-mono text-center"
+                                className="w-full bg-white border border-[#E8DCCB] rounded-lg sm:rounded-xl pl-1 pr-5 sm:pr-6 py-1 sm:py-1.5 text-[11px] sm:text-xs font-black text-slate-900 focus:outline-none focus:border-amber-500 font-mono text-center"
                               />
-                              <span className="absolute right-2 top-1.5 text-[10px] text-slate-400 font-bold pointer-events-none">
+                              <span className="absolute right-1.5 top-1 sm:top-1.5 text-[9px] sm:text-[10px] text-slate-400 font-bold pointer-events-none">
                                 Kg
                               </span>
                             </div>
                           </div>
 
-                          {/* Rate / Price per Kg (sm:col-span-2) */}
-                          <div className="sm:col-span-2">
-                            <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">
+                          {/* Rate / Price per Kg (Row 2 on mobile, inline on tab/desktop) */}
+                          <div className="col-span-4 sm:col-span-2">
+                            <label className="text-[9.5px] sm:text-[10px] font-bold text-slate-500 uppercase block mb-0.5 sm:mb-1 truncate">
                               Rate (₹/Kg)
                             </label>
                             <div className="relative">
@@ -2403,17 +2472,17 @@ const MenuGrid = ({
                                 value={slot.pricePerKg}
                                 onChange={(e) => handleSlotPriceChange(index, e.target.value)}
                                 placeholder="Rate"
-                                className="w-full bg-white border border-[#E8DCCB] rounded-xl px-2 py-1.5 text-xs font-black text-slate-900 focus:outline-none focus:border-amber-500 font-mono text-center"
+                                className="w-full bg-white border border-[#E8DCCB] rounded-lg sm:rounded-xl px-1 sm:px-2 py-1 sm:py-1.5 text-[11px] sm:text-xs font-black text-slate-900 focus:outline-none focus:border-amber-500 font-mono text-center"
                               />
                             </div>
                           </div>
 
-                          {/* Total Amount (sm:col-span-2) */}
-                          <div className="sm:col-span-2 text-right">
-                            <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">
+                          {/* Total Amount (Row 2 on mobile, inline on tab/desktop) */}
+                          <div className="col-span-4 sm:col-span-2 text-right">
+                            <label className="text-[9.5px] sm:text-[10px] font-bold text-slate-500 uppercase block mb-0.5 sm:mb-1 truncate text-right">
                               Item Total
                             </label>
-                            <div className="text-xs font-black text-amber-900 font-mono py-1.5">
+                            <div className="text-[11px] sm:text-xs font-black text-amber-900 font-mono py-1 sm:py-1.5 flex items-center justify-end min-h-[28px] sm:min-h-0">
                               ₹{itemTotal.toFixed(2)}
                             </div>
                           </div>
@@ -2442,7 +2511,7 @@ const MenuGrid = ({
                 const validCount = boxSlots.filter(s => s.fish && (parseFloat(s.weightKg) || 0) > 0).length;
 
                 return (
-                  <div className="bg-gradient-to-r from-amber-500/20 via-orange-500/15 to-amber-500/20 border-2 border-amber-500/50 rounded-2xl p-4 shadow-sm">
+                  <div className="bg-gradient-to-r from-amber-500/20 via-orange-500/15 to-amber-500/20 border-2 border-amber-500/50 rounded-xl sm:rounded-2xl p-2 sm:p-2.5 shadow-sm">
                     <div className="flex items-center justify-between">
                       <div>
                         <span className="text-xs font-black text-amber-950 uppercase tracking-wider block">
@@ -2454,7 +2523,7 @@ const MenuGrid = ({
                       </div>
                       <div className="text-right">
                         <span className="text-[10px] text-slate-500 uppercase font-bold block">Box Total Price</span>
-                        <span className="text-xl sm:text-2xl font-black text-amber-900 font-mono">
+                        <span className="text-base sm:text-xl md:text-2xl font-black text-amber-900 font-mono">
                           ₹{totalAmt.toFixed(2)}
                         </span>
                       </div>
@@ -2465,18 +2534,18 @@ const MenuGrid = ({
             </div>
 
             {/* Modal Footer */}
-            <div className="p-4 border-t border-[#E8DCCB] bg-[#FAF0E4] flex items-center justify-between gap-3">
+            <div className="p-2 sm:p-2.5 border-t border-[#E8DCCB] bg-[#FAF0E4] flex items-center justify-between gap-2 sm:gap-3 shrink-0">
               <button
                 type="button"
                 onClick={() => setShowBoxPacker(false)}
-                className="px-4 py-2.5 rounded-xl border border-slate-300 text-slate-700 bg-white hover:bg-slate-100 font-bold text-xs transition-all cursor-pointer"
+                className="px-3 sm:px-4 py-1.5 sm:py-2.5 rounded-lg sm:rounded-xl border border-slate-300 text-slate-700 bg-white hover:bg-slate-100 font-bold text-xs transition-all cursor-pointer"
               >
                 Cancel
               </button>
               <button
                 type="button"
                 onClick={handleAddBoxToOrder}
-                className="flex-1 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white font-black text-xs sm:text-sm shadow-md cursor-pointer transition-all active:scale-98 flex items-center justify-center"
+                className="flex-1 py-1.5 sm:py-2.5 rounded-lg sm:rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white font-black text-xs sm:text-sm shadow-md cursor-pointer transition-all active:scale-98 flex items-center justify-center"
               >
                 <span>Add Box #{currentBoxNumber} to Order</span>
               </button>

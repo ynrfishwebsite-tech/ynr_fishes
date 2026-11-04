@@ -4,7 +4,7 @@ import {
   CheckCheck, 
   Trash2, 
   ExternalLink, 
-  Receipt, 
+  ReceiptIndianRupee, 
   ShoppingCart, 
   AlertTriangle, 
   Info, 
@@ -52,7 +52,7 @@ export default function NotificationPanel({
       return { icon: ShoppingCart, bg: '#e0f2fe', color: '#0284c7' };
     }
     if (title.includes('bill') || title.includes('settle') || type.includes('bill')) {
-      return { icon: Receipt, bg: '#dcfce7', color: '#15803d' };
+      return { icon: ReceiptIndianRupee, bg: '#dcfce7', color: '#15803d' };
     }
     if (title.includes('stock') || title.includes('inventory') || type.includes('stock')) {
       return { icon: Package, bg: '#fef9c3', color: '#a16207' };

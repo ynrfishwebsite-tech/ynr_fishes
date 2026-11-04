@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import {
-  FileText, Laptop, Receipt, Users, Banknote, Wallet, CreditCard, Coins, Package, Bell,
+  FileText, Laptop, ReceiptIndianRupee, Users, Wallet, CreditCard, Coins, Package, Bell,
   LayoutGrid, RefreshCw, HelpCircle, MonitorPlay, IndianRupee, Languages, UserCog,
   MessageSquarePlus, Truck, Monitor, Smartphone,
   UtensilsCrossed, Printer, Percent, Tags, MonitorSmartphone, Settings as SettingsIcon,
@@ -15,9 +15,9 @@ const Operations = ({ onNavigate, onGoBack, userRole = 'admin', onOpenWhatsApp }
     { id: 'dashboard', name: 'Dashboard', icon: Shield },
     { id: 'billing', name: 'New Orders / POS', icon: FileText },
     { id: 'active-orders', name: 'Active Orders', icon: Clock },
-    { id: 'bill-history', name: 'Bill History', icon: Receipt },
+    { id: 'bill-history', name: 'Bill History', icon: ReceiptIndianRupee },
     { id: 'edited-bills', name: 'Edited Bills', icon: FileText, highlight: true },
-    { id: 'day-book', name: 'Cash Flow / Day Book', icon: Banknote },
+    { id: 'day-book', name: 'Cash Flow / Day Book', icon: IndianRupee },
     { id: 'expenses', name: 'Expenses', icon: Wallet },
     { id: 'vehicles', name: 'Vehicles & Fleet Tracking', icon: Truck, highlight: true },
     { id: 'khata', name: 'Khata Book', icon: CreditCard },

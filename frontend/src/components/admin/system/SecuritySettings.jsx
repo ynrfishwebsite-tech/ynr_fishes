@@ -1,13 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { useLanguage } from "../../../context/LanguageContext";
-import { Shield, Key, Save, Lock, LayoutDashboard, LineChart, Banknote, FileX, Plus, Trash2, Settings as SettingsIcon, Loader2, Eye, EyeOff } from 'lucide-react';
+import { Shield, Key, Save, Lock, LayoutDashboard, LineChart, IndianRupee, FileX, Plus, Trash2, Settings as SettingsIcon, Loader2, Eye, EyeOff } from 'lucide-react';
 import BackButton from '../common/BackButton';
 import { getApiUrl } from '../../../config.js';
 
 const AVAILABLE_FEATURES = [
   { id: 'dashboard', name: 'Dashboard Access', icon: LayoutDashboard, color: 'text-blue-500' },
   { id: 'analytics', name: 'Analytics Access', icon: LineChart, color: 'text-purple-500' },
-  { id: 'daybook', name: 'Cash Flow (Daybook)', icon: Banknote, color: 'text-emerald-500' },
+  { id: 'daybook', name: 'Cash Flow (Daybook)', icon: IndianRupee, color: 'text-emerald-500' },
   { id: 'cancel-order', name: 'Order Cancellation', icon: FileX, color: 'text-red-500' },
   { id: 'edited-bills', name: 'Edited Bills', icon: FileX, color: 'text-orange-500' },
   { id: 'history', name: 'Bill History', icon: FileX, color: 'text-blue-500' },

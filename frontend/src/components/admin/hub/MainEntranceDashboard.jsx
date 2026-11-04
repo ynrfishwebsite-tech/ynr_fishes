@@ -15,7 +15,7 @@ import {
   Settings as SettingsIcon,
   Bell,
   ShoppingBag,
-  Store,
+  Boxes,
   ArrowUpRight,
   Search,
   X,
@@ -30,7 +30,9 @@ import {
   ArrowLeft,
   ArrowRight,
   Check,
-  RotateCcw
+  RotateCcw,
+  Route,
+  ClipboardList
 } from 'lucide-react';
 import { useLanguage } from '../../../context/LanguageContext';
 
@@ -176,8 +178,52 @@ export default function MainEntranceDashboard({
   };
 
   // Master List of Features (Core 17 + All Extra Operations Pages added to Main Dashboard by default)
+  // ORDER: Primary cards first (pinned separately), then secondary in prescribed order
   const RAW_CARDS = useMemo(() => [
-    // 1. New Order
+    // ═══ PRIMARY (pinned row - always shown highlighted) ═══
+    // 1. Retail (New Order Mode)
+    {
+      id: 'billing-retail',
+      title: 'Retail',
+      subtitle: '(New Order Mode)',
+      category: 'Billing',
+      icon: ShoppingBag,
+      iconColor: '#059669',
+      iconBg: '#ecfdf5',
+      borderColor: '#a7f3d0',
+      navView: 'billing',
+      navOptions: { mode: 'individual' },
+      keywords: ['retail', 'individual', 'kg', 'walk in', 'retail mode', 'counter customer']
+    },
+    // 2. Wholesale (New Order Mode)
+    {
+      id: 'billing-wholesale',
+      title: 'Wholesale',
+      subtitle: '(New Order Mode)',
+      category: 'Billing',
+      icon: Boxes,
+      iconColor: '#d97706',
+      iconBg: '#fffbeb',
+      borderColor: '#fde68a',
+      navView: 'billing',
+      navOptions: { mode: 'bulk' },
+      keywords: ['wholesale', 'bulk', 'crates', 'boxes', 'wholesale mode', 'dealer order']
+    },
+    // 3. Export (Bulk) (New Order Mode)
+    {
+      id: 'billing-export',
+      title: 'Export (Bulk)',
+      subtitle: '(New Order Mode)',
+      category: 'Billing',
+      icon: ArrowUpRight,
+      iconColor: '#2563eb',
+      iconBg: '#eff6ff',
+      borderColor: '#bfdbfe',
+      navView: 'billing',
+      navOptions: { mode: 'export' },
+      keywords: ['export', 'dam', 'local export', 'consignment', 'export mode', 'bulk export']
+    },
+    // 4. New Order
     {
       id: 'billing',
       title: 'New Order',
@@ -191,7 +237,9 @@ export default function MainEntranceDashboard({
       navOptions: {},
       keywords: ['new order', 'pos', 'billing', 'cart', 'sell', 'counter', 'cashier']
     },
-    // 2. Active Orders
+
+    // ═══ SECONDARY (prescribed order) ═══
+    // 5. Active Orders
     {
       id: 'active-orders',
       title: 'Active Orders',
@@ -207,7 +255,7 @@ export default function MainEntranceDashboard({
       navOptions: {},
       keywords: ['active orders', 'pending', 'open', 'billed', 'hold', 'queue', 'dispatch']
     },
-    // 3. Bill History
+    // 6. Bill History
     {
       id: 'bill-history',
       title: 'Bill History',
@@ -221,7 +269,7 @@ export default function MainEntranceDashboard({
       navOptions: {},
       keywords: ['bill history', 'invoices', 'receipts', 'sales history', 'past bills']
     },
-    // 4. Second Dashboard
+    // 7. Second Dashboard
     {
       id: 'second-dashboard',
       title: 'Second Dashboard',
@@ -237,7 +285,7 @@ export default function MainEntranceDashboard({
       navOptions: {},
       keywords: ['second dashboard', 'operations grid', 'overview', 'summary', 'charts']
     },
-    // 5. Analytics & Reports
+    // 8. Analytics & Reports
     {
       id: 'analytics',
       title: 'Analytics & Reports',
@@ -251,35 +299,7 @@ export default function MainEntranceDashboard({
       navOptions: {},
       keywords: ['analytics', 'reports', 'charts', 'sales report', 'trends', 'insights']
     },
-    // 6. Stock Catch Ledger
-    {
-      id: 'inventory',
-      title: 'Stock Catch Ledger',
-      subtitle: 'Catch & Intake',
-      category: 'Inventory',
-      icon: Package,
-      iconColor: '#0891b2',
-      iconBg: '#ecfeff',
-      borderColor: '#a5f3fc',
-      navView: 'inventory',
-      navOptions: {},
-      keywords: ['stock', 'catch', 'ledger', 'inventory', 'procurement', 'dam', 'local stock in']
-    },
-    // 7. Fish Registry
-    {
-      id: 'menu',
-      title: 'Fish Registry',
-      subtitle: 'Species & Rates',
-      category: 'Inventory',
-      icon: Fish,
-      iconColor: '#0284c7',
-      iconBg: '#f0f9ff',
-      borderColor: '#bae6fd',
-      navView: 'menu',
-      navOptions: {},
-      keywords: ['fish registry', 'fish species', 'varieties', 'menu', 'rates', 'pricing', 'items']
-    },
-    // 8. Day Book Ledger
+    // 9. Day Book Ledger
     {
       id: 'day-book',
       title: 'Day Book Ledger',
@@ -293,7 +313,35 @@ export default function MainEntranceDashboard({
       navOptions: {},
       keywords: ['day book', 'ledger', 'cash in', 'cash out', 'daily accounts', 'transactions']
     },
-    // 9. Khata Book
+    // 10. Stock Catch Ledger
+    {
+      id: 'inventory',
+      title: 'Stock Catch Ledger',
+      subtitle: 'Catch & Intake',
+      category: 'Inventory',
+      icon: Package,
+      iconColor: '#0891b2',
+      iconBg: '#ecfeff',
+      borderColor: '#a5f3fc',
+      navView: 'inventory',
+      navOptions: {},
+      keywords: ['stock', 'catch', 'ledger', 'inventory', 'procurement', 'dam', 'local stock in']
+    },
+    // 11. Fish Registry
+    {
+      id: 'menu',
+      title: 'Fish Registry',
+      subtitle: 'Species & Rates',
+      category: 'Inventory',
+      icon: Fish,
+      iconColor: '#0284c7',
+      iconBg: '#f0f9ff',
+      borderColor: '#bae6fd',
+      navView: 'menu',
+      navOptions: {},
+      keywords: ['fish registry', 'fish species', 'varieties', 'menu', 'rates', 'pricing', 'items']
+    },
+    // 12. Khata Book
     {
       id: 'khata',
       title: 'Khata Book',
@@ -307,7 +355,7 @@ export default function MainEntranceDashboard({
       navOptions: {},
       keywords: ['khata', 'credit', 'customer balance', 'khata book', 'due', 'udhar', 'ledger']
     },
-    // 10. Daily Expenses
+    // 13. Daily Expenses
     {
       id: 'expenses',
       title: 'Daily Expenses',
@@ -321,7 +369,7 @@ export default function MainEntranceDashboard({
       navOptions: {},
       keywords: ['expenses', 'daily expenses', 'spending', 'petty cash', 'cost', 'bills']
     },
-    // 11. Vehicles & Transport
+    // 14. Vehicles & Transport
     {
       id: 'vehicles',
       title: 'Vehicles & Transport',
@@ -335,23 +383,7 @@ export default function MainEntranceDashboard({
       navOptions: {},
       keywords: ['vehicles', 'transport', 'fleet', 'trips', 'drivers', 'dispatch', 'fuel', 'logistics']
     },
-    // 12. Extra Operations
-    {
-      id: 'operations',
-      title: 'Extra Operations',
-      subtitle: 'Utilities & Sync',
-      category: 'Operations',
-      icon: Layers,
-      iconColor: '#b45309',
-      iconBg: '#fffbeb',
-      borderColor: '#fed7aa',
-      navView: 'operations',
-      navOptions: {},
-      keywords: ['operations', 'extra operations', 'tools', 'batch', 'depot', 'utility']
-    },
-
-    // --- FROM EXTRA OPERATIONS (NOW ON MAIN ADMIN PAGE BY DEFAULT) ---
-    // 13. Customers & CRM
+    // 15. Customers & CRM
     {
       id: 'crm',
       title: 'Customers & CRM',
@@ -365,92 +397,21 @@ export default function MainEntranceDashboard({
       navOptions: {},
       keywords: ['customers', 'crm', 'dealers', 'wholesale buyers', 'contacts', 'address', 'phone']
     },
-    // 14. Admin Control Panel
+    // 16. Extra Operations
     {
-      id: 'staff',
-      title: 'Admin Control Panel',
-      subtitle: 'Staff & Roles',
-      category: 'System',
-      icon: Shield,
-      iconColor: '#7c3f1d',
-      iconBg: '#FAF0E4',
-      borderColor: '#E8DCCB',
-      navView: 'staff',
-      navOptions: {},
-      keywords: ['staff', 'admin control panel', 'users', 'logins', 'drivers', 'suppliers', 'roles', 'passwords']
-    },
-    // 15. Discounts & Offers
-    {
-      id: 'discount',
-      title: 'Discounts & Offers',
-      subtitle: 'Promos & Schemes',
-      category: 'Billing',
-      icon: Tags,
-      iconColor: '#d97706',
-      iconBg: '#fffbeb',
-      borderColor: '#fde68a',
-      navView: 'discount',
-      navOptions: {},
-      keywords: ['discounts', 'offers', 'schemes', 'coupons', 'special rates']
-    },
-    // 16. Security & PINs
-    {
-      id: 'security',
-      title: 'Security & PINs',
-      subtitle: 'Access & Lock',
-      category: 'System',
-      icon: Lock,
-      iconColor: '#b91c1c',
-      iconBg: '#fef2f2',
-      borderColor: '#fecaca',
-      navView: 'security',
-      navOptions: {},
-      keywords: ['security', 'pin', 'manager pin', 'passcode', 'lock', 'access']
-    },
-    // 17. Printer Config
-    {
-      id: 'printer',
-      title: 'Printer Config',
-      subtitle: 'Thermal Receipts',
-      category: 'System',
-      icon: Printer,
-      iconColor: '#0284c7',
-      iconBg: '#f0f9ff',
-      borderColor: '#bae6fd',
-      navView: 'printer',
-      navOptions: {},
-      keywords: ['printer', 'thermal', 'bluetooth', 'receipt print', 'pos printer', '80mm']
-    },
-    // 18. Edited Bills
-    {
-      id: 'edited-bills',
-      title: 'Edited Bills',
-      subtitle: 'Audit & Voids',
-      category: 'Billing',
-      icon: FileEdit,
-      iconColor: '#ea580c',
-      iconBg: '#fff7ed',
-      borderColor: '#fed7aa',
-      navView: 'edited-bills',
-      navOptions: {},
-      keywords: ['edited bills', 'voids', 'modifications', 'audit log', 'changes']
-    },
-    // 19. WhatsApp Bot Login
-    {
-      id: 'whatsapp-bot',
-      title: 'WhatsApp Bot Login',
-      subtitle: 'QR & Client Alerts',
+      id: 'operations',
+      title: 'Extra Operations',
+      subtitle: 'Utilities & Sync',
       category: 'Operations',
-      icon: Smartphone,
-      iconColor: '#16a34a',
-      iconBg: '#f0fdf4',
-      borderColor: '#bbf7d0',
-      isWhatsApp: true,
-      keywords: ['whatsapp', 'bot', 'qr', 'whatsapp login', 'client alerts', 'messages']
+      icon: Layers,
+      iconColor: '#b45309',
+      iconBg: '#fffbeb',
+      borderColor: '#fed7aa',
+      navView: 'operations',
+      navOptions: {},
+      keywords: ['operations', 'extra operations', 'tools', 'batch', 'depot', 'utility']
     },
-
-    // --- SYSTEM & 1-TAP MODES ---
-    // 20. System Settings
+    // 17. System Settings
     {
       id: 'settings',
       title: 'System Settings',
@@ -464,7 +425,7 @@ export default function MainEntranceDashboard({
       navOptions: {},
       keywords: ['settings', 'configuration', 'printer', 'branch', 'system', 'preferences']
     },
-    // 21. Alerts & Notices
+    // 18. Alerts & Notices
     {
       id: 'notifications',
       title: 'Alerts & Notices',
@@ -480,47 +441,88 @@ export default function MainEntranceDashboard({
       navOptions: {},
       keywords: ['alerts', 'notifications', 'notices', 'warnings', 'messages', 'updates']
     },
-    // 22. Retail (New Order Mode)
+    // 19. Admin Control Panel
     {
-      id: 'billing-retail',
-      title: 'Retail',
-      subtitle: '(New Order Mode)',
-      category: 'Billing',
-      icon: ShoppingBag,
-      iconColor: '#059669',
-      iconBg: '#ecfdf5',
-      borderColor: '#a7f3d0',
-      navView: 'billing',
-      navOptions: { mode: 'individual' },
-      keywords: ['retail', 'individual', 'kg', 'walk in', 'retail mode', 'counter customer']
+      id: 'staff',
+      title: 'Admin Control Panel',
+      subtitle: 'Staff & Roles',
+      category: 'System',
+      icon: Shield,
+      iconColor: '#7c3f1d',
+      iconBg: '#FAF0E4',
+      borderColor: '#E8DCCB',
+      navView: 'staff',
+      navOptions: {},
+      keywords: ['staff', 'admin control panel', 'users', 'logins', 'drivers', 'suppliers', 'roles', 'passwords']
     },
-    // 23. Wholesale (New Order Mode)
+    // 20. Discounts & Offers
     {
-      id: 'billing-wholesale',
-      title: 'Wholesale',
-      subtitle: '(New Order Mode)',
+      id: 'discount',
+      title: 'Discounts & Offers',
+      subtitle: 'Promos & Schemes',
       category: 'Billing',
-      icon: Store,
+      icon: Tags,
       iconColor: '#d97706',
       iconBg: '#fffbeb',
       borderColor: '#fde68a',
-      navView: 'billing',
-      navOptions: { mode: 'bulk' },
-      keywords: ['wholesale', 'bulk', 'crates', 'boxes', 'wholesale mode', 'dealer order']
+      navView: 'discount',
+      navOptions: {},
+      keywords: ['discounts', 'offers', 'schemes', 'coupons', 'special rates']
     },
-    // 24. Export (Bulk) (New Order Mode)
+    // 21. Security & PINs
     {
-      id: 'billing-export',
-      title: 'Export (Bulk)',
-      subtitle: '(New Order Mode)',
+      id: 'security',
+      title: 'Security & PINs',
+      subtitle: 'Access & Lock',
+      category: 'System',
+      icon: Lock,
+      iconColor: '#b91c1c',
+      iconBg: '#fef2f2',
+      borderColor: '#fecaca',
+      navView: 'security',
+      navOptions: {},
+      keywords: ['security', 'pin', 'manager pin', 'passcode', 'lock', 'access']
+    },
+    // 22. Printer Config
+    {
+      id: 'printer',
+      title: 'Printer Config',
+      subtitle: 'Thermal Receipts',
+      category: 'System',
+      icon: Printer,
+      iconColor: '#0284c7',
+      iconBg: '#f0f9ff',
+      borderColor: '#bae6fd',
+      navView: 'printer',
+      navOptions: {},
+      keywords: ['printer', 'thermal', 'bluetooth', 'receipt print', 'pos printer', '80mm']
+    },
+    // 23. Edited Bills
+    {
+      id: 'edited-bills',
+      title: 'Edited Bills',
+      subtitle: 'Audit & Voids',
       category: 'Billing',
-      icon: ArrowUpRight,
-      iconColor: '#2563eb',
-      iconBg: '#eff6ff',
-      borderColor: '#bfdbfe',
-      navView: 'billing',
-      navOptions: { mode: 'export' },
-      keywords: ['export', 'dam', 'local export', 'consignment', 'export mode', 'bulk export']
+      icon: FileEdit,
+      iconColor: '#ea580c',
+      iconBg: '#fff7ed',
+      borderColor: '#fed7aa',
+      navView: 'edited-bills',
+      navOptions: {},
+      keywords: ['edited bills', 'voids', 'modifications', 'audit log', 'changes']
+    },
+    // 24. WhatsApp Bot Login
+    {
+      id: 'whatsapp-bot',
+      title: 'WhatsApp Bot Login',
+      subtitle: 'QR & Client Alerts',
+      category: 'Operations',
+      icon: Smartphone,
+      iconColor: '#16a34a',
+      iconBg: '#f0fdf4',
+      borderColor: '#bbf7d0',
+      isWhatsApp: true,
+      keywords: ['whatsapp', 'bot', 'qr', 'whatsapp login', 'client alerts', 'messages']
     },
 
     // 25. Driver Portal (Conditional)
@@ -529,7 +531,7 @@ export default function MainEntranceDashboard({
       title: 'Driver Portal',
       subtitle: 'Assigned Routes',
       category: 'Operations',
-      icon: Truck,
+      icon: Route,
       iconColor: '#0284c7',
       iconBg: '#f0f9ff',
       borderColor: '#bae6fd',
@@ -544,7 +546,7 @@ export default function MainEntranceDashboard({
       title: 'Supplier Portal',
       subtitle: 'Catch & Ledger',
       category: 'Finance',
-      icon: BookMarked,
+      icon: ClipboardList,
       iconColor: '#059669',
       iconBg: '#ecfdf5',
       borderColor: '#a7f3d0',
@@ -574,19 +576,14 @@ export default function MainEntranceDashboard({
     return result;
   }, [RAW_CARDS, savedOrder]);
 
-  // Filter cards by permission, category, and real-time search query
+  // Keep filteredCards for empty-state check (secondary only now)
   const filteredCards = useMemo(() => {
     let list = orderedCards.filter(card => isPermitted(card.id));
-
-    // Category filter
     if (selectedCategory !== 'ALL') {
       list = list.filter(card => card.category.toUpperCase() === selectedCategory.toUpperCase());
     }
-
-    // Search query filter
     const query = searchQuery.trim().toLowerCase();
     if (!query) return list;
-
     return list.filter(card => {
       const matchTitle = card.title.toLowerCase().includes(query);
       const matchSubtitle = (card.subtitle || '').toLowerCase().includes(query);
@@ -661,14 +658,41 @@ export default function MainEntranceDashboard({
     { id: 'System', label: 'System & Admin' }
   ];
 
+  // --- PINNED PRIMARY CARDS (always shown, highlighted, never filtered out) ---
+  const PRIMARY_IDS = ['billing-retail', 'billing-wholesale', 'billing-export', 'billing'];
+
+  const primaryCards = useMemo(() =>
+    PRIMARY_IDS.map(id => RAW_CARDS.find(c => c.id === id)).filter(Boolean),
+    [RAW_CARDS]
+  );
+
+  // Secondary cards: everything else, filtered normally (excluding primary IDs)
+  const secondaryFilteredCards = useMemo(() => {
+    let list = orderedCards.filter(card => isPermitted(card.id) && !PRIMARY_IDS.includes(card.id));
+
+    if (selectedCategory !== 'ALL') {
+      list = list.filter(card => card.category.toUpperCase() === selectedCategory.toUpperCase());
+    }
+
+    const query = searchQuery.trim().toLowerCase();
+    if (!query) return list;
+
+    return list.filter(card => {
+      const matchTitle = card.title.toLowerCase().includes(query);
+      const matchSubtitle = (card.subtitle || '').toLowerCase().includes(query);
+      const matchKeywords = card.keywords?.some(k => k.toLowerCase().includes(query));
+      return matchTitle || matchSubtitle || matchKeywords;
+    });
+  }, [orderedCards, selectedCategory, searchQuery, userPermitted, isFullAdmin]);
+
   return (
-    <div className="w-full min-h-full p-2.5 sm:p-4 md:p-6 lg:p-7 box-border flex flex-col justify-start">
+    <div className="w-full min-h-full p-0 box-border flex flex-col justify-start">
       {/* 
         ========================================================================
         TOP BAR: Search Features (Ctrl + K) + Rearrange Toggle + Filter Tabs
         ========================================================================
       */}
-      <div className="w-full max-w-4xl mx-auto mb-3.5 sm:mb-5">
+      <div className="w-full px-2.5 sm:px-4 md:px-5 pt-2.5 sm:pt-3 md:pt-4 mb-2 sm:mb-3">
         {/* Mobile-Only Search Input Bar (On Desktop & Tablet, Global Search Bar is in the Top Nav Header) */}
         <div className="md:hidden relative flex items-center mb-2.5">
           <div className="absolute left-3.5 flex items-center pointer-events-none text-slate-400">
@@ -775,169 +799,199 @@ export default function MainEntranceDashboard({
 
       {/* 
         ========================================================================
-        LAUNCHER GRID (Matches Image 1 layout: 6 per row on desktop)
-        Features:
-        - Mobile-like drag-and-drop & persistent reordering (sticks in localStorage)
-        - Clean professional flat icons (no glossy 3D bubbles)
-        - Decreased compact text, warm border [#E8DCCB]
+        UNIFIED GRID — Primary 4 always first (highlighted), then rest
+        All cards same size. Primary cards styled with colored border + solid icon.
         ========================================================================
       */}
-      {filteredCards.length > 0 ? (
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-2 sm:gap-3 md:gap-3.5 max-w-7xl mx-auto w-full">
-          {filteredCards.map((card, idx) => {
-            const CardIcon = card.icon;
-            const isBeingDragged = draggedId === card.id;
-            const isDragTarget = dragOverId === card.id;
+      <div className="w-full px-2.5 sm:px-4 md:px-5 pb-4">
+        {(() => {
+          // Build unified list: primary 4 always first (from RAW_CARDS), then secondaryFilteredCards
+          const unifiedList = [
+            ...primaryCards,
+            ...secondaryFilteredCards
+          ];
 
+          if (unifiedList.length === 0) {
             return (
-              <div
-                key={card.id}
-                draggable
-                onDragStart={(e) => {
-                  e.dataTransfer.setData('text/plain', card.id);
-                  setDraggedId(card.id);
-                }}
-                onDragOver={(e) => {
-                  e.preventDefault();
-                  e.dataTransfer.dropEffect = 'move';
-                  if (dragOverId !== card.id) setDragOverId(card.id);
-                }}
-                onDragLeave={() => {
-                  if (dragOverId === card.id) setDragOverId(null);
-                }}
-                onDrop={(e) => {
-                  e.preventDefault();
-                  const sourceId = e.dataTransfer.getData('text/plain') || draggedId;
-                  handleMoveCard(sourceId, card.id);
-                  setDraggedId(null);
-                  setDragOverId(null);
-                }}
-                onDragEnd={() => {
-                  setDraggedId(null);
-                  setDragOverId(null);
-                }}
-                onClick={() => handleCardClick(card)}
-                className={`group relative flex flex-col items-center justify-center p-3 sm:p-3.5 rounded-xl sm:rounded-2xl bg-white border transition-all duration-150 text-center select-none ${
-                  isBeingDragged ? 'opacity-40 scale-95 border-dashed border-amber-500' : ''
-                } ${
-                  isDragTarget ? 'border-[#7c3f1d] ring-2 ring-[#7c3f1d]/30 scale-[1.02]' : 'border-[#E8DCCB] hover:border-slate-400'
-                } ${
-                  isReorderMode ? 'cursor-grab ring-1 ring-amber-300' : 'cursor-pointer active:scale-[0.97]'
-                } shadow-2xs hover:shadow-md`}
-                style={{
-                  minHeight: isMobile ? '98px' : '118px'
-                }}
-              >
-                {/* Pending or Notification Badge (Clean pill at top right) */}
-                {card.badge && (
-                  <span
-                    className="absolute top-1.5 right-1.5 sm:top-2 sm:right-2 px-1.5 py-0.5 rounded-full text-[9px] sm:text-[10px] font-black text-white shadow-xs pointer-events-none tracking-tight animate-pulse"
-                    style={{ backgroundColor: card.badgeBg || '#ea580c' }}
-                  >
-                    {card.badge}
-                  </span>
-                )}
-
-                {/* Professional, Simple Flat Icon Box */}
-                <div
-                  className="w-10 h-10 sm:w-11 sm:h-11 rounded-xl flex items-center justify-center transition-transform group-hover:scale-105 shrink-0"
-                  style={{
-                    backgroundColor: card.iconBg,
-                    color: card.iconColor,
-                    border: `1.2px solid ${card.borderColor || '#E8DCCB'}`
-                  }}
+              <div className="flex flex-col items-center justify-center py-12 text-center max-w-sm mx-auto">
+                <div className="w-12 h-12 rounded-full bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-400 mb-3">
+                  <Search size={22} />
+                </div>
+                <h4 className="text-sm font-bold text-slate-800 mb-1">
+                  {t("No features found matching")} "{searchQuery}"
+                </h4>
+                <p className="text-xs text-slate-500 mb-3">
+                  {t("Try searching with different keywords like POS, CRM, Staff, or Expenses.")}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => { setSearchQuery(''); setSelectedCategory('ALL'); }}
+                  className="px-3 py-1.5 rounded-lg text-xs font-bold bg-[#7c3f1d] text-white hover:bg-[#603117] transition-colors cursor-pointer"
                 >
-                  <CardIcon size={isMobile ? 18 : 21} strokeWidth={2.2} />
-                </div>
-
-                {/* Card Title & Decreased Compact Text */}
-                <div className="mt-2 w-full flex flex-col items-center justify-center px-0.5">
-                  <span className="text-[11.5px] sm:text-xs md:text-[12.5px] font-bold text-slate-800 tracking-tight leading-snug line-clamp-1 group-hover:text-slate-950">
-                    {t(card.title)}
-                  </span>
-
-                  {/* Subtitle / Mode text */}
-                  {card.subtitle && (
-                    <span className="text-[9px] sm:text-[9.5px] md:text-[10px] text-slate-400 font-medium leading-tight mt-0.5 line-clamp-1">
-                      {t(card.subtitle)}
-                    </span>
-                  )}
-
-                  {/* Special Operations Grid Pill */}
-                  {card.pill && (
-                    <span
-                      className="mt-1 px-1.5 py-0.2 rounded text-[8.5px] sm:text-[9px] font-bold border"
-                      style={{
-                        backgroundColor: card.pillBg,
-                        color: card.pillColor,
-                        borderColor: card.borderColor
-                      }}
-                    >
-                      {card.pill}
-                    </span>
-                  )}
-                </div>
-
-                {/* 
-                  MOBILE / TOUCH REARRANGE CONTROLS (Appears when Reorder Mode is active)
-                  Allows shifting ◀ or ▶ with 1 tap, automatically sticking to localStorage
-                */}
-                {isReorderMode && (
-                  <div
-                    className="mt-1.5 pt-1.5 border-t border-slate-100 flex items-center justify-center gap-2 w-full"
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    <button
-                      type="button"
-                      disabled={idx === 0}
-                      onClick={(e) => handleShiftCard(card.id, -1, e)}
-                      className="p-1 rounded bg-slate-100 hover:bg-slate-200 disabled:opacity-30 disabled:cursor-not-allowed text-slate-700 cursor-pointer"
-                      title="Move Left"
-                    >
-                      <ArrowLeft size={11} strokeWidth={2.5} />
-                    </button>
-                    <span className="text-[9px] font-mono font-bold text-slate-400">
-                      #{idx + 1}
-                    </span>
-                    <button
-                      type="button"
-                      disabled={idx === filteredCards.length - 1}
-                      onClick={(e) => handleShiftCard(card.id, 1, e)}
-                      className="p-1 rounded bg-slate-100 hover:bg-slate-200 disabled:opacity-30 disabled:cursor-not-allowed text-slate-700 cursor-pointer"
-                      title="Move Right"
-                    >
-                      <ArrowRight size={11} strokeWidth={2.5} />
-                    </button>
-                  </div>
-                )}
+                  {t("Reset Filter")}
+                </button>
               </div>
             );
-          })}
-        </div>
-      ) : (
-        /* Empty Search State */
-        <div className="flex flex-col items-center justify-center py-12 text-center max-w-sm mx-auto">
-          <div className="w-12 h-12 rounded-full bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-400 mb-3">
-            <Search size={22} />
-          </div>
-          <h4 className="text-sm font-bold text-slate-800 mb-1">
-            {t("No features found matching")} "{searchQuery}"
-          </h4>
-          <p className="text-xs text-slate-500 mb-3">
-            {t("Try searching with different keywords like POS, CRM, Staff, or Expenses.")}
-          </p>
-          <button
-            type="button"
-            onClick={() => {
-              setSearchQuery('');
-              setSelectedCategory('ALL');
-            }}
-            className="px-3 py-1.5 rounded-lg text-xs font-bold bg-[#7c3f1d] text-white hover:bg-[#603117] transition-colors cursor-pointer"
-          >
-            {t("Reset Filter")}
-          </button>
-        </div>
-      )}
+          }
+
+          return (
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-2 sm:gap-3 md:gap-3.5">
+              {unifiedList.map((card, idx) => {
+                const CardIcon = card.icon;
+                const isPrimary = PRIMARY_IDS.includes(card.id);
+                const isBeingDragged = draggedId === card.id;
+                const isDragTarget = dragOverId === card.id;
+
+                return (
+                  <div
+                    key={card.id}
+                    draggable={!isPrimary}
+                    onDragStart={!isPrimary ? (e) => {
+                      e.dataTransfer.setData('text/plain', card.id);
+                      setDraggedId(card.id);
+                    } : undefined}
+                    onDragOver={!isPrimary ? (e) => {
+                      e.preventDefault();
+                      e.dataTransfer.dropEffect = 'move';
+                      if (dragOverId !== card.id) setDragOverId(card.id);
+                    } : undefined}
+                    onDragLeave={!isPrimary ? () => {
+                      if (dragOverId === card.id) setDragOverId(null);
+                    } : undefined}
+                    onDrop={!isPrimary ? (e) => {
+                      e.preventDefault();
+                      const sourceId = e.dataTransfer.getData('text/plain') || draggedId;
+                      handleMoveCard(sourceId, card.id);
+                      setDraggedId(null);
+                      setDragOverId(null);
+                    } : undefined}
+                    onDragEnd={!isPrimary ? () => {
+                      setDraggedId(null);
+                      setDragOverId(null);
+                    } : undefined}
+                    onClick={() => handleCardClick(card)}
+                    className={`group relative flex flex-col items-center justify-center p-3 sm:p-3.5 rounded-xl sm:rounded-2xl border transition-all duration-150 text-center select-none ${
+                      isBeingDragged ? 'opacity-40 scale-95 border-dashed border-amber-500' : ''
+                    } ${
+                      isDragTarget ? 'ring-2 ring-[#7c3f1d]/30 scale-[1.02]' : ''
+                    } ${
+                      isReorderMode && !isPrimary ? 'cursor-grab ring-1 ring-amber-300' : 'cursor-pointer active:scale-[0.97]'
+                    } shadow-2xs hover:shadow-md`}
+                    style={{
+                      minHeight: isMobile ? '98px' : '118px',
+                      background: isPrimary
+                        ? `linear-gradient(135deg, ${card.iconBg} 0%, #fff 65%)`
+                        : '#ffffff',
+                      borderColor: isPrimary
+                        ? card.borderColor || '#E8DCCB'
+                        : isDragTarget ? '#7c3f1d' : '#E8DCCB',
+                      borderWidth: isPrimary ? '2px' : '1px',
+                      boxShadow: isPrimary
+                        ? `0 2px 10px ${card.iconColor}25, 0 1px 3px rgba(0,0,0,0.05)`
+                        : undefined
+                    }}
+                  >
+                    {/* Primary accent dot */}
+                    {isPrimary && (
+                      <div
+                        className="absolute top-1.5 left-1.5 w-1.5 h-1.5 rounded-full"
+                        style={{ backgroundColor: card.iconColor, opacity: 0.75 }}
+                      />
+                    )}
+
+                    {/* Badge */}
+                    {card.badge && (
+                      <span
+                        className="absolute top-1.5 right-1.5 sm:top-2 sm:right-2 px-1.5 py-0.5 rounded-full text-[9px] sm:text-[10px] font-black text-white shadow-xs pointer-events-none tracking-tight animate-pulse"
+                        style={{ backgroundColor: card.badgeBg || '#ea580c' }}
+                      >
+                        {card.badge}
+                      </span>
+                    )}
+
+                    {/* Icon */}
+                    <div
+                      className="w-10 h-10 sm:w-11 sm:h-11 rounded-xl flex items-center justify-center transition-transform group-hover:scale-105 shrink-0"
+                      style={isPrimary ? {
+                        backgroundColor: card.iconBg,
+                        color: card.iconColor,
+                        border: `1.5px solid ${card.borderColor || '#E8DCCB'}`
+                      } : {
+                        backgroundColor: card.iconBg,
+                        color: card.iconColor,
+                        border: `1.2px solid ${card.borderColor || '#E8DCCB'}`
+                      }}
+                    >
+                      <CardIcon size={isMobile ? 18 : 21} strokeWidth={2.2} />
+                    </div>
+
+                    {/* Text */}
+                    <div className="mt-2 w-full flex flex-col items-center justify-center px-0.5">
+                      <span
+                        className={`text-[11.5px] sm:text-xs md:text-[12.5px] tracking-tight leading-snug line-clamp-1 ${
+                          isPrimary ? 'font-black' : 'font-bold text-slate-800 group-hover:text-slate-950'
+                        }`}
+                        style={isPrimary ? { color: card.iconColor } : undefined}
+                      >
+                        {t(card.title)}
+                      </span>
+
+                      {card.subtitle && (
+                        <span className="text-[9px] sm:text-[9.5px] md:text-[10px] text-slate-400 font-medium leading-tight mt-0.5 line-clamp-1">
+                          {t(card.subtitle)}
+                        </span>
+                      )}
+
+                      {card.pill && (
+                        <span
+                          className="mt-1 px-1.5 py-0.5 rounded text-[8.5px] sm:text-[9px] font-bold border"
+                          style={{
+                            backgroundColor: card.pillBg,
+                            color: card.pillColor,
+                            borderColor: card.borderColor
+                          }}
+                        >
+                          {card.pill}
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Reorder Controls (secondary only) */}
+                    {isReorderMode && !isPrimary && (
+                      <div
+                        className="mt-1.5 pt-1.5 border-t border-slate-100 flex items-center justify-center gap-2 w-full"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <button
+                          type="button"
+                          disabled={idx === 0}
+                          onClick={(e) => handleShiftCard(card.id, -1, e)}
+                          className="p-1 rounded bg-slate-100 hover:bg-slate-200 disabled:opacity-30 disabled:cursor-not-allowed text-slate-700 cursor-pointer"
+                          title="Move Left"
+                        >
+                          <ArrowLeft size={11} strokeWidth={2.5} />
+                        </button>
+                        <span className="text-[9px] font-mono font-bold text-slate-400">
+                          #{idx + 1}
+                        </span>
+                        <button
+                          type="button"
+                          disabled={idx === unifiedList.length - 1}
+                          onClick={(e) => handleShiftCard(card.id, 1, e)}
+                          className="p-1 rounded bg-slate-100 hover:bg-slate-200 disabled:opacity-30 disabled:cursor-not-allowed text-slate-700 cursor-pointer"
+                          title="Move Right"
+                        >
+                          <ArrowRight size={11} strokeWidth={2.5} />
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          );
+        })()}
+      </div>
     </div>
   );
 }

@@ -144,6 +144,9 @@ export const getRestaurantInfo = async (req, res) => {
     if (!restaurantSettings || typeof restaurantSettings !== 'object') {
       restaurantSettings = {};
     }
+    if (!restaurantSettings.defaultBillingLayout) {
+      restaurantSettings.defaultBillingLayout = 'grid';
+    }
 
     let referralCode = '';
     const tenantDbName = req.tenantDb || req.headers?.['x-tenant-db'] || '';
@@ -291,6 +294,9 @@ export const updateRestaurantInfo = async (req, res) => {
       }
 
       mergedSettings = { ...existingSettings, ...settingsToSave };
+      if (settingsToSave.defaultBillingLayout) {
+        mergedSettings.defaultBillingLayout = settingsToSave.defaultBillingLayout;
+      }
       if (settingsToSave.vipVisitThreshold !== undefined && settingsToSave.vipVisitThreshold !== null && settingsToSave.vipVisitThreshold !== '') {
         mergedSettings.vipVisitThreshold = Math.max(1, Number(settingsToSave.vipVisitThreshold));
       }

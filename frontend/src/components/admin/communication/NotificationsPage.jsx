@@ -5,7 +5,7 @@ import {
   CheckCheck, 
   ArrowLeft, 
   ShoppingCart, 
-  Receipt, 
+  ReceiptIndianRupee, 
   Package, 
   AlertTriangle, 
   Info, 
@@ -46,7 +46,7 @@ export default function NotificationsPage({ userRole = 'Admin', onNavigate, onGo
       return { icon: ShoppingCart, bg: '#e0f2fe', color: '#0284c7', category: 'Orders' };
     }
     if (title.includes('bill') || title.includes('settle') || type.includes('bill')) {
-      return { icon: Receipt, bg: '#dcfce7', color: '#15803d', category: 'Bills & Sales' };
+      return { icon: ReceiptIndianRupee, bg: '#dcfce7', color: '#15803d', category: 'Bills & Sales' };
     }
     if (title.includes('stock') || title.includes('fish') || type.includes('stock')) {
       return { icon: Package, bg: '#fef9c3', color: '#a16207', category: 'Fish Stock' };
