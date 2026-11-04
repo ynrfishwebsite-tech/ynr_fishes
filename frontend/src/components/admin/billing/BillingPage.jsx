@@ -416,19 +416,12 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
   });
 
   const [showPayment, setShowPayment] = useState(false);
-  const [showInvoice, setShowInvoice] = useState(() => {
-    try { return sessionStorage.getItem('ms_invoice_open') === 'true'; } catch { return false; }
-  });
+  const [showInvoice, setShowInvoice] = useState(false);
   const [showKOT, setShowKOT] = useState(false);
   const [showTransfer, setShowTransfer] = useState(false);
   const [showCancelModal, setShowCancelModal] = useState(false);
   const [activeKOTData, setActiveKOTData] = useState(null);
-  const [completedBill, setCompletedBill] = useState(() => {
-    try {
-      const saved = sessionStorage.getItem('ms_completed_bill');
-      return saved ? JSON.parse(saved) : null;
-    } catch { return null; }
-  });
+  const [completedBill, setCompletedBill] = useState(null);
   const [showCustomerModal, setShowCustomerModal] = useState(false);
   const [tempCustomerPhone, setTempCustomerPhone] = useState('');
   const [tempCustomerName, setTempCustomerName] = useState('');
@@ -440,6 +433,13 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
 
   const searchInputRef = useRef(null);
   const isViewingInvoiceRef = useRef(false);
+
+  useEffect(() => {
+    try {
+      sessionStorage.removeItem('ms_invoice_open');
+      sessionStorage.removeItem('ms_completed_bill');
+    } catch (e) {}
+  }, []);
 
   const [toast, setToast] = useState(null);
 
@@ -2986,6 +2986,7 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
     } catch (e) { }
     setShowInvoice(false);
     setCart([]);
+    cartRef.current = [];
     setOrderId(null);
     setOrderStatus('Open');
     setBillNumber(null);
@@ -3020,10 +3021,7 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
     fetchDailyStats();
 
     if (onOrderUpdate) onOrderUpdate();
-
-    if (onGoBack) {
-      onGoBack();
-    }
+    // Do not call onGoBack() here: stay on current New Order page ready for the next order
   };
 
 
@@ -3634,7 +3632,7 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
         />
       )}
 
-      {showInvoice && (() => {
+      {showInvoice && (completedBill || (cart && cart.length > 0)) && (() => {
         const billToShow = completedBill || {
           _id: orderId,
           billNumber: billNumber,
@@ -3661,7 +3659,11 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
             bill={billToShow}
             onClose={() => {
               setAutoSendWhatsAppToInvoice(false);
-              handleFinish();
+              if (billToShow.status === 'Paid' || completedBill || orderStatus === 'Paid') {
+                handleFinish();
+              } else {
+                setShowInvoice(false);
+              }
             }}
             onSave={() => {
               setAutoSendWhatsAppToInvoice(false);

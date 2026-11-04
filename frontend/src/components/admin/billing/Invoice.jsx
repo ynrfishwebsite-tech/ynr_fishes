@@ -10,6 +10,7 @@ import api from '../../../api/system/axios';
 import { formatTime12 } from '../../../utils/formatters/timeFormat';
 import { getReceiptFontMetrics, findReceiptFont } from '../../../utils/formatters/receiptFonts';
 import { renderElementToESCPOSRaster, renderElementToPNGBase64, autoTrimCanvasBottom } from '../../../utils/formatters/escposRaster';
+import ClothUnrollReceipt from './ClothUnrollReceipt';
 
 const Invoice = ({ bill, onClose, onSave, onSettle, whatsappBillSentIds, onWhatsAppSent, autoSendWhatsApp = false, isHistoryView = false, isDirectPrint = false, onGlobalToast }) => {
   const { t } = useLanguage();
@@ -1062,7 +1063,7 @@ const Invoice = ({ bill, onClose, onSave, onSettle, whatsappBillSentIds, onWhats
       </style>
 
       {/* Controls - Hidden on Print */}
-      <div className="sticky top-2 sm:top-4 print:hidden w-full max-w-xl mx-auto z-30 px-2 sm:px-4 mb-2 sm:mb-4">
+      <div className="sticky top-2 sm:top-3 print:hidden w-full max-w-xl mx-auto z-30 px-2 sm:px-4 mb-1.5">
         <div className="bg-white/95 backdrop-blur-md border border-[#E8DCCB] shadow-md rounded-2xl p-1.5 sm:p-2">
           <div className="flex items-center justify-center gap-1.5 sm:gap-2.5 flex-nowrap overflow-x-auto no-scrollbar py-0.5">
             {/* 1. Close Button (Icon Only) */}
@@ -1198,19 +1199,22 @@ const Invoice = ({ bill, onClose, onSave, onSettle, whatsappBillSentIds, onWhats
 
       {/* WhatsApp Quick Modal rendered via Portal */}
       {showWhatsAppModal && typeof document !== 'undefined' && createPortal(
-        <div className="fixed inset-0 bg-black/70 backdrop-blur-md z-[9999] flex items-center justify-center p-4">
-          <div className="bg-[#FDFBF7] border border-[#E8DCCB] rounded-3xl p-6 w-full max-w-md shadow-2xl text-slate-800 animate-in zoom-in-95 duration-150 flex flex-col max-h-[90vh] overflow-hidden relative">
+        <div className="fixed inset-0 bg-black/75 backdrop-blur-md z-[10000005] flex items-center justify-center p-4" style={{ zIndex: 10000005 }}>
+          <div className="bg-white border border-slate-200 rounded-3xl p-6 w-full max-w-md shadow-2xl text-slate-900 animate-in zoom-in-95 duration-150 flex flex-col max-h-[90vh] overflow-hidden relative">
             {/* Header */}
-            <div className="flex items-center justify-between pb-3 border-b border-[#E8DCCB] mb-4 shrink-0 relative z-10">
+            <div className="flex items-center justify-between pb-3.5 border-b border-slate-100 mb-4 shrink-0 relative z-10">
               <div className="flex items-center gap-2.5 text-[#25D366] font-bold text-base">
-                <div className="w-8 h-8 rounded-xl bg-[#25D366]/20 border border-[#25D366]/30 flex items-center justify-center text-[#25D366]">
+                <div className="w-8 h-8 rounded-xl bg-[#25D366]/15 border border-[#25D366]/30 flex items-center justify-center text-[#25D366]">
                   <svg className="w-4 h-4 fill-current" viewBox="0 0 24 24">
                     <path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946.003-6.556 5.338-11.891 11.893-11.891 3.181.001 6.167 1.24 8.413 3.488 2.245 2.248 3.481 5.236 3.48 8.414-.003 6.557-5.338 11.892-11.893 11.892-1.99-.001-3.951-.5-5.688-1.448l-6.305 1.654zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884-.001 2.225.651 3.891 1.746 5.634l-.999 3.648 3.742-.981zm11.387-5.464c-.074-.124-.272-.198-.57-.347-.297-.149-1.758-.868-2.031-.967-.272-.099-.47-.149-.669.149-.198.297-.768.967-.941 1.165-.173.198-.347.223-.644.074-.297-.149-1.255-.462-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.297-.347.446-.521.151-.172.2-.296.3-.495.099-.198.05-.372-.025-.521-.075-.148-.669-1.611-.916-2.206-.242-.579-.487-.501-.669-.51l-.57-.01c-.198 0-.52.074-.792.372s-1.04 1.016-1.04 2.479 1.065 2.876 1.213 3.074c.149.198 2.095 3.2 5.076 4.487.709.306 1.263.489 1.694.626.712.226 1.36.194 1.872.118.571-.085 1.758-.719 2.006-1.413.248-.695.248-1.29.173-1.414z" />
                   </svg>
                 </div>
-                <span>{t("Send WhatsApp e-Bill")}</span>
+                <span className="text-slate-900 font-bold">{t("Send WhatsApp e-Bill")}</span>
               </div>
-              <button onClick={() => setShowWhatsAppModal(false)} className="text-slate-400 hover:text-slate-800 p-1.5 rounded-full hover:bg-[#FAF0E4] transition-colors cursor-pointer">
+              <button
+                onClick={() => setShowWhatsAppModal(false)}
+                className="text-slate-400 hover:text-slate-800 p-1.5 rounded-full hover:bg-slate-100 transition-colors cursor-pointer"
+              >
                 <X size={18} />
               </button>
             </div>
@@ -1219,22 +1223,25 @@ const Invoice = ({ bill, onClose, onSave, onSettle, whatsappBillSentIds, onWhats
 
               {/* Customer Name Row */}
               <div>
-                <label className="text-xs font-semibold text-text-muted block mb-1">{t('Customer Name')} <span className="text-text-muted font-normal">(for personalised greeting)</span></label>
-                <div className="flex items-center gap-2 bg-white border border-border rounded-xl px-3 py-2 shadow-sm">
-                  <UserRound size={14} className="text-text-muted shrink-0" />
+                <label className="text-xs font-bold text-slate-700 block mb-1">
+                  {t('Customer Name')} <span className="text-slate-400 font-normal">(for personalised greeting)</span>
+                </label>
+                <div className="flex items-center gap-2 bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 shadow-xs focus-within:border-emerald-500 focus-within:ring-2 focus-within:ring-emerald-500/10 transition-all">
+                  <UserRound size={14} className="text-slate-400 shrink-0" />
                   <input
                     type="text"
                     value={whatsappCustomerName}
                     onChange={(e) => setWhatsappCustomerName(e.target.value)}
                     placeholder="e.g. Rahul Sharma"
-                    className="bg-transparent text-text-main flex-1 text-text-main text-sm focus:outline-none"
+                    style={{ color: '#0f172a' }}
+                    className="bg-transparent flex-1 text-slate-900 text-sm font-semibold focus:outline-none placeholder:text-slate-400"
                   />
                   {/* Open Customer CRM mini-modal */}
                   <button
                     type="button"
                     onClick={() => setShowCustomerEditModal(true)}
                     title="Open Customer Details"
-                    className="shrink-0 p-1 rounded-lg bg-orange-500/20 hover:bg-orange-500/40 text-orange-400 hover:text-orange-300 transition-colors cursor-pointer">
+                    className="shrink-0 p-1 rounded-lg bg-orange-100 hover:bg-orange-200 text-orange-600 transition-colors cursor-pointer">
                     <UserRound size={14} />
                   </button>
                 </div>
@@ -1242,11 +1249,11 @@ const Invoice = ({ bill, onClose, onSave, onSettle, whatsappBillSentIds, onWhats
 
               {/* Phone Number Row */}
               <div className="relative">
-                <label className="text-xs font-semibold text-text-muted block mb-1">
+                <label className="text-xs font-bold text-slate-700 block mb-1">
                   {t("Recipient / Customer Mobile Number")}
                 </label>
-                <div className="flex items-center gap-2 bg-white border border-border rounded-xl px-3 py-2 shadow-sm">
-                  <span className="text-sm font-bold text-text-muted">+91</span>
+                <div className="flex items-center gap-2 bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 shadow-xs focus-within:border-emerald-500 focus-within:ring-2 focus-within:ring-emerald-500/10 transition-all">
+                  <span className="text-sm font-bold text-slate-700" style={{ color: '#334155' }}>+91</span>
                   <input
                     type="tel"
                     value={whatsappPhone}
@@ -1258,18 +1265,19 @@ const Invoice = ({ bill, onClose, onSave, onSettle, whatsappBillSentIds, onWhats
                     onFocus={() => setShowSuggestions(true)}
                     onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
                     placeholder="Enter 10-digit number"
-                    className="bg-transparent text-text-main flex-1 text-text-main font-mono font-bold text-sm focus:outline-none"
+                    style={{ color: '#0f172a' }}
+                    className="bg-transparent flex-1 text-slate-900 font-mono font-bold text-sm focus:outline-none placeholder:text-slate-400"
                     autoFocus
                   />
-                  <Phone size={14} className="text-text-muted shrink-0" />
+                  <Phone size={14} className="text-slate-400 shrink-0" />
                 </div>
                 {/* Suggestions Dropdown */}
                 {showSuggestions && customerSuggestions.length > 0 && (
-                  <div className="absolute z-50 w-full mt-1 bg-[#031222] border border-border rounded-xl shadow-2xl max-h-48 overflow-y-auto">
+                  <div className="absolute z-50 w-full mt-1 bg-white border border-slate-200 rounded-xl shadow-2xl max-h-48 overflow-y-auto">
                     {customerSuggestions.map((cust, idx) => (
                       <div
                         key={idx}
-                        className="px-3 py-2.5 hover:bg-gray-100 cursor-pointer border-b border-border last:border-0 flex justify-between items-center"
+                        className="px-3 py-2.5 hover:bg-emerald-50 cursor-pointer border-b border-slate-100 last:border-0 flex justify-between items-center"
                         onMouseDown={(e) => {
                           e.preventDefault();
                           setWhatsappPhone(cust.phone);
@@ -1278,8 +1286,8 @@ const Invoice = ({ bill, onClose, onSave, onSettle, whatsappBillSentIds, onWhats
                         }}
                       >
                         <div className="flex flex-col">
-                          <span className="text-sm text-text-main font-mono">{cust.phone}</span>
-                          <span className="text-xs text-text-muted">{cust.name}</span>
+                          <span className="text-sm text-slate-900 font-bold font-mono" style={{ color: '#0f172a' }}>{cust.phone}</span>
+                          <span className="text-xs text-slate-500">{cust.name}</span>
                         </div>
                       </div>
                     ))}
@@ -1293,21 +1301,21 @@ const Invoice = ({ bill, onClose, onSave, onSettle, whatsappBillSentIds, onWhats
                   <button
                     type="button"
                     onClick={() => { setWhatsappPhone(bill.customerPhone); setWhatsappCustomerName(bill.customerName || whatsappCustomerName); }}
-                    className="text-[11px] font-semibold bg-[#031222] hover:bg-gray-100 text-cyan-700 border border-cyan-200 px-2.5 py-1 rounded-lg transition-colors cursor-pointer">
+                    className="text-[11px] font-bold bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 px-2.5 py-1 rounded-lg transition-colors cursor-pointer">
                     {bill.customerPhone} {bill.customerName ? `(${bill.customerName})` : '(Customer)'}
                   </button>
                 </div>
               )}
 
               {/* Bill Details Snapshot */}
-              <div className="bg-[#031222] rounded-xl p-3 border border-border text-xs space-y-1 text-text-muted">
+              <div className="bg-slate-50 rounded-xl p-3 border border-slate-200 text-xs space-y-1">
                 <div className="flex justify-between">
-                  <span className="text-text-muted">{t("Bill No:")}</span>
-                  <span className="font-bold text-text-main">#{bill?.billNumber || 'PREVIEW'}</span>
+                  <span className="text-slate-500 font-medium">{t("Bill No:")}</span>
+                  <span className="font-bold text-slate-900 font-mono" style={{ color: '#0f172a' }}>#{bill?.billNumber || 'PREVIEW'}</span>
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-text-muted">{t("Total Amount:")}</span>
-                  <span className="font-bold text-emerald-600 font-mono">₹{Number(bill?.total || 0).toFixed(2)}</span>
+                <div className="flex justify-between items-center">
+                  <span className="text-slate-500 font-medium">{t("Total Amount:")}</span>
+                  <span className="font-bold text-emerald-600 font-mono text-sm">₹{Number(bill?.total || 0).toFixed(2)}</span>
                 </div>
               </div>
 
@@ -1318,19 +1326,22 @@ const Invoice = ({ bill, onClose, onSave, onSettle, whatsappBillSentIds, onWhats
                 const previewLimit = 220;
                 const isLong = previewMsg.length > previewLimit;
                 return (
-                  <div className="bg-emerald-50 border border-emerald-100 rounded-xl p-3 shadow-sm">
-                    <div className="text-[11px] text-text-muted font-semibold mb-1.5 flex items-center gap-1">
-                      <svg className="w-3 h-3 fill-emerald-600" viewBox="0 0 24 24"><path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946.003-6.556 5.338-11.891 11.893-11.891 3.181.001 6.167 1.24 8.413 3.488 2.245 2.248 3.481 5.236 3.48 8.414-.003 6.557-5.338 11.892-11.893 11.892-1.99-.001-3.951-.5-5.688-1.448l-6.305 1.654zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884-.001 2.225.651 3.891 1.746 5.634l-.999 3.648 3.742-.981zm11.387-5.464c-.074-.124-.272-.198-.57-.347-.297-.149-1.758-.868-2.031-.967-.272-.099-.47-.149-.669.149-.198.297-.768.967-.941 1.165-.173.198-.347.223-.644.074-.297-.149-1.255-.462-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.297-.347.446-.521.151-.172.2-.296.3-.495.099-.198.05-.372-.025-.521-.075-.148-.669-1.611-.916-2.206-.242-.579-.487-.501-.669-.51l-.57-.01c-.198 0-.52.074-.792.372s-1.04 1.016-1.04 2.479 1.065 2.876 1.213 3.074c.149.198 2.095 3.2 5.076 4.487.709.306 1.263.489 1.694.626.712.226 1.36.194 1.872.118.571-.085 1.758-.719 2.006-1.413.248-.695.248-1.29.173-1.414z" /></svg>
+                  <div className="bg-emerald-50/70 border border-emerald-200/80 rounded-xl p-3 shadow-xs">
+                    <div className="text-[11px] font-bold text-emerald-800 mb-1.5 flex items-center gap-1.5">
+                      <svg className="w-3.5 h-3.5 fill-emerald-600 shrink-0" viewBox="0 0 24 24"><path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946.003-6.556 5.338-11.891 11.893-11.891 3.181.001 6.167 1.24 8.413 3.488 2.245 2.248 3.481 5.236 3.48 8.414-.003 6.557-5.338 11.892-11.893 11.892-1.99-.001-3.951-.5-5.688-1.448l-6.305 1.654zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884-.001 2.225.651 3.891 1.746 5.634l-.999 3.648 3.742-.981zm11.387-5.464c-.074-.124-.272-.198-.57-.347-.297-.149-1.758-.868-2.031-.967-.272-.099-.47-.149-.669.149-.198.297-.768.967-.941 1.165-.173.198-.347.223-.644.074-.297-.149-1.255-.462-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.297-.347.446-.521.151-.172.2-.296.3-.495.099-.198.05-.372-.025-.521-.075-.148-.669-1.611-.916-2.206-.242-.579-.487-.501-.669-.51l-.57-.01c-.198 0-.52.074-.792.372s-1.04 1.016-1.04 2.479 1.065 2.876 1.213 3.074c.149.198 2.095 3.2 5.076 4.487.709.306 1.263.489 1.694.626.712.226 1.36.194 1.872.118.571-.085 1.758-.719 2.006-1.413.248-.695.248-1.29.173-1.414z" /></svg>
                       <span>{t("Message Preview")}</span>
                     </div>
-                    <pre className="text-[11px] text-text-main whitespace-pre-wrap leading-relaxed font-sans max-h-48 overflow-y-auto">
+                    <pre
+                      style={{ color: '#064e3b' }}
+                      className="text-[11px] font-sans font-medium whitespace-pre-wrap leading-relaxed max-h-48 overflow-y-auto"
+                    >
                       {msgExpanded || !isLong ? previewMsg : previewMsg.slice(0, previewLimit) + '...'}
                     </pre>
                     {isLong && (
                       <button
                         type="button"
                         onClick={() => setMsgExpanded(v => !v)}
-                        className="mt-1.5 flex items-center gap-1 text-[11px] text-emerald-600 hover:text-emerald-700 font-semibold transition-colors cursor-pointer">
+                        className="mt-1.5 flex items-center gap-1 text-[11px] text-emerald-700 hover:text-emerald-900 font-bold transition-colors cursor-pointer">
                         {msgExpanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
                         <span>{msgExpanded ? t("Read less") : t("Read more")}</span>
                       </button>
@@ -1340,11 +1351,11 @@ const Invoice = ({ bill, onClose, onSave, onSettle, whatsappBillSentIds, onWhats
               })()}
             </div>
 
-            <div className="flex items-center gap-2.5 pt-2 border-t border-border shrink-0 relative z-10">
+            <div className="flex items-center gap-2.5 pt-3 border-t border-slate-100 shrink-0 relative z-10">
               <button
                 type="button"
                 onClick={() => setShowWhatsAppModal(false)}
-                className="flex-1 py-2.5 bg-gray-100 hover:bg-gray-200 text-text-muted rounded-xl font-bold text-xs sm:text-sm transition-colors cursor-pointer">
+                className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 rounded-xl font-bold text-xs sm:text-sm transition-colors cursor-pointer">
                 {t("Cancel")}
               </button>
               <button
@@ -1352,11 +1363,11 @@ const Invoice = ({ bill, onClose, onSave, onSettle, whatsappBillSentIds, onWhats
                 disabled={sendingAutomated || isAlreadySent}
                 onClick={() => handleSendWhatsAppBill(whatsappPhone, whatsappCustomerName)}
                 className={`flex-1 py-2.5 rounded-xl font-bold text-xs sm:text-sm transition-all shadow-md flex items-center justify-center gap-1.5 cursor-pointer active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed ${isAlreadySent
-                  ? 'bg-gray-400 text-white shadow-none'
-                  : 'bg-[#25D366] hover:bg-[#20bd5a] text-white shadow-[#25D366]/20'
+                  ? 'bg-slate-300 text-slate-600 shadow-none'
+                  : 'bg-[#25D366] hover:bg-[#20bd5a] text-white shadow-emerald-500/20'
                   }`}>
                 {sendingAutomated ? (
-                  <><Loader2 size={16} className="animate-spin" /><span className="animate-pulse">{t("Sending...")}</span></>
+                  <><Loader2 size={16} className="animate-spin text-white" /><span className="animate-pulse">{t("Sending...")}</span></>
                 ) : isAlreadySent ? (
                   <><span className="font-bold">✓</span><span>{t("Already Sent")}</span></>
                 ) : (
@@ -1371,27 +1382,27 @@ const Invoice = ({ bill, onClose, onSave, onSettle, whatsappBillSentIds, onWhats
 
       {/* Inline Customer Details Mini-Modal rendered via Portal */}
       {showCustomerEditModal && typeof document !== 'undefined' && createPortal(
-        <div className="fixed inset-0 bg-black/85 backdrop-blur-sm z-[10000] flex items-center justify-center p-4">
-          <div className="bg-white border border-orange-500/30 rounded-2xl p-5 w-full max-w-sm shadow-2xl text-text-main animate-in zoom-in-95 duration-150">
-            <div className="flex items-center justify-between pb-3 border-b border-border mb-4">
+        <div className="fixed inset-0 bg-black/85 backdrop-blur-sm z-[10000005] flex items-center justify-center p-4" style={{ zIndex: 10000005 }}>
+          <div className="bg-white border border-slate-200 rounded-2xl p-5 w-full max-w-sm shadow-2xl text-slate-900 animate-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-4">
               <div className="flex items-center gap-2">
-                <div className="p-1.5 bg-orange-500 rounded-lg">
-                  <UserRound size={16} className="text-text-main" />
+                <div className="p-1.5 bg-orange-500 rounded-lg text-white">
+                  <UserRound size={16} />
                 </div>
                 <div>
-                  <div className="font-bold text-sm text-text-main">{t('Customer Details')}</div>
-                  <div className="text-[11px] text-text-muted">{t('Name & phone for this e-bill')}</div>
+                  <div className="font-bold text-sm text-slate-900" style={{ color: '#0f172a' }}>{t('Customer Details')}</div>
+                  <div className="text-[11px] text-slate-500">{t('Name & phone for this e-bill')}</div>
                 </div>
               </div>
-              <button onClick={() => setShowCustomerEditModal(false)} className="text-text-muted hover:text-text-main p-1 cursor-pointer">
+              <button onClick={() => setShowCustomerEditModal(false)} className="text-slate-400 hover:text-slate-700 p-1 cursor-pointer">
                 <X size={16} />
               </button>
             </div>
             <div className="space-y-3">
               <div className="relative">
-                <label className="text-xs font-semibold text-text-muted block mb-1">{t('Phone Number')}</label>
-                <div className="flex items-center gap-2 bg-[#031222] border border-border rounded-xl px-3 py-2.5">
-                  <Phone size={14} className="text-text-muted shrink-0" />
+                <label className="text-xs font-bold text-slate-700 block mb-1">{t('Phone Number')}</label>
+                <div className="flex items-center gap-2 bg-slate-50 border border-slate-300 rounded-xl px-3 py-2.5 focus-within:border-emerald-500">
+                  <Phone size={14} className="text-slate-400 shrink-0" />
                   <input
                     type="tel"
                     maxLength={10}
@@ -1403,17 +1414,18 @@ const Invoice = ({ bill, onClose, onSave, onSettle, whatsappBillSentIds, onWhats
                     onFocus={() => setShowSuggestions(true)}
                     onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
                     placeholder="10-digit mobile number"
-                    className="bg-transparent text-text-main flex-1 text-text-main font-mono font-bold text-sm focus:outline-none"
+                    style={{ color: '#0f172a' }}
+                    className="bg-transparent flex-1 text-slate-900 font-mono font-bold text-sm focus:outline-none placeholder:text-slate-400"
                     autoFocus
                   />
                 </div>
                 {/* Suggestions Dropdown */}
                 {showSuggestions && customerSuggestions.length > 0 && (
-                  <div className="absolute z-50 w-full mt-1 bg-[#031222] border border-border rounded-xl shadow-2xl max-h-48 overflow-y-auto">
+                  <div className="absolute z-50 w-full mt-1 bg-white border border-slate-200 rounded-xl shadow-2xl max-h-48 overflow-y-auto">
                     {customerSuggestions.map((cust, idx) => (
                       <div
                         key={idx}
-                        className="px-3 py-2.5 hover:bg-slate-700 cursor-pointer border-b border-white/5 last:border-0 flex justify-between items-center"
+                        className="px-3 py-2.5 hover:bg-slate-100 cursor-pointer border-b border-slate-100 last:border-0 flex justify-between items-center"
                         onMouseDown={(e) => {
                           e.preventDefault();
                           setWhatsappPhone(cust.phone);
@@ -1422,8 +1434,8 @@ const Invoice = ({ bill, onClose, onSave, onSettle, whatsappBillSentIds, onWhats
                         }}
                       >
                         <div className="flex flex-col">
-                          <span className="text-sm text-text-main font-mono">{cust.phone}</span>
-                          <span className="text-xs text-text-muted">{cust.name}</span>
+                          <span className="text-sm text-slate-900 font-bold font-mono" style={{ color: '#0f172a' }}>{cust.phone}</span>
+                          <span className="text-xs text-slate-500">{cust.name}</span>
                         </div>
                       </div>
                     ))}
@@ -1431,22 +1443,23 @@ const Invoice = ({ bill, onClose, onSave, onSettle, whatsappBillSentIds, onWhats
                 )}
               </div>
               <div>
-                <label className="text-xs font-semibold text-text-muted block mb-1">{t('Customer Name')}</label>
-                <div className="flex items-center gap-2 bg-[#031222] border border-border rounded-xl px-3 py-2.5">
-                  <UserRound size={14} className="text-text-muted shrink-0" />
+                <label className="text-xs font-bold text-slate-700 block mb-1">{t('Customer Name')}</label>
+                <div className="flex items-center gap-2 bg-slate-50 border border-slate-300 rounded-xl px-3 py-2.5 focus-within:border-emerald-500">
+                  <UserRound size={14} className="text-slate-400 shrink-0" />
                   <input
                     type="text"
                     value={whatsappCustomerName}
                     onChange={(e) => setWhatsappCustomerName(e.target.value)}
                     placeholder="e.g. Rahul Sharma"
-                    className="bg-transparent text-text-main flex-1 text-text-main text-sm focus:outline-none"
+                    style={{ color: '#0f172a' }}
+                    className="bg-transparent flex-1 text-slate-900 font-semibold text-sm focus:outline-none placeholder:text-slate-400"
                   />
                 </div>
               </div>
               <button
                 type="button"
                 onClick={() => setShowCustomerEditModal(false)}
-                className="w-full py-2.5 bg-orange-600 hover:bg-orange-500 text-text-main rounded-xl font-bold text-sm transition-all shadow-md shadow-orange-500/20 cursor-pointer active:scale-95">
+                className="w-full py-2.5 bg-orange-600 hover:bg-orange-500 text-white rounded-xl font-bold text-sm transition-all shadow-md shadow-orange-500/20 cursor-pointer active:scale-95">
                 ✓ {t('Apply')}
               </button>
             </div>
@@ -1455,9 +1468,10 @@ const Invoice = ({ bill, onClose, onSave, onSettle, whatsappBillSentIds, onWhats
         document.body
       )}
 
-      <div
-        id="invoice-print-area"
-        className={`receipt-print bg-white text-black mx-auto shadow-2xl print:shadow-none mt-2 mb-2 pb-1 print:m-0 print:border-0 ${getFormatClasses()}`}
+      <ClothUnrollReceipt isDirectPrint={isDirectPrint}>
+        <div
+          id="invoice-print-area"
+          className={`receipt-print bg-white text-black mx-auto shadow-2xl print:shadow-none mt-0 mb-2 pb-1 print:m-0 print:border-0 ${getFormatClasses()}`}
         style={{
           fontFamily: receiptFont,
           color: '#000',
@@ -2294,6 +2308,7 @@ const Invoice = ({ bill, onClose, onSave, onSettle, whatsappBillSentIds, onWhats
           </div>
         )}
       </div>
+      </ClothUnrollReceipt>
 
       {toast && (
         <Toast

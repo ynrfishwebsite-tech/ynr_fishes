@@ -362,7 +362,7 @@ export default function GlobalSearchBar({
     {
       id: 'driver-portal',
       title: 'Driver Portal',
-      subtitle: 'Assigned Routes & Box Deliveries',
+      subtitle: 'Assigned Deliveries & Box Shipments',
       category: 'Operations',
       icon: Truck,
       iconColor: '#0284c7',

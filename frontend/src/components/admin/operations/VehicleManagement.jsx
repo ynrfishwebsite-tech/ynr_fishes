@@ -617,7 +617,7 @@ export default function VehicleManagement({ onNavigate, onGoBack }) {
               <span className="text-xs sm:text-sm font-semibold text-slate-500">KM</span>
             </div>
           </div>
-          <p className="text-[10px] sm:text-xs text-slate-500 mt-1 sm:mt-2 truncate">Active supply routes</p>
+          <p className="text-[10px] sm:text-xs text-slate-500 mt-1 sm:mt-2 truncate">Active fleet dispatches</p>
         </div>
 
         {/* Card 3: Fuel Expense */}

@@ -1010,10 +1010,10 @@ export default function FishSmartwatchDial({
             </div>
             <div className="space-y-1">
               {[
-                { key: 'small', label: 'Small', range: `0-${smallMax}k`, rate: currentItem?.sizeGrades?.small?.price || activeRate },
-                { key: 'medium', label: 'Medium', range: `${smallMax}-${mediumMax}k`, rate: currentItem?.sizeGrades?.medium?.price || activeRate },
-                { key: 'big', label: 'Big', range: `${mediumMax}+k`, rate: currentItem?.sizeGrades?.big?.price || activeRate }
-              ].map((g) => {
+                { key: 'small', label: 'Small', range: `0-${smallMax}k`, rate: currentItem?.sizeGrades?.small?.price || activeRate, enabled: currentItem?.sizeGrades?.small?.enabled !== false },
+                { key: 'medium', label: 'Medium', range: `${smallMax}-${mediumMax}k`, rate: currentItem?.sizeGrades?.medium?.price || activeRate, enabled: currentItem?.sizeGrades?.medium?.enabled !== false },
+                { key: 'big', label: 'Big', range: `${mediumMax}+k`, rate: currentItem?.sizeGrades?.big?.price || activeRate, enabled: currentItem?.sizeGrades?.big?.enabled !== false }
+              ].filter(g => g.enabled).map((g) => {
                 const isSelected = activeGrade === g.key;
                 return (
                   <button

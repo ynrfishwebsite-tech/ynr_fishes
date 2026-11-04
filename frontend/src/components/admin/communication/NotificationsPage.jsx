@@ -9,10 +9,7 @@ import {
   Package, 
   AlertTriangle, 
   Info, 
-  Clock, 
-  Filter,
-  CheckCircle2,
-  X
+  Clock
 } from 'lucide-react';
 import useNotifications from '../../../hooks/useNotifications';
 
@@ -75,139 +72,74 @@ export default function NotificationsPage({ userRole = 'Admin', onNavigate, onGo
   };
 
   return (
-    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', background: '#F7EFE2', color: '#1e293b', padding: '24px', boxSizing: 'border-box', minHeight: '100%' }}>
-      {/* Top Header Bar */}
-      <div 
-        style={{ 
-          display: 'flex', 
-          flexWrap: 'wrap', 
-          alignItems: 'center', 
-          justifyContent: 'space-between', 
-          gap: '16px', 
-          marginBottom: '20px',
-          borderBottom: '1px solid #E8DCCB',
-          paddingBottom: '16px'
-        }}
-      >
-        <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+    <div className="flex-1 flex flex-col bg-[#F7EFE2] text-slate-800 p-2.5 sm:p-6 box-border min-h-full overflow-y-auto">
+      {/* Top Header Bar - Compact & Responsive */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 sm:gap-4 mb-2.5 sm:mb-4 border-b border-[#E8DCCB] pb-2.5 sm:pb-3.5 shrink-0">
+        <div className="flex items-center gap-2 sm:gap-3.5 min-w-0">
           {onGoBack && (
             <button
               onClick={onGoBack}
-              style={{
-                background: '#FDFBF7',
-                border: '1.5px solid #E8DCCB',
-                color: '#475569',
-                borderRadius: '10px',
-                padding: '8px 12px',
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '6px',
-                fontSize: '0.82rem',
-                fontWeight: 700,
-                boxShadow: '0 1px 3px rgba(0, 0, 0, 0.04)'
-              }}
+              className="px-2.5 py-1 sm:py-1.5 sm:px-3 text-xs sm:text-sm font-bold bg-[#FDFBF7] border border-[#E8DCCB] text-slate-700 rounded-lg sm:rounded-xl flex items-center gap-1 cursor-pointer shadow-xs shrink-0 hover:bg-slate-50 transition-all"
             >
-              <ArrowLeft size={16} />
+              <ArrowLeft size={14} className="sm:w-4 sm:h-4 text-slate-600" />
               <span>Back</span>
             </button>
           )}
 
-          <div>
-            <h1 style={{ margin: 0, fontSize: '1.35rem', fontWeight: 900, color: '#1e293b', display: 'flex', alignItems: 'center', gap: '10px', letterSpacing: '-0.02em' }}>
-              <span style={{ color: '#ea580c', display: 'flex' }}><Bell size={24} /></span>
-              Fish Billing Notification Center
+          <div className="min-w-0">
+            <h1 className="text-xs sm:text-base md:text-lg font-black text-slate-900 flex items-center gap-1.5 leading-tight">
+              <span className="text-[#ea580c] shrink-0"><Bell size={18} className="sm:w-5 sm:h-5" /></span>
+              <span className="truncate">Fish Billing Notification Center</span>
             </h1>
-            <p style={{ margin: '4px 0 0 0', fontSize: '0.8rem', color: '#64748b', fontWeight: 500 }}>
-              Real-time alerts for customer fish orders, billing invoices, stock warnings, and daybook updates
+            <p className="text-[10px] sm:text-xs text-slate-500 font-medium truncate max-w-[280px] sm:max-w-none mt-0.5">
+              Real-time fish orders, billing invoices, stock alerts, and daybook updates
             </p>
           </div>
         </div>
 
-        {/* Action Controls */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+        {/* Action Controls (Mark read & clear all) */}
+        <div className="flex items-center gap-1.5 sm:gap-2 self-end sm:self-auto shrink-0">
           {unreadCount > 0 && (
             <button
               onClick={markAllAsRead}
-              style={{
-                background: '#ecfdf5',
-                border: '1.5px solid #a7f3d0',
-                color: '#047857',
-                borderRadius: '10px',
-                padding: '8px 14px',
-                fontSize: '0.8rem',
-                fontWeight: 700,
-                display: 'flex',
-                alignItems: 'center',
-                gap: '6px',
-                cursor: 'pointer',
-                boxShadow: '0 1px 3px rgba(0, 0, 0, 0.04)'
-              }}
+              className="px-2 py-1 sm:py-1.5 sm:px-3 bg-emerald-50 border border-emerald-300 text-emerald-800 rounded-lg text-[10px] sm:text-xs font-bold flex items-center gap-1 cursor-pointer shadow-xs hover:bg-emerald-100 transition-all"
             >
-              <CheckCheck size={16} />
-              <span>Mark All As Read</span>
+              <CheckCheck size={13} className="sm:w-3.5 sm:h-3.5" />
+              <span>Mark All Read</span>
             </button>
           )}
 
           {notifications.length > 0 && (
             <button
               onClick={() => setShowClearModal(true)}
-              style={{
-                background: '#fef2f2',
-                border: '1.5px solid #fecaca',
-                color: '#dc2626',
-                borderRadius: '10px',
-                padding: '8px 14px',
-                fontSize: '0.8rem',
-                fontWeight: 700,
-                display: 'flex',
-                alignItems: 'center',
-                gap: '6px',
-                cursor: 'pointer',
-                boxShadow: '0 1px 3px rgba(0, 0, 0, 0.04)'
-              }}
+              className="px-2 py-1 sm:py-1.5 sm:px-3 bg-rose-50 border border-rose-200 text-rose-700 rounded-lg text-[10px] sm:text-xs font-bold flex items-center gap-1 cursor-pointer shadow-xs hover:bg-rose-100 transition-all"
             >
-              <Trash2 size={16} />
+              <Trash2 size={13} className="sm:w-3.5 sm:h-3.5" />
               <span>Clear All</span>
             </button>
           )}
         </div>
       </div>
 
-      {/* Filter Tabs */}
-      <div 
-        style={{ 
-          display: 'flex', 
-          gap: '8px', 
-          marginBottom: '20px', 
-          overflowX: 'auto', 
-          paddingBottom: '4px' 
-        }}
-      >
+      {/* Filter Tabs - Compact Horizontal Strip */}
+      <div className="flex items-center gap-1.5 sm:gap-2 mb-2.5 sm:mb-4 overflow-x-auto pb-1 shrink-0 no-scrollbar">
         {[
           { id: 'all', label: `All (${notifications.length})` },
           { id: 'orders', label: 'Fish Orders' },
           { id: 'bills', label: 'Bills & Invoices' },
           { id: 'stock', label: 'Stock Alerts' },
-          { id: 'system', label: 'System Updates' }
+          { id: 'system', label: 'System' }
         ].map((tab) => {
           const active = filterType === tab.id;
           return (
             <button
               key={tab.id}
               onClick={() => setFilterType(tab.id)}
-              style={{
-                padding: '7px 16px',
-                borderRadius: '10px',
-                fontSize: '0.82rem',
-                fontWeight: active ? 800 : 600,
-                background: active ? '#ea580c' : '#FDFBF7',
-                color: active ? '#ffffff' : '#475569',
-                border: active ? '1.5px solid #ea580c' : '1.5px solid #E8DCCB',
-                cursor: 'pointer',
-                boxShadow: active ? '0 2px 6px rgba(234, 88, 12, 0.25)' : '0 1px 3px rgba(0, 0, 0, 0.02)',
-                transition: 'all 0.15s ease'
-              }}
+              className={`py-1 px-2.5 sm:py-1.5 sm:px-3.5 rounded-lg text-[10px] sm:text-xs font-bold whitespace-nowrap transition-all cursor-pointer shadow-xs shrink-0 ${
+                active 
+                  ? 'bg-[#ea580c] text-white border border-[#ea580c] shadow-orange-500/20' 
+                  : 'bg-[#FDFBF7] text-slate-700 border border-[#E8DCCB] hover:bg-slate-100'
+              }`}
             >
               {tab.label}
             </button>
@@ -216,40 +148,15 @@ export default function NotificationsPage({ userRole = 'Admin', onNavigate, onGo
       </div>
 
       {/* Notifications List Body */}
-      <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+      <div className="flex-1 overflow-y-auto space-y-2 sm:space-y-2.5">
         {filteredNotifications.length === 0 ? (
-          <div 
-            style={{ 
-              padding: '80px 20px', 
-              textAlign: 'center', 
-              color: '#64748b', 
-              display: 'flex', 
-              flexDirection: 'column', 
-              alignItems: 'center', 
-              justifyContent: 'center',
-              gap: '12px',
-              background: '#FDFBF7',
-              borderRadius: '16px',
-              border: '1.5px dashed #E8DCCB'
-            }}
-          >
-            <div 
-              style={{ 
-                width: '64px', 
-                height: '64px', 
-                borderRadius: '50%', 
-                background: '#FAF0E4', 
-                display: 'flex', 
-                alignItems: 'center', 
-                justifyContent: 'center',
-                color: '#c2410c' 
-              }}
-            >
-              <Bell size={30} />
+          <div className="py-10 px-4 sm:py-16 text-center text-slate-500 flex flex-col items-center justify-center gap-2 bg-[#FDFBF7] rounded-xl sm:rounded-2xl border border-dashed border-[#E8DCCB]">
+            <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-[#FAF0E4] flex items-center justify-center text-[#c2410c]">
+              <Bell size={20} className="sm:w-6 sm:h-6" />
             </div>
-            <div style={{ fontSize: '1.05rem', fontWeight: 800, color: '#1e293b' }}>No Notifications In This Category</div>
-            <div style={{ fontSize: '0.8rem', maxWidth: '340px', color: '#64748b', lineHeight: 1.5 }}>
-              Whenever retail fish orders are weighed, wholesale bills are printed, or daybook entries are logged, they will appear here in real-time.
+            <div className="text-xs sm:text-sm font-black text-slate-800">No Notifications In This Category</div>
+            <div className="text-[11px] sm:text-xs max-w-xs text-slate-500 leading-snug">
+              Whenever retail fish orders are weighed, wholesale bills are printed, or daybook entries are logged, they will appear here.
             </div>
           </div>
         ) : (
@@ -258,95 +165,46 @@ export default function NotificationsPage({ userRole = 'Admin', onNavigate, onGo
             return (
               <div
                 key={n.id || n._id || Math.random()}
-                style={{
-                  background: '#FDFBF7',
-                  border: '1.5px solid #E8DCCB',
-                  borderRadius: '14px',
-                  padding: '14px 18px',
-                  display: 'flex',
-                  gap: '14px',
-                  alignItems: 'flex-start',
-                  boxShadow: '0 2px 6px rgba(0, 0, 0, 0.02)',
-                  transition: 'all 0.15s ease'
-                }}
+                className="bg-[#FDFBF7] border border-[#E8DCCB] rounded-xl sm:rounded-2xl p-2.5 sm:p-3.5 flex gap-2.5 sm:gap-3 items-start shadow-xs transition-all hover:shadow-sm"
               >
                 <div
-                  style={{
-                    width: '38px',
-                    height: '38px',
-                    borderRadius: '10px',
-                    background: bg,
-                    color: color,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    flexShrink: 0,
-                    marginTop: '2px',
-                    border: '1px solid rgba(0,0,0,0.05)'
-                  }}
+                  className="w-7 h-7 sm:w-9 sm:h-9 rounded-lg sm:rounded-xl flex items-center justify-center shrink-0 mt-0.5 border border-black/5"
+                  style={{ background: bg, color: color }}
                 >
-                  <NotifIcon size={18} />
+                  <NotifIcon size={15} className="sm:w-4 sm:h-4" />
                 </div>
 
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <h3 style={{ margin: 0, fontSize: '0.94rem', fontWeight: 800, color: '#1e293b' }}>
+                <div className="flex-1 min-w-0">
+                  <div className="flex flex-wrap items-center justify-between gap-1">
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      <h3 className="text-xs sm:text-sm font-bold text-slate-900 truncate">
                         {n.title || 'Notification'}
                       </h3>
-                      <span 
-                        style={{ 
-                          fontSize: '0.68rem', 
-                          fontWeight: 700, 
-                          padding: '1px 7px', 
-                          borderRadius: '8px', 
-                          background: '#FAF0E4',
-                          color: '#7c3f1d',
-                          border: '1px solid #E8DCCB'
-                        }}
-                      >
+                      <span className="text-[9px] font-bold px-1.5 py-0.2 rounded-md bg-[#FAF0E4] text-[#7c3f1d] border border-[#E8DCCB] shrink-0">
                         {category}
                       </span>
                     </div>
 
-                    <span style={{ fontSize: '0.74rem', color: '#64748b', display: 'flex', alignItems: 'center', gap: '4px', fontWeight: 600 }}>
-                      <Clock size={12} />
+                    <span className="text-[9px] sm:text-[10px] text-slate-500 flex items-center gap-1 font-semibold shrink-0">
+                      <Clock size={10} />
                       {formatFullDate(n.time || n.timestamp || n.createdAt)}
                     </span>
                   </div>
 
-                  <p style={{ margin: '6px 0 0 0', fontSize: '0.82rem', color: '#334155', lineHeight: 1.5, fontWeight: 500 }}>
+                  <p className="mt-1 text-[11px] sm:text-xs text-slate-700 leading-snug font-medium">
                     {n.message}
                   </p>
 
-                  <div style={{ marginTop: '10px', display: 'flex', gap: '8px' }}>
+                  <div className="mt-2 flex items-center gap-1.5">
                     <button
                       onClick={() => handleActionClick(n)}
-                      style={{
-                        background: '#FAF0E4',
-                        border: '1px solid #fed7aa',
-                        color: '#c2410c',
-                        borderRadius: '8px',
-                        padding: '4px 12px',
-                        fontSize: '0.74rem',
-                        fontWeight: 700,
-                        cursor: 'pointer'
-                      }}
+                      className="bg-[#FAF0E4] hover:bg-[#F5E5D0] border border-[#fed7aa] text-[#c2410c] rounded-md sm:rounded-lg py-0.5 px-2 text-[10px] sm:text-[11px] font-bold cursor-pointer transition-colors"
                     >
                       View Details
                     </button>
                     <button
                       onClick={() => clearNotification(n.id || n._id)}
-                      style={{
-                        background: '#ffffff',
-                        border: '1px solid #E8DCCB',
-                        color: '#64748b',
-                        borderRadius: '8px',
-                        padding: '4px 12px',
-                        fontSize: '0.74rem',
-                        fontWeight: 600,
-                        cursor: 'pointer'
-                      }}
+                      className="bg-white hover:bg-slate-100 border border-[#E8DCCB] text-slate-600 rounded-md sm:rounded-lg py-0.5 px-2 text-[10px] sm:text-[11px] font-semibold cursor-pointer transition-colors"
                     >
                       Dismiss
                     </button>
@@ -358,71 +216,25 @@ export default function NotificationsPage({ userRole = 'Admin', onNavigate, onGo
         )}
       </div>
 
-      {/* Confirmation Modal to Clear All */}
+      {/* Confirmation Modal to Clear All - Compact */}
       {showClearModal && (
-        <div
-          style={{
-            position: 'fixed',
-            inset: 0,
-            background: 'rgba(15, 23, 42, 0.6)',
-            backdropFilter: 'blur(4px)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 110,
-            padding: '16px'
-          }}
-        >
-          <div
-            style={{
-              background: '#ffffff',
-              border: '1.5px solid #fecaca',
-              borderRadius: '16px',
-              maxWidth: '380px',
-              width: '100%',
-              padding: '24px',
-              textAlign: 'center',
-              boxShadow: '0 20px 40px rgba(0, 0, 0, 0.15)'
-            }}
-          >
-            <div
-              style={{
-                width: '48px',
-                height: '48px',
-                borderRadius: '50%',
-                background: '#fef2f2',
-                color: '#dc2626',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                margin: '0 auto 16px auto',
-                border: '1px solid #fecaca'
-              }}
-            >
-              <Trash2 size={24} />
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-50 p-3">
+          <div className="bg-white border border-rose-200 rounded-2xl max-w-[340px] w-full p-4 sm:p-5 text-center shadow-xl">
+            <div className="w-10 h-10 rounded-full bg-rose-50 text-rose-600 flex items-center justify-center mx-auto mb-2.5 border border-rose-200">
+              <Trash2 size={20} />
             </div>
 
-            <h3 style={{ margin: '0 0 8px 0', fontSize: '1.15rem', fontWeight: 900, color: '#1e293b' }}>
+            <h3 className="text-sm sm:text-base font-black text-slate-900 mb-1">
               Clear All Notifications?
             </h3>
-            <p style={{ margin: '0 0 20px 0', fontSize: '0.82rem', color: '#64748b', lineHeight: 1.5, fontWeight: 500 }}>
+            <p className="text-[11px] sm:text-xs text-slate-600 mb-3.5 leading-snug">
               Are you sure you want to permanently delete all fish order and billing notifications?
             </p>
 
-            <div style={{ display: 'flex', gap: '10px' }}>
+            <div className="flex gap-2">
               <button
                 onClick={() => setShowClearModal(false)}
-                style={{
-                  flex: 1,
-                  padding: '9px 14px',
-                  background: '#FDFBF7',
-                  border: '1.5px solid #E8DCCB',
-                  color: '#475569',
-                  borderRadius: '10px',
-                  fontWeight: 700,
-                  fontSize: '0.82rem',
-                  cursor: 'pointer'
-                }}
+                className="flex-1 py-1.5 px-3 bg-[#FDFBF7] border border-[#E8DCCB] text-slate-700 rounded-lg font-bold text-xs cursor-pointer hover:bg-slate-50 transition-colors"
               >
                 Cancel
               </button>
@@ -431,18 +243,7 @@ export default function NotificationsPage({ userRole = 'Admin', onNavigate, onGo
                   clearNotification('ALL');
                   setShowClearModal(false);
                 }}
-                style={{
-                  flex: 1,
-                  padding: '9px 14px',
-                  background: 'linear-gradient(135deg, #ef4444, #dc2626)',
-                  border: 'none',
-                  color: '#ffffff',
-                  borderRadius: '10px',
-                  fontWeight: 800,
-                  fontSize: '0.82rem',
-                  cursor: 'pointer',
-                  boxShadow: '0 2px 6px rgba(220, 38, 38, 0.3)'
-                }}
+                className="flex-1 py-1.5 px-3 bg-red-600 hover:bg-red-700 text-white rounded-lg font-bold text-xs cursor-pointer shadow-xs transition-colors"
               >
                 Yes, Clear All
               </button>

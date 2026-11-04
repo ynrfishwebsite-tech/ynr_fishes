@@ -640,7 +640,7 @@ const ActiveOrders = ({ onSelectOrder, onNavigate, onGoBack }) => {
 
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1">
-                  Delivery Destination Route
+                  Delivery Destination
                 </label>
                 <input
                   type="text"

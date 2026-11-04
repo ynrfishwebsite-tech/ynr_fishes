@@ -129,7 +129,9 @@ export const updateMenuItem = async (req, res) => {
     let updateData = req.body;
 
     // Security check: If non-Admin user (e.g. cashier/POS user), restrict updates exclusively to isFavorite status
-    if (req.user && req.user.role !== 'Admin') {
+    const userRole = (req.user?.role || '').toLowerCase();
+    const isAdmin = ['admin', 'super-admin', 'superadmin', 'owner'].includes(userRole);
+    if (req.user && !isAdmin) {
       if (typeof updateData.isFavorite === 'boolean') {
         updateData = { isFavorite: updateData.isFavorite };
       } else {

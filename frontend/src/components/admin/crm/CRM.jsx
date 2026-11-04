@@ -957,7 +957,7 @@ const CRM = ({ onNavigate, onGoBack }) => {
                 {customerModal.data.category === 'Export' && (
                   <div className="mt-2.5 p-2.5 bg-blue-50 border border-blue-200 rounded-xl space-y-1 animate-fade-in">
                     <span className="text-[10px] font-bold text-blue-900 uppercase tracking-wider block">
-                      {t("Export Sub-Category (Transport Route)")}
+                      {t("Export Sub-Category (Destination Type)")}
                     </span>
                     <div className="grid grid-cols-2 gap-2">
                       <button

@@ -132,9 +132,9 @@ const MenuManagement = ({ user, onNavigate, onGoBack }) => {
     waterType: 'sea_water',
     speciesType: 'fish',
     sizeGrades: {
-      small: { minKg: 0, maxKg: 1, price: '', wholesalePrice: '', exportPrice: '' },
-      medium: { minKg: 1, maxKg: 4, price: '', wholesalePrice: '', exportPrice: '' },
-      big: { minKg: 4, maxKg: 99, price: '', wholesalePrice: '', exportPrice: '' }
+      small: { minKg: 0, maxKg: 1, enabled: true },
+      medium: { minKg: 1, maxKg: 4, enabled: true },
+      big: { minKg: 4, maxKg: 99, enabled: true }
     },
     openingStock: '',
     boxPackingKg: 60,
@@ -214,10 +214,22 @@ const MenuManagement = ({ user, onNavigate, onGoBack }) => {
         exportPricePerKg: item.exportPricePerKg !== undefined && item.exportPricePerKg !== null ? item.exportPricePerKg : '',
         waterType: inferredWater,
         speciesType: inferredSpecies,
-        sizeGrades: item.sizeGrades || {
-          small: { minKg: 0, maxKg: 1, price: item.price || '', wholesalePrice: item.wholesalePricePerKg || '', exportPrice: item.exportPricePerKg || '' },
-          medium: { minKg: 1, maxKg: 4, price: item.price || '', wholesalePrice: item.wholesalePricePerKg || '', exportPrice: item.exportPricePerKg || '' },
-          big: { minKg: 4, maxKg: 99, price: item.price || '', wholesalePrice: item.wholesalePricePerKg || '', exportPrice: item.exportPricePerKg || '' }
+        sizeGrades: {
+          small: {
+            minKg: item.sizeGrades?.small?.minKg ?? 0,
+            maxKg: item.sizeGrades?.small?.maxKg ?? 1,
+            enabled: item.sizeGrades?.small?.enabled !== false
+          },
+          medium: {
+            minKg: item.sizeGrades?.medium?.minKg ?? 1,
+            maxKg: item.sizeGrades?.medium?.maxKg ?? 4,
+            enabled: item.sizeGrades?.medium?.enabled !== false
+          },
+          big: {
+            minKg: item.sizeGrades?.big?.minKg ?? 4,
+            maxKg: item.sizeGrades?.big?.maxKg ?? 99,
+            enabled: item.sizeGrades?.big?.enabled !== false
+          }
         },
         openingStock: item.stock ?? item.openingStock ?? '',
         boxPackingKg: item.boxPackingKg || 0,
@@ -245,9 +257,9 @@ const MenuManagement = ({ user, onNavigate, onGoBack }) => {
         waterType: 'sea_water',
         speciesType: 'fish',
         sizeGrades: {
-          small: { minKg: 0, maxKg: 1, price: '', wholesalePrice: '', exportPrice: '' },
-          medium: { minKg: 1, maxKg: 4, price: '', wholesalePrice: '', exportPrice: '' },
-          big: { minKg: 4, maxKg: 99, price: '', wholesalePrice: '', exportPrice: '' }
+          small: { minKg: 0, maxKg: 1, enabled: true },
+          medium: { minKg: 1, maxKg: 4, enabled: true },
+          big: { minKg: 4, maxKg: 99, enabled: true }
         },
         openingStock: '',
         boxPackingKg: 60,
@@ -400,23 +412,26 @@ const MenuManagement = ({ user, onNavigate, onGoBack }) => {
           small: {
             minKg: parseFloat(formData.sizeGrades?.small?.minKg) || 0,
             maxKg: parseFloat(formData.sizeGrades?.small?.maxKg) || 1,
-            price: parseFloat(formData.sizeGrades?.small?.price) || price,
-            wholesalePrice: parseFloat(formData.sizeGrades?.small?.wholesalePrice) || wholesalePricePerKg,
-            exportPrice: parseFloat(formData.sizeGrades?.small?.exportPrice) || exportPricePerKg
+            enabled: formData.sizeGrades?.small?.enabled !== false,
+            price: price,
+            wholesalePrice: wholesalePricePerKg,
+            exportPrice: exportPricePerKg
           },
           medium: {
             minKg: parseFloat(formData.sizeGrades?.medium?.minKg) || 1,
             maxKg: parseFloat(formData.sizeGrades?.medium?.maxKg) || 4,
-            price: parseFloat(formData.sizeGrades?.medium?.price) || price,
-            wholesalePrice: parseFloat(formData.sizeGrades?.medium?.wholesalePrice) || wholesalePricePerKg,
-            exportPrice: parseFloat(formData.sizeGrades?.medium?.exportPrice) || exportPricePerKg
+            enabled: formData.sizeGrades?.medium?.enabled !== false,
+            price: price,
+            wholesalePrice: wholesalePricePerKg,
+            exportPrice: exportPricePerKg
           },
           big: {
             minKg: parseFloat(formData.sizeGrades?.big?.minKg) || 4,
             maxKg: parseFloat(formData.sizeGrades?.big?.maxKg) || 99,
-            price: parseFloat(formData.sizeGrades?.big?.price) || price,
-            wholesalePrice: parseFloat(formData.sizeGrades?.big?.wholesalePrice) || wholesalePricePerKg,
-            exportPrice: parseFloat(formData.sizeGrades?.big?.exportPrice) || exportPricePerKg
+            enabled: formData.sizeGrades?.big?.enabled !== false,
+            price: price,
+            wholesalePrice: wholesalePricePerKg,
+            exportPrice: exportPricePerKg
           }
         },
         category: finalCategory,
@@ -1794,293 +1809,272 @@ const MenuManagement = ({ user, onNavigate, onGoBack }) => {
               <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-3">
                 <div className="flex justify-between items-center">
                   <div>
-                    <span className="text-xs sm:text-sm font-bold text-slate-900">Size Grades & Weight Ranges</span>
-                    <span className="text-[11px] text-slate-500 block">Customize weight boundaries (Kg) and individual grade prices</span>
+                    <span className="text-xs sm:text-sm font-bold text-slate-900">{t("Size Grades & Availability")}</span>
+                    <span className="text-[11px] text-slate-500 block">
+                      {t("Toggle ON available sizes for this fish and set weight ranges. Pricing follows Standard Selling Rates.")}
+                    </span>
                   </div>
                 </div>
 
                 {/* Table Header Row (Desktop) */}
-                <div className="hidden sm:grid sm:grid-cols-12 gap-2 text-[11px] font-bold text-slate-600 px-3 py-1 bg-slate-200/60 rounded-lg">
-                  <div className="col-span-2">Grade</div>
-                  <div className="col-span-4 text-center">Weight Range (Kg)</div>
-                  <div className="col-span-2 text-center">Retail (₹/Kg)</div>
-                  <div className="col-span-2 text-center">Wholesale (₹/Kg)</div>
-                  <div className="col-span-2 text-center">Export (₹/Kg)</div>
+                <div className="hidden sm:grid sm:grid-cols-12 gap-2 text-[11px] font-bold text-slate-600 px-3 py-1.5 bg-slate-200/60 rounded-lg">
+                  <div className="col-span-3">Grade</div>
+                  <div className="col-span-6 text-center">Weight Range (Kg)</div>
+                  <div className="col-span-3 text-right pr-2">Availability</div>
                 </div>
 
-                <div className="space-y-2.5 text-xs">
+                <div className="space-y-2 text-xs">
                   {/* Small Grade Row */}
-                  <div className="bg-white p-3 rounded-xl border border-slate-200 grid grid-cols-1 sm:grid-cols-12 gap-2 items-center shadow-2xs">
-                    <div className="col-span-2 font-bold text-slate-800 flex items-center gap-2">
-                      <span className="w-3 h-3 rounded-full bg-amber-400 shrink-0"></span>
-                      <span className="text-xs sm:text-sm">Small</span>
-                    </div>
+                  {(() => {
+                    const isSmallOn = formData.sizeGrades?.small?.enabled !== false;
+                    return (
+                      <div className={`p-2.5 sm:p-3 rounded-xl border transition-all ${
+                        isSmallOn ? 'bg-white border-amber-300 shadow-2xs' : 'bg-slate-100/70 border-slate-200 opacity-60'
+                      }`}>
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                          <div className="flex items-center gap-2 min-w-[120px]">
+                            <span className="w-3 h-3 rounded-full bg-amber-400 shrink-0"></span>
+                            <span className="text-xs sm:text-sm font-black text-slate-800">Small</span>
+                            <span className={`text-[9px] px-1.5 py-0.2 rounded-full font-bold ${
+                              isSmallOn ? 'bg-amber-100 text-amber-800' : 'bg-slate-200 text-slate-500'
+                            }`}>
+                              {isSmallOn ? 'Active' : 'Off'}
+                            </span>
+                          </div>
 
-                    <div className="col-span-4 flex items-center justify-center gap-1.5 text-xs text-slate-600 whitespace-nowrap">
-                      <span className="text-[11px] font-medium text-slate-400">From</span>
-                      <input
-                        type="number"
-                        step="0.1"
-                        value={formData.sizeGrades?.small?.minKg ?? 0}
-                        onChange={(e) => setFormData({
-                          ...formData,
-                          sizeGrades: {
-                            ...formData.sizeGrades,
-                            small: { ...formData.sizeGrades?.small, minKg: e.target.value }
-                          }
-                        })}
-                        className="w-14 bg-slate-50 border border-slate-300 rounded-lg px-1.5 py-1 text-center font-bold text-xs text-slate-800 focus:outline-none focus:border-amber-500"
-                      />
-                      <span className="text-[11px] font-medium text-slate-400">to</span>
-                      <input
-                        type="number"
-                        step="0.1"
-                        value={formData.sizeGrades?.small?.maxKg ?? 1}
-                        onChange={(e) => setFormData({
-                          ...formData,
-                          sizeGrades: {
-                            ...formData.sizeGrades,
-                            small: { ...formData.sizeGrades?.small, maxKg: e.target.value }
-                          }
-                        })}
-                        className="w-14 bg-slate-50 border border-slate-300 rounded-lg px-1.5 py-1 text-center font-bold text-xs text-slate-800 focus:outline-none focus:border-amber-500"
-                      />
-                      <span className="text-xs font-semibold text-slate-500">Kg</span>
-                    </div>
+                          <div className="flex items-center justify-start sm:justify-center gap-1.5 text-xs text-slate-600">
+                            <span className="text-[11px] font-medium text-slate-400">From</span>
+                            <input
+                              type="number"
+                              step="0.1"
+                              disabled={!isSmallOn}
+                              value={formData.sizeGrades?.small?.minKg ?? 0}
+                              onChange={(e) => setFormData({
+                                ...formData,
+                                sizeGrades: {
+                                  ...formData.sizeGrades,
+                                  small: { ...formData.sizeGrades?.small, minKg: e.target.value }
+                                }
+                              })}
+                              className="w-16 bg-slate-50 border border-slate-300 rounded-lg px-2 py-1 text-center font-bold text-xs text-slate-800 focus:outline-none focus:border-amber-500 disabled:bg-slate-200 disabled:text-slate-400"
+                            />
+                            <span className="text-[11px] font-medium text-slate-400">to</span>
+                            <input
+                              type="number"
+                              step="0.1"
+                              disabled={!isSmallOn}
+                              value={formData.sizeGrades?.small?.maxKg ?? 1}
+                              onChange={(e) => setFormData({
+                                ...formData,
+                                sizeGrades: {
+                                  ...formData.sizeGrades,
+                                  small: { ...formData.sizeGrades?.small, maxKg: e.target.value }
+                                }
+                              })}
+                              className="w-16 bg-slate-50 border border-slate-300 rounded-lg px-2 py-1 text-center font-bold text-xs text-slate-800 focus:outline-none focus:border-amber-500 disabled:bg-slate-200 disabled:text-slate-400"
+                            />
+                            <span className="text-xs font-semibold text-slate-500">Kg</span>
+                          </div>
 
-                    <div className="col-span-2">
-                      <input
-                        type="number"
-                        step="1"
-                        value={formData.sizeGrades?.small?.price ?? ''}
-                        onChange={(e) => setFormData({
-                          ...formData,
-                          sizeGrades: {
-                            ...formData.sizeGrades,
-                            small: { ...formData.sizeGrades?.small, price: e.target.value }
-                          }
-                        })}
-                        placeholder={formData.price ? `₹${formData.price}` : 'Retail ₹'}
-                        className="w-full bg-slate-50 border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs text-slate-800 font-bold focus:outline-none focus:border-emerald-500 text-center"
-                      />
-                    </div>
-
-                    <div className="col-span-2">
-                      <input
-                        type="number"
-                        step="1"
-                        value={formData.sizeGrades?.small?.wholesalePrice ?? ''}
-                        onChange={(e) => setFormData({
-                          ...formData,
-                          sizeGrades: {
-                            ...formData.sizeGrades,
-                            small: { ...formData.sizeGrades?.small, wholesalePrice: e.target.value }
-                          }
-                        })}
-                        placeholder={formData.wholesalePricePerKg ? `₹${formData.wholesalePricePerKg}` : 'Wholesale ₹'}
-                        className="w-full bg-slate-50 border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs text-slate-800 font-bold focus:outline-none focus:border-amber-500 text-center"
-                      />
-                    </div>
-
-                    <div className="col-span-2">
-                      <input
-                        type="number"
-                        step="1"
-                        value={formData.sizeGrades?.small?.exportPrice ?? ''}
-                        onChange={(e) => setFormData({
-                          ...formData,
-                          sizeGrades: {
-                            ...formData.sizeGrades,
-                            small: { ...formData.sizeGrades?.small, exportPrice: e.target.value }
-                          }
-                        })}
-                        placeholder={formData.exportPricePerKg ? `₹${formData.exportPricePerKg}` : 'Export ₹'}
-                        className="w-full bg-slate-50 border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs text-slate-800 font-bold focus:outline-none focus:border-indigo-500 text-center"
-                      />
-                    </div>
-                  </div>
+                          <div className="flex items-center justify-between sm:justify-end gap-2 pt-1 sm:pt-0 border-t sm:border-0 border-slate-200/60">
+                            <span className="text-[10px] sm:hidden font-bold text-slate-500">Available:</span>
+                            <button
+                              type="button"
+                              onClick={() => setFormData({
+                                ...formData,
+                                sizeGrades: {
+                                  ...formData.sizeGrades,
+                                  small: { ...formData.sizeGrades?.small, enabled: !isSmallOn }
+                                }
+                              })}
+                              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors cursor-pointer focus:outline-none ${
+                                isSmallOn ? 'bg-emerald-500' : 'bg-slate-300'
+                              }`}
+                            >
+                              <span
+                                className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform shadow-xs ${
+                                  isSmallOn ? 'translate-x-6' : 'translate-x-1'
+                                }`}
+                              />
+                            </button>
+                            <span className={`text-[11px] font-bold w-7 text-right ${
+                              isSmallOn ? 'text-emerald-700' : 'text-slate-400'
+                            }`}>
+                              {isSmallOn ? 'ON' : 'OFF'}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })()}
 
                   {/* Medium Grade Row */}
-                  <div className="bg-white p-3 rounded-xl border border-slate-200 grid grid-cols-1 sm:grid-cols-12 gap-2 items-center shadow-2xs">
-                    <div className="col-span-2 font-bold text-slate-800 flex items-center gap-2">
-                      <span className="w-3 h-3 rounded-full bg-blue-500 shrink-0"></span>
-                      <span className="text-xs sm:text-sm">Medium</span>
-                    </div>
+                  {(() => {
+                    const isMediumOn = formData.sizeGrades?.medium?.enabled !== false;
+                    return (
+                      <div className={`p-2.5 sm:p-3 rounded-xl border transition-all ${
+                        isMediumOn ? 'bg-white border-blue-300 shadow-2xs' : 'bg-slate-100/70 border-slate-200 opacity-60'
+                      }`}>
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                          <div className="flex items-center gap-2 min-w-[120px]">
+                            <span className="w-3 h-3 rounded-full bg-blue-500 shrink-0"></span>
+                            <span className="text-xs sm:text-sm font-black text-slate-800">Medium</span>
+                            <span className={`text-[9px] px-1.5 py-0.2 rounded-full font-bold ${
+                              isMediumOn ? 'bg-blue-100 text-blue-800' : 'bg-slate-200 text-slate-500'
+                            }`}>
+                              {isMediumOn ? 'Active' : 'Off'}
+                            </span>
+                          </div>
 
-                    <div className="col-span-4 flex items-center justify-center gap-1.5 text-xs text-slate-600 whitespace-nowrap">
-                      <span className="text-[11px] font-medium text-slate-400">From</span>
-                      <input
-                        type="number"
-                        step="0.1"
-                        value={formData.sizeGrades?.medium?.minKg ?? 1}
-                        onChange={(e) => setFormData({
-                          ...formData,
-                          sizeGrades: {
-                            ...formData.sizeGrades,
-                            medium: { ...formData.sizeGrades?.medium, minKg: e.target.value }
-                          }
-                        })}
-                        className="w-14 bg-slate-50 border border-slate-300 rounded-lg px-1.5 py-1 text-center font-bold text-xs text-slate-800 focus:outline-none focus:border-blue-500"
-                      />
-                      <span className="text-[11px] font-medium text-slate-400">to</span>
-                      <input
-                        type="number"
-                        step="0.1"
-                        value={formData.sizeGrades?.medium?.maxKg ?? 4}
-                        onChange={(e) => setFormData({
-                          ...formData,
-                          sizeGrades: {
-                            ...formData.sizeGrades,
-                            medium: { ...formData.sizeGrades?.medium, maxKg: e.target.value }
-                          }
-                        })}
-                        className="w-14 bg-slate-50 border border-slate-300 rounded-lg px-1.5 py-1 text-center font-bold text-xs text-slate-800 focus:outline-none focus:border-blue-500"
-                      />
-                      <span className="text-xs font-semibold text-slate-500">Kg</span>
-                    </div>
+                          <div className="flex items-center justify-start sm:justify-center gap-1.5 text-xs text-slate-600">
+                            <span className="text-[11px] font-medium text-slate-400">From</span>
+                            <input
+                              type="number"
+                              step="0.1"
+                              disabled={!isMediumOn}
+                              value={formData.sizeGrades?.medium?.minKg ?? 1}
+                              onChange={(e) => setFormData({
+                                ...formData,
+                                sizeGrades: {
+                                  ...formData.sizeGrades,
+                                  medium: { ...formData.sizeGrades?.medium, minKg: e.target.value }
+                                }
+                              })}
+                              className="w-16 bg-slate-50 border border-slate-300 rounded-lg px-2 py-1 text-center font-bold text-xs text-slate-800 focus:outline-none focus:border-blue-500 disabled:bg-slate-200 disabled:text-slate-400"
+                            />
+                            <span className="text-[11px] font-medium text-slate-400">to</span>
+                            <input
+                              type="number"
+                              step="0.1"
+                              disabled={!isMediumOn}
+                              value={formData.sizeGrades?.medium?.maxKg ?? 4}
+                              onChange={(e) => setFormData({
+                                ...formData,
+                                sizeGrades: {
+                                  ...formData.sizeGrades,
+                                  medium: { ...formData.sizeGrades?.medium, maxKg: e.target.value }
+                                }
+                              })}
+                              className="w-16 bg-slate-50 border border-slate-300 rounded-lg px-2 py-1 text-center font-bold text-xs text-slate-800 focus:outline-none focus:border-blue-500 disabled:bg-slate-200 disabled:text-slate-400"
+                            />
+                            <span className="text-xs font-semibold text-slate-500">Kg</span>
+                          </div>
 
-                    <div className="col-span-2">
-                      <input
-                        type="number"
-                        step="1"
-                        value={formData.sizeGrades?.medium?.price ?? ''}
-                        onChange={(e) => setFormData({
-                          ...formData,
-                          sizeGrades: {
-                            ...formData.sizeGrades,
-                            medium: { ...formData.sizeGrades?.medium, price: e.target.value }
-                          }
-                        })}
-                        placeholder={formData.price ? `₹${formData.price}` : 'Retail ₹'}
-                        className="w-full bg-slate-50 border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs text-slate-800 font-bold focus:outline-none focus:border-emerald-500 text-center"
-                      />
-                    </div>
-
-                    <div className="col-span-2">
-                      <input
-                        type="number"
-                        step="1"
-                        value={formData.sizeGrades?.medium?.wholesalePrice ?? ''}
-                        onChange={(e) => setFormData({
-                          ...formData,
-                          sizeGrades: {
-                            ...formData.sizeGrades,
-                            medium: { ...formData.sizeGrades?.medium, wholesalePrice: e.target.value }
-                          }
-                        })}
-                        placeholder={formData.wholesalePricePerKg ? `₹${formData.wholesalePricePerKg}` : 'Wholesale ₹'}
-                        className="w-full bg-slate-50 border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs text-slate-800 font-bold focus:outline-none focus:border-amber-500 text-center"
-                      />
-                    </div>
-
-                    <div className="col-span-2">
-                      <input
-                        type="number"
-                        step="1"
-                        value={formData.sizeGrades?.medium?.exportPrice ?? ''}
-                        onChange={(e) => setFormData({
-                          ...formData,
-                          sizeGrades: {
-                            ...formData.sizeGrades,
-                            medium: { ...formData.sizeGrades?.medium, exportPrice: e.target.value }
-                          }
-                        })}
-                        placeholder={formData.exportPricePerKg ? `₹${formData.exportPricePerKg}` : 'Export ₹'}
-                        className="w-full bg-slate-50 border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs text-slate-800 font-bold focus:outline-none focus:border-indigo-500 text-center"
-                      />
-                    </div>
-                  </div>
+                          <div className="flex items-center justify-between sm:justify-end gap-2 pt-1 sm:pt-0 border-t sm:border-0 border-slate-200/60">
+                            <span className="text-[10px] sm:hidden font-bold text-slate-500">Available:</span>
+                            <button
+                              type="button"
+                              onClick={() => setFormData({
+                                ...formData,
+                                sizeGrades: {
+                                  ...formData.sizeGrades,
+                                  medium: { ...formData.sizeGrades?.medium, enabled: !isMediumOn }
+                                }
+                              })}
+                              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors cursor-pointer focus:outline-none ${
+                                isMediumOn ? 'bg-emerald-500' : 'bg-slate-300'
+                              }`}
+                            >
+                              <span
+                                className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform shadow-xs ${
+                                  isMediumOn ? 'translate-x-6' : 'translate-x-1'
+                                }`}
+                              />
+                            </button>
+                            <span className={`text-[11px] font-bold w-7 text-right ${
+                              isMediumOn ? 'text-emerald-700' : 'text-slate-400'
+                            }`}>
+                              {isMediumOn ? 'ON' : 'OFF'}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })()}
 
                   {/* Big Grade Row */}
-                  <div className="bg-white p-3 rounded-xl border border-slate-200 grid grid-cols-1 sm:grid-cols-12 gap-2 items-center shadow-2xs">
-                    <div className="col-span-2 font-bold text-slate-800 flex items-center gap-2">
-                      <span className="w-3 h-3 rounded-full bg-emerald-600 shrink-0"></span>
-                      <span className="text-xs sm:text-sm">Big</span>
-                    </div>
+                  {(() => {
+                    const isBigOn = formData.sizeGrades?.big?.enabled !== false;
+                    return (
+                      <div className={`p-2.5 sm:p-3 rounded-xl border transition-all ${
+                        isBigOn ? 'bg-white border-emerald-300 shadow-2xs' : 'bg-slate-100/70 border-slate-200 opacity-60'
+                      }`}>
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                          <div className="flex items-center gap-2 min-w-[120px]">
+                            <span className="w-3 h-3 rounded-full bg-emerald-600 shrink-0"></span>
+                            <span className="text-xs sm:text-sm font-black text-slate-800">Big</span>
+                            <span className={`text-[9px] px-1.5 py-0.2 rounded-full font-bold ${
+                              isBigOn ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-200 text-slate-500'
+                            }`}>
+                              {isBigOn ? 'Active' : 'Off'}
+                            </span>
+                          </div>
 
-                    <div className="col-span-4 flex items-center justify-center gap-1.5 text-xs text-slate-600 whitespace-nowrap">
-                      <span className="text-[11px] font-medium text-slate-400">From</span>
-                      <input
-                        type="number"
-                        step="0.1"
-                        value={formData.sizeGrades?.big?.minKg ?? 4}
-                        onChange={(e) => setFormData({
-                          ...formData,
-                          sizeGrades: {
-                            ...formData.sizeGrades,
-                            big: { ...formData.sizeGrades?.big, minKg: e.target.value }
-                          }
-                        })}
-                        className="w-14 bg-slate-50 border border-slate-300 rounded-lg px-1.5 py-1 text-center font-bold text-xs text-slate-800 focus:outline-none focus:border-emerald-600"
-                      />
-                      <span className="text-[11px] font-medium text-slate-400">to</span>
-                      <input
-                        type="number"
-                        step="0.1"
-                        value={formData.sizeGrades?.big?.maxKg ?? 99}
-                        onChange={(e) => setFormData({
-                          ...formData,
-                          sizeGrades: {
-                            ...formData.sizeGrades,
-                            big: { ...formData.sizeGrades?.big, maxKg: e.target.value }
-                          }
-                        })}
-                        className="w-14 bg-slate-50 border border-slate-300 rounded-lg px-1.5 py-1 text-center font-bold text-xs text-slate-800 focus:outline-none focus:border-emerald-600"
-                      />
-                      <span className="text-xs font-semibold text-slate-500">Kg</span>
-                    </div>
+                          <div className="flex items-center justify-start sm:justify-center gap-1.5 text-xs text-slate-600">
+                            <span className="text-[11px] font-medium text-slate-400">From</span>
+                            <input
+                              type="number"
+                              step="0.1"
+                              disabled={!isBigOn}
+                              value={formData.sizeGrades?.big?.minKg ?? 4}
+                              onChange={(e) => setFormData({
+                                ...formData,
+                                sizeGrades: {
+                                  ...formData.sizeGrades,
+                                  big: { ...formData.sizeGrades?.big, minKg: e.target.value }
+                                }
+                              })}
+                              className="w-16 bg-slate-50 border border-slate-300 rounded-lg px-2 py-1 text-center font-bold text-xs text-slate-800 focus:outline-none focus:border-emerald-600 disabled:bg-slate-200 disabled:text-slate-400"
+                            />
+                            <span className="text-[11px] font-medium text-slate-400">to</span>
+                            <input
+                              type="number"
+                              step="0.1"
+                              disabled={!isBigOn}
+                              value={formData.sizeGrades?.big?.maxKg ?? 99}
+                              onChange={(e) => setFormData({
+                                ...formData,
+                                sizeGrades: {
+                                  ...formData.sizeGrades,
+                                  big: { ...formData.sizeGrades?.big, maxKg: e.target.value }
+                                }
+                              })}
+                              className="w-16 bg-slate-50 border border-slate-300 rounded-lg px-2 py-1 text-center font-bold text-xs text-slate-800 focus:outline-none focus:border-emerald-600 disabled:bg-slate-200 disabled:text-slate-400"
+                            />
+                            <span className="text-xs font-semibold text-slate-500">Kg</span>
+                          </div>
 
-                    <div className="col-span-2">
-                      <input
-                        type="number"
-                        step="1"
-                        value={formData.sizeGrades?.big?.price ?? ''}
-                        onChange={(e) => setFormData({
-                          ...formData,
-                          sizeGrades: {
-                            ...formData.sizeGrades,
-                            big: { ...formData.sizeGrades?.big, price: e.target.value }
-                          }
-                        })}
-                        placeholder={formData.price ? `₹${formData.price}` : 'Retail ₹'}
-                        className="w-full bg-slate-50 border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs text-slate-800 font-bold focus:outline-none focus:border-emerald-500 text-center"
-                      />
-                    </div>
-
-                    <div className="col-span-2">
-                      <input
-                        type="number"
-                        step="1"
-                        value={formData.sizeGrades?.big?.wholesalePrice ?? ''}
-                        onChange={(e) => setFormData({
-                          ...formData,
-                          sizeGrades: {
-                            ...formData.sizeGrades,
-                            big: { ...formData.sizeGrades?.big, wholesalePrice: e.target.value }
-                          }
-                        })}
-                        placeholder={formData.wholesalePricePerKg ? `₹${formData.wholesalePricePerKg}` : 'Wholesale ₹'}
-                        className="w-full bg-slate-50 border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs text-slate-800 font-bold focus:outline-none focus:border-amber-500 text-center"
-                      />
-                    </div>
-
-                    <div className="col-span-2">
-                      <input
-                        type="number"
-                        step="1"
-                        value={formData.sizeGrades?.big?.exportPrice ?? ''}
-                        onChange={(e) => setFormData({
-                          ...formData,
-                          sizeGrades: {
-                            ...formData.sizeGrades,
-                            big: { ...formData.sizeGrades?.big, exportPrice: e.target.value }
-                          }
-                        })}
-                        placeholder={formData.exportPricePerKg ? `₹${formData.exportPricePerKg}` : 'Export ₹'}
-                        className="w-full bg-slate-50 border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs text-slate-800 font-bold focus:outline-none focus:border-indigo-500 text-center"
-                      />
-                    </div>
-                  </div>
+                          <div className="flex items-center justify-between sm:justify-end gap-2 pt-1 sm:pt-0 border-t sm:border-0 border-slate-200/60">
+                            <span className="text-[10px] sm:hidden font-bold text-slate-500">Available:</span>
+                            <button
+                              type="button"
+                              onClick={() => setFormData({
+                                ...formData,
+                                sizeGrades: {
+                                  ...formData.sizeGrades,
+                                  big: { ...formData.sizeGrades?.big, enabled: !isBigOn }
+                                }
+                              })}
+                              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors cursor-pointer focus:outline-none ${
+                                isBigOn ? 'bg-emerald-500' : 'bg-slate-300'
+                              }`}
+                            >
+                              <span
+                                className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform shadow-xs ${
+                                  isBigOn ? 'translate-x-6' : 'translate-x-1'
+                                }`}
+                              />
+                            </button>
+                            <span className={`text-[11px] font-bold w-7 text-right ${
+                              isBigOn ? 'text-emerald-700' : 'text-slate-400'
+                            }`}>
+                              {isBigOn ? 'ON' : 'OFF'}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })()}
                 </div>
               </div>
 

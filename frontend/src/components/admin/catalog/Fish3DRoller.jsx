@@ -431,32 +431,40 @@ export default function Fish3DRoller({
                       <span>Fish Size Grade</span>
                       <span className="text-amber-800 font-semibold capitalize">{activeGrade} (₹{activeRate}/Kg)</span>
                     </div>
-                    <div className="grid grid-cols-3 gap-1 bg-slate-100 p-0.5 rounded-lg md:rounded-xl border border-slate-200">
-                      {[
-                        { key: 'small', label: 'Small', range: `0-${smallMax}k`, rate: currentItem?.sizeGrades?.small?.price || activeRate },
-                        { key: 'medium', label: 'Medium', range: `${smallMax}-${mediumMax}k`, rate: currentItem?.sizeGrades?.medium?.price || activeRate },
-                        { key: 'big', label: 'Big', range: `${mediumMax}+k`, rate: currentItem?.sizeGrades?.big?.price || activeRate }
-                      ].map((grade) => {
-                        const isSelected = activeGrade === grade.key;
-                        return (
-                          <button
-                            key={grade.key}
-                            type="button"
-                            onClick={() => setGradeOverride(grade.key)}
-                            className={`py-0.5 md:py-1 px-1 md:px-1.5 rounded-md md:rounded-lg text-center transition-all cursor-pointer flex items-center justify-center gap-0.5 md:gap-1 ${
-                              isSelected
-                                ? 'bg-amber-600 text-white shadow-xs font-black'
-                                : 'text-slate-700 hover:bg-white font-bold'
-                            }`}
-                          >
-                            <span className="text-[10px] md:text-xs">{grade.label}</span>
-                            <span className={`text-[8.5px] md:text-[10px] font-mono ${isSelected ? 'text-amber-100' : 'text-slate-400'}`}>
-                              ({grade.range})
-                            </span>
-                          </button>
-                        );
-                      })}
-                    </div>
+                    {(() => {
+                      const availableGrades = [
+                        { key: 'small', label: 'Small', range: `0-${smallMax}k`, rate: currentItem?.sizeGrades?.small?.price || activeRate, enabled: currentItem?.sizeGrades?.small?.enabled !== false },
+                        { key: 'medium', label: 'Medium', range: `${smallMax}-${mediumMax}k`, rate: currentItem?.sizeGrades?.medium?.price || activeRate, enabled: currentItem?.sizeGrades?.medium?.enabled !== false },
+                        { key: 'big', label: 'Big', range: `${mediumMax}+k`, rate: currentItem?.sizeGrades?.big?.price || activeRate, enabled: currentItem?.sizeGrades?.big?.enabled !== false }
+                      ].filter(g => g.enabled);
+
+                      return (
+                        <div className={`grid gap-1 bg-slate-100 p-0.5 rounded-lg md:rounded-xl border border-slate-200 ${
+                          availableGrades.length === 1 ? 'grid-cols-1' : availableGrades.length === 2 ? 'grid-cols-2' : 'grid-cols-3'
+                        }`}>
+                          {availableGrades.map((grade) => {
+                            const isSelected = activeGrade === grade.key;
+                            return (
+                              <button
+                                key={grade.key}
+                                type="button"
+                                onClick={() => setGradeOverride(grade.key)}
+                                className={`py-0.5 md:py-1 px-1 md:px-1.5 rounded-md md:rounded-lg text-center transition-all cursor-pointer flex items-center justify-center gap-0.5 md:gap-1 ${
+                                  isSelected
+                                    ? 'bg-amber-600 text-white shadow-xs font-black'
+                                    : 'text-slate-700 hover:bg-white font-bold'
+                                }`}
+                              >
+                                <span className="text-[10px] md:text-xs">{grade.label}</span>
+                                <span className={`text-[8.5px] md:text-[10px] font-mono ${isSelected ? 'text-amber-100' : 'text-slate-400'}`}>
+                                  ({grade.range})
+                                </span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      );
+                    })()}
                   </div>
 
                   {/* 2. Cutting Style (High Contrast 1-Line Pills) */}

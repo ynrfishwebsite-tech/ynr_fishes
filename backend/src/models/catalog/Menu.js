@@ -115,21 +115,24 @@ const menuSchema = new mongoose.Schema({
       maxKg: { type: Number, default: 1 },
       price: { type: Number, default: 0 },
       wholesalePrice: { type: Number, default: 0 },
-      exportPrice: { type: Number, default: 0 }
+      exportPrice: { type: Number, default: 0 },
+      enabled: { type: Boolean, default: true }
     },
     medium: {
       minKg: { type: Number, default: 1 },
       maxKg: { type: Number, default: 4 },
       price: { type: Number, default: 0 },
       wholesalePrice: { type: Number, default: 0 },
-      exportPrice: { type: Number, default: 0 }
+      exportPrice: { type: Number, default: 0 },
+      enabled: { type: Boolean, default: true }
     },
     big: {
       minKg: { type: Number, default: 4 },
       maxKg: { type: Number, default: 99 },
       price: { type: Number, default: 0 },
       wholesalePrice: { type: Number, default: 0 },
-      exportPrice: { type: Number, default: 0 }
+      exportPrice: { type: Number, default: 0 },
+      enabled: { type: Boolean, default: true }
     }
   },
   category: {

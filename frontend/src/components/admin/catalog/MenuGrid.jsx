@@ -144,11 +144,29 @@ export const getItemSpeciesType = (item) => {
 export const detectItemSizeGrade = (item, netKg) => {
   if (!item) return 'medium';
   const grades = item.sizeGrades;
+  const isSmallOn = grades?.small?.enabled !== false;
+  const isMediumOn = grades?.medium?.enabled !== false;
+  const isBigOn = grades?.big?.enabled !== false;
+
   const smallMax = parseFloat(grades?.small?.maxKg) || 1;
   const mediumMax = parseFloat(grades?.medium?.maxKg) || 4;
-  if (netKg <= smallMax) return 'small';
-  if (netKg <= mediumMax) return 'medium';
-  return 'big';
+
+  let candidate = 'small';
+  if (netKg <= smallMax) candidate = 'small';
+  else if (netKg <= mediumMax) candidate = 'medium';
+  else candidate = 'big';
+
+  // If candidate is ON, use it
+  if (candidate === 'small' && isSmallOn) return 'small';
+  if (candidate === 'medium' && isMediumOn) return 'medium';
+  if (candidate === 'big' && isBigOn) return 'big';
+
+  // Fallback to first available ON size
+  if (isMediumOn) return 'medium';
+  if (isSmallOn) return 'small';
+  if (isBigOn) return 'big';
+
+  return candidate;
 };
 
 export const getItemPricePerKg = (item, mode = 'individual', sizeGrade = null) => {
@@ -1499,7 +1517,10 @@ const MenuGrid = ({
                       setFishWeightGrams('1000');
                       setInputKg('1');
                       setInputGrams('0');
-                      setSelectedGradeOverride(item.defaultSizeGrade || 'small');
+                      const initialEnabledGrade = item.sizeGrades?.small?.enabled !== false ? 'small'
+                        : item.sizeGrades?.medium?.enabled !== false ? 'medium'
+                        : item.sizeGrades?.big?.enabled !== false ? 'big' : 'small';
+                      setSelectedGradeOverride(item.defaultSizeGrade || initialEnabledGrade);
                       setSelectedCutType('Whole');
                       setTareGrams(0);
                       setBoxCountInput('1');
@@ -1973,16 +1994,26 @@ const MenuGrid = ({
                       const scaleGrams = parseFloat(fishWeightGrams) || 0;
                       const netGrams = Math.max(0, scaleGrams - tareGrams);
                       const netKg = netGrams / 1000;
-                      const activeGrade = selectedGradeOverride || selectedFishItem.defaultSizeGrade || 'small';
+
+                      const isSmallOn = selectedFishItem.sizeGrades?.small?.enabled !== false;
+                      const isMediumOn = selectedFishItem.sizeGrades?.medium?.enabled !== false;
+                      const isBigOn = selectedFishItem.sizeGrades?.big?.enabled !== false;
 
                       const smallMax = parseFloat(selectedFishItem.sizeGrades?.small?.maxKg) || 1;
                       const mediumMax = parseFloat(selectedFishItem.sizeGrades?.medium?.maxKg) || 4;
 
-                      const gradesInfo = [
-                        { key: 'small', label: 'Small', range: `0 to ${smallMax} Kg` },
-                        { key: 'medium', label: 'Medium', range: `${smallMax} to ${mediumMax} Kg` },
-                        { key: 'big', label: 'Big', range: `${mediumMax}+ Kg` }
+                      const allGrades = [
+                        { key: 'small', label: 'Small', range: `0 to ${smallMax} Kg`, enabled: isSmallOn },
+                        { key: 'medium', label: 'Medium', range: `${smallMax} to ${mediumMax} Kg`, enabled: isMediumOn },
+                        { key: 'big', label: 'Big', range: `${mediumMax}+ Kg`, enabled: isBigOn }
                       ];
+
+                      const gradesInfo = allGrades.filter(g => g.enabled);
+                      const activeGrade = (gradesInfo.some(g => g.key === selectedGradeOverride))
+                        ? selectedGradeOverride
+                        : (gradesInfo[0]?.key || 'medium');
+
+                      if (gradesInfo.length === 0) return null;
 
                       return (
                         <div className="bg-white/90 p-1.5 sm:p-2 rounded-lg sm:rounded-xl border border-amber-200 space-y-1">
@@ -1991,10 +2022,12 @@ const MenuGrid = ({
                               <span>Fish Size Grade:</span>
                             </span>
                             <span className="text-[9px] sm:text-[10px] text-slate-500 font-semibold">
-                              Select Grade
+                              Select Available Grade
                             </span>
                           </div>
-                          <div className="grid grid-cols-3 gap-1 sm:gap-1.5">
+                          <div className={`grid gap-1 sm:gap-1.5 ${
+                            gradesInfo.length === 1 ? 'grid-cols-1' : gradesInfo.length === 2 ? 'grid-cols-2' : 'grid-cols-3'
+                          }`}>
                             {gradesInfo.map(g => {
                               const isSelected = activeGrade === g.key;
                               const gradeRate = getItemPricePerKg(selectedFishItem, fishOrderMode, g.key);
@@ -2009,7 +2042,7 @@ const MenuGrid = ({
                                       : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-amber-50'
                                   }`}
                                 >
-                                  <div className="flex items-center gap-1 leading-tight">
+                                  <div className="flex items-center justify-center gap-1 leading-tight">
                                     <span className="text-[10px] sm:text-[11px] font-bold">{g.label}</span>
                                     <span className={`text-[8px] sm:text-[8.5px] ${isSelected ? 'text-amber-100' : 'text-slate-400'}`}>({g.range})</span>
                                   </div>

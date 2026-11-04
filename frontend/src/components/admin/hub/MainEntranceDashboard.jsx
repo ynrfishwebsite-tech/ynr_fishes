@@ -529,7 +529,7 @@ export default function MainEntranceDashboard({
     ...(user?.role === 'driver' || isFullAdmin ? [{
       id: 'driver-portal',
       title: 'Driver Portal',
-      subtitle: 'Assigned Routes',
+      subtitle: 'Assigned Deliveries',
       category: 'Operations',
       icon: Route,
       iconColor: '#0284c7',
