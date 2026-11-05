@@ -499,15 +499,15 @@ export default function VehicleManagement({ onNavigate, onGoBack }) {
   const getStatusBadge = (status) => {
     switch (status) {
       case 'On Trip':
-        return <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-blue-100 text-blue-800 border border-blue-200">On Trip</span>;
+        return <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-100 text-blue-800 border border-blue-200">On Trip</span>;
       case 'Available':
-        return <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800 border border-emerald-200">Available</span>;
+        return <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">Available</span>;
       case 'In Maintenance':
-        return <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-100 text-amber-800 border border-amber-200">Maintenance</span>;
+        return <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-200">Maintenance</span>;
       case 'Out of Service':
-        return <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-rose-100 text-rose-800 border border-rose-200">Out of Service</span>;
+        return <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-800 border border-rose-200">Out of Service</span>;
       default:
-        return <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-gray-100 text-gray-800 border border-gray-200">{status || 'Idle'}</span>;
+        return <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-gray-100 text-gray-800 border border-gray-200">{status || 'Idle'}</span>;
     }
   };
 
@@ -518,7 +518,7 @@ export default function VehicleManagement({ onNavigate, onGoBack }) {
   const calcCostPerKm = calcTotalDist > 0 ? (calcFuelCost / calcTotalDist).toFixed(2) : 0;
 
   return (
-    <div className="min-h-screen bg-[#FAF0E4] p-4 sm:p-6 lg:p-8 font-sans text-slate-800">
+    <div className="min-h-screen bg-[#FAF0E4] p-2.5 sm:p-4 lg:p-6 font-sans text-slate-800">
       {/* Toast Notification */}
       {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
 
@@ -545,28 +545,28 @@ export default function VehicleManagement({ onNavigate, onGoBack }) {
             className="flex items-center gap-1 px-2.5 sm:px-3 py-1.5 sm:py-2 bg-white text-[#7c3f1d] hover:bg-orange-50 border border-[#FED7AA] hover:border-[#ea580c] rounded-xl text-xs font-bold shadow-xs transition-all whitespace-nowrap shrink-0 cursor-pointer active:scale-95"
           >
             <Navigation size={13} className="text-[#ea580c]" />
-            <span>+ Log Trip</span>
+            <span>Log Trip</span>
           </button>
           <button
             onClick={() => handleOpenAddFuel()}
             className="flex items-center gap-1 px-2.5 sm:px-3 py-1.5 sm:py-2 bg-white text-[#7c3f1d] hover:bg-orange-50 border border-[#FED7AA] hover:border-[#ea580c] rounded-xl text-xs font-bold shadow-xs transition-all whitespace-nowrap shrink-0 cursor-pointer active:scale-95"
           >
             <Fuel size={13} className="text-[#ea580c]" />
-            <span>+ Add Fuel</span>
+            <span>Add Fuel</span>
           </button>
           <button
             onClick={() => handleOpenAddMaintenance()}
             className="flex items-center gap-1 px-2.5 sm:px-3 py-1.5 sm:py-2 bg-white text-[#7c3f1d] hover:bg-orange-50 border border-[#FED7AA] hover:border-[#ea580c] rounded-xl text-xs font-bold shadow-xs transition-all whitespace-nowrap shrink-0 cursor-pointer active:scale-95"
           >
             <Wrench size={13} className="text-[#ea580c]" />
-            <span>+ Service</span>
+            <span>Service</span>
           </button>
           <button
             onClick={handleOpenAddVehicle}
             className="flex items-center gap-1 px-3 sm:px-3.5 py-1.5 sm:py-2 bg-[#ea580c] hover:bg-[#c2410c] text-white rounded-xl text-xs font-black shadow-md hover:shadow-lg transition-all whitespace-nowrap shrink-0 cursor-pointer active:scale-95"
           >
             <Plus size={14} />
-            <span>+ New Vehicle</span>
+            <span>  New Vehicle</span>
           </button>
           <button
             onClick={loadData}
@@ -578,25 +578,25 @@ export default function VehicleManagement({ onNavigate, onGoBack }) {
         </div>
       </div>
 
-      {/* KPI Overview Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5 sm:gap-4 my-3 sm:my-6">
+      {/* KPI Overview Cards - Compact Density */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-1.5 sm:gap-2.5 my-2 sm:my-3">
         {/* Card 1: Fleet Count */}
-        <div className="bg-white rounded-xl sm:rounded-2xl p-3 sm:p-4 border border-[#FED7AA] shadow-sm relative overflow-hidden flex flex-col justify-between">
+        <div className="bg-white rounded-lg sm:rounded-xl p-2 sm:p-2.5 border border-[#FED7AA] shadow-2xs relative overflow-hidden flex flex-col justify-between">
           <div>
-            <div className="flex items-center justify-between text-slate-500 mb-1.5 sm:mb-2">
-              <span className="text-[10px] sm:text-xs font-semibold uppercase tracking-wider">Fleet Vehicles</span>
-              <div className="p-1.5 sm:p-2 rounded-lg bg-orange-100 text-[#ea580c]">
-                <Truck size={16} className="sm:w-[18px] sm:h-[18px]" />
+            <div className="flex items-center justify-between text-slate-500 mb-0.5">
+              <span className="text-[9px] sm:text-[10px] font-bold uppercase tracking-wider">Fleet Vehicles</span>
+              <div className="p-1 rounded-md bg-orange-100 text-[#ea580c]">
+                <Truck size={12} className="sm:w-3.5 sm:h-3.5" />
               </div>
             </div>
-            <div className="text-xl sm:text-3xl font-extrabold text-[#7c3f1d]">{vehicles.length}</div>
+            <div className="text-base sm:text-lg md:text-xl font-black text-[#7c3f1d] font-mono leading-none">{vehicles.length}</div>
           </div>
-          <div className="flex items-center gap-2 mt-1.5 sm:mt-2 text-[10px] sm:text-xs flex-wrap">
-            <span className="text-emerald-700 font-medium flex items-center gap-1">
+          <div className="flex items-center gap-1.5 mt-1 text-[8.5px] sm:text-[9.5px] flex-wrap leading-tight">
+            <span className="text-emerald-700 font-semibold flex items-center gap-1">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
               {vehicles.filter((v) => v.status === 'Available').length} Available
             </span>
-            <span className="text-blue-700 font-medium flex items-center gap-1">
+            <span className="text-blue-700 font-semibold flex items-center gap-1">
               <span className="w-1.5 h-1.5 rounded-full bg-blue-500"></span>
               {vehicles.filter((v) => v.status === 'On Trip').length} On Road
             </span>
@@ -604,133 +604,133 @@ export default function VehicleManagement({ onNavigate, onGoBack }) {
         </div>
 
         {/* Card 2: Monthly Distance */}
-        <div className="bg-white rounded-xl sm:rounded-2xl p-3 sm:p-4 border border-[#FED7AA] shadow-sm relative overflow-hidden flex flex-col justify-between">
+        <div className="bg-white rounded-lg sm:rounded-xl p-2 sm:p-2.5 border border-[#FED7AA] shadow-2xs relative overflow-hidden flex flex-col justify-between">
           <div>
-            <div className="flex items-center justify-between text-slate-500 mb-1.5 sm:mb-2">
-              <span className="text-[10px] sm:text-xs font-semibold uppercase tracking-wider">Monthly KMs</span>
-              <div className="p-1.5 sm:p-2 rounded-lg bg-blue-100 text-blue-600">
-                <Gauge size={16} className="sm:w-[18px] sm:h-[18px]" />
+            <div className="flex items-center justify-between text-slate-500 mb-0.5">
+              <span className="text-[9px] sm:text-[10px] font-bold uppercase tracking-wider">Monthly KMs</span>
+              <div className="p-1 rounded-md bg-blue-100 text-blue-600">
+                <Gauge size={12} className="sm:w-3.5 sm:h-3.5" />
               </div>
             </div>
-            <div className="text-xl sm:text-3xl font-extrabold text-blue-900">
+            <div className="text-base sm:text-lg md:text-xl font-black text-blue-900 font-mono leading-none">
               {stats?.monthlyTotalKm ? stats.monthlyTotalKm.toLocaleString('en-IN') : '0'}{' '}
-              <span className="text-xs sm:text-sm font-semibold text-slate-500">KM</span>
+              <span className="text-[9.5px] sm:text-[10.5px] font-semibold text-slate-500">KM</span>
             </div>
           </div>
-          <p className="text-[10px] sm:text-xs text-slate-500 mt-1 sm:mt-2 truncate">Active fleet dispatches</p>
+          <p className="text-[8.5px] sm:text-[9.5px] text-slate-500 mt-1 truncate leading-tight">Active fleet dispatches</p>
         </div>
 
         {/* Card 3: Fuel Expense */}
-        <div className="bg-white rounded-xl sm:rounded-2xl p-3 sm:p-4 border border-[#FED7AA] shadow-sm relative overflow-hidden flex flex-col justify-between">
+        <div className="bg-white rounded-lg sm:rounded-xl p-2 sm:p-2.5 border border-[#FED7AA] shadow-2xs relative overflow-hidden flex flex-col justify-between">
           <div>
-            <div className="flex items-center justify-between text-slate-500 mb-1.5 sm:mb-2">
-              <span className="text-[10px] sm:text-xs font-semibold uppercase tracking-wider">Fuel Cost</span>
-              <div className="p-1.5 sm:p-2 rounded-lg bg-amber-100 text-amber-600">
-                <Fuel size={16} className="sm:w-[18px] sm:h-[18px]" />
+            <div className="flex items-center justify-between text-slate-500 mb-0.5">
+              <span className="text-[9px] sm:text-[10px] font-bold uppercase tracking-wider">Fuel Cost</span>
+              <div className="p-1 rounded-md bg-amber-100 text-amber-600">
+                <Fuel size={12} className="sm:w-3.5 sm:h-3.5" />
               </div>
             </div>
-            <div className="text-xl sm:text-3xl font-extrabold text-amber-900">
+            <div className="text-base sm:text-lg md:text-xl font-black text-amber-900 font-mono leading-none">
               ₹{stats?.monthlyFuelCost ? stats.monthlyFuelCost.toLocaleString('en-IN') : '0'}
             </div>
           </div>
-          <div className="flex items-center gap-1.5 mt-1 sm:mt-2 text-[10px] sm:text-xs text-slate-600 flex-wrap">
+          <div className="flex items-center gap-1 mt-1 text-[8.5px] sm:text-[9.5px] text-slate-600 flex-wrap leading-tight">
             <span>{stats?.monthlyFuelLitres || 0} L</span>
-            <span className="text-emerald-700 font-bold bg-emerald-50 px-1 py-0.5 rounded border border-emerald-200 text-[10px]">
+            <span className="text-emerald-700 font-bold bg-emerald-50 px-1 py-0.2 rounded border border-emerald-200 text-[8.5px]">
               {stats?.avgMileage || 0} KM/L
             </span>
           </div>
         </div>
 
         {/* Card 4: Maintenance Expense */}
-        <div className="bg-white rounded-xl sm:rounded-2xl p-3 sm:p-4 border border-[#FED7AA] shadow-sm relative overflow-hidden flex flex-col justify-between">
+        <div className="bg-white rounded-lg sm:rounded-xl p-2 sm:p-2.5 border border-[#FED7AA] shadow-2xs relative overflow-hidden flex flex-col justify-between">
           <div>
-            <div className="flex items-center justify-between text-slate-500 mb-1.5 sm:mb-2">
-              <span className="text-[10px] sm:text-xs font-semibold uppercase tracking-wider">Repairs & Upkeep</span>
-              <div className="p-1.5 sm:p-2 rounded-lg bg-rose-100 text-rose-600">
-                <Wrench size={16} className="sm:w-[18px] sm:h-[18px]" />
+            <div className="flex items-center justify-between text-slate-500 mb-0.5">
+              <span className="text-[9px] sm:text-[10px] font-bold uppercase tracking-wider">Repairs & Upkeep</span>
+              <div className="p-1 rounded-md bg-rose-100 text-rose-600">
+                <Wrench size={12} className="sm:w-3.5 sm:h-3.5" />
               </div>
             </div>
-            <div className="text-xl sm:text-3xl font-extrabold text-rose-900">
+            <div className="text-base sm:text-lg md:text-xl font-black text-rose-900 font-mono leading-none">
               ₹{stats?.monthlyMaintCost ? stats.monthlyMaintCost.toLocaleString('en-IN') : '0'}
             </div>
           </div>
-          <p className="text-[10px] sm:text-xs text-slate-500 mt-1 sm:mt-2 truncate">Reefer box & mechanical upkeep</p>
+          <p className="text-[8.5px] sm:text-[9.5px] text-slate-500 mt-1 truncate leading-tight">Reefer box & upkeep</p>
         </div>
       </div>
 
       {/* Tabs Header */}
-      <div className="flex items-center justify-between flex-wrap gap-2.5 sm:gap-3 mb-4 sm:mb-5 border-b border-[#fed7aa] pb-2">
-        <div className="flex items-center gap-1.5 sm:gap-2 w-full sm:w-auto overflow-x-auto no-scrollbar py-1 -mx-1 px-1 sm:mx-0 sm:px-0">
+      <div className="flex items-center justify-between flex-wrap gap-2 sm:gap-3 mb-2.5 sm:mb-4 border-b border-[#fed7aa] pb-1.5">
+        <div className="flex items-center gap-1.5 sm:gap-2 w-full sm:w-auto overflow-x-auto no-scrollbar py-0.5 -mx-1 px-1 sm:mx-0 sm:px-0">
           <button
             onClick={() => setActiveTab('fleet')}
-            className={`flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 sm:py-2.5 rounded-xl text-xs sm:text-sm font-bold whitespace-nowrap shrink-0 transition-all ${
+            className={`flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-lg sm:rounded-xl text-xs sm:text-[13px] font-bold whitespace-nowrap shrink-0 transition-all ${
               activeTab === 'fleet'
                 ? 'bg-[#7c3f1d] text-white shadow-md'
                 : 'bg-white text-slate-700 hover:bg-orange-50 border border-[#fed7aa]'
             }`}
           >
-            <Truck size={15} className="sm:w-[17px] sm:h-[17px]" />
+            <Truck size={14} className="sm:w-4 sm:h-4" />
             <span>Vehicles Fleet ({vehicles.length})</span>
           </button>
 
           <button
             onClick={() => setActiveTab('trips')}
-            className={`flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 sm:py-2.5 rounded-xl text-xs sm:text-sm font-bold whitespace-nowrap shrink-0 transition-all ${
+            className={`flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-lg sm:rounded-xl text-xs sm:text-[13px] font-bold whitespace-nowrap shrink-0 transition-all ${
               activeTab === 'trips'
                 ? 'bg-[#7c3f1d] text-white shadow-md'
                 : 'bg-white text-slate-700 hover:bg-orange-50 border border-[#fed7aa]'
             }`}
           >
-            <Navigation size={15} className="sm:w-[17px] sm:h-[17px]" />
+            <Navigation size={14} className="sm:w-4 sm:h-4" />
             <span>Trips & KM Logs ({trips.length})</span>
           </button>
 
           <button
             onClick={() => setActiveTab('fuel')}
-            className={`flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 sm:py-2.5 rounded-xl text-xs sm:text-sm font-bold whitespace-nowrap shrink-0 transition-all ${
+            className={`flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-lg sm:rounded-xl text-xs sm:text-[13px] font-bold whitespace-nowrap shrink-0 transition-all ${
               activeTab === 'fuel'
                 ? 'bg-[#7c3f1d] text-white shadow-md'
                 : 'bg-white text-slate-700 hover:bg-orange-50 border border-[#fed7aa]'
             }`}
           >
-            <Fuel size={15} className="sm:w-[17px] sm:h-[17px]" />
+            <Fuel size={14} className="sm:w-4 sm:h-4" />
             <span>Fuel Management ({fuelLogs.length})</span>
           </button>
 
           <button
             onClick={() => setActiveTab('maintenance')}
-            className={`flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 sm:py-2.5 rounded-xl text-xs sm:text-sm font-bold whitespace-nowrap shrink-0 transition-all ${
+            className={`flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-lg sm:rounded-xl text-xs sm:text-[13px] font-bold whitespace-nowrap shrink-0 transition-all ${
               activeTab === 'maintenance'
                 ? 'bg-[#7c3f1d] text-white shadow-md'
                 : 'bg-white text-slate-700 hover:bg-orange-50 border border-[#fed7aa]'
             }`}
           >
-            <Wrench size={15} className="sm:w-[17px] sm:h-[17px]" />
+            <Wrench size={14} className="sm:w-4 sm:h-4" />
             <span>Service & Repairs ({maintenanceLogs.length})</span>
           </button>
 
           <button
             onClick={() => setActiveTab('map')}
-            className={`flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 sm:py-2.5 rounded-xl text-xs sm:text-sm font-bold whitespace-nowrap shrink-0 transition-all ${
+            className={`flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-lg sm:rounded-xl text-xs sm:text-[13px] font-bold whitespace-nowrap shrink-0 transition-all ${
               activeTab === 'map'
                 ? 'bg-[#7c3f1d] text-white shadow-md'
                 : 'bg-white text-slate-700 hover:bg-orange-50 border border-[#fed7aa]'
             }`}
           >
-            <Radio size={15} className="text-emerald-500 animate-pulse sm:w-[17px] sm:h-[17px]" />
+            <Radio size={14} className="text-emerald-500 animate-pulse sm:w-4 sm:h-4" />
             <span>Live Map Tracking</span>
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping"></span>
           </button>
 
           <button
             onClick={() => setActiveTab('calculator')}
-            className={`flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 sm:py-2.5 rounded-xl text-xs sm:text-sm font-bold whitespace-nowrap shrink-0 transition-all ${
+            className={`flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-lg sm:rounded-xl text-xs sm:text-[13px] font-bold whitespace-nowrap shrink-0 transition-all ${
               activeTab === 'calculator'
                 ? 'bg-[#7c3f1d] text-white shadow-md'
                 : 'bg-white text-slate-700 hover:bg-orange-50 border border-[#fed7aa]'
             }`}
           >
-            <Calculator size={15} className="sm:w-[17px] sm:h-[17px]" />
+            <Calculator size={14} className="sm:w-4 sm:h-4" />
             <span>KM Calculator</span>
           </button>
         </div>
@@ -739,17 +739,17 @@ export default function VehicleManagement({ onNavigate, onGoBack }) {
         {!['calculator', 'map'].includes(activeTab) && (
           <div className="flex items-center gap-2 w-full sm:w-auto">
             <div className="relative flex-1 sm:w-64">
-              <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+              <Search size={15} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
               <input
                 type="text"
                 placeholder="Search number, driver, route..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-9 pr-3 py-2 bg-white border border-[#fed7aa] rounded-xl text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-[#ea580c]"
+                className="w-full pl-8 pr-3 py-1.5 bg-white border border-[#fed7aa] rounded-lg sm:rounded-xl text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-[#ea580c]"
               />
               {searchQuery && (
-                <button onClick={() => setSearchQuery('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
-                  <X size={14} />
+                <button onClick={() => setSearchQuery('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
+                  <X size={13} />
                 </button>
               )}
             </div>
@@ -758,7 +758,7 @@ export default function VehicleManagement({ onNavigate, onGoBack }) {
               <select
                 value={selectedVehicleFilter}
                 onChange={(e) => setSelectedVehicleFilter(e.target.value)}
-                className="px-3 py-2 bg-white border border-[#fed7aa] rounded-xl text-xs sm:text-sm font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-[#ea580c]"
+                className="px-2.5 py-1.5 bg-white border border-[#fed7aa] rounded-lg sm:rounded-xl text-xs sm:text-sm font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-[#ea580c]"
               >
                 <option value="all">All Vehicles</option>
                 {vehicles.map((v) => (
@@ -792,54 +792,54 @@ export default function VehicleManagement({ onNavigate, onGoBack }) {
               </button>
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5 sm:gap-3.5">
               {filteredVehicles.map((veh) => (
                 <div
                   key={veh._id}
-                  className="bg-white rounded-2xl border border-[#FED7AA] p-5 shadow-sm hover:shadow-md transition-all flex flex-col justify-between"
+                  className="bg-white rounded-xl sm:rounded-2xl border border-[#FED7AA] p-3 sm:p-3.5 shadow-2xs hover:shadow-md transition-all flex flex-col justify-between"
                 >
                   <div>
                     {/* Top Row: Plate & Status */}
-                    <div className="flex items-center justify-between gap-2 mb-3">
-                      <div className="flex items-center gap-2">
-                        <span className="px-3 py-1 bg-amber-400 text-slate-900 font-mono font-extrabold text-sm rounded-lg border-2 border-slate-900 shadow-sm tracking-wide">
+                    <div className="flex items-center justify-between gap-1.5 mb-2">
+                      <div className="flex items-center gap-1.5">
+                        <span className="px-2 py-0.5 bg-amber-400 text-slate-900 font-mono font-black text-xs rounded-md border-[1.5px] border-slate-900 shadow-2xs tracking-wide">
                           {veh.vehicleNumber}
                         </span>
-                        <span className="text-xs text-slate-500 font-medium">{veh.vehicleType}</span>
+                        <span className="text-[10.5px] text-slate-500 font-medium">{veh.vehicleType}</span>
                       </div>
                       {getStatusBadge(veh.status)}
                     </div>
 
                     {/* Model & Driver */}
-                    <h3 className="text-base font-bold text-[#7c3f1d]">{veh.modelName}</h3>
-                    <div className="mt-3 space-y-1.5 text-xs text-slate-600 bg-[#FAF0E4] p-3 rounded-xl border border-[#fed7aa]">
+                    <h3 className="text-sm sm:text-[15px] font-bold text-[#7c3f1d] leading-snug">{veh.modelName}</h3>
+                    <div className="mt-2 space-y-1 text-[11px] sm:text-xs text-slate-600 bg-[#FAF0E4]/70 p-2 sm:p-2.5 rounded-lg border border-[#fed7aa]">
                       <div className="flex items-center justify-between">
                         <span className="flex items-center gap-1.5 text-slate-500">
-                          <User size={13} /> Driver
+                          <User size={12} className="text-slate-400 shrink-0" /> Driver
                         </span>
-                        <span className="font-semibold text-slate-800">{veh.driverName || 'Not Assigned'}</span>
+                        <span className="font-semibold text-slate-800 truncate max-w-[150px]">{veh.driverName || 'Not Assigned'}</span>
                       </div>
                       {veh.driverPhone && (
                         <div className="flex items-center justify-between">
                           <span className="flex items-center gap-1.5 text-slate-500">
-                            <Phone size={13} /> Phone
+                            <Phone size={12} className="text-slate-400 shrink-0" /> Phone
                           </span>
-                          <a href={`tel:${veh.driverPhone}`} className="font-medium text-[#ea580c] hover:underline">
+                          <a href={`tel:${veh.driverPhone}`} className="font-semibold text-[#ea580c] hover:underline">
                             {veh.driverPhone}
                           </a>
                         </div>
                       )}
-                      <div className="flex items-center justify-between pt-1 border-t border-orange-200">
+                      <div className="flex items-center justify-between pt-1 border-t border-orange-200/80">
                         <span className="flex items-center gap-1.5 text-slate-500">
-                          <Gauge size={13} /> Odometer
+                          <Gauge size={12} className="text-slate-400 shrink-0" /> Odometer
                         </span>
-                        <span className="font-mono font-bold text-slate-900 text-sm">
+                        <span className="font-mono font-black text-slate-900 text-xs sm:text-[13px]">
                           {veh.currentKm ? veh.currentKm.toLocaleString('en-IN') : 0} KM
                         </span>
                       </div>
                       <div className="flex items-center justify-between">
                         <span className="flex items-center gap-1.5 text-slate-500">
-                          <Fuel size={13} /> Fuel / Economy
+                          <Fuel size={12} className="text-slate-400 shrink-0" /> Fuel / Economy
                         </span>
                         <span className="font-semibold text-slate-800">
                           {veh.fuelType} {veh.averageMileage ? `• ${veh.averageMileage} KM/L` : ''}
@@ -849,70 +849,70 @@ export default function VehicleManagement({ onNavigate, onGoBack }) {
 
                     {/* Monthly Summary Badges */}
                     {veh.stats && (
-                      <div className="grid grid-cols-3 gap-2 mt-3 text-center">
-                        <div className="bg-orange-50 rounded-lg p-2 border border-orange-100">
-                          <div className="text-[10px] text-slate-500 font-medium">Month Run</div>
-                          <div className="text-xs font-bold text-[#c2410c]">{veh.stats.monthlyKm} KM</div>
+                      <div className="grid grid-cols-3 gap-1.5 mt-2 text-center">
+                        <div className="bg-orange-50/80 rounded-md p-1.5 border border-orange-100">
+                          <div className="text-[9px] text-slate-500 font-semibold uppercase tracking-tight">Month Run</div>
+                          <div className="text-[11px] sm:text-xs font-black text-[#c2410c]">{veh.stats.monthlyKm} KM</div>
                         </div>
-                        <div className="bg-blue-50 rounded-lg p-2 border border-blue-100">
-                          <div className="text-[10px] text-slate-500 font-medium">Fuel Spend</div>
-                          <div className="text-xs font-bold text-blue-800">₹{veh.stats.monthlyFuelCost}</div>
+                        <div className="bg-blue-50/80 rounded-md p-1.5 border border-blue-100">
+                          <div className="text-[9px] text-slate-500 font-semibold uppercase tracking-tight">Fuel Spend</div>
+                          <div className="text-[11px] sm:text-xs font-black text-blue-800">₹{veh.stats.monthlyFuelCost}</div>
                         </div>
-                        <div className="bg-rose-50 rounded-lg p-2 border border-rose-100">
-                          <div className="text-[10px] text-slate-500 font-medium">Repairs</div>
-                          <div className="text-xs font-bold text-rose-800">₹{veh.stats.monthlyMaintCost}</div>
+                        <div className="bg-rose-50/80 rounded-md p-1.5 border border-rose-100">
+                          <div className="text-[9px] text-slate-500 font-semibold uppercase tracking-tight">Repairs</div>
+                          <div className="text-[11px] sm:text-xs font-black text-rose-800">₹{veh.stats.monthlyMaintCost}</div>
                         </div>
                       </div>
                     )}
                   </div>
 
                   {/* Actions Bar */}
-                  <div className="flex flex-wrap items-center justify-between gap-1.5 mt-3 pt-2.5 border-t border-slate-100">
-                    <div className="flex flex-wrap items-center gap-1.5 flex-1 min-w-0">
+                  <div className="flex flex-wrap items-center justify-between gap-1 mt-2.5 pt-2 border-t border-slate-100">
+                    <div className="flex flex-wrap items-center gap-1 flex-1 min-w-0">
                       <button
                         onClick={() => handleOpenAddTrip(veh)}
-                        className="px-2 sm:px-2.5 py-1.5 bg-orange-100 hover:bg-orange-200 text-[#7c3f1d] rounded-lg text-[11px] sm:text-xs font-semibold flex items-center gap-1 transition-colors"
+                        className="px-2 py-1 bg-orange-100 hover:bg-orange-200 text-[#7c3f1d] rounded-md text-[10.5px] font-bold flex items-center gap-1 transition-colors active:scale-95 cursor-pointer"
                         title="Log a delivery trip"
                       >
-                        <Navigation size={12} /> Trip
+                        <Navigation size={11} /> Trip
                       </button>
                       <button
                         onClick={() => handleOpenAddFuel(veh)}
-                        className="px-2 sm:px-2.5 py-1.5 bg-amber-100 hover:bg-amber-200 text-amber-900 rounded-lg text-[11px] sm:text-xs font-semibold flex items-center gap-1 transition-colors"
+                        className="px-2 py-1 bg-amber-100 hover:bg-amber-200 text-amber-900 rounded-md text-[10.5px] font-bold flex items-center gap-1 transition-colors active:scale-95 cursor-pointer"
                         title="Log fuel refill"
                       >
-                        <Fuel size={12} /> Fuel
+                        <Fuel size={11} /> Fuel
                       </button>
                       <button
                         onClick={() => handleOpenAddMaintenance(veh)}
-                        className="px-2 sm:px-2.5 py-1.5 bg-rose-100 hover:bg-rose-200 text-rose-900 rounded-lg text-[11px] sm:text-xs font-semibold flex items-center gap-1 transition-colors"
+                        className="px-2 py-1 bg-rose-100 hover:bg-rose-200 text-rose-900 rounded-md text-[10.5px] font-bold flex items-center gap-1 transition-colors active:scale-95 cursor-pointer"
                         title="Log repair or maintenance"
                       >
-                        <Wrench size={12} /> Service
+                        <Wrench size={11} /> Service
                       </button>
                       <button
                         onClick={() => setActiveTab('map')}
-                        className="px-2 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-lg text-[11px] sm:text-xs font-semibold flex items-center gap-1 transition-colors"
+                        className="px-2 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-md text-[10.5px] font-bold flex items-center gap-1 transition-colors active:scale-95 cursor-pointer"
                         title="View live position on map"
                       >
-                        <Radio size={12} className="text-emerald-600 animate-pulse" /> Map
+                        <Radio size={11} className="text-emerald-600 animate-pulse" /> Map
                       </button>
                     </div>
 
-                    <div className="flex items-center gap-1 shrink-0">
+                    <div className="flex items-center gap-0.5 shrink-0">
                       <button
                         onClick={() => handleOpenEditVehicle(veh)}
-                        className="p-1.5 text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                        className="p-1 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors active:scale-95 cursor-pointer"
                         title="Edit vehicle details"
                       >
-                        <Edit2 size={15} />
+                        <Edit2 size={13} />
                       </button>
                       <button
                         onClick={() => handleDeleteVehicle(veh._id, veh.vehicleNumber)}
-                        className="p-1.5 text-slate-500 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
+                        className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded transition-colors active:scale-95 cursor-pointer"
                         title="Remove vehicle"
                       >
-                        <Trash2 size={15} />
+                        <Trash2 size={13} />
                       </button>
                     </div>
                   </div>
@@ -984,7 +984,7 @@ export default function VehicleManagement({ onNavigate, onGoBack }) {
           <div className="block sm:hidden p-3 space-y-3 bg-[#fffdfa]">
             {filteredTrips.length === 0 ? (
               <div className="py-8 text-center text-slate-400 text-xs px-4">
-                No trip records found. Tap "+ Log Trip" to register trip distance.
+                No trip records found. Tap "Log Trip" to register trip distance.
               </div>
             ) : (
               filteredTrips.map((t) => (
@@ -1105,7 +1105,7 @@ export default function VehicleManagement({ onNavigate, onGoBack }) {
                 {filteredTrips.length === 0 ? (
                   <tr>
                     <td colSpan={9} className="py-12 text-center text-slate-400">
-                      No trip records found. Click "+ Log New Trip" to register trip distance.
+                      No trip records found. Click "Log New Trip" to register trip distance.
                     </td>
                   </tr>
                 ) : (
@@ -1202,7 +1202,7 @@ export default function VehicleManagement({ onNavigate, onGoBack }) {
           <div className="block sm:hidden p-3 space-y-3 bg-[#fffdfa]">
             {filteredFuelLogs.length === 0 ? (
               <div className="py-8 text-center text-slate-400 text-xs px-4">
-                No fuel logs recorded yet. Tap "+ Add Fuel" to log diesel/petrol fill-ups.
+                No fuel logs recorded yet. Tap "Add Fuel" to log diesel/petrol fill-ups.
               </div>
             ) : (
               filteredFuelLogs.map((f) => (
@@ -1288,7 +1288,7 @@ export default function VehicleManagement({ onNavigate, onGoBack }) {
                 {filteredFuelLogs.length === 0 ? (
                   <tr>
                     <td colSpan={9} className="py-12 text-center text-slate-400">
-                      No fuel logs recorded yet. Click "+ Add Fuel Entry" to log diesel/petrol fill-ups.
+                      No fuel logs recorded yet. Click "Add Fuel Entry" to log diesel/petrol fill-ups.
                     </td>
                   </tr>
                 ) : (
@@ -1369,7 +1369,7 @@ export default function VehicleManagement({ onNavigate, onGoBack }) {
           <div className="block sm:hidden p-3 space-y-3 bg-[#fffdfa]">
             {filteredMaintenanceLogs.length === 0 ? (
               <div className="py-8 text-center text-slate-400 text-xs px-4">
-                No repair or maintenance logs found. Tap "+ Log Service" to record vehicle upkeep.
+                No repair or maintenance logs found. Tap "Log Service" to record vehicle upkeep.
               </div>
             ) : (
               filteredMaintenanceLogs.map((m) => (
@@ -1450,7 +1450,7 @@ export default function VehicleManagement({ onNavigate, onGoBack }) {
                 {filteredMaintenanceLogs.length === 0 ? (
                   <tr>
                     <td colSpan={8} className="py-12 text-center text-slate-400">
-                      No repair or maintenance logs found. Click "+ Log Maintenance" to record vehicle services.
+                      No repair or maintenance logs found. Click "Log Maintenance" to record vehicle services.
                     </td>
                   </tr>
                 ) : (
@@ -1517,61 +1517,61 @@ export default function VehicleManagement({ onNavigate, onGoBack }) {
       {/* TAB 5: KM & MILEAGE ECONOMY CALCULATOR                   */}
       {/* ======================================================== */}
       {activeTab === 'calculator' && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-6">
           {/* Inputs Card */}
-          <div className="bg-white rounded-2xl border border-[#FED7AA] p-6 shadow-sm">
-            <h3 className="text-lg font-bold text-[#7c3f1d] mb-1 flex items-center gap-2">
-              <Calculator size={20} className="text-[#ea580c]" />
+          <div className="bg-white rounded-2xl border border-[#FED7AA] p-3.5 sm:p-5 shadow-xs">
+            <h3 className="text-sm sm:text-base font-bold text-[#7c3f1d] mb-1 flex items-center gap-2">
+              <Calculator size={18} className="text-[#ea580c]" />
               Quick Trip & Fuel Calculator
             </h3>
-            <p className="text-xs text-slate-500 mb-6">
+            <p className="text-[11px] sm:text-xs text-slate-500 mb-3 sm:mb-4">
               Calculate running kilometers, trip cost, and fuel efficiency before or after a fish delivery run.
             </p>
 
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2.5 sm:space-y-3.5">
+              <div className="grid grid-cols-2 gap-2 sm:gap-3">
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Start Odometer (KM)</label>
+                  <label className="block text-[11px] sm:text-xs font-semibold text-slate-700 mb-1">Start Odometer (KM)</label>
                   <input
                     type="number"
                     value={calcStartKm}
                     onChange={(e) => setCalcStartKm(e.target.value)}
-                    className="w-full p-2.5 bg-[#fffaf5] border border-[#fed7aa] rounded-xl font-mono text-sm focus:outline-none focus:ring-2 focus:ring-[#ea580c]"
+                    className="w-full p-2 sm:p-2.5 bg-[#fffaf5] border border-[#fed7aa] rounded-xl font-mono text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-[#ea580c]"
                     placeholder="e.g. 12400"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">End Odometer (KM)</label>
+                  <label className="block text-[11px] sm:text-xs font-semibold text-slate-700 mb-1">End Odometer (KM)</label>
                   <input
                     type="number"
                     value={calcEndKm}
                     onChange={(e) => setCalcEndKm(e.target.value)}
-                    className="w-full p-2.5 bg-[#fffaf5] border border-[#fed7aa] rounded-xl font-mono text-sm focus:outline-none focus:ring-2 focus:ring-[#ea580c]"
+                    className="w-full p-2 sm:p-2.5 bg-[#fffaf5] border border-[#fed7aa] rounded-xl font-mono text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-[#ea580c]"
                     placeholder="e.g. 12580"
                   />
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-2 gap-2 sm:gap-3">
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Fuel Filled (Litres)</label>
+                  <label className="block text-[11px] sm:text-xs font-semibold text-slate-700 mb-1">Fuel Filled (Litres)</label>
                   <input
                     type="number"
                     step="0.1"
                     value={calcFuelLitres}
                     onChange={(e) => setCalcFuelLitres(e.target.value)}
-                    className="w-full p-2.5 bg-[#fffaf5] border border-[#fed7aa] rounded-xl font-mono text-sm focus:outline-none focus:ring-2 focus:ring-[#ea580c]"
+                    className="w-full p-2 sm:p-2.5 bg-[#fffaf5] border border-[#fed7aa] rounded-xl font-mono text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-[#ea580c]"
                     placeholder="e.g. 15"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Fuel Price (₹ / Litre)</label>
+                  <label className="block text-[11px] sm:text-xs font-semibold text-slate-700 mb-1">Fuel Price (₹ / Litre)</label>
                   <input
                     type="number"
                     step="0.1"
                     value={calcFuelRate}
                     onChange={(e) => setCalcFuelRate(e.target.value)}
-                    className="w-full p-2.5 bg-[#fffaf5] border border-[#fed7aa] rounded-xl font-mono text-sm focus:outline-none focus:ring-2 focus:ring-[#ea580c]"
+                    className="w-full p-2 sm:p-2.5 bg-[#fffaf5] border border-[#fed7aa] rounded-xl font-mono text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-[#ea580c]"
                     placeholder="e.g. 98"
                   />
                 </div>
@@ -1580,44 +1580,44 @@ export default function VehicleManagement({ onNavigate, onGoBack }) {
           </div>
 
           {/* Results Summary Card */}
-          <div className="bg-[#7c3f1d] text-white rounded-2xl p-6 shadow-md flex flex-col justify-between">
+          <div className="bg-[#7c3f1d] text-white rounded-2xl p-3.5 sm:p-5 shadow-md flex flex-col justify-between">
             <div>
-              <span className="text-xs font-bold uppercase tracking-wider text-orange-200">
+              <span className="text-[10.5px] sm:text-xs font-bold uppercase tracking-wider text-orange-200">
                 Calculated Trip Metrics
               </span>
-              <div className="grid grid-cols-2 gap-4 mt-6">
-                <div className="bg-white/10 p-4 rounded-xl backdrop-blur-sm border border-white/10">
-                  <div className="text-xs text-orange-200">Total Distance Covered</div>
-                  <div className="text-3xl font-extrabold text-white mt-1 font-mono">
-                    {calcTotalDist} <span className="text-base font-normal">KM</span>
+              <div className="grid grid-cols-2 gap-2 sm:gap-3 mt-2.5 sm:mt-4">
+                <div className="bg-white/10 p-2 sm:p-3 rounded-xl backdrop-blur-sm border border-white/10">
+                  <div className="text-[10px] sm:text-xs text-orange-200 leading-tight">Total Distance Covered</div>
+                  <div className="text-lg sm:text-xl md:text-2xl font-extrabold text-white mt-1 font-mono">
+                    {calcTotalDist} <span className="text-xs sm:text-sm font-normal">KM</span>
                   </div>
                 </div>
 
-                <div className="bg-white/10 p-4 rounded-xl backdrop-blur-sm border border-white/10">
-                  <div className="text-xs text-orange-200">Calculated Mileage</div>
-                  <div className="text-3xl font-extrabold text-emerald-300 mt-1 font-mono">
-                    {calcMileage} <span className="text-base font-normal">KM/L</span>
+                <div className="bg-white/10 p-2 sm:p-3 rounded-xl backdrop-blur-sm border border-white/10">
+                  <div className="text-[10px] sm:text-xs text-orange-200 leading-tight">Calculated Mileage</div>
+                  <div className="text-lg sm:text-xl md:text-2xl font-extrabold text-emerald-300 mt-1 font-mono">
+                    {calcMileage} <span className="text-xs sm:text-sm font-normal">KM/L</span>
                   </div>
                 </div>
 
-                <div className="bg-white/10 p-4 rounded-xl backdrop-blur-sm border border-white/10">
-                  <div className="text-xs text-orange-200">Total Fuel Cost</div>
-                  <div className="text-3xl font-extrabold text-white mt-1 font-mono">
+                <div className="bg-white/10 p-2 sm:p-3 rounded-xl backdrop-blur-sm border border-white/10">
+                  <div className="text-[10px] sm:text-xs text-orange-200 leading-tight">Total Fuel Cost</div>
+                  <div className="text-lg sm:text-xl md:text-2xl font-extrabold text-white mt-1 font-mono">
                     ₹{calcFuelCost}
                   </div>
                 </div>
 
-                <div className="bg-white/10 p-4 rounded-xl backdrop-blur-sm border border-white/10">
-                  <div className="text-xs text-orange-200">Running Cost / KM</div>
-                  <div className="text-3xl font-extrabold text-amber-300 mt-1 font-mono">
-                    ₹{calcCostPerKm} <span className="text-xs font-normal">/ KM</span>
+                <div className="bg-white/10 p-2 sm:p-3 rounded-xl backdrop-blur-sm border border-white/10">
+                  <div className="text-[10px] sm:text-xs text-orange-200 leading-tight">Running Cost / KM</div>
+                  <div className="text-lg sm:text-xl md:text-2xl font-extrabold text-amber-300 mt-1 font-mono">
+                    ₹{calcCostPerKm} <span className="text-[9.5px] sm:text-xs font-normal">/ KM</span>
                   </div>
                 </div>
               </div>
             </div>
 
-            <div className="mt-6 pt-4 border-t border-white/20 text-xs text-orange-100 flex items-center justify-between">
-              <span>Delivery Cost Efficiency: <strong>Good</strong></span>
+            <div className="mt-3.5 pt-2.5 border-t border-white/20 text-xs text-orange-100 flex items-center justify-between flex-wrap gap-2">
+              <span className="text-[10.5px] sm:text-xs">Efficiency: <strong className="text-emerald-300">Good</strong></span>
               <button
                 onClick={() => {
                   handleOpenAddTrip();
@@ -1627,9 +1627,9 @@ export default function VehicleManagement({ onNavigate, onGoBack }) {
                     endKm: calcEndKm
                   }));
                 }}
-                className="px-3 py-1.5 bg-[#ea580c] hover:bg-orange-600 text-white font-bold rounded-lg transition-colors flex items-center gap-1"
+                className="px-2.5 py-1.5 sm:px-3 sm:py-1.5 bg-[#ea580c] hover:bg-orange-600 text-white font-bold rounded-lg transition-colors flex items-center gap-1 text-[11px] sm:text-xs shadow-xs active:scale-95 cursor-pointer"
               >
-                Use in Log Trip <ArrowRight size={13} />
+                <span>Use in Log Trip</span> <ArrowRight size={12} />
               </button>
             </div>
           </div>

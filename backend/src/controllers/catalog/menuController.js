@@ -49,12 +49,19 @@ export const addMenuItem = async (req, res) => {
     const Category = getTenantModel(req, 'Category', CategoryDefault);
     let categoryData = req.body.category;
 
-    // If category is a string, find the category by name
-    if (typeof categoryData === 'string') {
-      let category = await Category.findOne({ name: categoryData });
+    // If category is omitted or empty, auto-resolve based on waterType
+    if (!categoryData || (typeof categoryData === 'string' && !categoryData.trim())) {
+      const defaultCatName = req.body.waterType === 'fresh_water' ? 'Fresh Water' : 'Sea Water';
+      let category = await Category.findOne({ name: defaultCatName });
       if (!category) {
-        // Auto-create category if it doesn't exist
-        category = new Category({ name: categoryData, description: '' });
+        category = new Category({ name: defaultCatName, description: 'Default fish environment category' });
+        await category.save();
+      }
+      categoryData = category._id;
+    } else if (typeof categoryData === 'string') {
+      let category = await Category.findOne({ name: categoryData.trim() });
+      if (!category) {
+        category = new Category({ name: categoryData.trim(), description: '' });
         await category.save();
       }
       categoryData = category._id;
@@ -139,15 +146,24 @@ export const updateMenuItem = async (req, res) => {
       }
     }
 
-    // If category is a string, find the category by name
+    // If category is a string or empty, resolve category
     if (typeof updateData.category === 'string') {
-      let category = await Category.findOne({ name: updateData.category });
-      if (!category) {
-        // Auto-create category if it doesn't exist
-        category = new Category({ name: updateData.category, description: '' });
-        await category.save();
+      if (!updateData.category.trim()) {
+        const defaultCatName = (updateData.waterType || 'sea_water') === 'fresh_water' ? 'Fresh Water' : 'Sea Water';
+        let category = await Category.findOne({ name: defaultCatName });
+        if (!category) {
+          category = new Category({ name: defaultCatName, description: 'Default fish environment category' });
+          await category.save();
+        }
+        updateData.category = category._id;
+      } else {
+        let category = await Category.findOne({ name: updateData.category.trim() });
+        if (!category) {
+          category = new Category({ name: updateData.category.trim(), description: '' });
+          await category.save();
+        }
+        updateData.category = category._id;
       }
-      updateData.category = category._id;
     }
 
     // Fetch the existing item to check if fields actually changed

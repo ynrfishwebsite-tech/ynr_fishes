@@ -1,21 +1,26 @@
 import express from 'express';
 import {
   getOperationsSummary,
-  getOperationsList,
-  createOperationEntry,
   getSuppliers,
-  createSupplier
+  createSupplier,
+  updateSupplier,
+  deleteSupplier
 } from '../../controllers/operations/depotOperationController.js';
 
 const router = express.Router();
 
-// Operations Endpoints
+// Operations Summary for Second Dashboard
 router.get('/summary', getOperationsSummary);
-router.get('/list', getOperationsList);
-router.post('/entry', createOperationEntry);
 
 // Suppliers Endpoints
 router.get('/suppliers', getSuppliers);
 router.post('/suppliers', createSupplier);
+router.put('/suppliers/:id', updateSupplier);
+router.delete('/suppliers/:id', deleteSupplier);
+
+router.get('/', getSuppliers);
+router.post('/', createSupplier);
+router.put('/:id', updateSupplier);
+router.delete('/:id', deleteSupplier);
 
 export default router;

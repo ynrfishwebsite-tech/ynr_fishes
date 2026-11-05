@@ -382,6 +382,18 @@ export default function GlobalSearchBar({
       navView: 'supplier-portal',
       navOptions: {},
       keywords: ['supplier portal', 'supplier', 'catch vouchers', 'passbook', 'ledger']
+    },
+    {
+      id: 'suppliers',
+      title: 'Supplier Directory',
+      subtitle: 'Local Harbors, DAM Contractors & Supplies',
+      category: 'Operations',
+      icon: Users,
+      iconColor: '#ea580c',
+      iconBg: '#ffedd5',
+      navView: 'suppliers',
+      navOptions: {},
+      keywords: ['suppliers', 'supplier directory', 'vendors', 'fishermen', 'harbor', 'dam contractors', 'packaging vendors']
     }
   ], []);
 

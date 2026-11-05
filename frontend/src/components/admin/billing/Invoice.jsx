@@ -93,6 +93,46 @@ const Invoice = ({ bill, onClose, onSave, onSettle, whatsappBillSentIds, onWhats
   };
   const isCapturingForWhatsApp = useRef(false);
 
+  const getItemCuttingDetails = useCallback((item) => {
+    let cut = item?.cutType || item?.cuttingStyle || '';
+    let rawName = item?.name || 'Item';
+    let weightInfo = '';
+
+    // Check if name has "(Whole - 1 Kg)", "(Curry Cut - 500g)", etc.
+    const parenMatch = rawName.match(/\((.*?)\)/);
+    if (parenMatch) {
+      const inside = parenMatch[1];
+      const cutMatch = inside.match(/\b(Whole|Cleaned|Curry Cut|Fry Cut|Boneless|Curry|Fry)\b/i);
+      if (cutMatch && !cut) {
+        cut = cutMatch[1];
+      }
+      const weightMatch = inside.match(/(\d+(?:\.\d+)?\s*(?:kg|g|gms|boxes|box))/i);
+      if (weightMatch) {
+        weightInfo = weightMatch[1];
+      }
+    }
+
+    // Standardize cutting style: "Whole", "Cleaned", "Curry Cut", "Fry Cut", "Boneless"
+    if (cut) {
+      const cLower = cut.toLowerCase();
+      if (cLower.includes('curry')) cut = 'Curry Cut';
+      else if (cLower.includes('fry')) cut = 'Fry Cut';
+      else if (cLower.includes('bone')) cut = 'Boneless';
+      else if (cLower.includes('clean')) cut = 'Cleaned';
+      else if (cLower.includes('whole')) cut = 'Whole';
+    }
+
+    // Clean name so it doesn't duplicate the cut
+    let cleanName = rawName.replace(/\s*\((?:Whole|Cleaned|Curry Cut|Fry Cut|Boneless|Curry|Fry)\s*-\s*[^)]+\)/i, '').trim();
+    if (!cleanName) cleanName = rawName;
+
+    return {
+      displayName: cleanName,
+      cutType: cut,
+      weightInfo: weightInfo || (item?.weightKg ? `${item.weightKg} Kg` : (item?.enteredWeight ? `${item.enteredWeight} Kg` : ''))
+    };
+  }, []);
+
   const { invoiceGroupedBoxes, invoiceIndividualItems, totalBoxesCount, totalBoxesWeightKg, totalLooseQty } = useMemo(() => {
     const boxes = {};
     const individual = [];
@@ -636,7 +676,10 @@ const Invoice = ({ bill, onClose, onSave, onSettle, whatsappBillSentIds, onWhats
         if (qty <= 0) return null;
         const price = (item.price || 0).toFixed(2);
         const itemTot = ((item.price || 0) * qty).toFixed(2);
-        return `• ${item.name} x ${qty} @ ₹${price} = ₹${itemTot}`;
+        const { displayName, cutType, weightInfo } = getItemCuttingDetails(item);
+        const weightPart = weightInfo ? ` (${weightInfo})` : '';
+        const cutLine = cutType ? `\n   *Cut: ${cutType}*` : '';
+        return `• ${displayName}${weightPart} x ${qty} @ ₹${price} = ₹${itemTot}${cutLine}`;
       })
       .filter(Boolean)
       .join('\n');
@@ -1589,12 +1632,18 @@ const Invoice = ({ bill, onClose, onSave, onSettle, whatsappBillSentIds, onWhats
                       {box.items.map((item, idx) => {
                         const activeQty = (item.quantity || 0) - (item.cancelledQuantity || 0);
                         if (activeQty <= 0) return null;
+                        const { displayName, cutType, weightInfo } = getItemCuttingDetails(item);
                         return (
                           <div key={idx} style={{ padding: '2px 0 2px 4px', borderBottom: idx < box.items.length - 1 ? '1px dotted #ccc' : 'none' }}>
                             <div style={{ fontWeight: 650, fontSize: fontMetrics.detailSize, textAlign: 'left', wordBreak: 'break-word', lineHeight: '1.2' }}>
-                              • {item.name || 'Unknown Item'}
-                              {item.weightKg ? ` (${item.weightKg}Kg @ ₹${item.pricePerKg}/kg)` : ''}
+                              • {displayName || 'Unknown Item'}
+                              {item.weightKg ? ` (${item.weightKg}Kg @ ₹${item.pricePerKg}/kg)` : (weightInfo ? ` (${weightInfo})` : '')}
                             </div>
+                            {cutType && (
+                              <div style={{ fontSize: fontMetrics.detailSize, fontWeight: 600, color: '#222', marginTop: '1px', whiteSpace: 'nowrap', lineHeight: '1.2' }}>
+                                Cut: <span style={{ fontWeight: 700, color: '#000' }}>{cutType}</span>
+                              </div>
+                            )}
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: fontMetrics.detailSize, marginTop: '1px' }}>
                               <span style={{ color: '#444' }}>[{Number(item.price || 0).toFixed(2)}] × {activeQty}</span>
                               <span style={{ fontWeight: 700 }}>{(item.price * activeQty).toFixed(2)}</span>
@@ -1616,12 +1665,19 @@ const Invoice = ({ bill, onClose, onSave, onSettle, whatsappBillSentIds, onWhats
                       {invoiceIndividualItems.map((item, idx) => {
                         const activeQty = (item.quantity || 0) - (item.cancelledQuantity || 0);
                         if (activeQty <= 0) return null;
+                        const { displayName, cutType, weightInfo } = getItemCuttingDetails(item);
                         return (
                           <div key={idx} style={{ marginBottom: '4px', paddingBottom: '3px', borderBottom: '1px dashed #e0e0e0' }}>
                             <div style={{ fontWeight: 750, fontSize: fontMetrics.itemSize, textAlign: 'left', wordBreak: 'break-word', lineHeight: '1.2' }}>
-                              {item.name || 'Unknown Item'}
-                              {item.sellingUnit && <span style={{ fontSize: fontMetrics.detailSize, fontWeight: 'normal' }}> ({item.sellingUnit})</span>}
+                              {displayName || 'Unknown Item'}
+                              {weightInfo && <span style={{ fontSize: fontMetrics.detailSize, fontWeight: 'normal' }}> ({weightInfo})</span>}
+                              {item.sellingUnit && !weightInfo && <span style={{ fontSize: fontMetrics.detailSize, fontWeight: 'normal' }}> ({item.sellingUnit})</span>}
                             </div>
+                            {cutType && (
+                              <div style={{ fontSize: fontMetrics.detailSize, fontWeight: 600, color: '#222', marginTop: '1px', whiteSpace: 'nowrap', lineHeight: '1.2' }}>
+                                Cut: <span style={{ fontWeight: 700, color: '#000' }}>{cutType}</span>
+                              </div>
+                            )}
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: fontMetrics.detailSize, marginTop: '1.5px' }}>
                               <span>[{Number(item.price || 0).toFixed(2)}] × {activeQty}</span>
                               <span style={{ fontWeight: 750 }}>{(item.price * activeQty).toFixed(2)}</span>
@@ -1981,11 +2037,19 @@ const Invoice = ({ bill, onClose, onSave, onSettle, whatsappBillSentIds, onWhats
                       {box.items.map((item, idx) => {
                         const activeQty = (item.quantity || 0) - (item.cancelledQuantity || 0);
                         if (activeQty <= 0) return null;
+                        const { displayName, cutType, weightInfo } = getItemCuttingDetails(item);
                         return (
                           <div key={idx} className="flex items-start mb-0.5 leading-tight" style={{ display: 'flex', width: '100%', alignItems: 'flex-start', fontSize: fontMetrics.detailSize, paddingLeft: '8px' }}>
                             <div className="flex-1 pr-1 break-words" style={{ flex: '1 1 0%', textAlign: 'left', wordBreak: 'break-word', paddingRight: '4px' }}>
-                              • {item.name || 'Unknown Item'}{item.weightKg ? ` (${item.weightKg}Kg @ ₹${item.pricePerKg}/kg)` : ''}
-                              {item.hsnCode ? <span style={{ fontSize: '9px', color: '#555' }}> (HSN: {item.hsnCode})</span> : ''}
+                              <div>
+                                • {displayName || 'Unknown Item'}{item.weightKg ? ` (${item.weightKg}Kg @ ₹${item.pricePerKg}/kg)` : (weightInfo ? ` (${weightInfo})` : '')}
+                                {item.hsnCode ? <span style={{ fontSize: '9px', color: '#555' }}> (HSN: {item.hsnCode})</span> : ''}
+                              </div>
+                              {cutType && (
+                                <div style={{ fontSize: fontMetrics.detailSize, fontWeight: 600, color: '#222', marginTop: '1px', whiteSpace: 'nowrap', lineHeight: '1.2' }}>
+                                  Cut: <span style={{ fontWeight: 700, color: '#000' }}>{cutType}</span>
+                                </div>
+                              )}
                             </div>
                             <div className="w-8 text-center" style={{ width: '32px', textAlign: 'center', flexShrink: 0 }}>{activeQty}</div>
                             <div className="w-14 text-right" style={{ width: '56px', textAlign: 'right', flexShrink: 0 }}>{(item.price || 0).toFixed(2)}</div>
@@ -2007,12 +2071,21 @@ const Invoice = ({ bill, onClose, onSave, onSettle, whatsappBillSentIds, onWhats
                       {invoiceIndividualItems.map((item, idx) => {
                         const activeQty = (item.quantity || 0) - (item.cancelledQuantity || 0);
                         if (activeQty <= 0) return null;
+                        const { displayName, cutType, weightInfo } = getItemCuttingDetails(item);
                         return (
                           <div key={idx} className="flex items-start mb-1 leading-tight" style={{ display: 'flex', width: '100%', alignItems: 'flex-start', fontSize: fontMetrics.itemSize, fontWeight: 'normal' }}>
                             <div className="flex-1 pr-1 break-words" style={{ flex: '1 1 0%', textAlign: 'left', wordBreak: 'break-word', paddingRight: '4px', fontSize: fontMetrics.itemSize }}>
-                              {item.name || 'Unknown Item'}
-                              {item.sellingUnit && <span style={{ fontSize: fontMetrics.detailSize }}> ({item.sellingUnit})</span>}
-                              {item.hsnCode ? <span style={{ fontSize: fontMetrics.detailSize }}>{t("(HSN:")}{item.hsnCode})</span> : ''}
+                              <div style={{ fontWeight: 750 }}>
+                                {displayName || 'Unknown Item'}
+                                {weightInfo && <span style={{ fontSize: fontMetrics.detailSize, fontWeight: 'normal' }}> ({weightInfo})</span>}
+                                {item.sellingUnit && !weightInfo && <span style={{ fontSize: fontMetrics.detailSize }}> ({item.sellingUnit})</span>}
+                                {item.hsnCode ? <span style={{ fontSize: fontMetrics.detailSize }}>{t("(HSN:")}{item.hsnCode})</span> : ''}
+                              </div>
+                              {cutType && (
+                                <div style={{ fontSize: fontMetrics.detailSize, fontWeight: 600, color: '#222', marginTop: '1px', whiteSpace: 'nowrap', lineHeight: '1.2' }}>
+                                  Cut: <span style={{ fontWeight: 700, color: '#000' }}>{cutType}</span>
+                                </div>
+                              )}
                             </div>
                             <div className="w-8 text-center" style={{ width: '32px', textAlign: 'center', flexShrink: 0, fontSize: fontMetrics.itemSize }}>{activeQty}</div>
                             <div className="w-14 text-right" style={{ width: '56px', textAlign: 'right', flexShrink: 0, fontSize: fontMetrics.itemSize }}>{(item.price || 0).toFixed(2)}</div>

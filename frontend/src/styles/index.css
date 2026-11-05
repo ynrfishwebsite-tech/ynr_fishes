@@ -57,8 +57,8 @@
     background-color: var(--color-background);
     color: var(--color-text-main);
     font-family: 'Outfit', Inter, system-ui, sans-serif !important;
-    -webkit-user-select: none;
-    user-select: none;
+    -webkit-user-select: auto;
+    user-select: auto;
     -webkit-tap-highlight-color: transparent;
   }
 

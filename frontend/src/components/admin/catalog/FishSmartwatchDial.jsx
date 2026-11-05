@@ -12,7 +12,8 @@ import {
   Tag,
   Layers,
   Scissors,
-  Award
+  Award,
+  X
 } from 'lucide-react';
 
 export default function FishSmartwatchDial({
@@ -99,8 +100,10 @@ export default function FishSmartwatchDial({
   const isDraggingDialRef = useRef(false);
   const lastAngleRef = useRef(0);
   const accumulatedAngleRef = useRef(0);
+  const containerRef = useRef(null);
   const dialRef = useRef(null);
   const cardRef = useRef(null);
+  const wheelLockRef = useRef(false);
   const touchStartXRef = useRef(null);
   const touchStartYRef = useRef(null);
   const touchStartTimeRef = useRef(0);
@@ -274,6 +277,53 @@ export default function FishSmartwatchDial({
       window.removeEventListener('touchend', onGlobalEnd);
     };
   }, []);
+
+  // Mouse wheel & trackpad scroll handler: rotates ring and changes fish
+  useEffect(() => {
+    const el = containerRef.current || dialRef.current;
+    if (!el) return;
+
+    const handleWheel = (e) => {
+      // Don't intercept when scrolling native inputs or dropdowns
+      if (e.target && (e.target.closest('input') || e.target.closest('select') || e.target.closest('textarea'))) {
+        return;
+      }
+
+      // Check dominant scroll direction (vertical or horizontal trackpad swipe)
+      const delta = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
+      if (Math.abs(delta) < 12) return;
+
+      // Prevent outer page bounce/scroll when rolling the dial
+      if (e.cancelable) e.preventDefault();
+
+      if (wheelLockRef.current) return;
+      wheelLockRef.current = true;
+
+      if (delta > 0) {
+        // Forward scroll: Advance to next fish and rotate ring clockwise
+        if (items && items.length > 0) {
+          setActiveIndex((prev) => (prev < items.length - 1 ? prev + 1 : 0));
+        }
+        setDialRingRotation((prev) => prev + ROTATION_STEP_DEG);
+      } else {
+        // Backward scroll: Go to previous fish and rotate ring counter-clockwise
+        if (items && items.length > 0) {
+          setActiveIndex((prev) => (prev > 0 ? prev - 1 : items.length - 1));
+        }
+        setDialRingRotation((prev) => prev - ROTATION_STEP_DEG);
+      }
+
+      // 150ms debounce for natural feel during continuous mouse/trackpad scrolling
+      setTimeout(() => {
+        wheelLockRef.current = false;
+      }, 150);
+    };
+
+    el.addEventListener('wheel', handleWheel, { passive: false });
+    return () => {
+      el.removeEventListener('wheel', handleWheel);
+    };
+  }, [items, setActiveIndex]);
 
   // Center Disc: Tap to Add & View Order, or Swipe horizontally to switch fish
   const handleCenterImageAddAndRedirect = (e) => {
@@ -550,7 +600,10 @@ export default function FishSmartwatchDial({
   const mediumMax = parseFloat(currentItem?.sizeGrades?.medium?.maxKg) || 4;
 
   return (
-    <div className="relative w-full h-full flex flex-col justify-around items-center select-none py-1 px-1 sm:px-2 overflow-x-hidden">
+    <div
+      ref={containerRef}
+      className="relative w-full h-full flex flex-col justify-around items-center select-none py-1 px-1 sm:px-2 overflow-x-hidden"
+    >
       {/* Popovers backdrop */}
       {(showGradeMenu || showCutMenu) && (
         <div
@@ -1088,63 +1141,96 @@ export default function FishSmartwatchDial({
       </div>
 
       {/* ========================================================
-          2. QUICK WEIGHT PRESETS ROW (Responsive for Phone & Tablet)
+          2. QUICK WEIGHT PRESETS & TARE ROWS (Fully Responsive Across All Screens)
           ======================================================== */}
       {!isBoxBasedMode ? (
-        <div className="w-full max-w-sm sm:max-w-md md:max-w-lg mx-auto flex items-center justify-center gap-1 sm:gap-1.5 md:gap-2 px-1 py-1 shrink-0 my-1">
-          {['1', '2', '5', '10'].map((kgVal) => {
-            const isSelected = parseFloat(weightKg) === parseFloat(kgVal);
-            return (
+        <div className="w-full max-w-sm sm:max-w-md md:max-w-lg mx-auto flex flex-col items-center justify-center gap-1 sm:gap-1.5 px-1 py-0.5 shrink-0 my-1">
+          {/* Row 1: Common Weight Presets & Fractions */}
+          <div className="flex items-center justify-center gap-1 sm:gap-1.5 flex-wrap">
+            {['1', '2', '5', '10'].map((kgVal) => {
+              const isSelected = parseFloat(weightKg) === parseFloat(kgVal);
+              return (
+                <button
+                  key={kgVal}
+                  type="button"
+                  onClick={() => setWeightKg(parseFloat(kgVal).toFixed(3))}
+                  className={`px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-lg text-xs sm:text-sm font-bold shrink-0 transition-all cursor-pointer ${
+                    isSelected
+                      ? 'bg-[#ea580c] text-white font-black shadow-xs scale-105'
+                      : 'bg-white/95 text-slate-700 hover:bg-amber-50 border border-slate-200/90 shadow-2xs'
+                  }`}
+                >
+                  {kgVal}k
+                </button>
+              );
+            })}
+
+            <div className="h-4 w-px bg-slate-300 mx-0.5 shrink-0" />
+
+            {[
+              { g: 0.25, label: '+¼k' },
+              { g: 0.5, label: '+½k' }
+            ].map((frac) => (
               <button
-                key={kgVal}
+                key={frac.label}
                 type="button"
-                onClick={() => setWeightKg(parseFloat(kgVal).toFixed(3))}
-                className={`px-2 sm:px-2.5 md:px-3.5 py-1 sm:py-1.5 md:py-2 rounded-lg md:rounded-xl text-xs sm:text-sm font-bold shrink-0 transition-all cursor-pointer ${
-                  isSelected
+                onClick={() => {
+                  const base = Math.floor(parseFloat(weightKg) || 0);
+                  setWeightKg((base + frac.g).toFixed(3));
+                }}
+                className="px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-lg text-xs sm:text-sm font-bold shrink-0 bg-white/95 text-slate-700 hover:bg-amber-50 border border-slate-200/90 shadow-2xs transition-all cursor-pointer"
+              >
+                {frac.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Row 2: Predefined Tare Presets & Custom Grams Input */}
+          <div className="flex items-center justify-center gap-1 sm:gap-1.5 flex-wrap">
+            <span className="text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-tight mr-0.5">Tare:</span>
+            {[0, 20, 50, 100, 200].map((tg) => (
+              <button
+                key={tg}
+                type="button"
+                onClick={() => setTareGrams(tg)}
+                className={`px-2 sm:px-2.5 py-0.5 sm:py-1 rounded-md sm:rounded-lg text-[11px] sm:text-xs font-bold shrink-0 cursor-pointer transition-colors ${
+                  tareGrams === tg
                     ? 'bg-[#ea580c] text-white font-black shadow-xs scale-105'
-                    : 'bg-white/95 text-slate-700 hover:bg-amber-50 border border-slate-200/90 shadow-2xs'
+                    : 'bg-white/95 text-slate-700 hover:bg-slate-100 border border-slate-200/90 shadow-2xs'
                 }`}
               >
-                {kgVal}k
+                {tg === 0 ? 'Zero' : `-${tg}g`}
               </button>
-            );
-          })}
+            ))}
 
-          <div className="h-4 sm:h-5 w-px bg-slate-300 mx-0.5 shrink-0" />
-
-          {[
-            { g: 0.25, label: '+¼k' },
-            { g: 0.5, label: '+½k' }
-          ].map((frac) => (
-            <button
-              key={frac.label}
-              type="button"
-              onClick={() => {
-                const base = Math.floor(parseFloat(weightKg) || 0);
-                setWeightKg((base + frac.g).toFixed(3));
-              }}
-              className="px-2 sm:px-2.5 md:px-3.5 py-1 sm:py-1.5 md:py-2 rounded-lg md:rounded-xl text-xs sm:text-sm font-bold shrink-0 bg-white/95 text-slate-700 hover:bg-amber-50 border border-slate-200/90 shadow-2xs transition-all cursor-pointer"
-            >
-              {frac.label}
-            </button>
-          ))}
-
-          <div className="h-4 sm:h-5 w-px bg-slate-300 mx-0.5 shrink-0" />
-
-          {[0, 50].map((tg) => (
-            <button
-              key={tg}
-              type="button"
-              onClick={() => setTareGrams(tg)}
-              className={`px-2 sm:px-2.5 md:px-3 py-1 sm:py-1.5 md:py-2 rounded-lg md:rounded-xl text-xs sm:text-sm font-bold shrink-0 cursor-pointer transition-colors ${
-                tareGrams === tg && tg !== 0
-                  ? 'bg-[#ea580c] text-white font-black shadow-xs scale-105'
-                  : 'bg-white/95 text-slate-700 hover:bg-slate-100 border border-slate-200/90 shadow-2xs'
-              }`}
-            >
-              {tg === 0 ? 'Tare 0' : '-50g'}
-            </button>
-          ))}
+            {/* Custom Tare Input (Grams only) */}
+            <div className="flex items-center gap-1 bg-white/95 px-1.5 py-0.5 rounded-md sm:rounded-lg border border-slate-200/90 shadow-2xs shrink-0">
+              <input
+                type="number"
+                min="0"
+                max="5000"
+                step="1"
+                value={tareGrams === 0 ? '' : tareGrams}
+                onChange={(e) => {
+                  const val = parseInt(e.target.value, 10);
+                  setTareGrams(isNaN(val) || val < 0 ? 0 : val);
+                }}
+                placeholder="Custom"
+                className="w-12 sm:w-14 text-center font-mono font-bold text-[11px] sm:text-xs text-slate-900 bg-amber-50/70 border border-amber-200 rounded px-1 py-0.5 focus:outline-none focus:ring-1 focus:ring-[#ea580c] [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+              />
+              <span className="text-[10px] sm:text-xs font-bold text-slate-600">g</span>
+              {tareGrams > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setTareGrams(0)}
+                  title="Reset Tare"
+                  className="text-slate-400 hover:text-rose-600 p-0.5 rounded cursor-pointer"
+                >
+                  <X size={11} />
+                </button>
+              )}
+            </div>
+          </div>
         </div>
       ) : (
         <>

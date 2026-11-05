@@ -106,6 +106,8 @@ const MenuManagement = ({ user, onNavigate, onGoBack }) => {
   const [customCategoryName, setCustomCategoryName] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [sortBy, setSortBy] = useState('latest');
+  const [selectedWaterType, setSelectedWaterType] = useState('all'); // 'all' | 'sea_water' | 'fresh_water'
+  const [selectedSpeciesType, setSelectedSpeciesType] = useState('all'); // 'all' | 'fish' | 'prawn' | 'crab'
   const [isBulkImportModalOpen, setIsBulkImportModalOpen] = useState(false);
   const [showMobileActions, setShowMobileActions] = useState(false);
   const [activeDescTooltip, setActiveDescTooltip] = useState(null);
@@ -115,7 +117,7 @@ const MenuManagement = ({ user, onNavigate, onGoBack }) => {
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchTerm]);
+  }, [searchTerm, selectedWaterType, selectedSpeciesType]);
   const itemsPerPage = 20;
 
   // Form State
@@ -124,9 +126,7 @@ const MenuManagement = ({ user, onNavigate, onGoBack }) => {
     scientificName: '',
     category: '',
     sellingUnit: 'Kg',
-    purchasePrice: '',
     price: '',
-    boxPrice: '',
     wholesalePricePerKg: '',
     exportPricePerKg: '',
     waterType: 'sea_water',
@@ -137,7 +137,6 @@ const MenuManagement = ({ user, onNavigate, onGoBack }) => {
       big: { minKg: 4, maxKg: 99, enabled: true }
     },
     openingStock: '',
-    boxPackingKg: 60,
     type: 'non-veg',
     description: '',
     image: '',
@@ -209,7 +208,6 @@ const MenuManagement = ({ user, onNavigate, onGoBack }) => {
         sellingUnit: item.sellingUnit || 'Kg',
         purchasePrice: item.purchasePrice !== undefined && item.purchasePrice !== null ? item.purchasePrice : '',
         price: item.price !== undefined && item.price !== null ? item.price : '',
-        boxPrice: item.boxPrice !== undefined && item.boxPrice !== null ? item.boxPrice : '',
         wholesalePricePerKg: item.wholesalePricePerKg !== undefined && item.wholesalePricePerKg !== null ? item.wholesalePricePerKg : '',
         exportPricePerKg: item.exportPricePerKg !== undefined && item.exportPricePerKg !== null ? item.exportPricePerKg : '',
         waterType: inferredWater,
@@ -232,7 +230,6 @@ const MenuManagement = ({ user, onNavigate, onGoBack }) => {
           }
         },
         openingStock: item.stock ?? item.openingStock ?? '',
-        boxPackingKg: item.boxPackingKg || 0,
         type: item.type || 'non-veg',
         description: item.description || '',
         image: item.image || '',
@@ -251,7 +248,6 @@ const MenuManagement = ({ user, onNavigate, onGoBack }) => {
         sellingUnit: 'Kg',
         purchasePrice: '',
         price: '',
-        boxPrice: '',
         wholesalePricePerKg: '',
         exportPricePerKg: '',
         waterType: 'sea_water',
@@ -262,7 +258,6 @@ const MenuManagement = ({ user, onNavigate, onGoBack }) => {
           big: { minKg: 4, maxKg: 99, enabled: true }
         },
         openingStock: '',
-        boxPackingKg: 60,
         type: 'non-veg',
         description: '',
         image: '',
@@ -308,12 +303,6 @@ const MenuManagement = ({ user, onNavigate, onGoBack }) => {
       errors.name = 'Item name is required';
     }
 
-    if (!formData.category || formData.category === '') {
-      errors.category = 'Category is required';
-    } else if (formData.category === 'CUSTOM_NEW_CATEGORY' && (!customCategoryName || customCategoryName.trim() === '')) {
-      errors.category = 'Custom category name is required';
-    }
-
     // Price is optional — only validate if provided
     if (formData.price !== '' && formData.price !== undefined && formData.price !== null) {
       const price = parseFloat(formData.price);
@@ -344,7 +333,7 @@ const MenuManagement = ({ user, onNavigate, onGoBack }) => {
     setIsSubmittingItem(true);
 
     try {
-      let finalCategory = formData.category;
+      let finalCategory = formData.category || (formData.waterType === 'fresh_water' ? 'Fresh Water' : 'Sea Water');
       
       if (showCustomCategoryInput && customCategoryName.trim()) {
         try {
@@ -373,7 +362,6 @@ const MenuManagement = ({ user, onNavigate, onGoBack }) => {
       const openingStock = formData.openingStock !== '' && formData.openingStock !== null && formData.openingStock !== undefined
         ? parseFloat(formData.openingStock)
         : 0;
-      const boxPackingKg = parseFloat(formData.boxPackingKg) || 60;
       const taxRate = parseFloat(formData.taxRate) || 0;
 
       // Sanitize recipe — convert '' ingredientId to null and drop fully empty rows
@@ -391,7 +379,6 @@ const MenuManagement = ({ user, onNavigate, onGoBack }) => {
         .filter(v => v.name?.trim())
         .map(v => ({ name: v.name.trim(), price: parseFloat(v.price) || 0 }));
 
-      const boxPrice = parseFloat(formData.boxPrice) || (price * boxPackingKg);
       const wholesalePricePerKg = parseFloat(formData.wholesalePricePerKg) || price;
       const exportPricePerKg = parseFloat(formData.exportPricePerKg) || wholesalePricePerKg;
 
@@ -402,8 +389,6 @@ const MenuManagement = ({ user, onNavigate, onGoBack }) => {
         purchasePrice,
         openingStock,
         stock: openingStock,
-        boxPackingKg,
-        boxPrice,
         wholesalePricePerKg,
         exportPricePerKg,
         waterType: formData.waterType || 'sea_water',
@@ -441,6 +426,12 @@ const MenuManagement = ({ user, onNavigate, onGoBack }) => {
         recipe: cleanRecipe,
         variants: cleanVariants
       };
+
+      // Ensure legacy box packing fields are not saved or sent
+      delete itemData.boxPackingKg;
+      delete itemData.boxPrice;
+      delete itemData.boxTareWeightKg;
+      delete itemData.boxNetFishKg;
 
       console.log('Submitting menu item:', itemData);
 
@@ -494,11 +485,11 @@ const MenuManagement = ({ user, onNavigate, onGoBack }) => {
         name: item.name,
         scientificName: item.scientificName || '',
         category: item.category?.name || item.category,
+        speciesType: item.speciesType || (item.name?.toLowerCase().includes('prawn') ? 'Prawn' : item.name?.toLowerCase().includes('crab') ? 'Crab' : 'Fish'),
         sellingUnit: item.sellingUnit || 'Kg',
-        purchasePrice: item.purchasePrice || 0,
         price: item.price,
-        openingStock: item.openingStock ?? item.stock ?? 0,
-        boxPackingKg: item.boxPackingKg || 60,
+        wholesalePricePerKg: item.wholesalePricePerKg || item.price,
+        exportPricePerKg: item.exportPricePerKg || item.wholesalePricePerKg || item.price,
         type: item.type === 'veg' ? 'Veg' : item.type === 'non-veg' ? 'Non-Veg' : 'Egg',
         description: item.description || '',
         isAvailable: item.isAvailable ? 'TRUE' : 'FALSE',
@@ -519,12 +510,12 @@ const MenuManagement = ({ user, onNavigate, onGoBack }) => {
     const csvData = items.map((item) => ({
       'Fish Name': item.name,
       'Scientific Name': item.scientificName || '',
-      Category: item.category?.name || item.category,
+      'Water Environment': item.category?.name || item.category,
+      'Seafood Species': item.speciesType || (item.name?.toLowerCase().includes('prawn') ? 'Prawn' : item.name?.toLowerCase().includes('crab') ? 'Crab' : 'Fish'),
       'Selling Unit': item.sellingUnit || 'Kg',
-      'Purchase Price (₹/Kg)': item.purchasePrice || 0,
-      'Selling Price (₹/Kg)': item.price,
-      'Opening Stock (Kg)': item.openingStock ?? item.stock ?? 0,
-      'Box Packing (Kg)': item.boxPackingKg || 60,
+      'Retail Price (₹/Kg)': item.price,
+      'Wholesale Price (₹/Kg)': item.wholesalePricePerKg || item.price,
+      'Export Price (₹/Kg)': item.exportPricePerKg || item.wholesalePricePerKg || item.price,
       Type: item.type === 'veg' ? 'Veg' : item.type === 'non-veg' ? 'Non-Veg' : 'Egg',
       Description: item.description || '',
       'Is Available': item.isAvailable ? 'Yes' : 'No',
@@ -551,19 +542,19 @@ const MenuManagement = ({ user, onNavigate, onGoBack }) => {
         scientificName: row.scientificName || '',
         category: row.category,
         sellingUnit: row.sellingUnit || 'Kg',
-        purchasePrice: parseFloat(row.purchasePrice) || 0,
         price: parseFloat(row.price) || 0,
+        wholesalePricePerKg: parseFloat(row.wholesalePricePerKg) || parseFloat(row.price) || 0,
+        exportPricePerKg: parseFloat(row.exportPricePerKg) || parseFloat(row.wholesalePricePerKg) || parseFloat(row.price) || 0,
+        waterType: row.waterType || (String(row.category || '').toLowerCase().includes('sea') ? 'sea_water' : 'fresh_water'),
+        speciesType: row.speciesType || 'fish',
         openingStock: parseFloat(row.openingStock) || 0,
         stock: parseFloat(row.openingStock) || 0,
-        boxPackingKg: parseFloat(row.boxPackingKg) || 60,
         type: row.type || 'non-veg',
         description: row.description || '',
         isAvailable: row.isAvailable !== false,
         taxRate: row.taxRate || 0,
         image: row.image || '',
-        variants: Array.isArray(row.variants) ? row.variants : [],
-        boxPrice: parseFloat(row.boxPrice) || ((parseFloat(row.price) || 0) * (parseFloat(row.boxPackingKg) || 60)),
-        wholesalePricePerKg: parseFloat(row.wholesalePricePerKg) || parseFloat(row.price) || 0
+        variants: Array.isArray(row.variants) ? row.variants : []
       }));
 
       const res = await bulkAddMenuItems(itemsPayload);
@@ -764,6 +755,19 @@ const MenuManagement = ({ user, onNavigate, onGoBack }) => {
   };
 
   const filteredItems = items.filter((item) => {
+    // Water Type filter
+    if (selectedWaterType !== 'all') {
+      const itemWater = (item.waterType || '').toLowerCase();
+      if (selectedWaterType === 'sea_water' && itemWater !== 'sea_water') return false;
+      if (selectedWaterType === 'fresh_water' && itemWater !== 'fresh_water') return false;
+    }
+
+    // Species filter
+    if (selectedSpeciesType !== 'all') {
+      const itemSpecies = (item.speciesType || '').toLowerCase();
+      if (itemSpecies !== selectedSpeciesType) return false;
+    }
+
     const term = searchTerm.toLowerCase().trim();
     if (!term) return true;
     return (
@@ -795,20 +799,23 @@ const MenuManagement = ({ user, onNavigate, onGoBack }) => {
   (category.description || '').toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  // ─── Per-filter counts for mobile filter pill badges ─────────────────────────────
+  // ─── Filter Counts for Catalog Filter Pills ─────────────────────────────
   const filterCounts = React.useMemo(() => {
-    const term = searchTerm.toLowerCase();
-    const base = items.filter(item =>
-      item.name.toLowerCase().includes(term) ||
-      (item.category?.name || item.category || '').toLowerCase().includes(term)
-    );
-    const getType = item => (item.type || item.foodType || (item.isVeg === true ? 'veg' : item.isVeg === false ? 'non-veg' : '')).toLowerCase();
+    const seaWaterCount = items.filter(i => (i.waterType || '').toLowerCase() === 'sea_water').length;
+    const freshWaterCount = items.filter(i => (i.waterType || '').toLowerCase() === 'fresh_water').length;
+    const fishCount = items.filter(i => (i.speciesType || 'fish').toLowerCase() === 'fish').length;
+    const prawnCount = items.filter(i => (i.speciesType || '').toLowerCase() === 'prawn').length;
+    const crabCount = items.filter(i => (i.speciesType || '').toLowerCase() === 'crab').length;
+
     return {
-      all: base.length,
-      hasDesc: base.filter(i => i.description && i.description.trim() !== '').length,
-      noDesc: base.filter(i => !i.description || i.description.trim() === '').length
+      all: items.length,
+      seaWater: seaWaterCount,
+      freshWater: freshWaterCount,
+      fish: fishCount,
+      prawn: prawnCount,
+      crab: crabCount
     };
-  }, [items, searchTerm]);
+  }, [items]);
 
   // Pagination logic
   const itemsTotalPages = Math.ceil(filteredItems.length / itemsPerPage);
@@ -1076,18 +1083,120 @@ const MenuManagement = ({ user, onNavigate, onGoBack }) => {
 
         {/* Row 2: Filter Pills — only for items tab, shown on all screen sizes */}
         {activeTab === 'items' && (
-          <div className="flex items-center gap-1.5 flex-wrap">
-            <span className="text-[10px] md:text-xs font-bold text-text-muted uppercase tracking-wider shrink-0">{t("Filter")}:</span>
+          <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar flex-nowrap py-1">
+            <span className="text-[10px] md:text-xs font-bold text-text-muted uppercase tracking-wider shrink-0 hidden sm:inline">{t("Filter")}:</span>
             
             {/* All */}
             <button
               type="button"
-              onClick={() => { setCurrentPage(1); }}
-              className="px-3 py-1 md:px-3.5 md:py-1.5 rounded-full text-[11px] md:text-xs font-bold transition-all border cursor-pointer flex items-center gap-1.5 bg-primary text-white border-primary shadow-xs"
+              onClick={() => { setSelectedWaterType('all'); setSelectedSpeciesType('all'); setCurrentPage(1); }}
+              className={`px-3 py-1 md:px-3.5 md:py-1.5 rounded-full text-[11px] md:text-xs font-bold transition-all border cursor-pointer flex items-center gap-1.5 shrink-0 whitespace-nowrap ${
+                selectedWaterType === 'all' && selectedSpeciesType === 'all'
+                  ? 'bg-primary text-white border-primary shadow-xs'
+                  : 'bg-surface text-text-main border-border hover:bg-surface-hover'
+              }`}
             >
               {t("All")}
-              <span className="text-[9px] font-extrabold px-1.5 py-0.5 rounded-full leading-none bg-white/25 text-white">
+              <span className={`text-[9px] font-extrabold px-1.5 py-0.5 rounded-full leading-none ${
+                selectedWaterType === 'all' && selectedSpeciesType === 'all' ? 'bg-white/25 text-white' : 'bg-surface-hover text-text-muted'
+              }`}>
                 {items.length}
+              </span>
+            </button>
+
+            {/* Separator */}
+            <div className="h-4 w-px bg-border mx-0.5 shrink-0" />
+
+            {/* Sea Water */}
+            <button
+              type="button"
+              onClick={() => { setSelectedWaterType(prev => prev === 'sea_water' ? 'all' : 'sea_water'); setCurrentPage(1); }}
+              className={`px-2.5 py-1 md:px-3 md:py-1.5 rounded-full text-[11px] md:text-xs font-bold transition-all border cursor-pointer flex items-center gap-1.5 shrink-0 whitespace-nowrap ${
+                selectedWaterType === 'sea_water'
+                  ? 'bg-sky-600 text-white border-sky-600 shadow-xs'
+                  : 'bg-sky-50 dark:bg-sky-950/40 text-sky-800 dark:text-sky-300 border-sky-200 dark:border-sky-800 hover:bg-sky-100'
+              }`}
+            >
+              {t("Sea Water")}
+              <span className={`text-[9px] font-extrabold px-1.5 py-0.5 rounded-full leading-none ${
+                selectedWaterType === 'sea_water' ? 'bg-white/25 text-white' : 'bg-sky-200/70 dark:bg-sky-900 text-sky-900 dark:text-sky-200'
+              }`}>
+                {filterCounts.seaWater}
+              </span>
+            </button>
+
+            {/* Fresh Water */}
+            <button
+              type="button"
+              onClick={() => { setSelectedWaterType(prev => prev === 'fresh_water' ? 'all' : 'fresh_water'); setCurrentPage(1); }}
+              className={`px-2.5 py-1 md:px-3 md:py-1.5 rounded-full text-[11px] md:text-xs font-bold transition-all border cursor-pointer flex items-center gap-1.5 shrink-0 whitespace-nowrap ${
+                selectedWaterType === 'fresh_water'
+                  ? 'bg-teal-600 text-white border-teal-600 shadow-xs'
+                  : 'bg-teal-50 dark:bg-teal-950/40 text-teal-800 dark:text-teal-300 border-teal-200 dark:border-teal-800 hover:bg-teal-100'
+              }`}
+            >
+              {t("Fresh Water")}
+              <span className={`text-[9px] font-extrabold px-1.5 py-0.5 rounded-full leading-none ${
+                selectedWaterType === 'fresh_water' ? 'bg-white/25 text-white' : 'bg-teal-200/70 dark:bg-teal-900 text-teal-900 dark:text-teal-200'
+              }`}>
+                {filterCounts.freshWater}
+              </span>
+            </button>
+
+            {/* Separator */}
+            <div className="h-4 w-px bg-border mx-0.5 shrink-0" />
+
+            {/* Fish */}
+            <button
+              type="button"
+              onClick={() => { setSelectedSpeciesType(prev => prev === 'fish' ? 'all' : 'fish'); setCurrentPage(1); }}
+              className={`px-2.5 py-1 md:px-3 md:py-1.5 rounded-full text-[11px] md:text-xs font-bold transition-all border cursor-pointer flex items-center gap-1.5 shrink-0 whitespace-nowrap ${
+                selectedSpeciesType === 'fish'
+                  ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs'
+                  : 'bg-indigo-50 dark:bg-indigo-950/40 text-indigo-800 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800 hover:bg-indigo-100'
+              }`}
+            >
+              {t("Fish")}
+              <span className={`text-[9px] font-extrabold px-1.5 py-0.5 rounded-full leading-none ${
+                selectedSpeciesType === 'fish' ? 'bg-white/25 text-white' : 'bg-indigo-200/70 dark:bg-indigo-900 text-indigo-900 dark:text-indigo-200'
+              }`}>
+                {filterCounts.fish}
+              </span>
+            </button>
+
+            {/* Prawn */}
+            <button
+              type="button"
+              onClick={() => { setSelectedSpeciesType(prev => prev === 'prawn' ? 'all' : 'prawn'); setCurrentPage(1); }}
+              className={`px-2.5 py-1 md:px-3 md:py-1.5 rounded-full text-[11px] md:text-xs font-bold transition-all border cursor-pointer flex items-center gap-1.5 shrink-0 whitespace-nowrap ${
+                selectedSpeciesType === 'prawn'
+                  ? 'bg-rose-600 text-white border-rose-600 shadow-xs'
+                  : 'bg-rose-50 dark:bg-rose-950/40 text-rose-800 dark:text-rose-300 border-rose-200 dark:border-rose-800 hover:bg-rose-100'
+              }`}
+            >
+              {t("Prawn")}
+              <span className={`text-[9px] font-extrabold px-1.5 py-0.5 rounded-full leading-none ${
+                selectedSpeciesType === 'prawn' ? 'bg-white/25 text-white' : 'bg-rose-200/70 dark:bg-rose-900 text-rose-900 dark:text-rose-200'
+              }`}>
+                {filterCounts.prawn}
+              </span>
+            </button>
+
+            {/* Crab */}
+            <button
+              type="button"
+              onClick={() => { setSelectedSpeciesType(prev => prev === 'crab' ? 'all' : 'crab'); setCurrentPage(1); }}
+              className={`px-2.5 py-1 md:px-3 md:py-1.5 rounded-full text-[11px] md:text-xs font-bold transition-all border cursor-pointer flex items-center gap-1.5 shrink-0 whitespace-nowrap ${
+                selectedSpeciesType === 'crab'
+                  ? 'bg-amber-600 text-white border-amber-600 shadow-xs'
+                  : 'bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 border-amber-200 dark:border-amber-800 hover:bg-amber-100'
+              }`}
+            >
+              {t("Crab")}
+              <span className={`text-[9px] font-extrabold px-1.5 py-0.5 rounded-full leading-none ${
+                selectedSpeciesType === 'crab' ? 'bg-white/25 text-white' : 'bg-amber-200/70 dark:bg-amber-900 text-amber-900 dark:text-amber-200'
+              }`}>
+                {filterCounts.crab}
               </span>
             </button>
 
@@ -1101,18 +1210,21 @@ const MenuManagement = ({ user, onNavigate, onGoBack }) => {
       {/* Table Container */}
       <div className="bg-surface border border-border rounded-xl overflow-hidden flex-1 flex flex-col shadow-sm">
         <div className="overflow-x-auto overflow-y-auto flex-1 custom-scrollbar">
-          <div className="min-w-[620px]">
+          <div className="min-w-[1050px]">
             {activeTab === 'items' ? (
               <table className="w-full text-left border-collapse">
-                <thead className="bg-background sticky top-0 z-10">
+                <thead className="bg-[#FAF6F0] dark:bg-slate-900 sticky top-0 z-10 border-b-2 border-border shadow-xs">
                   <tr>
-                    <th className="px-3 md:px-4 py-2 md:py-3 text-[11px] md:text-[13px] font-bold text-text-muted uppercase tracking-wider border-b border-border">{t("Fish Name")}</th>
-                    <th className="px-3 md:px-4 py-2 md:py-3 text-[11px] md:text-[13px] font-bold text-text-muted uppercase tracking-wider border-b border-border">{t("Category")}</th>
-                    <th className="px-3 md:px-4 py-2 md:py-3 text-[11px] md:text-[13px] font-bold text-text-muted uppercase tracking-wider border-b border-border">{t("Unit")}</th>
-                    <th className="px-3 md:px-4 py-2 md:py-3 text-[11px] md:text-[13px] font-bold text-text-muted uppercase tracking-wider border-b border-border">{t("Purchase (₹)")}</th>
-                    <th className="px-3 md:px-4 py-2 md:py-3 text-[11px] md:text-[13px] font-bold text-text-muted uppercase tracking-wider border-b border-border">{t("Selling (₹)")}</th>
-                    <th className="px-3 md:px-4 py-2 md:py-3 text-[11px] md:text-[13px] font-bold text-text-muted uppercase tracking-wider border-b border-border">{t("Stock")}</th>
-                    <th className="px-3 md:px-4 py-2 md:py-3 text-[11px] md:text-[13px] font-bold text-text-muted uppercase tracking-wider border-b border-border text-right">{t("Actions")}</th>
+                    <th className="px-3 md:px-4 py-2.5 text-xs font-black text-slate-800 dark:text-slate-200 uppercase tracking-wider">{t("Fish Name")}</th>
+                    <th className="px-3 md:px-4 py-2.5 text-xs font-black text-slate-800 dark:text-slate-200 uppercase tracking-wider">{t("Water Type")}</th>
+                    <th className="px-3 md:px-4 py-2.5 text-xs font-black text-slate-800 dark:text-slate-200 uppercase tracking-wider">{t("Seafood Species")}</th>
+                    <th className="px-3 md:px-4 py-2.5 text-xs font-black text-slate-800 dark:text-slate-200 uppercase tracking-wider">{t("Unit")}</th>
+                    <th className="px-3 md:px-4 py-2.5 text-xs font-black text-emerald-800 dark:text-emerald-400 uppercase tracking-wider bg-emerald-50/50 dark:bg-emerald-950/20">{t("Retail (₹/Kg)")}</th>
+                    <th className="px-3 md:px-4 py-2.5 text-xs font-black text-amber-800 dark:text-amber-400 uppercase tracking-wider bg-amber-50/50 dark:bg-amber-950/20">{t("Wholesale (₹/Kg)")}</th>
+                    <th className="px-3 md:px-4 py-2.5 text-xs font-black text-blue-800 dark:text-blue-400 uppercase tracking-wider bg-blue-50/50 dark:bg-blue-950/20">{t("Export (₹/Kg)")}</th>
+                    <th className="px-3 md:px-4 py-2.5 text-xs font-black text-slate-800 dark:text-slate-200 uppercase tracking-wider">{t("Size Grades & Availability")}</th>
+                    <th className="px-3 md:px-4 py-2.5 text-xs font-black text-slate-800 dark:text-slate-200 uppercase tracking-wider">{t("Stock")}</th>
+                    <th className="px-3 md:px-4 py-2.5 text-xs font-black text-slate-800 dark:text-slate-200 uppercase tracking-wider text-right">{t("Actions")}</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border text-xs">
@@ -1127,15 +1239,18 @@ const MenuManagement = ({ user, onNavigate, onGoBack }) => {
                         </td>
                         <td className="px-3 py-2.5"><div className="w-16 h-3.5 bg-surface-hover rounded"></div></td>
                         <td className="px-3 py-2.5"><div className="w-16 h-3.5 bg-surface-hover rounded"></div></td>
-                        <td className="px-3 py-2.5"><div className="w-12 h-3.5 bg-surface-hover rounded-full"></div></td>
-                        <td className="px-3 py-2.5"><div className="w-10 h-3.5 bg-surface-hover rounded"></div></td>
+                        <td className="px-3 py-2.5"><div className="w-10 h-3.5 bg-surface-hover rounded-full"></div></td>
+                        <td className="px-3 py-2.5"><div className="w-14 h-3.5 bg-surface-hover rounded"></div></td>
+                        <td className="px-3 py-2.5"><div className="w-14 h-3.5 bg-surface-hover rounded"></div></td>
+                        <td className="px-3 py-2.5"><div className="w-14 h-3.5 bg-surface-hover rounded"></div></td>
+                        <td className="px-3 py-2.5"><div className="w-20 h-3.5 bg-surface-hover rounded"></div></td>
                         <td className="px-3 py-2.5"><div className="w-12 h-3.5 bg-surface-hover rounded"></div></td>
                         <td className="px-3 py-2.5 text-right"><div className="w-16 h-3.5 bg-surface-hover rounded ml-auto"></div></td>
                       </tr>
                     ))
                   ) : paginatedItems.length === 0 ? (
                     <tr>
-                      <td colSpan="7" className="p-10 text-center text-text-muted">
+                      <td colSpan="10" className="p-10 text-center text-text-muted">
                         <div className="flex flex-col items-center justify-center gap-2">
                           <Loader2 size={24} className={loading ? "animate-spin text-primary" : "hidden"} />
                           <span className="font-medium text-xs">
@@ -1179,29 +1294,108 @@ const MenuManagement = ({ user, onNavigate, onGoBack }) => {
                             </div>
                           </div>
                         </td>
-                        <td className="px-3 md:px-4 py-2 md:py-3 text-text-muted whitespace-nowrap">
-                          <span className="px-2 py-0.5 md:px-2.5 md:py-1 bg-background rounded-md border border-border text-[11px] md:text-xs">
-                            {item.category?.name || item.category || 'General'}
-                          </span>
+                        {/* Water Type */}
+                        {/* Water Type */}
+                        <td className="px-3 md:px-4 py-2.5 whitespace-nowrap">
+                          {item.waterType === 'sea_water' || (!item.waterType && (item.category?.name || item.category || '').toLowerCase().includes('sea')) ? (
+                            <span className="inline-block px-2.5 py-0.5 rounded-md text-xs font-black bg-sky-100 text-sky-800 border border-sky-300 dark:bg-sky-950 dark:text-sky-300 dark:border-sky-700 shadow-2xs">
+                              {t("Sea Water")}
+                            </span>
+                          ) : (
+                            <span className="inline-block px-2.5 py-0.5 rounded-md text-xs font-black bg-emerald-100 text-emerald-800 border border-emerald-300 dark:bg-emerald-950 dark:text-emerald-300 dark:border-emerald-700 shadow-2xs">
+                              {t("Fresh Water")}
+                            </span>
+                          )}
                         </td>
-                        <td className="px-3 md:px-4 py-2 md:py-3 whitespace-nowrap">
-                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-primary/10 text-primary border border-primary/20">
+                        {/* Seafood Species */}
+                        <td className="px-3 md:px-4 py-2.5 whitespace-nowrap">
+                          {(() => {
+                            const sp = (item.speciesType || '').toLowerCase();
+                            const nameCat = `${item.name || ''} ${item.category?.name || item.category || ''}`.toLowerCase();
+                            if (sp === 'prawn' || nameCat.includes('prawn') || nameCat.includes('రొయ్యలు')) {
+                              return (
+                                <span className="inline-block px-2.5 py-0.5 rounded-md text-xs font-black bg-amber-100 text-amber-900 border border-amber-300 dark:bg-amber-950 dark:text-amber-300 dark:border-amber-700 shadow-2xs">
+                                  {t("Prawn")}
+                                </span>
+                              );
+                            }
+                            if (sp === 'crab' || nameCat.includes('crab') || nameCat.includes('పీతలు')) {
+                              return (
+                                <span className="inline-block px-2.5 py-0.5 rounded-md text-xs font-black bg-rose-100 text-rose-900 border border-rose-300 dark:bg-rose-950 dark:text-rose-300 dark:border-rose-700 shadow-2xs">
+                                  {t("Crab")}
+                                </span>
+                              );
+                            }
+                            return (
+                              <span className="inline-block px-2.5 py-0.5 rounded-md text-xs font-black bg-blue-100 text-blue-900 border border-blue-300 dark:bg-blue-950 dark:text-blue-300 dark:border-blue-700 shadow-2xs">
+                                {t("Fish")}
+                              </span>
+                            );
+                          })()}
+                        </td>
+                        {/* Unit */}
+                        <td className="px-3 md:px-4 py-2.5 whitespace-nowrap">
+                          <span className="px-2 py-0.5 rounded-md text-xs font-bold bg-slate-100 text-slate-800 border border-slate-300 dark:bg-slate-800 dark:text-slate-200 dark:border-slate-700">
                             {item.sellingUnit || 'Kg'}
                           </span>
                         </td>
-                        <td className="px-3 md:px-4 py-2 md:py-3 font-semibold text-text-muted whitespace-nowrap text-xs">
-                          {item.purchasePrice !== undefined && item.purchasePrice !== null && item.purchasePrice !== '' ? `₹${Number(item.purchasePrice).toFixed(2)}` : '-'}
-                        </td>
-                        <td className="px-3 md:px-4 py-2 md:py-3 font-bold text-text-main whitespace-nowrap text-xs">
+                        {/* Retail Price (₹/Kg) */}
+                        <td className="px-3 md:px-4 py-2.5 font-black text-emerald-800 dark:text-emerald-400 whitespace-nowrap text-sm bg-emerald-50/20 dark:bg-emerald-950/10">
                           ₹{Number(item.price || 0).toFixed(2)}
                         </td>
-                        <td className="px-3 md:px-4 py-2 md:py-3 whitespace-nowrap">
-                          <span className={`text-xs font-bold ${Number(item.stock ?? item.openingStock ?? 0) <= 10 ? 'text-danger' : 'text-emerald-400'}`}>
+                        {/* Wholesale Price (₹/Kg) */}
+                        <td className="px-3 md:px-4 py-2.5 font-black text-amber-800 dark:text-amber-400 whitespace-nowrap text-sm bg-amber-50/20 dark:bg-amber-950/10">
+                          ₹{Number(item.wholesalePricePerKg || item.price || 0).toFixed(2)}
+                        </td>
+                        {/* Export Price (₹/Kg) */}
+                        <td className="px-3 md:px-4 py-2.5 font-black text-blue-800 dark:text-blue-400 whitespace-nowrap text-sm bg-blue-50/20 dark:bg-blue-950/10">
+                          ₹{Number(item.exportPricePerKg || item.wholesalePricePerKg || item.price || 0).toFixed(2)}
+                        </td>
+                        {/* Size Grades & Availability */}
+                        <td className="px-3 md:px-4 py-2.5 whitespace-nowrap">
+                          <div className="flex items-center gap-1.5">
+                            {/* Small */}
+                            <span 
+                              title={`Small: ${item.sizeGrades?.small?.minKg ?? 0}-${item.sizeGrades?.small?.maxKg ?? 1} Kg (${item.sizeGrades?.small?.enabled !== false ? 'Available' : 'Unavailable'})`}
+                              className={`px-2 py-0.5 rounded text-[11px] font-black border transition-colors ${
+                                item.sizeGrades?.small?.enabled !== false 
+                                  ? 'bg-emerald-100 text-emerald-900 border-emerald-300 dark:bg-emerald-950 dark:text-emerald-300 dark:border-emerald-700' 
+                                  : 'bg-slate-100 text-slate-400 border-slate-200 line-through'
+                              }`}
+                            >
+                              S
+                            </span>
+
+                            {/* Medium */}
+                            <span 
+                              title={`Medium: ${item.sizeGrades?.medium?.minKg ?? 1}-${item.sizeGrades?.medium?.maxKg ?? 4} Kg (${item.sizeGrades?.medium?.enabled !== false ? 'Available' : 'Unavailable'})`}
+                              className={`px-2 py-0.5 rounded text-[11px] font-black border transition-colors ${
+                                item.sizeGrades?.medium?.enabled !== false 
+                                  ? 'bg-amber-100 text-amber-900 border-amber-300 dark:bg-amber-950 dark:text-amber-300 dark:border-amber-700' 
+                                  : 'bg-slate-100 text-slate-400 border-slate-200 line-through'
+                              }`}
+                            >
+                              M
+                            </span>
+
+                            {/* Big */}
+                            <span 
+                              title={`Big: ${item.sizeGrades?.big?.minKg ?? 4}+ Kg (${item.sizeGrades?.big?.enabled !== false ? 'Available' : 'Unavailable'})`}
+                              className={`px-2 py-0.5 rounded text-[11px] font-black border transition-colors ${
+                                item.sizeGrades?.big?.enabled !== false 
+                                  ? 'bg-blue-100 text-blue-900 border-blue-300 dark:bg-blue-950 dark:text-blue-300 dark:border-blue-700' 
+                                  : 'bg-slate-100 text-slate-400 border-slate-200 line-through'
+                              }`}
+                            >
+                              B
+                            </span>
+                          </div>
+                        </td>
+                        {/* Stock */}
+                        <td className="px-3 md:px-4 py-2.5 whitespace-nowrap">
+                          <span className={`text-xs font-black ${Number(item.stock ?? item.openingStock ?? 0) <= 10 ? 'text-rose-600 dark:text-rose-400' : 'text-emerald-700 dark:text-emerald-400'}`}>
                             {item.stock ?? item.openingStock ?? 0} {item.sellingUnit || 'Kg'}
                           </span>
-                          {item.boxPackingKg && item.boxPackingKg > 0 && item.sellingUnit === 'Box' && (
-                            <span className="text-[10px] text-text-muted block font-medium">({item.boxPackingKg} Kg/box)</span>
-                          )}
                         </td>
                         <td className="px-3 md:px-4 py-2 md:py-3 text-right whitespace-nowrap">
                           <div className="flex justify-end gap-1.5 items-center">
@@ -1445,31 +1639,37 @@ const MenuManagement = ({ user, onNavigate, onGoBack }) => {
               </div>
 
               {/* Information Grid: Compact Stat Pills */}
-              <div className="grid grid-cols-1 gap-2">
-                {/* Category */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                {/* Water Environment */}
                 <div className="bg-background p-2 rounded-xl border border-border flex flex-col justify-center shadow-2xs">
-                  <span className="text-[10px] text-text-muted font-medium flex items-center gap-1">
-                    <Tag size={10} className="text-primary shrink-0" /> {t("Category")}
-                  </span>
-                  <span className="text-xs font-bold text-text-main truncate mt-0.5">
-                    {formData.category || currentItem?.category?.name || currentItem?.category || '-'}
+                  <span className="text-[10px] text-text-muted font-bold">Water Type</span>
+                  <span className="text-xs font-black text-sky-800 dark:text-sky-300 mt-0.5">
+                    {currentItem?.waterType === 'sea_water' ? 'Sea Water' : 'Fresh Water'}
                   </span>
                 </div>
 
-                {/* Fish Wholesale Box Info */}
-                <div className="bg-background p-2 rounded-xl border border-sky-500/20 grid grid-cols-2 gap-2 shadow-2xs">
-                   <div className="flex flex-col justify-center">
-                     <span className="text-[10px] text-text-muted font-medium">Box Capacity</span>
-                     <span className="text-xs font-bold text-sky-400 mt-0.5">
-                       {currentItem?.boxPackingKg || formData.boxPackingKg || 60} Kg / Box
-                     </span>
-                   </div>
-                   <div className="flex flex-col justify-center border-l border-border pl-2">
-                     <span className="text-[10px] text-text-muted font-medium">Box Rate</span>
-                     <span className="text-xs font-bold text-amber-400 mt-0.5">
-                       ₹{(currentItem?.boxPrice || ((currentItem?.price || formData.price || 0) * (currentItem?.boxPackingKg || 60))).toFixed(0)}
-                     </span>
-                   </div>
+                {/* Seafood Species */}
+                <div className="bg-background p-2 rounded-xl border border-border flex flex-col justify-center shadow-2xs">
+                  <span className="text-[10px] text-text-muted font-bold">Species</span>
+                  <span className="text-xs font-black text-amber-800 dark:text-amber-300 capitalize mt-0.5">
+                    {currentItem?.speciesType || 'Fish'}
+                  </span>
+                </div>
+
+                {/* Wholesale Rate */}
+                <div className="bg-background p-2 rounded-xl border border-amber-300/40 flex flex-col justify-center shadow-2xs">
+                  <span className="text-[10px] text-text-muted font-bold">Wholesale Rate</span>
+                  <span className="text-xs font-black text-amber-800 dark:text-amber-400 mt-0.5">
+                    ₹{parseFloat(currentItem?.wholesalePricePerKg || currentItem?.price || 0).toFixed(2)} / Kg
+                  </span>
+                </div>
+
+                {/* Export Rate */}
+                <div className="bg-background p-2 rounded-xl border border-blue-300/40 flex flex-col justify-center shadow-2xs">
+                  <span className="text-[10px] text-text-muted font-bold">Export Rate</span>
+                  <span className="text-xs font-black text-blue-800 dark:text-blue-400 mt-0.5">
+                    ₹{parseFloat(currentItem?.exportPricePerKg || currentItem?.wholesalePricePerKg || currentItem?.price || 0).toFixed(2)} / Kg
+                  </span>
                 </div>
               </div>
 
@@ -1590,25 +1790,26 @@ const MenuManagement = ({ user, onNavigate, onGoBack }) => {
 
       {/* Edit / Add Item Form Modal */}
       {isModalOpen && !isViewMode && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-xs flex items-center justify-center z-[99999] p-4 animate-in fade-in duration-150">
-          <div className="bg-surface w-full max-w-3xl rounded-2xl shadow-2xl border border-border flex flex-col max-h-[92vh] animate-in zoom-in-95 duration-150">
-            <div className="flex justify-between items-center p-5 border-b border-border">
-              <h2 className="text-lg sm:text-xl font-bold text-text-main">
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-[99999] p-2 sm:p-4 animate-in fade-in duration-150">
+          <div className="bg-surface w-full max-w-2xl rounded-2xl shadow-2xl border border-border flex flex-col max-h-[94vh] animate-in zoom-in-95 duration-150">
+            {/* Modal Header */}
+            <div className="flex justify-between items-center px-4 py-2.5 border-b border-border bg-[#FAF6F0] dark:bg-slate-900 rounded-t-2xl shrink-0">
+              <h2 className="text-sm sm:text-base font-black text-slate-900 dark:text-white">
                 {currentItem ? t('Edit Item') : t('Add New Item')}
               </h2>
               <button
                 onClick={() => setIsModalOpen(false)}
-                className="text-text-muted hover:text-text-main transition-colors cursor-pointer"
+                className="text-text-muted hover:text-text-main transition-colors cursor-pointer p-1 rounded-lg"
               >
-                <X size={20} />
+                <X size={18} />
               </button>
             </div>
 
-            <form onSubmit={handleSubmit} className="p-5 space-y-3.5 overflow-y-auto">
-              {/* Fish Name & Scientific Name */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div className="space-y-1">
-                  <label className="text-xs sm:text-sm font-medium text-text-muted">{t("Fish Name")} *</label>
+            <form onSubmit={handleSubmit} className="p-3 sm:p-4 space-y-2.5 overflow-y-auto custom-scrollbar flex-1">
+              {/* 1. Fish Name * & 2. Scientific Name */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <div className="space-y-0.5">
+                  <label className="text-[11px] sm:text-xs font-black text-slate-800 dark:text-slate-200">{t("Fish Name")} *</label>
                   <input
                     type="text"
                     required
@@ -1617,120 +1818,129 @@ const MenuManagement = ({ user, onNavigate, onGoBack }) => {
                       setFormData({ ...formData, name: e.target.value });
                       if (validationErrors.name) setValidationErrors({ ...validationErrors, name: null });
                     }}
-                    className={`w-full bg-background border rounded-xl px-3.5 py-2 text-xs sm:text-sm text-text-main focus:outline-none focus:border-primary ${validationErrors.name ? 'border-danger' : 'border-border'}`}
+                    className={`w-full bg-background border rounded-lg px-2.5 py-1.5 text-xs text-text-main font-bold focus:outline-none focus:border-primary ${validationErrors.name ? 'border-danger' : 'border-border'}`}
                     placeholder={t("e.g. Silver Pomfret, Vanjaram")}
                   />
                   {validationErrors.name && (
-                    <p className="text-xs text-danger">{validationErrors.name}</p>
+                    <p className="text-[10px] text-danger">{validationErrors.name}</p>
                   )}
                 </div>
 
-                <div className="space-y-1">
-                  <label className="text-xs sm:text-sm font-medium text-text-muted">{t("Scientific Name")}</label>
+                <div className="space-y-0.5">
+                  <label className="text-[11px] sm:text-xs font-semibold text-text-muted">{t("Scientific Name")}</label>
                   <input
                     type="text"
                     value={formData.scientificName}
                     onChange={(e) => setFormData({ ...formData, scientificName: e.target.value })}
-                    className="w-full bg-background border border-border rounded-xl px-3.5 py-2 text-xs sm:text-sm text-text-main italic focus:outline-none focus:border-primary"
+                    className="w-full bg-background border border-border rounded-lg px-2.5 py-1.5 text-xs text-text-main italic focus:outline-none focus:border-primary"
                     placeholder={t("e.g. Pampus argenteus")}
                   />
                 </div>
               </div>
 
-              {/* Category & Selling Unit */}
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1">
-                  <label className="text-xs sm:text-sm font-medium text-text-muted">{t("Category")} *</label>
-                  {!showCustomCategoryInput ? (
-                    <select
-                      required
-                      value={formData.category}
+              {/* 3. Item Image (Optional) */}
+              <div className="space-y-0.5">
+                <label className="text-[11px] sm:text-xs font-semibold text-text-muted">{t("Item Image (Optional)")} <span className="text-[10px] text-text-muted">(Max 5MB)</span></label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    value={formData.image}
+                    onChange={(e) => setFormData({ ...formData, image: formatImageUrl(e.target.value) })}
+                    className="flex-1 bg-background border border-border rounded-lg px-2.5 py-1.5 text-xs text-text-main focus:outline-none focus:border-primary"
+                    placeholder={t("Paste image URL or upload image file...")}
+                  />
+                  <label className="bg-primary/10 hover:bg-primary/20 text-primary border border-primary/25 px-2.5 py-1.5 rounded-lg cursor-pointer flex items-center gap-1 text-xs font-bold shrink-0 transition-colors shadow-2xs">
+                    <span>{t("Upload")}</span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
                       onChange={(e) => {
-                        const val = e.target.value;
-                        if (val === 'CUSTOM_NEW_CATEGORY') {
-                          setShowCustomCategoryInput(true);
-                          setFormData({ ...formData, category: val });
-                        } else {
-                          setFormData({ ...formData, category: val });
+                        const file = e.target.files[0];
+                        if (file) {
+                          if (file.size > 5 * 1024 * 1024) {
+                            setToast({ message: t("Image size should be less than or equal to 5MB"), type: 'error' });
+                            e.target.value = '';
+                            return;
+                          }
+                          const extension = file.name.split('.').pop();
+                          const sizeInMb = (file.size / (1024 * 1024)).toFixed(2);
+                          setUploadFileInfo({
+                            name: file.name,
+                            extension: extension,
+                            size: `${sizeInMb} MB`
+                          });
+
+                          const reader = new FileReader();
+                          reader.onloadend = (event) => {
+                            const img = new Image();
+                            img.onload = () => {
+                              const canvas = document.createElement('canvas');
+                              const MAX_WIDTH = 400;
+                              const MAX_HEIGHT = 400;
+                              let width = img.width;
+                              let height = img.height;
+                              if (width > height) {
+                                if (width > MAX_WIDTH) {
+                                  height = Math.round(height * MAX_WIDTH / width);
+                                  width = MAX_WIDTH;
+                                }
+                              } else {
+                                if (height > MAX_HEIGHT) {
+                                  width = Math.round(width * MAX_HEIGHT / height);
+                                  height = MAX_HEIGHT;
+                                }
+                              }
+                              canvas.width = width;
+                              canvas.height = height;
+                              const ctx = canvas.getContext('2d');
+                              ctx.drawImage(img, 0, 0, width, height);
+                              const compressedDataUrl = canvas.toDataURL('image/jpeg', 0.75);
+                              setFormData({ ...formData, image: compressedDataUrl });
+                            };
+                            img.src = event.target.result;
+                          };
+                          reader.readAsDataURL(file);
                         }
-                        if (validationErrors.category) setValidationErrors({ ...validationErrors, category: null });
                       }}
-                      className={`w-full bg-background border rounded-xl px-3 py-2 text-xs sm:text-sm text-text-main focus:outline-none focus:border-primary ${validationErrors.category ? 'border-danger' : 'border-border'}`}
-                    >
-                      <option value="">{t("Select Category")}</option>
-                      {categories.map((cat) => (
-                        <option key={cat._id} value={cat.name}>
-                          {cat.name}
-                        </option>
-                      ))}
-                      <option value="CUSTOM_NEW_CATEGORY" className="font-bold text-primary">+ {t("Add Custom Category")}</option>
-                    </select>
-                  ) : (
-                    <div className="flex gap-1.5">
-                      <input
-                        type="text"
-                        placeholder={t("Enter category name")}
-                        value={customCategoryName}
-                        onChange={(e) => {
-                          setCustomCategoryName(e.target.value);
-                          if (validationErrors.category) setValidationErrors({ ...validationErrors, category: null });
-                        }}
-                        className={`w-full bg-background border rounded-xl px-3 py-2 text-xs sm:text-sm text-text-main focus:outline-none focus:border-primary ${validationErrors.category ? 'border-danger' : 'border-border'}`}
-                        autoFocus
-                      />
-                      <button 
-                        type="button" 
-                        onClick={() => {
-                          setShowCustomCategoryInput(false);
-                          setCustomCategoryName('');
-                          setFormData({ ...formData, category: '' });
-                        }}
-                        className="p-2 border border-border rounded-xl hover:bg-surface-hover text-text-muted shrink-0 flex items-center justify-center cursor-pointer"
-                        title={t("Cancel")}
+                    />
+                  </label>
+                  {formatImageUrl(formData.image) && (
+                    <div className="relative w-8 h-8 rounded-lg overflow-hidden border border-border shrink-0 bg-background group">
+                      <img src={formatImageUrl(formData.image)} alt="Preview" className="w-full h-full object-cover" />
+                      <button
+                        type="button"
+                        onClick={() => { setUploadFileInfo(null); setFormData({ ...formData, image: '' }); }}
+                        className="absolute inset-0 bg-black/70 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                        title={t("Remove image")}
                       >
-                        <X size={16} />
+                        <X size={12} />
                       </button>
                     </div>
                   )}
-                  {validationErrors.category && (
-                    <p className="text-xs text-danger">{validationErrors.category}</p>
-                  )}
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-xs sm:text-sm font-medium text-text-muted">{t("Selling Unit")} *</label>
-                  <select
-                    value={formData.sellingUnit}
-                    onChange={(e) => setFormData({ ...formData, sellingUnit: e.target.value })}
-                    className="w-full bg-background border border-border rounded-xl px-3 py-2 text-xs sm:text-sm text-text-main focus:outline-none focus:border-primary font-medium"
-                  >
-                    <option value="Kg">Kg (Per Kilogram)</option>
-                    <option value="Box">Box (Wholesale Packing)</option>
-                    <option value="Piece">Piece (Count)</option>
-                  </select>
                 </div>
               </div>
 
-              {/* Seafood Type & Water Environment */}
-              <div className="grid grid-cols-2 gap-3 bg-amber-50/50 p-3 rounded-xl border border-amber-200/60">
-                <div className="space-y-1">
-                  <label className="text-xs font-bold text-amber-900">{t("Water Environment")}</label>
+              {/* 4. Water Environment & 5. Seafood Species & Selling Unit */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 bg-[#FAF6F0] dark:bg-slate-900/60 p-2.5 rounded-xl border border-border">
+                <div className="space-y-0.5">
+                  <label className="text-[11px] font-black text-slate-800 dark:text-slate-200">{t("Water Environment")}</label>
                   <select
                     value={formData.waterType || 'sea_water'}
                     onChange={(e) => setFormData({ ...formData, waterType: e.target.value })}
-                    className="w-full bg-white border border-amber-300 rounded-xl px-3 py-2 text-xs text-slate-800 font-bold focus:outline-none focus:border-amber-600"
+                    className="w-full bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg px-2 py-1.5 text-xs text-slate-800 dark:text-white font-bold focus:outline-none focus:border-primary"
                   >
-                    <option value="sea_water">Sea Water (Marine / Ocean)</option>
-                    <option value="fresh_water">Fresh Water (River / Lake)</option>
+                    <option value="sea_water">Sea Water (Marine)</option>
+                    <option value="fresh_water">Fresh Water (River)</option>
                     <option value="all">All / General</option>
                   </select>
                 </div>
-                <div className="space-y-1">
-                  <label className="text-xs font-bold text-amber-900">{t("Seafood Species")}</label>
+                <div className="space-y-0.5">
+                  <label className="text-[11px] font-black text-slate-800 dark:text-slate-200">{t("Seafood Species")}</label>
                   <select
                     value={formData.speciesType || 'fish'}
                     onChange={(e) => setFormData({ ...formData, speciesType: e.target.value })}
-                    className="w-full bg-white border border-amber-300 rounded-xl px-3 py-2 text-xs text-slate-800 font-bold focus:outline-none focus:border-amber-600"
+                    className="w-full bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg px-2 py-1.5 text-xs text-slate-800 dark:text-white font-bold focus:outline-none focus:border-primary"
                   >
                     <option value="fish">Fish (Fish Varieties)</option>
                     <option value="prawn">Prawns & Shrimps</option>
@@ -1738,146 +1948,177 @@ const MenuManagement = ({ user, onNavigate, onGoBack }) => {
                     <option value="other">Other Seafood</option>
                   </select>
                 </div>
+                <div className="space-y-0.5">
+                  <label className="text-[11px] font-black text-slate-800 dark:text-slate-200">{t("Selling Unit")} *</label>
+                  <select
+                    value={formData.sellingUnit || 'Kg'}
+                    onChange={(e) => setFormData({ ...formData, sellingUnit: e.target.value })}
+                    className="w-full bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg px-2 py-1.5 text-xs text-slate-800 dark:text-white font-bold focus:outline-none focus:border-primary"
+                  >
+                    <option value="Kg">Kg (Per Kilogram)</option>
+                    <option value="Piece">Piece (Count)</option>
+                  </select>
+                </div>
               </div>
 
-              {/* 3 Sale Price Tiers: Retail, Wholesale, Export */}
-              <div className="bg-sky-50/60 p-4 rounded-2xl border border-sky-200 space-y-2.5">
+              {/* 6. Retail (₹/Kg) *, 7. Wholesale (₹/Kg), 8. Export (₹/Kg) */}
+              <div className="bg-amber-50/40 dark:bg-amber-950/20 p-2.5 rounded-xl border border-amber-200/80 dark:border-amber-900/40 space-y-1.5">
                 <div className="flex justify-between items-center">
-                  <span className="text-xs sm:text-sm font-bold text-sky-950">Standard Selling Rates (₹ / Kg)</span>
-                  <span className="text-[11px] text-sky-800 font-semibold">Base Price per Sale Mode</span>
+                  <span className="text-xs font-black text-slate-900 dark:text-white">{t("Standard Selling Rates (₹ / Kg)")}</span>
+                  <span className="text-[10px] text-slate-500 font-semibold">{t("Base rates per sale mode")}</span>
                 </div>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                  <div className="space-y-1">
-                    <label className="text-xs font-semibold text-slate-700 block">{t("Purchase Rate")}</label>
-                    <input
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      value={formData.purchasePrice}
-                      onChange={(e) => setFormData({ ...formData, purchasePrice: e.target.value })}
-                      className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 focus:outline-none focus:border-sky-500"
-                      placeholder="e.g. 500"
-                    />
-                  </div>
-
-                  <div className="space-y-1">
-                    <label className="text-xs font-bold text-emerald-800 block">{t("Retail (₹/Kg)")} *</label>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                  <div className="space-y-0.5">
+                    <label className="text-[11px] font-black text-emerald-800 dark:text-emerald-400 block">{t("Retail (₹/Kg)")} *</label>
                     <input
                       type="number"
                       required
                       min="0"
                       step="0.01"
+                      onWheel={(e) => e.target.blur()}
+                      onKeyDown={(e) => { if (e.key === '-' || e.key === 'e' || e.key === 'E') e.preventDefault(); }}
                       value={formData.price}
                       onChange={(e) => {
-                        setFormData({ ...formData, price: e.target.value });
-                        if (validationErrors.price) setValidationErrors({ ...validationErrors, price: null });
+                        const v = e.target.value;
+                        if (v === '' || parseFloat(v) >= 0) {
+                          setFormData({ ...formData, price: v });
+                          if (validationErrors.price) setValidationErrors({ ...validationErrors, price: null });
+                        }
                       }}
-                      className={`w-full bg-white border rounded-xl px-3 py-2 text-xs font-bold text-emerald-950 focus:outline-none focus:border-emerald-600 ${validationErrors.price ? 'border-danger' : 'border-emerald-300'}`}
+                      className={`w-full bg-white dark:bg-slate-800 border rounded-lg px-2.5 py-1.5 text-xs font-black text-emerald-950 dark:text-emerald-200 focus:outline-none focus:border-emerald-600 ${validationErrors.price ? 'border-danger' : 'border-emerald-300 dark:border-emerald-700'}`}
                       placeholder="e.g. 700"
                     />
                   </div>
 
-                  <div className="space-y-1">
-                    <label className="text-xs font-bold text-amber-800 block">{t("Wholesale (₹/Kg)")}</label>
+                  <div className="space-y-0.5">
+                    <label className="text-[11px] font-black text-amber-800 dark:text-amber-400 block">{t("Wholesale (₹/Kg)")}</label>
                     <input
                       type="number"
                       min="0"
                       step="0.01"
+                      onWheel={(e) => e.target.blur()}
+                      onKeyDown={(e) => { if (e.key === '-' || e.key === 'e' || e.key === 'E') e.preventDefault(); }}
                       value={formData.wholesalePricePerKg}
-                      onChange={(e) => setFormData({ ...formData, wholesalePricePerKg: e.target.value })}
-                      className="w-full bg-white border border-amber-300 rounded-xl px-3 py-2 text-xs font-bold text-amber-950 focus:outline-none focus:border-amber-600"
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        if (v === '' || parseFloat(v) >= 0) {
+                          setFormData({ ...formData, wholesalePricePerKg: v });
+                        }
+                      }}
+                      className="w-full bg-white dark:bg-slate-800 border border-amber-300 dark:border-amber-700 rounded-lg px-2.5 py-1.5 text-xs font-black text-amber-950 dark:text-amber-200 focus:outline-none focus:border-amber-600"
                       placeholder={formData.price || 'Wholesale rate'}
                     />
                   </div>
 
-                  <div className="space-y-1">
-                    <label className="text-xs font-bold text-indigo-800 block">{t("Export (₹/Kg)")}</label>
+                  <div className="space-y-0.5">
+                    <label className="text-[11px] font-black text-blue-800 dark:text-blue-400 block">{t("Export (₹/Kg)")}</label>
                     <input
                       type="number"
                       min="0"
                       step="0.01"
+                      onWheel={(e) => e.target.blur()}
+                      onKeyDown={(e) => { if (e.key === '-' || e.key === 'e' || e.key === 'E') e.preventDefault(); }}
                       value={formData.exportPricePerKg}
-                      onChange={(e) => setFormData({ ...formData, exportPricePerKg: e.target.value })}
-                      className="w-full bg-white border border-indigo-300 rounded-xl px-3 py-2 text-xs font-bold text-indigo-950 focus:outline-none focus:border-indigo-600"
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        if (v === '' || parseFloat(v) >= 0) {
+                          setFormData({ ...formData, exportPricePerKg: v });
+                        }
+                      }}
+                      className="w-full bg-white dark:bg-slate-800 border border-blue-300 dark:border-blue-700 rounded-lg px-2.5 py-1.5 text-xs font-black text-blue-950 dark:text-blue-200 focus:outline-none focus:border-blue-600"
                       placeholder={formData.wholesalePricePerKg || formData.price || 'Export rate'}
                     />
                   </div>
                 </div>
               </div>
 
-              {/* Fish Size Grading (Small, Medium, Big) */}
-              <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-3">
+              {/* 9. Description */}
+              <div className="space-y-0.5">
+                <label className="text-[11px] sm:text-xs font-semibold text-text-muted">{t("Description")}</label>
+                <textarea
+                  value={formData.description}
+                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                  className="w-full bg-background border border-border rounded-lg px-2.5 py-1.5 text-xs text-text-main focus:outline-none focus:border-primary h-14 resize-none"
+                  placeholder={t("Brief fish description...")}
+                />
+              </div>
+
+              {/* 10. Fish Size Grading (Small, Medium, Big) */}
+              <div className="bg-slate-50 dark:bg-slate-900/40 p-2.5 rounded-xl border border-slate-200 dark:border-slate-800 space-y-1.5">
                 <div className="flex justify-between items-center">
-                  <div>
-                    <span className="text-xs sm:text-sm font-bold text-slate-900">{t("Size Grades & Availability")}</span>
-                    <span className="text-[11px] text-slate-500 block">
-                      {t("Toggle ON available sizes for this fish and set weight ranges. Pricing follows Standard Selling Rates.")}
-                    </span>
-                  </div>
+                  <span className="text-xs font-black text-slate-900 dark:text-white">{t("Size Grades & Availability")}</span>
+                  <span className="text-[10px] text-slate-500">{t("Set weight ranges and availability")}</span>
                 </div>
 
-                {/* Table Header Row (Desktop) */}
-                <div className="hidden sm:grid sm:grid-cols-12 gap-2 text-[11px] font-bold text-slate-600 px-3 py-1.5 bg-slate-200/60 rounded-lg">
-                  <div className="col-span-3">Grade</div>
-                  <div className="col-span-6 text-center">Weight Range (Kg)</div>
-                  <div className="col-span-3 text-right pr-2">Availability</div>
-                </div>
-
-                <div className="space-y-2 text-xs">
+                <div className="space-y-1 text-xs">
                   {/* Small Grade Row */}
                   {(() => {
                     const isSmallOn = formData.sizeGrades?.small?.enabled !== false;
                     return (
-                      <div className={`p-2.5 sm:p-3 rounded-xl border transition-all ${
-                        isSmallOn ? 'bg-white border-amber-300 shadow-2xs' : 'bg-slate-100/70 border-slate-200 opacity-60'
+                      <div className={`p-2 rounded-lg border transition-all ${
+                        isSmallOn ? 'bg-white dark:bg-slate-800 border-amber-300 dark:border-amber-700 shadow-2xs' : 'bg-slate-100/70 dark:bg-slate-900/40 border-slate-200 dark:border-slate-800 opacity-60'
                       }`}>
-                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                          <div className="flex items-center gap-2 min-w-[120px]">
-                            <span className="w-3 h-3 rounded-full bg-amber-400 shrink-0"></span>
-                            <span className="text-xs sm:text-sm font-black text-slate-800">Small</span>
-                            <span className={`text-[9px] px-1.5 py-0.2 rounded-full font-bold ${
-                              isSmallOn ? 'bg-amber-100 text-amber-800' : 'bg-slate-200 text-slate-500'
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-1.5 min-w-[90px]">
+                            <span className="text-xs font-black text-slate-800 dark:text-slate-100">Small</span>
+                            <span className={`text-[9px] px-1.5 py-0.2 rounded font-black ${
+                              isSmallOn ? 'bg-amber-100 text-amber-900 dark:bg-amber-950 dark:text-amber-200' : 'bg-slate-200 text-slate-500'
                             }`}>
                               {isSmallOn ? 'Active' : 'Off'}
                             </span>
                           </div>
 
-                          <div className="flex items-center justify-start sm:justify-center gap-1.5 text-xs text-slate-600">
-                            <span className="text-[11px] font-medium text-slate-400">From</span>
+                          <div className="flex items-center gap-1 text-xs text-slate-600 dark:text-slate-400">
+                            <span className="text-[10px] font-medium text-slate-400">From</span>
                             <input
                               type="number"
+                              min="0"
                               step="0.1"
+                              onWheel={(e) => e.target.blur()}
+                              onKeyDown={(e) => { if (e.key === '-' || e.key === 'e' || e.key === 'E') e.preventDefault(); }}
                               disabled={!isSmallOn}
                               value={formData.sizeGrades?.small?.minKg ?? 0}
-                              onChange={(e) => setFormData({
-                                ...formData,
-                                sizeGrades: {
-                                  ...formData.sizeGrades,
-                                  small: { ...formData.sizeGrades?.small, minKg: e.target.value }
+                              onChange={(e) => {
+                                const v = e.target.value;
+                                if (v === '' || parseFloat(v) >= 0) {
+                                  setFormData({
+                                    ...formData,
+                                    sizeGrades: {
+                                      ...formData.sizeGrades,
+                                      small: { ...formData.sizeGrades?.small, minKg: v }
+                                    }
+                                  });
                                 }
-                              })}
-                              className="w-16 bg-slate-50 border border-slate-300 rounded-lg px-2 py-1 text-center font-bold text-xs text-slate-800 focus:outline-none focus:border-amber-500 disabled:bg-slate-200 disabled:text-slate-400"
+                              }}
+                              className="w-14 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded px-1.5 py-1 text-center font-bold text-xs text-slate-800 dark:text-slate-200 focus:outline-none focus:border-amber-500 disabled:opacity-50"
                             />
-                            <span className="text-[11px] font-medium text-slate-400">to</span>
+                            <span className="text-[10px] font-medium text-slate-400">to</span>
                             <input
                               type="number"
+                              min="0"
                               step="0.1"
+                              onWheel={(e) => e.target.blur()}
+                              onKeyDown={(e) => { if (e.key === '-' || e.key === 'e' || e.key === 'E') e.preventDefault(); }}
                               disabled={!isSmallOn}
                               value={formData.sizeGrades?.small?.maxKg ?? 1}
-                              onChange={(e) => setFormData({
-                                ...formData,
-                                sizeGrades: {
-                                  ...formData.sizeGrades,
-                                  small: { ...formData.sizeGrades?.small, maxKg: e.target.value }
+                              onChange={(e) => {
+                                const v = e.target.value;
+                                if (v === '' || parseFloat(v) >= 0) {
+                                  setFormData({
+                                    ...formData,
+                                    sizeGrades: {
+                                      ...formData.sizeGrades,
+                                      small: { ...formData.sizeGrades?.small, maxKg: v }
+                                    }
+                                  });
                                 }
-                              })}
-                              className="w-16 bg-slate-50 border border-slate-300 rounded-lg px-2 py-1 text-center font-bold text-xs text-slate-800 focus:outline-none focus:border-amber-500 disabled:bg-slate-200 disabled:text-slate-400"
+                              }}
+                              className="w-14 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded px-1.5 py-1 text-center font-bold text-xs text-slate-800 dark:text-slate-200 focus:outline-none focus:border-amber-500 disabled:opacity-50"
                             />
-                            <span className="text-xs font-semibold text-slate-500">Kg</span>
+                            <span className="text-[10px] font-bold text-slate-500">Kg</span>
                           </div>
 
-                          <div className="flex items-center justify-between sm:justify-end gap-2 pt-1 sm:pt-0 border-t sm:border-0 border-slate-200/60">
-                            <span className="text-[10px] sm:hidden font-bold text-slate-500">Available:</span>
+                          <div className="flex items-center gap-1.5">
                             <button
                               type="button"
                               onClick={() => setFormData({
@@ -1887,21 +2128,16 @@ const MenuManagement = ({ user, onNavigate, onGoBack }) => {
                                   small: { ...formData.sizeGrades?.small, enabled: !isSmallOn }
                                 }
                               })}
-                              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors cursor-pointer focus:outline-none ${
+                              className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors cursor-pointer focus:outline-none ${
                                 isSmallOn ? 'bg-emerald-500' : 'bg-slate-300'
                               }`}
                             >
                               <span
-                                className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform shadow-xs ${
-                                  isSmallOn ? 'translate-x-6' : 'translate-x-1'
+                                className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform shadow-xs ${
+                                  isSmallOn ? 'translate-x-4.5' : 'translate-x-1'
                                 }`}
                               />
                             </button>
-                            <span className={`text-[11px] font-bold w-7 text-right ${
-                              isSmallOn ? 'text-emerald-700' : 'text-slate-400'
-                            }`}>
-                              {isSmallOn ? 'ON' : 'OFF'}
-                            </span>
                           </div>
                         </div>
                       </div>
@@ -1912,56 +2148,70 @@ const MenuManagement = ({ user, onNavigate, onGoBack }) => {
                   {(() => {
                     const isMediumOn = formData.sizeGrades?.medium?.enabled !== false;
                     return (
-                      <div className={`p-2.5 sm:p-3 rounded-xl border transition-all ${
-                        isMediumOn ? 'bg-white border-blue-300 shadow-2xs' : 'bg-slate-100/70 border-slate-200 opacity-60'
+                      <div className={`p-2 rounded-lg border transition-all ${
+                        isMediumOn ? 'bg-white dark:bg-slate-800 border-blue-300 dark:border-blue-700 shadow-2xs' : 'bg-slate-100/70 dark:bg-slate-900/40 border-slate-200 dark:border-slate-800 opacity-60'
                       }`}>
-                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                          <div className="flex items-center gap-2 min-w-[120px]">
-                            <span className="w-3 h-3 rounded-full bg-blue-500 shrink-0"></span>
-                            <span className="text-xs sm:text-sm font-black text-slate-800">Medium</span>
-                            <span className={`text-[9px] px-1.5 py-0.2 rounded-full font-bold ${
-                              isMediumOn ? 'bg-blue-100 text-blue-800' : 'bg-slate-200 text-slate-500'
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-1.5 min-w-[90px]">
+                            <span className="text-xs font-black text-slate-800 dark:text-slate-100">Medium</span>
+                            <span className={`text-[9px] px-1.5 py-0.2 rounded font-black ${
+                              isMediumOn ? 'bg-blue-100 text-blue-900 dark:bg-blue-950 dark:text-blue-200' : 'bg-slate-200 text-slate-500'
                             }`}>
                               {isMediumOn ? 'Active' : 'Off'}
                             </span>
                           </div>
 
-                          <div className="flex items-center justify-start sm:justify-center gap-1.5 text-xs text-slate-600">
-                            <span className="text-[11px] font-medium text-slate-400">From</span>
+                          <div className="flex items-center gap-1 text-xs text-slate-600 dark:text-slate-400">
+                            <span className="text-[10px] font-medium text-slate-400">From</span>
                             <input
                               type="number"
+                              min="0"
                               step="0.1"
+                              onWheel={(e) => e.target.blur()}
+                              onKeyDown={(e) => { if (e.key === '-' || e.key === 'e' || e.key === 'E') e.preventDefault(); }}
                               disabled={!isMediumOn}
                               value={formData.sizeGrades?.medium?.minKg ?? 1}
-                              onChange={(e) => setFormData({
-                                ...formData,
-                                sizeGrades: {
-                                  ...formData.sizeGrades,
-                                  medium: { ...formData.sizeGrades?.medium, minKg: e.target.value }
+                              onChange={(e) => {
+                                const v = e.target.value;
+                                if (v === '' || parseFloat(v) >= 0) {
+                                  setFormData({
+                                    ...formData,
+                                    sizeGrades: {
+                                      ...formData.sizeGrades,
+                                      medium: { ...formData.sizeGrades?.medium, minKg: v }
+                                    }
+                                  });
                                 }
-                              })}
-                              className="w-16 bg-slate-50 border border-slate-300 rounded-lg px-2 py-1 text-center font-bold text-xs text-slate-800 focus:outline-none focus:border-blue-500 disabled:bg-slate-200 disabled:text-slate-400"
+                              }}
+                              className="w-14 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded px-1.5 py-1 text-center font-bold text-xs text-slate-800 dark:text-slate-200 focus:outline-none focus:border-blue-500 disabled:opacity-50"
                             />
-                            <span className="text-[11px] font-medium text-slate-400">to</span>
+                            <span className="text-[10px] font-medium text-slate-400">to</span>
                             <input
                               type="number"
+                              min="0"
                               step="0.1"
+                              onWheel={(e) => e.target.blur()}
+                              onKeyDown={(e) => { if (e.key === '-' || e.key === 'e' || e.key === 'E') e.preventDefault(); }}
                               disabled={!isMediumOn}
                               value={formData.sizeGrades?.medium?.maxKg ?? 4}
-                              onChange={(e) => setFormData({
-                                ...formData,
-                                sizeGrades: {
-                                  ...formData.sizeGrades,
-                                  medium: { ...formData.sizeGrades?.medium, maxKg: e.target.value }
+                              onChange={(e) => {
+                                const v = e.target.value;
+                                if (v === '' || parseFloat(v) >= 0) {
+                                  setFormData({
+                                    ...formData,
+                                    sizeGrades: {
+                                      ...formData.sizeGrades,
+                                      medium: { ...formData.sizeGrades?.medium, maxKg: v }
+                                    }
+                                  });
                                 }
-                              })}
-                              className="w-16 bg-slate-50 border border-slate-300 rounded-lg px-2 py-1 text-center font-bold text-xs text-slate-800 focus:outline-none focus:border-blue-500 disabled:bg-slate-200 disabled:text-slate-400"
+                              }}
+                              className="w-14 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded px-1.5 py-1 text-center font-bold text-xs text-slate-800 dark:text-slate-200 focus:outline-none focus:border-blue-500 disabled:opacity-50"
                             />
-                            <span className="text-xs font-semibold text-slate-500">Kg</span>
+                            <span className="text-[10px] font-bold text-slate-500">Kg</span>
                           </div>
 
-                          <div className="flex items-center justify-between sm:justify-end gap-2 pt-1 sm:pt-0 border-t sm:border-0 border-slate-200/60">
-                            <span className="text-[10px] sm:hidden font-bold text-slate-500">Available:</span>
+                          <div className="flex items-center gap-1.5">
                             <button
                               type="button"
                               onClick={() => setFormData({
@@ -1971,21 +2221,16 @@ const MenuManagement = ({ user, onNavigate, onGoBack }) => {
                                   medium: { ...formData.sizeGrades?.medium, enabled: !isMediumOn }
                                 }
                               })}
-                              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors cursor-pointer focus:outline-none ${
+                              className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors cursor-pointer focus:outline-none ${
                                 isMediumOn ? 'bg-emerald-500' : 'bg-slate-300'
                               }`}
                             >
                               <span
-                                className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform shadow-xs ${
-                                  isMediumOn ? 'translate-x-6' : 'translate-x-1'
+                                className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform shadow-xs ${
+                                  isMediumOn ? 'translate-x-4.5' : 'translate-x-1'
                                 }`}
                               />
                             </button>
-                            <span className={`text-[11px] font-bold w-7 text-right ${
-                              isMediumOn ? 'text-emerald-700' : 'text-slate-400'
-                            }`}>
-                              {isMediumOn ? 'ON' : 'OFF'}
-                            </span>
                           </div>
                         </div>
                       </div>
@@ -1996,56 +2241,70 @@ const MenuManagement = ({ user, onNavigate, onGoBack }) => {
                   {(() => {
                     const isBigOn = formData.sizeGrades?.big?.enabled !== false;
                     return (
-                      <div className={`p-2.5 sm:p-3 rounded-xl border transition-all ${
-                        isBigOn ? 'bg-white border-emerald-300 shadow-2xs' : 'bg-slate-100/70 border-slate-200 opacity-60'
+                      <div className={`p-2 rounded-lg border transition-all ${
+                        isBigOn ? 'bg-white dark:bg-slate-800 border-blue-300 dark:border-blue-700 shadow-2xs' : 'bg-slate-100/70 dark:bg-slate-900/40 border-slate-200 dark:border-slate-800 opacity-60'
                       }`}>
-                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                          <div className="flex items-center gap-2 min-w-[120px]">
-                            <span className="w-3 h-3 rounded-full bg-emerald-600 shrink-0"></span>
-                            <span className="text-xs sm:text-sm font-black text-slate-800">Big</span>
-                            <span className={`text-[9px] px-1.5 py-0.2 rounded-full font-bold ${
-                              isBigOn ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-200 text-slate-500'
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-1.5 min-w-[90px]">
+                            <span className="text-xs font-black text-slate-800 dark:text-slate-100">Big</span>
+                            <span className={`text-[9px] px-1.5 py-0.2 rounded font-black ${
+                              isBigOn ? 'bg-blue-100 text-blue-900 dark:bg-blue-950 dark:text-blue-200' : 'bg-slate-200 text-slate-500'
                             }`}>
                               {isBigOn ? 'Active' : 'Off'}
                             </span>
                           </div>
 
-                          <div className="flex items-center justify-start sm:justify-center gap-1.5 text-xs text-slate-600">
-                            <span className="text-[11px] font-medium text-slate-400">From</span>
+                          <div className="flex items-center gap-1 text-xs text-slate-600 dark:text-slate-400">
+                            <span className="text-[10px] font-medium text-slate-400">From</span>
                             <input
                               type="number"
+                              min="0"
                               step="0.1"
+                              onWheel={(e) => e.target.blur()}
+                              onKeyDown={(e) => { if (e.key === '-' || e.key === 'e' || e.key === 'E') e.preventDefault(); }}
                               disabled={!isBigOn}
                               value={formData.sizeGrades?.big?.minKg ?? 4}
-                              onChange={(e) => setFormData({
-                                ...formData,
-                                sizeGrades: {
-                                  ...formData.sizeGrades,
-                                  big: { ...formData.sizeGrades?.big, minKg: e.target.value }
+                              onChange={(e) => {
+                                const v = e.target.value;
+                                if (v === '' || parseFloat(v) >= 0) {
+                                  setFormData({
+                                    ...formData,
+                                    sizeGrades: {
+                                      ...formData.sizeGrades,
+                                      big: { ...formData.sizeGrades?.big, minKg: v }
+                                    }
+                                  });
                                 }
-                              })}
-                              className="w-16 bg-slate-50 border border-slate-300 rounded-lg px-2 py-1 text-center font-bold text-xs text-slate-800 focus:outline-none focus:border-emerald-600 disabled:bg-slate-200 disabled:text-slate-400"
+                              }}
+                              className="w-14 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded px-1.5 py-1 text-center font-bold text-xs text-slate-800 dark:text-slate-200 focus:outline-none focus:border-blue-500 disabled:opacity-50"
                             />
-                            <span className="text-[11px] font-medium text-slate-400">to</span>
+                            <span className="text-[10px] font-medium text-slate-400">to</span>
                             <input
                               type="number"
+                              min="0"
                               step="0.1"
+                              onWheel={(e) => e.target.blur()}
+                              onKeyDown={(e) => { if (e.key === '-' || e.key === 'e' || e.key === 'E') e.preventDefault(); }}
                               disabled={!isBigOn}
                               value={formData.sizeGrades?.big?.maxKg ?? 99}
-                              onChange={(e) => setFormData({
-                                ...formData,
-                                sizeGrades: {
-                                  ...formData.sizeGrades,
-                                  big: { ...formData.sizeGrades?.big, maxKg: e.target.value }
+                              onChange={(e) => {
+                                const v = e.target.value;
+                                if (v === '' || parseFloat(v) >= 0) {
+                                  setFormData({
+                                    ...formData,
+                                    sizeGrades: {
+                                      ...formData.sizeGrades,
+                                      big: { ...formData.sizeGrades?.big, maxKg: v }
+                                    }
+                                  });
                                 }
-                              })}
-                              className="w-16 bg-slate-50 border border-slate-300 rounded-lg px-2 py-1 text-center font-bold text-xs text-slate-800 focus:outline-none focus:border-emerald-600 disabled:bg-slate-200 disabled:text-slate-400"
+                              }}
+                              className="w-14 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded px-1.5 py-1 text-center font-bold text-xs text-slate-800 dark:text-slate-200 focus:outline-none focus:border-blue-500 disabled:opacity-50"
                             />
-                            <span className="text-xs font-semibold text-slate-500">Kg</span>
+                            <span className="text-[10px] font-bold text-slate-500">Kg</span>
                           </div>
 
-                          <div className="flex items-center justify-between sm:justify-end gap-2 pt-1 sm:pt-0 border-t sm:border-0 border-slate-200/60">
-                            <span className="text-[10px] sm:hidden font-bold text-slate-500">Available:</span>
+                          <div className="flex items-center gap-1.5">
                             <button
                               type="button"
                               onClick={() => setFormData({
@@ -2055,21 +2314,16 @@ const MenuManagement = ({ user, onNavigate, onGoBack }) => {
                                   big: { ...formData.sizeGrades?.big, enabled: !isBigOn }
                                 }
                               })}
-                              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors cursor-pointer focus:outline-none ${
+                              className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors cursor-pointer focus:outline-none ${
                                 isBigOn ? 'bg-emerald-500' : 'bg-slate-300'
                               }`}
                             >
                               <span
-                                className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform shadow-xs ${
-                                  isBigOn ? 'translate-x-6' : 'translate-x-1'
+                                className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform shadow-xs ${
+                                  isBigOn ? 'translate-x-4.5' : 'translate-x-1'
                                 }`}
                               />
                             </button>
-                            <span className={`text-[11px] font-bold w-7 text-right ${
-                              isBigOn ? 'text-emerald-700' : 'text-slate-400'
-                            }`}>
-                              {isBigOn ? 'ON' : 'OFF'}
-                            </span>
                           </div>
                         </div>
                       </div>
@@ -2078,218 +2332,12 @@ const MenuManagement = ({ user, onNavigate, onGoBack }) => {
                 </div>
               </div>
 
-              {/* Opening Stock & Box Packing Size */}
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1">
-                  <label className="text-xs sm:text-sm font-medium text-text-muted">{t("Opening Stock (Kg)")}</label>
-                  <input
-                    type="number"
-                    min="0"
-                    step="0.1"
-                    value={formData.openingStock}
-                    onChange={(e) => setFormData({ ...formData, openingStock: e.target.value })}
-                    className="w-full bg-background border border-border rounded-xl px-3 py-2 text-xs sm:text-sm text-text-main focus:outline-none focus:border-primary"
-                    placeholder="e.g. 250"
-                  />
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-xs sm:text-sm font-medium text-text-muted">{t("Box Packing (Kg/Box)")}</label>
-                  <input
-                    type="number"
-                    min="1"
-                    step="0.5"
-                    value={formData.boxPackingKg}
-                    onChange={(e) => setFormData({ ...formData, boxPackingKg: e.target.value })}
-                    className="w-full bg-background border border-border rounded-xl px-3 py-2 text-xs sm:text-sm text-text-main focus:outline-none focus:border-primary"
-                    placeholder="e.g. 60"
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="text-xs sm:text-sm font-medium text-text-muted">{t("Item Image (Optional)")} - {t("Max 5MB")}</label>
-                
-                {!uploadFileInfo ? (
-                  <div className="flex gap-2">
-                    <input
-                      type="text"
-                      value={formData.image}
-                      onChange={(e) => setFormData({ ...formData, image: formatImageUrl(e.target.value) })}
-                      className="flex-1 bg-background border border-border rounded-xl px-3 py-1.5 text-xs text-text-main focus:outline-none focus:border-primary"
-                      placeholder={t("Paste image URL or upload file...")}
-                    />
-                    <label className="bg-surface hover:bg-surface-hover text-text-main px-3 py-1.5 rounded-xl cursor-pointer flex items-center gap-1 text-xs border border-border shrink-0 transition-colors shadow-2xs font-medium">
-                      <span>{t("Upload")}</span>
-                      <input
-                        type="file"
-                        accept="image/*"
-                        className="hidden"
-                        onChange={(e) => {
-                          const file = e.target.files[0];
-                          if (file) {
-                            if (file.size > 5 * 1024 * 1024) {
-                              setToast({ message: t("Image size should be less than or equal to 5MB"), type: 'error' });
-                              e.target.value = '';
-                              return;
-                            }
-                            const extension = file.name.split('.').pop();
-                            const sizeInMb = (file.size / (1024 * 1024)).toFixed(2);
-                            setUploadFileInfo({
-                              name: file.name,
-                              extension: extension,
-                              size: `${sizeInMb} MB`
-                            });
-
-                            const reader = new FileReader();
-                            reader.onloadend = (event) => {
-                              const img = new Image();
-                              img.onload = () => {
-                                const canvas = document.createElement('canvas');
-                                const MAX_WIDTH = 400;
-                                const MAX_HEIGHT = 400;
-                                let width = img.width;
-                                let height = img.height;
-
-                                if (width > height) {
-                                  if (width > MAX_WIDTH) {
-                                    height = Math.round(height * MAX_WIDTH / width);
-                                    width = MAX_WIDTH;
-                                  }
-                                } else {
-                                  if (height > MAX_HEIGHT) {
-                                    width = Math.round(width * MAX_HEIGHT / height);
-                                    height = MAX_HEIGHT;
-                                  }
-                                }
-
-                                canvas.width = width;
-                                canvas.height = height;
-                                const ctx = canvas.getContext('2d');
-                                ctx.drawImage(img, 0, 0, width, height);
-                                const compressedDataUrl = canvas.toDataURL('image/jpeg', 0.75);
-                                setFormData({ ...formData, image: compressedDataUrl });
-                              };
-                              img.src = event.target.result;
-                            };
-                            reader.readAsDataURL(file);
-                          }
-                        }}
-                      />
-                    </label>
-                  </div>
-                ) : (
-                  <div className="flex flex-col gap-2 p-3 bg-surface border border-border rounded-xl">
-                    <div className="flex items-center justify-between">
-                      <div className="flex flex-col">
-                        <span className="text-xs font-bold text-text-main truncate max-w-[200px]">{uploadFileInfo.name}</span>
-                        <span className="text-[10px] text-text-muted">Ext: .{uploadFileInfo.extension} • Size: {uploadFileInfo.size}</span>
-                      </div>
-                      <div className="flex gap-2">
-                        <label className="bg-primary/10 hover:bg-primary/20 text-primary px-3 py-1.5 rounded-xl cursor-pointer flex items-center gap-1 text-[11px] transition-colors font-bold">
-                          <span>{t("Change Pic")}</span>
-                          <input
-                            type="file"
-                            accept="image/*"
-                            className="hidden"
-                            onChange={(e) => {
-                              const file = e.target.files[0];
-                              if (file) {
-                                if (file.size > 5 * 1024 * 1024) {
-                                  setToast({ message: t("Image size should be less than or equal to 5MB"), type: 'error' });
-                                  e.target.value = '';
-                                  return;
-                                }
-                                const extension = file.name.split('.').pop();
-                                const sizeInMb = (file.size / (1024 * 1024)).toFixed(2);
-                                setUploadFileInfo({
-                                  name: file.name,
-                                  extension: extension,
-                                  size: `${sizeInMb} MB`
-                                });
-
-                                const reader = new FileReader();
-                                reader.onloadend = (event) => {
-                                  const img = new Image();
-                                  img.onload = () => {
-                                    const canvas = document.createElement('canvas');
-                                    const MAX_WIDTH = 400;
-                                    const MAX_HEIGHT = 400;
-                                    let width = img.width;
-                                    let height = img.height;
-
-                                    if (width > height) {
-                                      if (width > MAX_WIDTH) {
-                                        height = Math.round(height * MAX_WIDTH / width);
-                                        width = MAX_WIDTH;
-                                      }
-                                    } else {
-                                      if (height > MAX_HEIGHT) {
-                                        width = Math.round(width * MAX_HEIGHT / height);
-                                        height = MAX_HEIGHT;
-                                      }
-                                    }
-
-                                    canvas.width = width;
-                                    canvas.height = height;
-                                    const ctx = canvas.getContext('2d');
-                                    ctx.drawImage(img, 0, 0, width, height);
-                                    const compressedDataUrl = canvas.toDataURL('image/jpeg', 0.75);
-                                    setFormData({ ...formData, image: compressedDataUrl });
-                                  };
-                                  img.src = event.target.result;
-                                };
-                                reader.readAsDataURL(file);
-                              }
-                            }}
-                          />
-                        </label>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setUploadFileInfo(null);
-                            setFormData({ ...formData, image: '' });
-                          }}
-                          className="bg-danger/10 hover:bg-danger/20 text-danger px-3 py-1.5 rounded-xl cursor-pointer flex items-center text-[11px] transition-colors font-bold"
-                        >
-                          {t("Cancel")}
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {formatImageUrl(formData.image) && (
-                  <div className="relative mt-2 w-full h-28 rounded-xl overflow-hidden bg-background border border-border flex items-center justify-center">
-                    <img src={formatImageUrl(formData.image)} alt="Preview" className="w-full h-full object-contain" />
-                    {!uploadFileInfo && (
-                      <button
-                        type="button"
-                        onClick={() => setFormData({ ...formData, image: '' })}
-                        className="absolute top-2 right-2 bg-black/60 text-white p-1 rounded-full hover:bg-black/80 transition-colors text-xs cursor-pointer"
-                        title={t("Remove image")}
-                      >
-                        <X size={12} />
-                      </button>
-                    )}
-                  </div>
-                )}
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-xs sm:text-sm font-medium text-text-muted">{t("Description")}</label>
-                <textarea
-                  value={formData.description}
-                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                  className="w-full bg-background border border-border rounded-xl px-3 py-2 text-xs sm:text-sm text-text-main focus:outline-none focus:border-primary h-20 resize-none"
-                  placeholder={t("Item description...")}
-                />
-              </div>
-
-              {/* ── Variants Section ── */}
-              <div className="space-y-2 border-t border-border pt-3">
+              {/* 11. Variants / Variety */}
+              <div className="space-y-1.5 border-t border-border pt-2">
                 <div className="flex justify-between items-center">
-                  <label className="text-xs sm:text-sm font-medium text-text-muted">{t("Variants / Variety")} <span className="text-[10px] text-text-muted font-normal">(e.g. Tiger, Red Prawn, Vannamei, Sea Catch, River)</span></label>
+                  <label className="text-[11px] sm:text-xs font-black text-slate-800 dark:text-slate-200">
+                    {t("Variants / Variety")} <span className="text-[10px] text-text-muted font-normal">(e.g. Tiger, Red Prawn, Vannamei)</span>
+                  </label>
                   <button
                     type="button"
                     onClick={() => setFormData({ ...formData, variants: [...(formData.variants || []), { name: '', price: '' }] })}
@@ -2302,27 +2350,32 @@ const MenuManagement = ({ user, onNavigate, onGoBack }) => {
                   <div key={vIdx} className="flex gap-2 items-center">
                     <input
                       type="text"
-                      placeholder="Variant name (e.g. Tiger, Red Prawn, Vannamei)"
+                      placeholder="Variant name (e.g. Tiger, Red Prawn)"
                       value={variant.name}
                       onChange={(e) => {
                         const newVariants = [...formData.variants];
                         newVariants[vIdx] = { ...newVariants[vIdx], name: e.target.value };
                         setFormData({ ...formData, variants: newVariants });
                       }}
-                      className="flex-1 bg-background border border-border rounded-xl px-2.5 py-1.5 text-xs text-text-main focus:outline-none focus:border-primary"
+                      className="flex-1 bg-background border border-border rounded-lg px-2.5 py-1 text-xs text-text-main focus:outline-none focus:border-primary"
                     />
                     <input
                       type="number"
                       min="0"
                       step="0.01"
+                      onWheel={(e) => e.target.blur()}
+                      onKeyDown={(e) => { if (e.key === '-' || e.key === 'e' || e.key === 'E') e.preventDefault(); }}
                       placeholder="Price ₹/Kg"
                       value={variant.price}
                       onChange={(e) => {
-                        const newVariants = [...formData.variants];
-                        newVariants[vIdx] = { ...newVariants[vIdx], price: e.target.value };
-                        setFormData({ ...formData, variants: newVariants });
+                        const v = e.target.value;
+                        if (v === '' || parseFloat(v) >= 0) {
+                          const newVariants = [...formData.variants];
+                          newVariants[vIdx] = { ...newVariants[vIdx], price: v };
+                          setFormData({ ...formData, variants: newVariants });
+                        }
                       }}
-                      className="w-24 bg-background border border-border rounded-xl px-2.5 py-1.5 text-xs text-text-main focus:outline-none focus:border-primary"
+                      className="w-24 bg-background border border-border rounded-lg px-2.5 py-1 text-xs text-text-main focus:outline-none focus:border-primary font-bold"
                     />
                     <button
                       type="button"
@@ -2333,54 +2386,18 @@ const MenuManagement = ({ user, onNavigate, onGoBack }) => {
                     </button>
                   </div>
                 ))}
-                {(formData.variants || []).length === 0 && (
-                  <p className="text-[11px] text-text-muted italic">No variants added. Click "+ Add Variant" to add fish types (e.g. Tiger, Red Prawn, Vannamei with prices).</p>
-                )}
               </div>
 
-              {/* ── Fish Wholesale & Box Packaging Settings ── */}
-              <div className="space-y-3 border-t border-border pt-3">
-                <label className="text-xs sm:text-sm font-bold text-sky-400 flex items-center gap-1.5">
-                  <span>Fish Wholesale Box & Pricing Settings</span>
-                </label>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 bg-[#f7f1ea] border border-sky-500/30 rounded-xl p-3">
-                  <div className="space-y-1">
-                    <label className="text-[11px] font-semibold text-slate-300">Box Packing Capacity (Kg/Box)</label>
-                    <input
-                      type="number"
-                      min="1"
-                      step="0.5"
-                      value={formData.boxPackingKg || 60}
-                      onChange={(e) => setFormData({ ...formData, boxPackingKg: parseFloat(e.target.value) || 60 })}
-                      className="w-full bg-[#F7EFE2] border border-sky-500/40 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-sky-400"
-                      placeholder="e.g. 60"
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-[11px] font-semibold text-slate-300">Box Rate / Price (₹ per Box)</label>
-                    <input
-                      type="number"
-                      min="0"
-                      step="1"
-                      value={formData.boxPrice || ''}
-                      onChange={(e) => setFormData({ ...formData, boxPrice: e.target.value })}
-                      className="w-full bg-[#F7EFE2] border border-sky-500/40 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-sky-400"
-                      placeholder={`e.g. ${(parseFloat(formData.price || 0) * (parseFloat(formData.boxPackingKg) || 60)) || 12000}`}
-                    />
-                    <span className="text-[10px] text-slate-400">Leave empty to auto-calculate (Rate/Kg × Box Capacity)</span>
-                  </div>
-                </div>
-              </div>
-
-              <div className="pt-3">
+              {/* Submit Button */}
+              <div className="pt-2">
                 <button
                   type="submit"
                   disabled={isSubmittingItem}
-                  className="w-full bg-primary text-white py-2.5 rounded-xl font-bold hover:bg-primary-hover transition-all shadow-lg shadow-primary/20 text-xs sm:text-sm cursor-pointer disabled:opacity-70 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                  className="w-full bg-primary text-white py-2 rounded-xl font-bold hover:bg-primary-hover transition-all shadow-md shadow-primary/20 text-xs sm:text-sm cursor-pointer disabled:opacity-70 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                 >
                   {isSubmittingItem ? (
                     <>
-                      <Loader2 size={16} className="animate-spin shrink-0" />
+                      <Loader2 size={15} className="animate-spin shrink-0" />
                       <span>{currentItem ? t('Updating Item...') : t('Creating Item...')}</span>
                     </>
                   ) : (

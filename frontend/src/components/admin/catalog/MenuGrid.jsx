@@ -331,12 +331,37 @@ const MenuGrid = ({
   const [speciesTypeFilter, setSpeciesTypeFilter] = useState('all'); // 'all' | 'fish' | 'prawn' | 'crab'
   const [showSpeciesMenu, setShowSpeciesMenu] = useState(false);
   const speciesMenuRef = useRef(null);
+  const speciesBtnRef = useRef(null);
+  const [speciesMenuCoords, setSpeciesMenuCoords] = useState({ top: 0, left: 0 });
   const [showAdminCompactControls, setShowAdminCompactControls] = useState(false);
+
+  const handleToggleSpeciesMenu = (e) => {
+    e.stopPropagation();
+    if (!showSpeciesMenu && speciesBtnRef.current) {
+      const rect = speciesBtnRef.current.getBoundingClientRect();
+      const menuWidth = 150;
+      let left = rect.left;
+      if (left + menuWidth > window.innerWidth - 8) {
+        left = Math.max(8, window.innerWidth - menuWidth - 8);
+      }
+      if (left < 8) left = 8;
+      setSpeciesMenuCoords({
+        top: rect.bottom + 6,
+        left
+      });
+    }
+    setShowSpeciesMenu((prev) => !prev);
+  };
 
   // Close species menu when clicking outside
   useEffect(() => {
     const handleClickOutside = (e) => {
-      if (speciesMenuRef.current && !speciesMenuRef.current.contains(e.target)) {
+      if (
+        speciesMenuRef.current &&
+        !speciesMenuRef.current.contains(e.target) &&
+        speciesBtnRef.current &&
+        !speciesBtnRef.current.contains(e.target)
+      ) {
         setShowSpeciesMenu(false);
       }
     };
@@ -982,6 +1007,50 @@ const MenuGrid = ({
     };
   }, [items, debouncedSearchTerm, category, categories]);
 
+  // Live item counts for Water Environment pills (All Waters, Sea Water, Fresh Water)
+  const waterTypeCounts = React.useMemo(() => {
+    const term = (debouncedSearchTerm || '').trim().toLowerCase();
+    const isSearching = term.length > 0;
+
+    let allCount = 0;
+    let seaCount = 0;
+    let freshCount = 0;
+
+    (items || []).forEach((item) => {
+      let matchesCategory = true;
+      if (category === '⭐ Favourites') {
+        matchesCategory = item.isFavorite === true;
+      } else if (category !== 'All') {
+        const itemCatName = item.category?.name || (typeof item.category === 'string' ? item.category : '');
+        const itemCatId = item.category?._id || item.category;
+        const matchedCat = categories.find((c) => c.name === category);
+        matchesCategory = itemCatName === category || (matchedCat && (itemCatId === matchedCat._id || itemCatName === matchedCat.name));
+      }
+
+      const matchesSearch = !isSearching ||
+        item.name.toLowerCase().includes(term) ||
+        (item.code && item.code.toLowerCase().includes(term)) ||
+        (item.description && item.description.toLowerCase().includes(term)) ||
+        (item.category?.name && item.category.name.toLowerCase().includes(term));
+
+      const matchesDescFilter =
+        descFilter === 'all' ||
+        (descFilter === 'hasDesc' && item.description && item.description.trim() !== '') ||
+        (descFilter === 'noDesc' && (!item.description || item.description.trim() === ''));
+
+      const matchesSpecies = speciesTypeFilter === 'all' || getItemSpeciesType(item) === speciesTypeFilter;
+
+      if (matchesCategory && matchesSearch && matchesDescFilter && matchesSpecies) {
+        allCount++;
+        const wt = getItemWaterType(item);
+        if (wt === 'sea_water') seaCount++;
+        else if (wt === 'fresh_water') freshCount++;
+      }
+    });
+
+    return { all: allCount, sea_water: seaCount, fresh_water: freshCount };
+  }, [items, category, categories, debouncedSearchTerm, descFilter, speciesTypeFilter]);
+
   useEffect(() => {
     if (onFilterCounts) onFilterCounts(filterTypeCounts);
   }, [filterTypeCounts, onFilterCounts]);
@@ -1176,109 +1245,129 @@ const MenuGrid = ({
         )}
 
         {/* 🌊 Single Compact Filter Bar: Water & Species + View Mode Toggle (3D Roller vs Grid) */}
-        <div className="relative bg-[#FAF0E4] border-b border-[#E8DCCB] px-1.5 sm:px-3 py-1 sm:py-1.5 flex items-center justify-between gap-1.5 sm:gap-2 shrink-0 shadow-2xs">
-          {/* Left: Water Environment & Species Filters */}
-          <div className="flex items-center gap-1 sm:gap-1.5 shrink-0 overflow-x-auto scrollbar-none py-0.5 max-w-[calc(100%-80px)] sm:max-w-none">
-            {/* Water Type Filter Pills */}
+        <div className="relative bg-[#FAF0E4] border-b border-[#E8DCCB] px-1.5 sm:px-3 py-1 sm:py-1.5 flex items-center justify-between gap-1 sm:gap-2 shrink-0 shadow-2xs">
+          {/* Left: Water Environment & Species Filters (Single row on all screens) */}
+          <div className="flex items-center gap-1 sm:gap-1.5 shrink-0 flex-nowrap">
+            {/* Water Type Filter Pills with Live Item Counts */}
             <div className="flex items-center gap-1 sm:gap-1.5 shrink-0 flex-nowrap">
               <button
                 type="button"
                 onClick={() => setWaterTypeFilter('all')}
-                className={`px-2 sm:px-3 py-0.5 sm:py-1 rounded-full text-[10.5px] sm:text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
+                className={`flex items-center gap-1 sm:gap-1.5 px-2 sm:px-2.5 py-0.5 sm:py-1 rounded-full text-[10px] sm:text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
                   waterTypeFilter === 'all'
                     ? 'bg-[#ea580c] text-white shadow-xs font-black'
                     : 'bg-white text-slate-700 border border-slate-200/90 hover:bg-amber-50 shadow-2xs'
                 }`}
               >
-                All Waters
+                <span>All</span>
+                <span className={`px-1.5 py-0.2 rounded-full text-[9px] sm:text-[10px] font-mono font-black leading-tight ${
+                  waterTypeFilter === 'all' ? 'bg-white/25 text-white' : 'bg-slate-100 text-slate-600'
+                }`}>
+                  {waterTypeCounts.all}
+                </span>
               </button>
               <button
                 type="button"
                 onClick={() => setWaterTypeFilter('sea_water')}
-                className={`px-2 sm:px-3 py-0.5 sm:py-1 rounded-full text-[10.5px] sm:text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
+                className={`flex items-center gap-1 sm:gap-1.5 px-2 sm:px-2.5 py-0.5 sm:py-1 rounded-full text-[10px] sm:text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
                   waterTypeFilter === 'sea_water'
                     ? 'bg-[#ea580c] text-white shadow-xs font-black'
                     : 'bg-white text-slate-700 border border-slate-200/90 hover:bg-amber-50 shadow-2xs'
                 }`}
               >
-                Sea Water
+                <span>Sea</span>
+                <span className={`px-1.5 py-0.2 rounded-full text-[9px] sm:text-[10px] font-mono font-black leading-tight ${
+                  waterTypeFilter === 'sea_water' ? 'bg-white/25 text-white' : 'bg-slate-100 text-slate-600'
+                }`}>
+                  {waterTypeCounts.sea_water}
+                </span>
               </button>
               <button
                 type="button"
                 onClick={() => setWaterTypeFilter('fresh_water')}
-                className={`px-2 sm:px-3 py-0.5 sm:py-1 rounded-full text-[10.5px] sm:text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
+                className={`flex items-center gap-1 sm:gap-1.5 px-2 sm:px-2.5 py-0.5 sm:py-1 rounded-full text-[10px] sm:text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
                   waterTypeFilter === 'fresh_water'
                     ? 'bg-[#ea580c] text-white shadow-xs font-black'
                     : 'bg-white text-slate-700 border border-slate-200/90 hover:bg-amber-50 shadow-2xs'
                 }`}
               >
-                Fresh Water
+                <span>Fresh</span>
+                <span className={`px-1.5 py-0.2 rounded-full text-[9px] sm:text-[10px] font-mono font-black leading-tight ${
+                  waterTypeFilter === 'fresh_water' ? 'bg-white/25 text-white' : 'bg-slate-100 text-slate-600'
+                }`}>
+                  {waterTypeCounts.fresh_water}
+                </span>
               </button>
             </div>
 
             {/* Subtle Divider */}
             <div className="h-3.5 sm:h-4 w-px bg-amber-400/80 mx-0.5 sm:mx-1 shrink-0" />
 
-            {/* Species Filter with Filter Icon Button */}
-            <div className="relative flex items-center gap-1 shrink-0">
-              <span className="text-[9.5px] sm:text-[11px] font-black text-amber-950 uppercase tracking-wide">
-                SPECIES
-              </span>
+            {/* Species Filter Pill Button */}
+            <div className="relative flex items-center shrink-0">
               <button
+                ref={speciesBtnRef}
                 type="button"
-                onClick={() => setShowSpeciesMenu((prev) => !prev)}
-                className={`relative w-5 h-5 sm:w-6 sm:h-6 rounded-full bg-white border flex items-center justify-center shadow-2xs hover:bg-amber-50 active:scale-95 cursor-pointer transition-all ${
+                onClick={handleToggleSpeciesMenu}
+                className={`flex items-center gap-1 px-2 sm:px-2.5 py-0.5 sm:py-1 rounded-full text-[10px] sm:text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
                   speciesTypeFilter !== 'all'
-                    ? 'border-[#ea580c] text-[#ea580c] ring-2 ring-orange-200'
-                    : 'border-slate-200/90 text-[#ea580c]'
+                    ? 'bg-amber-100 text-[#ea580c] border border-[#ea580c] ring-1 ring-orange-200 font-black'
+                    : 'bg-white text-slate-700 border border-slate-200/90 hover:bg-amber-50 shadow-2xs'
                 }`}
                 title="Filter by Species"
               >
-                <Filter size={11} className="text-[#ea580c] stroke-[2.5]" />
-                {speciesTypeFilter !== 'all' && (
-                  <span className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full bg-[#ea580c] ring-1 ring-white" />
-                )}
+                <span className="uppercase text-[9px] sm:text-[10px] font-black tracking-wider">
+                  {speciesTypeFilter === 'all' ? 'Species' : speciesTypeFilter}
+                </span>
+                <Filter size={10} className="text-[#ea580c] stroke-[2.5]" />
               </button>
-
-              {/* Species Popover Menu */}
-              {showSpeciesMenu && (
-                <div
-                  ref={speciesMenuRef}
-                  className="absolute right-0 top-full mt-1.5 z-50 bg-white/98 backdrop-blur-md border border-amber-300 rounded-2xl shadow-2xl p-1.5 min-w-[145px] animate-in fade-in zoom-in-95 duration-150"
-                >
-                  <div className="text-[9.5px] font-black uppercase text-slate-400 px-2 py-1 tracking-wider border-b border-amber-100 mb-1">
-                    Select Species
-                  </div>
-                  {[
-                    { key: 'all', label: 'All Species' },
-                    { key: 'fish', label: 'Fish' },
-                    { key: 'prawn', label: 'Prawns' },
-                    { key: 'crab', label: 'Crabs' }
-                  ].map((sp) => {
-                    const isSelected = speciesTypeFilter === sp.key;
-                    return (
-                      <button
-                        key={sp.key}
-                        type="button"
-                        onClick={() => {
-                          setSpeciesTypeFilter(sp.key);
-                          setShowSpeciesMenu(false);
-                        }}
-                        className={`w-full text-left px-2.5 py-1.5 rounded-xl text-xs font-bold flex items-center justify-between cursor-pointer transition-colors ${
-                          isSelected
-                            ? 'bg-[#ea580c] text-white font-black shadow-xs'
-                            : 'text-slate-700 hover:bg-amber-50'
-                        }`}
-                      >
-                        <span>{sp.label}</span>
-                        {isSelected && <Check size={12} className="stroke-[3]" />}
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
             </div>
           </div>
+
+          {/* Species Popover Menu rendered via Portal to prevent any clipping */}
+          {showSpeciesMenu && typeof document !== 'undefined' && createPortal(
+            <div
+              ref={speciesMenuRef}
+              style={{
+                position: 'fixed',
+                top: `${speciesMenuCoords.top}px`,
+                left: `${speciesMenuCoords.left}px`,
+                zIndex: 99999
+              }}
+              className="bg-white/98 backdrop-blur-md border border-amber-300 rounded-2xl shadow-2xl p-1.5 min-w-[145px] animate-in fade-in zoom-in-95 duration-150"
+            >
+              <div className="text-[9.5px] font-black uppercase text-slate-400 px-2 py-1 tracking-wider border-b border-amber-100 mb-1">
+                Select Species
+              </div>
+              {[
+                { key: 'all', label: 'All Species' },
+                { key: 'fish', label: 'Fish' },
+                { key: 'prawn', label: 'Prawns' },
+                { key: 'crab', label: 'Crabs' }
+              ].map((sp) => {
+                const isSelected = speciesTypeFilter === sp.key;
+                return (
+                  <button
+                    key={sp.key}
+                    type="button"
+                    onClick={() => {
+                      setSpeciesTypeFilter(sp.key);
+                      setShowSpeciesMenu(false);
+                    }}
+                    className={`w-full text-left px-2.5 py-1.5 rounded-xl text-xs font-bold flex items-center justify-between cursor-pointer transition-colors ${
+                      isSelected
+                        ? 'bg-[#ea580c] text-white font-black shadow-xs'
+                        : 'text-slate-700 hover:bg-amber-50'
+                    }`}
+                  >
+                    <span>{sp.label}</span>
+                    {isSelected && <Check size={12} className="stroke-[3]" />}
+                  </button>
+                );
+              })}
+            </div>,
+            document.body
+          )}
 
           {/* Right: View Mode Switcher for All Screens (Mobile, Tablet, Desktop) */}
           <div className="flex items-center gap-1 sm:gap-2 shrink-0 ml-auto">
@@ -2104,13 +2193,13 @@ const MenuGrid = ({
 
                     {/* Section 2: Sub-Grams & Fractions (¼, ½, ¾ Kg) */}
                     <div className="space-y-1.5">
-                      <div className="flex justify-between items-center">
+                      <div className="flex justify-between items-center flex-wrap gap-1">
                         <span className="text-[10.5px] sm:text-xs font-bold text-slate-800 flex items-center gap-1">
                           <span>2. Select Sub-Grams / Fractions</span>
                         </span>
-                        <div className="flex items-center gap-1.5">
+                        <div className="flex items-center flex-wrap gap-1">
                           <span className="text-[10px] text-slate-500 font-semibold">Tare:</span>
-                          {[0, 50, 100].map(tVal => (
+                          {[0, 20, 50, 100, 200].map(tVal => (
                             <button
                               key={tVal}
                               type="button"
@@ -2124,6 +2213,32 @@ const MenuGrid = ({
                               {tVal === 0 ? 'Zero' : `-${tVal}g`}
                             </button>
                           ))}
+                          <div className="flex items-center gap-0.5 bg-white px-1.5 py-0.5 rounded border border-slate-300 shadow-2xs">
+                            <input
+                              type="number"
+                              min="0"
+                              max="5000"
+                              step="1"
+                              value={tareGrams === 0 ? '' : tareGrams}
+                              onChange={(e) => {
+                                const val = parseInt(e.target.value, 10);
+                                setTareGrams(isNaN(val) || val < 0 ? 0 : val);
+                              }}
+                              placeholder="0"
+                              className="w-10 text-center font-mono font-bold text-[10.5px] text-slate-900 bg-amber-50/70 border border-amber-200 rounded px-0.5 py-0.2 focus:outline-none focus:ring-1 focus:ring-[#ea580c] [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                            />
+                            <span className="text-[9.5px] font-bold text-slate-600">g</span>
+                            {tareGrams > 0 && (
+                              <button
+                                type="button"
+                                onClick={() => setTareGrams(0)}
+                                title="Clear Tare"
+                                className="text-slate-400 hover:text-rose-600 p-0.2 ml-0.5 cursor-pointer"
+                              >
+                                <X size={10} />
+                              </button>
+                            )}
+                          </div>
                         </div>
                       </div>
                       <div className="grid grid-cols-4 gap-1 sm:gap-1.5">

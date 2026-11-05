@@ -76,20 +76,61 @@ export function computeBoxesSummary(items) {
   return { boxes, totalBoxes: boxes.length };
 }
 
-export const generateUniqueBillNumber = async (BillModel) => {
+export const getBillPrefixForCategory = (categoryOrOrder) => {
+  if (!categoryOrOrder) return 'RET-';
+  if (typeof categoryOrOrder === 'object') {
+    const o = categoryOrOrder;
+    if (
+      String(o.customerCategory || '').toLowerCase().includes('export') ||
+      String(o.orderChannel || '').toLowerCase().includes('export') ||
+      String(o.billType || '').toLowerCase().includes('export')
+    ) {
+      return 'EXP-';
+    }
+    if (
+      Number(o.totalBoxes || 0) > 0 ||
+      (Array.isArray(o.boxes) && o.boxes.length > 0) ||
+      (Array.isArray(o.items) && o.items.some(i => i.isWholesaleBox || Number(i.boxNumber || 0) > 0)) ||
+      String(o.customerCategory || '').toLowerCase().includes('wholesale') ||
+      String(o.orderChannel || '').toLowerCase().includes('wholesale') ||
+      String(o.billType || '').toLowerCase().includes('wholesale')
+    ) {
+      return 'WS-';
+    }
+    return 'RET-';
+  }
+  const str = String(categoryOrOrder).toLowerCase();
+  if (str.includes('export')) return 'EXP-';
+  if (str.includes('whole')) return 'WS-';
+  return 'RET-';
+};
+
+export const generateUniqueBillNumber = async (BillModel, categoryOrOrder = 'Retail') => {
+  const prefix = getBillPrefixForCategory(categoryOrOrder);
+  const regex = new RegExp(`^${prefix}\\d+$`, 'i');
+
   try {
-    const result = await BillModel.aggregate([
-      { $match: { billNumber: /^ms\d+$/i } },
+    const agg = BillModel.aggregate([
+      { $match: { billNumber: regex } },
       { 
         $project: { 
           billNumber: 1,
           strLen: { $strLenCP: "$billNumber" }
         } 
       },
-      // Sort by length first (MS1000 > MS999), then lexically for ties
+      // Sort by length first (MS1000 > MS999 / RET-10000 > RET-9999), then lexically for ties
       { $sort: { strLen: -1, billNumber: -1 } },
       { $limit: 1 }
-    ]).allowDiskUse(true);
+    ]);
+
+    let result;
+    if (typeof agg.allowDiskUse === 'function') {
+      result = await agg.allowDiskUse(true);
+    } else if (typeof agg.toArray === 'function') {
+      result = await agg.toArray();
+    } else {
+      result = await agg;
+    }
 
     let maxNum = 0n; // Use BigInt to support infinite digits (e.g., 20+ digits)
     if (result && result.length > 0 && result[0].billNumber) {
@@ -99,13 +140,16 @@ export const generateUniqueBillNumber = async (BillModel) => {
       }
     }
     
-    return `MS${(maxNum + 1n).toString().padStart(4, '0')}`;
+    const nextNum = maxNum + 1n;
+    const numStr = nextNum.toString();
+    const formattedDigits = numStr.length < 4 ? numStr.padStart(4, '0') : numStr;
+    return `${prefix}${formattedDigits}`;
   } catch (err) {
     console.error('Error in generateUniqueBillNumber aggregation:', err);
     try {
       // Fallback: fetch all matching bills and find max in memory using BigInt
       const candidateBills = await BillModel.find(
-        { billNumber: /^ms\d+$/i },
+        { billNumber: regex },
         { billNumber: 1 }
       ).lean();
       
@@ -121,10 +165,13 @@ export const generateUniqueBillNumber = async (BillModel) => {
           }
         }
       }
-      return `MS${(maxNum + 1n).toString().padStart(4, '0')}`;
+      const nextNum = maxNum + 1n;
+      const numStr = nextNum.toString();
+      const formattedDigits = numStr.length < 4 ? numStr.padStart(4, '0') : numStr;
+      return `${prefix}${formattedDigits}`;
     } catch (fallbackErr) {
       console.error('Fallback generation failed:', fallbackErr);
-      return `MS${Date.now().toString().slice(-4)}`;
+      return `${prefix}${Date.now().toString().slice(-4)}`;
     }
   }
 };
@@ -1060,7 +1107,7 @@ export const generateBill = async (req, res) => {
 
     let billNumber = order.billNumber;
     if (!billNumber) {
-      billNumber = await generateUniqueBillNumber(Bill);
+      billNumber = await generateUniqueBillNumber(Bill, order);
     }
 
     if (isExistingBilled && amountChanged && billNumber) {
@@ -1313,7 +1360,7 @@ export const settleBill = async (req, res) => {
 
     // Ensure billNumber exists if not previously generated (Ultra-fast indexed lookup)
     if (!order.billNumber) {
-      order.billNumber = await generateUniqueBillNumber(Bill);
+      order.billNumber = await generateUniqueBillNumber(Bill, order);
     }
 
     // Save the bill with version retry protection & duplicate key retry protection
@@ -1328,13 +1375,7 @@ export const settleBill = async (req, res) => {
         const isDupKey = saveErr.code === 11000 || saveErr.message?.includes('E11000') || saveErr.message?.includes('duplicate key');
         if (isDupKey && attempts < 15) { // Increased attempts to handle multiple skips
           console.warn(`[settleBill] Duplicate billNumber ${order.billNumber} detected (attempt ${attempts}), regenerating...`);
-          const numMatch = (order.billNumber || '').match(/^MS(\d+)$/i);
-          if (numMatch) {
-             const nextNum = parseInt(numMatch[1], 10) + 1;
-             order.billNumber = `MS${nextNum.toString().padStart(4, '0')}`;
-          } else {
-             order.billNumber = `MS${Date.now().toString().slice(-6)}`; // Fallback to timestamp if pattern fails
-          }
+          order.billNumber = await generateUniqueBillNumber(Bill, order);
           continue;
         }
 

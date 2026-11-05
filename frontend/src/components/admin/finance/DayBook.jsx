@@ -180,7 +180,7 @@ const DayBook = ({ onNavigate, onGoBack }) => {const { t } = useLanguage();
   }
 
   return (
-    <div className="min-h-full h-full bg-[#F7EFE2] text-slate-800 p-1.5 sm:p-2.5 md:p-3 overflow-y-auto">
+    <div className="w-full min-h-full shrink-0 flex flex-col bg-[#F7EFE2] text-slate-800 p-2 sm:p-3 md:p-4 pb-24 touch-pan-y">
       <style>{`
         .glass-card {
           background: #ffffff;
@@ -200,16 +200,16 @@ const DayBook = ({ onNavigate, onGoBack }) => {const { t } = useLanguage();
         }
       `}</style>
       {/* Header */}
-      <div className="glass-card p-2 sm:p-3 md:p-4 mb-3 sm:mb-5 relative overflow-hidden">
+      <div className="glass-card p-2.5 sm:p-3 md:p-4 mb-3 sm:mb-5 relative">
         {/* Decorative background glow */}
         <div className="absolute top-0 right-0 w-64 h-64 bg-[#f97316]/5 rounded-full blur-3xl pointer-events-none"></div>
         <div className="flex flex-col sm:flex-row sm:flex-nowrap justify-between items-stretch sm:items-center gap-2 sm:gap-2 md:gap-3 relative z-10">
-          <div className="flex items-center gap-1.5 sm:gap-2 md:gap-2.5 shrink-0">
+          <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 md:gap-2.5 shrink-0">
             <BackButton onClick={onGoBack} className="shrink-0 !px-2.5 !py-1 sm:!px-2.5 sm:!py-1.5 md:!px-3 md:!py-2 !text-xs sm:!text-xs md:!text-sm" />
             <div className="bg-gradient-to-br from-[#f97316]/15 to-[#ea580c]/10 p-1.5 sm:p-1.5 md:p-2 rounded-xl border border-[#f97316]/20 shadow-xs flex items-center justify-center shrink-0">
               <Calendar className="w-3.5 h-3.5 sm:w-4 sm:h-4 md:w-5 md:h-5 text-[#f97316]" />
             </div>
-            <h1 className="text-sm sm:text-base md:text-xl lg:text-2xl font-black text-slate-800 tracking-tight shrink-0">{t("DayBook")}</h1>
+            <h1 className="text-sm sm:text-base md:text-xl lg:text-2xl font-black text-slate-900 tracking-tight shrink-0 leading-normal pb-0.5">{t("DayBook")}</h1>
             <div className="flex items-center gap-1 bg-white rounded-lg px-1.5 py-0.5 sm:px-2 sm:py-1 border border-[#E8DCCB] shadow-xs focus-within:border-[#ea580c] transition-colors shrink-0">
               <input
                 type="date"
@@ -343,7 +343,7 @@ const DayBook = ({ onNavigate, onGoBack }) => {const { t } = useLanguage();
                 <div className="space-y-2 pl-6 sm:pl-8">
                   {data.cashFlow.onlineInBreakdown.map((item, i) => (
                     <div key={i} className="flex justify-between items-center text-xs border-b border-[#E8DCCB]/60 last:border-0 pb-1.5 last:pb-0">
-                      <span className="text-slate-600">{item.app}</span>
+                      <span className="text-slate-800 font-semibold">{item.app}</span>
                       <span className="font-bold text-slate-800 font-mono">₹{item.amount.toLocaleString()}</span>
                     </div>
                   ))}
@@ -410,30 +410,30 @@ const DayBook = ({ onNavigate, onGoBack }) => {const { t } = useLanguage();
               ) : (
                 data.transactions.map((tx, i) => (
                   <tr key={`${tx.id}-${i}`} className="border-b border-[#f1f5f9] hover:bg-[#F5E8D8]/60 transition-colors">
-                    <td className="p-3 text-slate-500 text-xs sm:text-sm whitespace-nowrap">{formatTime12(tx.date)}</td>
+                    <td className="p-3 text-slate-800 font-semibold font-mono text-xs sm:text-sm whitespace-nowrap">{formatTime12(tx.date)}</td>
                     <td className="p-3">
-                      <span className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider ${tx.type === 'Sale' ? 'bg-[#22c55e]/10 text-[#4ade80] border border-[#22c55e]/30' : 'bg-red-500/10 text-red-400 border border-red-500/30'}`}>{tx.type}</span>
+                      <span className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider ${tx.type === 'Sale' ? 'bg-emerald-100 text-emerald-800 border border-emerald-300' : 'bg-red-100 text-red-700 border border-red-300'}`}>{tx.type}</span>
                     </td>
                     <td className="p-3 font-semibold text-slate-800 text-xs sm:text-sm">{tx.particulars}</td>
                     <td className="p-3">
                       <div className="flex flex-col">
                         <span className="font-semibold text-slate-800 text-xs">{tx.name && tx.name !== '--' ? tx.name : 'Walk-In'}</span>
                         {tx.phone && tx.phone !== '--' && (
-                          <span className="text-[11px] text-sky-400 font-mono">{tx.phone}</span>
+                          <span className="text-[11px] text-sky-700 font-mono font-bold">{tx.phone}</span>
                         )}
                       </div>
                     </td>
                     <td className="p-3">
-                      <span className="px-2 py-0.5 rounded bg-[#F7EFE2] border border-[#E8DCCB] text-slate-700 text-[11px] font-mono font-medium">{tx.paymentMode || 'Cash'}</span>
+                      <span className="px-2.5 py-0.5 rounded bg-white border border-slate-300 text-slate-900 text-[11px] font-mono font-bold shadow-2xs">{tx.paymentMode || 'Cash'}</span>
                     </td>
                     <td className="p-3 font-bold text-slate-900 text-right text-xs sm:text-sm font-mono">₹{tx.total.toLocaleString()}</td>
                     <td className="p-3 font-mono font-medium text-red-600 text-right text-xs sm:text-sm">{tx.cashOut > 0 ? `- ₹${tx.cashOut.toLocaleString()}` : '-'}</td>
                     <td className="p-3 font-mono text-right text-xs sm:text-sm">
                       {tx.cashIn > 0 && (
-                        <span className="text-[#16a34a] font-bold block">+ ₹{tx.cashIn.toLocaleString()} <span className="text-[10px] text-gray-400 font-sans">Cash</span></span>
+                        <span className="text-emerald-700 font-bold block">+ ₹{tx.cashIn.toLocaleString()} <span className="text-[10px] text-slate-700 font-bold font-sans">Cash</span></span>
                       )}
                       {tx.onlineIn > 0 && (
-                        <span className="text-blue-600 font-bold block">+ ₹{tx.onlineIn.toLocaleString()} <span className="text-[10px] text-gray-400 font-sans">Online</span></span>
+                        <span className="text-blue-700 font-bold block">+ ₹{tx.onlineIn.toLocaleString()} <span className="text-[10px] text-slate-700 font-bold font-sans">Online</span></span>
                       )}
                       {!tx.cashIn && !tx.onlineIn && '-'}
                     </td>
@@ -454,9 +454,9 @@ const DayBook = ({ onNavigate, onGoBack }) => {const { t } = useLanguage();
                 <div className="flex items-start justify-between gap-2 mb-1.5">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-1.5 mb-0.5">
-                      <span className={`px-2 py-0.5 rounded text-[9px] font-black uppercase ${tx.type === 'Sale' ? 'bg-[#22c55e]/10 text-[#4ade80] border border-[#22c55e]/30' : 'bg-red-500/10 text-red-400 border border-red-500/30'}`}>{tx.type}</span>
-                      <span className="text-gray-400 text-[11px] font-mono">{formatTime12(tx.date)}</span>
-                      <span className="px-1.5 py-0.2 rounded bg-white border border-[#E8DCCB] text-slate-700 text-[9px] font-mono">{tx.paymentMode || 'Cash'}</span>
+                      <span className={`px-2 py-0.5 rounded text-[9px] font-black uppercase ${tx.type === 'Sale' ? 'bg-emerald-100 text-emerald-800 border border-emerald-300' : 'bg-red-100 text-red-700 border border-red-300'}`}>{tx.type}</span>
+                      <span className="text-slate-700 font-bold text-[11px] font-mono">{formatTime12(tx.date)}</span>
+                      <span className="px-1.5 py-0.2 rounded bg-white border border-slate-300 text-slate-900 font-bold text-[9px] font-mono">{tx.paymentMode || 'Cash'}</span>
                     </div>
                     <p className="font-semibold text-slate-800 text-xs sm:text-sm truncate">{tx.particulars}</p>
                   </div>

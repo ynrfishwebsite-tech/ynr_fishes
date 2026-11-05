@@ -601,7 +601,7 @@ const PrinterConfig = ({ onNavigate, onGoBack, user }) => {
   };
 
   return (
-    <div className="min-h-full flex-1 flex flex-col bg-[#f7f1ea] p-2 sm:p-3 md:p-4 overflow-y-auto overscroll-y-auto font-sans touch-pan-y">
+    <div className="w-full min-h-full shrink-0 flex flex-col bg-[#f7f1ea] p-2 sm:p-3 md:p-4 pb-24 font-sans touch-pan-y">
       {/* Top Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-3 sm:mb-4 gap-3 bg-[#FDFBF7] p-3 sm:p-4 rounded-xl border border-sky-500/25 shadow-lg shadow-black/30">
         <div className="flex items-center gap-2.5 sm:gap-3">
@@ -1021,7 +1021,7 @@ const PrinterConfig = ({ onNavigate, onGoBack, user }) => {
                   <Printer className="text-sky-400 shrink-0" size={18} />
                   <span>{editingConfig ? t('Edit Printer Station') : t('Add New Thermal / Printer Station')}</span>
                 </h2>
-                <p className="text-[11px] sm:text-xs text-text-muted">
+                <p className="text-[11px] sm:text-xs text-slate-600 font-medium">
                   {t('Configure physical thermal printing and routing for this billing station')}
                 </p>
               </div>
@@ -1037,7 +1037,7 @@ const PrinterConfig = ({ onNavigate, onGoBack, user }) => {
                 <form id="printer-form" onSubmit={handleSave} className="space-y-5">
                   {/* Station Name */}
                   <div>
-                    <label className="block text-xs font-bold text-sky-300 uppercase tracking-wide mb-1.5">
+                    <label className="block text-xs font-black text-slate-800 uppercase tracking-wide mb-1.5">
                       {t("Station / Printer Name *")}
                     </label>
                     <input
@@ -1054,7 +1054,7 @@ const PrinterConfig = ({ onNavigate, onGoBack, user }) => {
                   {/* Printer Type & Connection */}
                   <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
                     <div>
-                      <label className="block text-xs font-bold text-sky-300/80 uppercase tracking-wide mb-1.5">
+                      <label className="block text-xs font-black text-slate-800 uppercase tracking-wide mb-1.5">
                         {t("Printer Purpose *")}
                       </label>
                       <select
@@ -1067,7 +1067,7 @@ const PrinterConfig = ({ onNavigate, onGoBack, user }) => {
                       </select>
                     </div>
                     <div>
-                      <label className="block text-xs font-bold text-sky-300/80 uppercase tracking-wide mb-1.5">
+                      <label className="block text-xs font-black text-slate-800 uppercase tracking-wide mb-1.5">
                         {t("Connection Type")}
                       </label>
                       <select
@@ -1081,7 +1081,7 @@ const PrinterConfig = ({ onNavigate, onGoBack, user }) => {
                       </select>
                     </div>
                     <div>
-                      <label className="block text-xs font-bold text-sky-300/80 uppercase tracking-wide mb-1.5">
+                      <label className="block text-xs font-black text-slate-800 uppercase tracking-wide mb-1.5">
                         {t("Paper Width")}
                       </label>
                       <select
@@ -1094,7 +1094,7 @@ const PrinterConfig = ({ onNavigate, onGoBack, user }) => {
                       </select>
                     </div>
                     <div>
-                      <label className="block text-xs font-bold text-sky-300/80 uppercase tracking-wide mb-1.5">
+                      <label className="block text-xs font-black text-slate-800 uppercase tracking-wide mb-1.5">
                         {t("Copies")}
                       </label>
                       <select
@@ -1114,7 +1114,7 @@ const PrinterConfig = ({ onNavigate, onGoBack, user }) => {
                     <div className="bg-[#F7EFE2] p-4 rounded-xl border border-sky-500/25 space-y-3">
                       {/* Scan header */}
                       <div className="flex items-center justify-between flex-wrap gap-2">
-                        <label className="text-xs font-bold text-sky-300 uppercase tracking-wide flex items-center gap-1.5">
+                        <label className="text-xs font-black text-slate-800 uppercase tracking-wide flex items-center gap-1.5">
                           <Network size={14} className="text-sky-400" />
                           <span>{t("Auto-Detected Network / WiFi Printer IP")}</span>
                         </label>
@@ -1122,7 +1122,7 @@ const PrinterConfig = ({ onNavigate, onGoBack, user }) => {
                           type="button"
                           onClick={scanNetworkPrinters}
                           disabled={isScanningNetwork}
-                          className="text-xs font-bold text-sky-300 hover:text-white flex items-center gap-1.5 cursor-pointer bg-sky-500/20 hover:bg-sky-500/30 px-3 py-1.5 rounded-lg border border-sky-500/40 shadow-xs transition-all">
+                          className="text-xs font-bold text-sky-900 bg-sky-100 hover:bg-sky-200 border border-sky-300 flex items-center gap-1.5 cursor-pointer px-3 py-1.5 rounded-lg shadow-xs transition-all">
                           <RefreshCw size={12} className={isScanningNetwork ? "animate-spin text-sky-400" : "text-sky-400"} />
                           <span>{isScanningNetwork ? t("Scanning Network...") : t("Scan Network Printers")}</span>
                         </button>
@@ -1130,7 +1130,7 @@ const PrinterConfig = ({ onNavigate, onGoBack, user }) => {
 
                       {/* Discovered printers dropdown */}
                       {networkStatus && !networkStatus.connected && !isScanningNetwork && (
-                        <div className="flex items-center gap-2 px-3.5 py-2.5 rounded-xl border border-red-500/30 bg-red-950/40 text-[12px] text-red-300 font-semibold">
+                        <div className="flex items-center gap-2 px-3.5 py-2.5 rounded-xl border border-red-500/30 bg-red-50 text-[12px] text-red-900 font-bold">
                           <AlertTriangle size={14} className="text-red-400 shrink-0" />
                           <span>{t("Network not connected. No active LAN or WiFi interface detected on this machine. Please connect a network cable or join a WiFi network.")}</span>
                         </div>
@@ -1235,7 +1235,7 @@ const PrinterConfig = ({ onNavigate, onGoBack, user }) => {
                           type="button"
                           onClick={scanUsbPorts}
                           disabled={isScanningUsb}
-                          className="text-xs font-bold text-sky-300 hover:text-white flex items-center gap-1.5 cursor-pointer bg-sky-500/20 hover:bg-sky-500/30 px-3 py-1.5 rounded-lg border border-sky-500/40 shadow-xs transition-all">
+                          className="text-xs font-bold text-sky-900 bg-sky-100 hover:bg-sky-200 border border-sky-300 flex items-center gap-1.5 cursor-pointer px-3 py-1.5 rounded-lg shadow-xs transition-all">
                           <RefreshCw size={12} className={isScanningUsb ? "animate-spin text-sky-400" : "text-sky-400"} />
                           <span>{isScanningUsb ? t("Scanning Ports...") : t("Scan USB Ports")}</span>
                         </button>
@@ -1302,7 +1302,7 @@ const PrinterConfig = ({ onNavigate, onGoBack, user }) => {
                     <div className="bg-[#F7EFE2] p-4 rounded-xl border border-sky-500/25 text-sky-200 space-y-3">
                       {/* Header + Scan button */}
                       <div className="flex items-center justify-between flex-wrap gap-2">
-                        <label className="text-xs font-bold text-sky-300 uppercase tracking-wide flex items-center gap-1.5">
+                        <label className="text-xs font-black text-slate-800 uppercase tracking-wide flex items-center gap-1.5">
                           <Bluetooth size={14} className="text-sky-400" />
                           <span>{t("Auto-Detected Bluetooth Thermal Printer")}</span>
                         </label>
@@ -1310,7 +1310,7 @@ const PrinterConfig = ({ onNavigate, onGoBack, user }) => {
                           type="button"
                           onClick={loadBluetoothDevices}
                           disabled={isScanningBluetooth}
-                          className="text-xs font-bold text-sky-300 hover:text-white flex items-center gap-1.5 cursor-pointer bg-sky-500/20 hover:bg-sky-500/30 px-3 py-1.5 rounded-lg border border-sky-500/40 shadow-xs transition-all">
+                          className="text-xs font-bold text-sky-900 bg-sky-100 hover:bg-sky-200 border border-sky-300 flex items-center gap-1.5 cursor-pointer px-3 py-1.5 rounded-lg shadow-xs transition-all">
                           <RefreshCw size={12} className={isScanningBluetooth ? "animate-spin text-sky-400" : "text-sky-400"} />
                           <span>{isScanningBluetooth ? t("Scanning Bluetooth...") : t("Scan Bluetooth Devices")}</span>
                         </button>
@@ -1318,7 +1318,7 @@ const PrinterConfig = ({ onNavigate, onGoBack, user }) => {
 
                       {/* Bluetooth not available */}
                       {btAvailable === false && !isScanningBluetooth && (
-                        <div className="flex items-center gap-2 px-3.5 py-2.5 rounded-xl border border-red-500/30 bg-red-950/40 text-[12px] text-red-300 font-semibold">
+                        <div className="flex items-center gap-2 px-3.5 py-2.5 rounded-xl border border-red-500/30 bg-red-50 text-[12px] text-red-900 font-bold">
                           <AlertTriangle size={14} className="text-red-400 shrink-0" />
                           <span>{t("Bluetooth is not available or not enabled on this device. Please turn ON Bluetooth and try again.")}</span>
                         </div>
@@ -1399,7 +1399,7 @@ const PrinterConfig = ({ onNavigate, onGoBack, user }) => {
                       {/* LIVE BLUETOOTH STATUS PANEL */}
                       {formData.bluetoothAddress && (
                         <div className="bg-[#FDFBF7] p-3.5 rounded-xl border border-sky-500/25 space-y-3 mt-3">
-                          <h4 className="text-[11px] font-bold text-sky-300 uppercase tracking-wider flex items-center gap-1.5">
+                          <h4 className="text-[11px] font-black text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
                             <Bluetooth size={12} className={isScanningBluetooth ? "animate-pulse" : ""} />
                             {t("Live Bluetooth Status")}
                           </h4>
@@ -1407,19 +1407,19 @@ const PrinterConfig = ({ onNavigate, onGoBack, user }) => {
                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
                             {/* 1. Bluetooth ON/OFF */}
                             <div className="flex items-center justify-between p-2.5 bg-[#F7EFE2] rounded-lg border border-sky-500/20">
-                              <span className="text-slate-300 font-medium">{t("Bluetooth Radio")}</span>
+                              <span className="text-slate-800 font-bold">{t("Bluetooth Radio")}</span>
                               {btAvailable === true ? (
                                 <span className="px-2 py-0.5 bg-emerald-950/60 text-emerald-400 border border-emerald-500/30 font-bold rounded text-[10px] uppercase">ON</span>
                               ) : btAvailable === false ? (
                                 <span className="px-2 py-0.5 bg-red-950/60 text-red-400 border border-red-500/30 font-bold rounded text-[10px] uppercase">OFF / UNAVAILABLE</span>
                               ) : (
-                                <span className="px-2 py-0.5 bg-slate-800 text-slate-300 font-bold rounded text-[10px] uppercase">CHECKING...</span>
+                                <span className="px-2 py-0.5 bg-slate-200 text-slate-800 border border-slate-300 font-bold rounded text-[10px] uppercase">CHECKING...</span>
                               )}
                             </div>
 
                             {/* 2. Paired Status */}
                             <div className="flex items-center justify-between p-2.5 bg-[#F7EFE2] rounded-lg border border-sky-500/20">
-                              <span className="text-slate-300 font-medium">{t("Pairing Status")}</span>
+                              <span className="text-slate-800 font-bold">{t("Pairing Status")}</span>
                               {bluetoothDevices.some(d => d.address === formData.bluetoothAddress) ? (
                                 <span className="px-2 py-0.5 bg-emerald-950/60 text-emerald-400 border border-emerald-500/30 font-bold rounded text-[10px] uppercase">PAIRED</span>
                               ) : (
@@ -1429,30 +1429,30 @@ const PrinterConfig = ({ onNavigate, onGoBack, user }) => {
 
                             {/* 3. Connected Status */}
                             <div className="flex items-center justify-between p-2.5 bg-[#F7EFE2] rounded-lg border border-sky-500/20">
-                              <span className="text-slate-300 font-medium">{t("Connection")}</span>
+                              <span className="text-slate-800 font-bold">{t("Connection")}</span>
                               {bluetoothDevices.some(d => d.address === formData.bluetoothAddress && d.connected) ? (
                                 <span className="px-2 py-0.5 bg-emerald-950/60 text-emerald-400 border border-emerald-500/30 font-bold rounded text-[10px] uppercase flex items-center gap-1"><CheckCircle size={10} /> CONNECTED</span>
                               ) : (
-                                <span className="px-2 py-0.5 bg-slate-800 text-slate-400 font-bold rounded text-[10px] uppercase">DISCONNECTED</span>
+                                <span className="px-2 py-0.5 bg-slate-200 text-slate-700 border border-slate-300 font-bold rounded text-[10px] uppercase">DISCONNECTED</span>
                               )}
                             </div>
 
                             {/* 4. Connection Limit */}
                             <div className="flex items-center justify-between p-2.5 bg-[#F7EFE2] rounded-lg border border-sky-500/20">
-                              <span className="text-slate-300 font-medium">{t("Device Limit")}</span>
+                              <span className="text-slate-800 font-bold">{t("Device Limit")}</span>
                               {bluetoothDevices.some(d => d.address === formData.bluetoothAddress && d.connected) ? (
                                 <span className="px-2 py-0.5 bg-sky-950/60 text-sky-400 border border-sky-500/30 font-bold rounded text-[10px] uppercase">1/1 (MAX REACHED)</span>
                               ) : (
-                                <span className="px-2 py-0.5 bg-slate-800 text-slate-400 font-bold rounded text-[10px] uppercase">AVAILABLE (0/1)</span>
+                                <span className="px-2 py-0.5 bg-slate-200 text-slate-700 border border-slate-300 font-bold rounded text-[10px] uppercase">AVAILABLE (0/1)</span>
                               )}
                             </div>
                           </div>
 
                           {/* 5. Error Reporting */}
                           {(!btAvailable || !bluetoothDevices.some(d => d.address === formData.bluetoothAddress)) && (
-                            <div className="p-2.5 bg-red-950/40 border border-red-500/30 rounded-lg flex items-start gap-2 text-[11px] text-red-300 mt-2">
-                              <AlertTriangle size={14} className="shrink-0 mt-0.5 text-red-400" />
-                              <span className="font-medium">
+                            <div className="p-2.5 bg-red-50 border border-red-300 rounded-xl flex items-start gap-2 text-[11px] text-red-900 mt-2 shadow-xs">
+                              <AlertTriangle size={15} className="shrink-0 mt-0.5 text-red-600" />
+                              <span className="font-bold">
                                 {!btAvailable
                                   ? t("Error: Bluetooth adapter is turned off or not found on this system. Please enable it.")
                                   : t("Error: This device is not currently paired. Please pair it in your system Bluetooth settings first and click Scan.")}
@@ -1493,7 +1493,7 @@ const PrinterConfig = ({ onNavigate, onGoBack, user }) => {
                             <Layers size={16} className="text-sky-400" />
                             <span>{t("Fish Items & Category Routing")}</span>
                           </div>
-                          <p className="text-xs text-text-muted mt-0.5">
+                          <p className="text-xs text-slate-600 font-medium mt-0.5">
                             {t("Choose whether this station prints tickets for entire fish categories or specific items")}
                           </p>
                         </div>
@@ -1505,7 +1505,7 @@ const PrinterConfig = ({ onNavigate, onGoBack, user }) => {
                             onClick={() => setFormData(prev => ({ ...prev, assignmentMode: 'category' }))}
                             className={`flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${formData.assignmentMode === 'category'
                                 ? 'bg-gradient-to-r from-sky-500 to-blue-600 text-white shadow-sm'
-                                : 'text-sky-300/70 hover:text-white hover:bg-sky-500/10'
+                                : 'text-slate-700 hover:text-slate-900 hover:bg-slate-200'
                               }`}>
                             <Layers size={13} />
                             <span>{t("Category")}</span>
@@ -1515,7 +1515,7 @@ const PrinterConfig = ({ onNavigate, onGoBack, user }) => {
                             onClick={() => setFormData(prev => ({ ...prev, assignmentMode: 'item' }))}
                             className={`flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${formData.assignmentMode === 'item'
                                 ? 'bg-gradient-to-r from-sky-500 to-blue-600 text-white shadow-sm'
-                                : 'text-sky-300/70 hover:text-white hover:bg-sky-500/10'
+                                : 'text-slate-700 hover:text-slate-900 hover:bg-slate-200'
                               }`}>
                             <Utensils size={13} />
                             <span>{t("Item")}</span>
@@ -1542,7 +1542,7 @@ const PrinterConfig = ({ onNavigate, onGoBack, user }) => {
                       {/* VIEW 1: CATEGORY-BASED SELECTOR */}
                       {formData.assignmentMode === 'category' && (
                         <div className="space-y-3">
-                          <div className="flex items-center justify-between text-xs text-text-muted font-medium px-1">
+                          <div className="flex items-center justify-between text-xs text-slate-700 font-bold px-1">
                             <span>
                               {t("Select categories assigned to this station")} ({formData.assignedCategories.length} {t("selected")})
                             </span>
@@ -1553,14 +1553,14 @@ const PrinterConfig = ({ onNavigate, onGoBack, user }) => {
                                   const allNames = categories.map(c => c.name);
                                   setFormData(prev => ({ ...prev, assignedCategories: allNames }));
                                 }}
-                                className="text-xs font-bold text-sky-400 hover:underline cursor-pointer">
+                                className="text-xs font-bold text-sky-700 hover:underline cursor-pointer">
                                 {t("Select All")}
                               </button>
                               <span>•</span>
                               <button
                                 type="button"
                                 onClick={() => setFormData(prev => ({ ...prev, assignedCategories: [] }))}
-                                className="text-xs font-bold text-slate-400 hover:underline cursor-pointer">
+                                className="text-xs font-bold text-slate-600 hover:underline cursor-pointer">
                                 {t("Clear All")}
                               </button>
                             </div>
@@ -1583,10 +1583,10 @@ const PrinterConfig = ({ onNavigate, onGoBack, user }) => {
                                       key={cat._id || cat.name}
                                       onClick={() => toggleCategory(cat.name)}
                                       className={`relative p-3 rounded-xl border text-xs font-bold flex flex-col justify-between transition-all cursor-pointer select-none ${isSelected
-                                          ? 'bg-sky-500/25 border-sky-400 text-sky-200 shadow-md shadow-sky-500/10'
+                                          ? 'bg-sky-100 border-sky-400 text-sky-950 shadow-xs'
                                           : assignedOther
-                                            ? 'bg-amber-500/15 border-amber-500/30 text-amber-300'
-                                            : 'bg-[#F7EFE2] border-sky-500/25 text-slate-200 hover:border-sky-500/40 hover:bg-sky-500/10'
+                                            ? 'bg-amber-100 border-amber-400 text-amber-950'
+                                            : 'bg-[#F7EFE2] border-slate-300 text-slate-800 hover:border-slate-400 hover:bg-[#ebdcc9]'
                                         }`}>
                                       <div className="flex items-center justify-between gap-2">
                                         <span className="truncate">{cat.name}</span>
@@ -1614,7 +1614,7 @@ const PrinterConfig = ({ onNavigate, onGoBack, user }) => {
                       {/* VIEW 2: ITEM-BASED BULK SELECTOR */}
                       {formData.assignmentMode === 'item' && (
                         <div className="space-y-3">
-                          <div className="flex items-center justify-between text-xs text-text-muted font-medium px-1">
+                          <div className="flex items-center justify-between text-xs text-slate-700 font-bold px-1">
                             <span>
                               {t("Select individual menu items")} ({formData.assignedItems.length} {t("selected")})
                             </span>
@@ -1653,8 +1653,8 @@ const PrinterConfig = ({ onNavigate, onGoBack, user }) => {
                                         onClick={() => setCollapsedCategories(prev => ({ ...prev, [catName]: !prev[catName] }))}
                                         className="flex items-center gap-2 cursor-pointer select-none">
                                         {isCollapsed ? <ChevronDown size={14} className="text-sky-400" /> : <ChevronUp size={14} className="text-sky-400" />}
-                                        <span className="font-bold text-xs text-slate-100">{catName}</span>
-                                        <span className="text-[11px] font-semibold text-slate-400">({matchingItems.length})</span>
+                                        <span className="font-bold text-xs text-slate-900">{catName}</span>
+                                        <span className="text-[11px] font-bold text-slate-600">({matchingItems.length})</span>
                                         {selectedInCat > 0 && (
                                           <span className="px-1.5 py-0.5 bg-sky-500/20 text-sky-300 border border-sky-500/30 rounded text-[10px] font-bold">
                                             {selectedInCat} selected
@@ -1687,10 +1687,10 @@ const PrinterConfig = ({ onNavigate, onGoBack, user }) => {
                                               key={item._id || item.name}
                                               onClick={() => toggleItem(item.name)}
                                               className={`p-2 rounded-lg border text-xs flex items-center justify-between transition-all cursor-pointer select-none ${isSelected
-                                                  ? 'bg-sky-500/25 border-sky-400 font-bold text-sky-200'
+                                                  ? 'bg-sky-100 border-sky-400 font-bold text-sky-950'
                                                   : assignedOther
-                                                    ? 'bg-amber-950/30 border-amber-500/30 text-amber-300'
-                                                    : 'bg-[#FDFBF7] border-sky-500/20 hover:bg-[#fff7ed] text-slate-200'
+                                                    ? 'bg-amber-100 border-amber-400 text-amber-950 font-medium'
+                                                    : 'bg-[#FDFBF7] border-slate-300 hover:bg-[#fff7ed] text-slate-800 font-medium'
                                                 }`}>
                                               <div className="flex flex-col truncate pr-2">
                                                 <span className="truncate">{item.name}</span>
@@ -1758,7 +1758,7 @@ const PrinterConfig = ({ onNavigate, onGoBack, user }) => {
               <div className="w-full lg:w-[400px] bg-[#f7f1ea] p-4 flex flex-col items-center justify-start lg:overflow-y-auto shrink-0 border-sky-500/20">
                 <div className="text-center mb-4">
                   <h3 className="text-sm font-bold text-text-main">{t("Live Receipt Preview")}</h3>
-                  <p className="text-[10px] text-text-muted">{t("Preview updates dynamically as you change settings")}</p>
+                  <p className="text-[11px] text-slate-600 font-medium">{t("Preview updates dynamically as you change settings")}</p>
                 </div>
                 <LiveReceiptPreview
                   settings={{

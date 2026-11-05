@@ -553,6 +553,21 @@ export default function MainEntranceDashboard({
       navView: 'supplier-portal',
       navOptions: {},
       keywords: ['supplier portal', 'supplier', 'catch vouchers', 'passbook', 'ledger']
+    }] : []),
+
+    // 27. Dedicated Supplier Directory (Admin & Manager)
+    ...(isFullAdmin || user?.role === 'manager' ? [{
+      id: 'suppliers',
+      title: 'Supplier Directory',
+      subtitle: 'Harbors & Vendors',
+      category: 'Operations',
+      icon: Users,
+      iconColor: '#ea580c',
+      iconBg: '#ffedd5',
+      borderColor: '#fed7aa',
+      navView: 'suppliers',
+      navOptions: {},
+      keywords: ['supplier directory', 'suppliers', 'vendors', 'fishermen', 'harbor', 'dam contractors', 'supplies']
     }] : [])
   ], [activeOrdersCount, unreadNotificationsCount, user?.role, isFullAdmin]);
 

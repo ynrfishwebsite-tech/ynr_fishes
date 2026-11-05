@@ -36,6 +36,7 @@ import AdminPanel from '../../components/admin/system/AdminPanel';
 import EditedBills from '../../components/admin/billing/EditedBills';
 import DriverPortal from '../../components/admin/operations/DriverPortal';
 import SupplierPortal from '../../components/admin/operations/SupplierPortal';
+import SupplierManagement from '../../components/admin/operations/SupplierManagement';
 import GlobalSearchBar from '../../components/admin/common/GlobalSearchBar';
 import NotificationPanel from '../../components/admin/communication/NotificationPanel';
 import NotificationsPage from '../../components/admin/communication/NotificationsPage';
@@ -67,7 +68,7 @@ export default function AdminDashboard() {
     'dashboard', 'second-dashboard', 'billing', 'active-orders', 'bill-history', 'edited-bills',
     'menu', 'inventory', 'day-book', 'khata', 'expenses', 'vehicles', 'analytics',
     'crm', 'staff', 'printer', 'operations', 'discount', 'security', 'settings',
-    'notifications', 'driver-portal', 'supplier-portal'
+    'notifications', 'driver-portal', 'supplier-portal', 'suppliers'
   ];
 
   const { notifications, unreadCount, markAllAsRead, clearNotification } = useNotifications(user?.role || 'Admin');
@@ -78,7 +79,7 @@ export default function AdminDashboard() {
   const userPermitted = Array.isArray(user?.permittedPages) && user.permittedPages.length > 0
     ? user.permittedPages
     : (user?.role === 'manager'
-      ? ['dashboard', 'second-dashboard', 'billing', 'active-orders', 'bill-history', 'menu', 'inventory', 'day-book', 'khata', 'expenses', 'vehicles', 'analytics', 'operations']
+      ? ['dashboard', 'second-dashboard', 'billing', 'active-orders', 'bill-history', 'menu', 'inventory', 'day-book', 'khata', 'expenses', 'vehicles', 'analytics', 'operations', 'suppliers']
       : (user?.role === 'driver'
         ? ['driver-portal']
         : (user?.role === 'supplier'
@@ -274,7 +275,7 @@ export default function AdminDashboard() {
   const branchName = user?.branch?.name || (user?.role === 'super-admin' ? 'Headquarters' : 'Kadapa City Depot');
 
   return (
-    <div className="admin-cream-ui" style={{ height: '100vh', maxHeight: '100vh', width: '100%', background: '#F7EFE2', color: '#1e293b', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+    <div className="admin-cream-ui" style={{ minHeight: '100vh', height: '100dvh', maxHeight: '100dvh', width: '100%', background: '#F7EFE2', color: '#1e293b', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
       
       {/* Top Header Bar (No Sidebar across entire application) */}
       <header
@@ -633,14 +634,17 @@ export default function AdminDashboard() {
       </header>
 
       {/* Main Full-Width Content View (No Sidebar, 100% responsive on all screen sizes) */}
-      <div style={{ flex: 1, display: 'flex', overflow: 'hidden', position: 'relative' }}>
+      <div style={{ flex: 1, minHeight: 0, height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden', position: 'relative' }}>
         <main
+          id="admin-main-viewport"
           style={{
             flex: 1,
+            width: '100%',
+            height: '100%',
             minHeight: 0,
-            overflowY: 'auto',
-            display: 'flex',
-            flexDirection: 'column',
+            overflowY: currentView === 'billing' ? 'hidden' : 'scroll',
+            WebkitOverflowScrolling: 'touch',
+            touchAction: 'pan-y',
             padding: currentView === 'billing' ? 0 : undefined
           }}
         >
@@ -683,8 +687,8 @@ export default function AdminDashboard() {
             <ActiveOrders
               user={user}
               onNavigate={navigateTo}
-              onSelectOrder={(tableNo, action) => {
-                navigateTo('billing', { table: tableNo, action });
+              onSelectOrder={(tableNo, action, mode) => {
+                navigateTo('billing', { table: tableNo, action, mode });
               }}
               onGoBack={goBack}
             />
@@ -851,6 +855,13 @@ export default function AdminDashboard() {
           {currentView === 'supplier-portal' && (
             <SupplierPortal
               user={user}
+              onGoBack={goBack}
+            />
+          )}
+
+          {/* Dedicated Admin Supplier Directory Management */}
+          {currentView === 'suppliers' && (
+            <SupplierManagement
               onGoBack={goBack}
             />
           )}

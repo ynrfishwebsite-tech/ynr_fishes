@@ -43,7 +43,7 @@ export default function SupplierPortal({ user, onGoBack }) {
   const totalSupplyCount = logs.length;
 
   return (
-    <div className="h-full flex flex-col bg-[#F7EFE2] text-slate-800 overflow-y-auto">
+    <div className="w-full min-h-full shrink-0 flex flex-col bg-[#F7EFE2] text-slate-800 pb-24 touch-pan-y">
       {/* Compact Responsive Supplier Header */}
       <div className="py-2.5 px-3 sm:py-3.5 sm:px-5 border-b border-[#E8DCCB] bg-[#FDFBF7] sticky top-0 z-10 shadow-xs flex items-center justify-between gap-2 shrink-0">
         <div className="flex items-center gap-2 sm:gap-3 min-w-0">

@@ -8,22 +8,25 @@ export const getOperationsSummary = async (startDate, endDate) => {
   return res.data?.data || null;
 };
 
-export const getOperationsList = async (operationType = 'All', limit = 50) => {
-  const res = await api.get('/operations/list', { params: { operationType, limit } });
-  return res.data?.data || [];
-};
-
-export const createOperationEntry = async (data) => {
-  const res = await api.post('/operations/entry', data);
-  return res.data?.data || null;
-};
-
-export const getSuppliers = async (search = '') => {
-  const res = await api.get('/operations/suppliers', { params: { search } });
+export const getSuppliers = async (search = '', type = '') => {
+  const params = {};
+  if (search) params.search = search;
+  if (type) params.type = type;
+  const res = await api.get('/operations/suppliers', { params });
   return res.data?.data || [];
 };
 
 export const createSupplier = async (data) => {
   const res = await api.post('/operations/suppliers', data);
   return res.data?.data || null;
+};
+
+export const updateSupplier = async (id, data) => {
+  const res = await api.put(`/operations/suppliers/${id}`, data);
+  return res.data?.data || null;
+};
+
+export const deleteSupplier = async (id) => {
+  const res = await api.delete(`/operations/suppliers/${id}`);
+  return res.data || null;
 };

@@ -68,6 +68,26 @@ const stockLogSchema = new mongoose.Schema({
     default: '',
     index: true
   },
+  companyName: {
+    type: String,
+    default: ''
+  },
+  vehicleNumber: {
+    type: String,
+    default: ''
+  },
+  harbor: {
+    type: String,
+    default: ''
+  },
+  boxes: {
+    type: Number,
+    default: 0
+  },
+  kgPerBox: {
+    type: Number,
+    default: 0
+  },
   crateReference: {
     type: String,
     default: ''
@@ -86,5 +106,6 @@ const stockLogSchema = new mongoose.Schema({
 
 stockLogSchema.index({ createdAt: -1 });
 stockLogSchema.index({ item: 1, createdAt: -1 });
+stockLogSchema.index({ type: 1, createdAt: -1 });
 
 export default mongoose.model('StockLog', stockLogSchema);

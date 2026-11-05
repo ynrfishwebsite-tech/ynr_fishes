@@ -21,6 +21,8 @@ const BillHistory = ({ onNavigate, onGoBack }) => {
   const [billCache, setBillCache] = useState({});
   const [searchTerm, setSearchTerm] = useState('');
   const [paymentFilter, setPaymentFilter] = useState('All');
+  const [salesTypeFilter, setSalesTypeFilter] = useState('All'); // 'All' | 'Retail' | 'Wholesale' | 'Export'
+  const [categoryCounts, setCategoryCounts] = useState({ all: 0, retail: 0, wholesale: 0, export: 0 });
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [deleteModal, setDeleteModal] = useState({ isOpen: false, billId: null, password: '', error: '', loading: false, showPassword: false });
@@ -82,6 +84,33 @@ const BillHistory = ({ onNavigate, onGoBack }) => {
     }
   };
 
+  
+  const getSalesTypeBadge = (bill, isMobile = false) => {
+    const isWholesale = bill.customerCategory === 'Wholesale' || bill.orderChannel === 'Wholesale-Box' || String(bill.billNumber || '').startsWith('WS-') || (Number(bill.totalBoxes || 0) > 0);
+    const isExport = bill.customerCategory === 'Export' || String(bill.orderChannel || '').includes('Export') || String(bill.billNumber || '').startsWith('EXP-');
+    const sizeCls = isMobile ? "px-2 py-0.5 text-[10px]" : "px-2.5 py-0.5 text-xs";
+    
+    if (isWholesale) {
+      return (
+        <span className={`inline-block ${sizeCls} rounded-full font-bold border whitespace-nowrap bg-amber-50 text-amber-800 border-amber-300 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800`}>
+          {t("Wholesale")}
+        </span>
+      );
+    }
+    if (isExport) {
+      return (
+        <span className={`inline-block ${sizeCls} rounded-full font-bold border whitespace-nowrap bg-blue-50 text-blue-800 border-blue-300 dark:bg-blue-950/40 dark:text-blue-300 dark:border-blue-800`}>
+          {t("Export")}
+        </span>
+      );
+    }
+    return (
+      <span className={`inline-block ${sizeCls} rounded-full font-bold border whitespace-nowrap bg-emerald-50 text-emerald-800 border-emerald-300 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800`}>
+        {t("Retail")}
+      </span>
+    );
+  };
+
   const renderPaymentCell = (bill) => {
     if (bill.status === 'Unpaid') {
       return (
@@ -121,7 +150,7 @@ const BillHistory = ({ onNavigate, onGoBack }) => {
 
   useEffect(() => {
     fetchBills();
-  }, [currentPage, debouncedSearchTerm, paymentFilter, startDate, endDate]);
+  }, [currentPage, debouncedSearchTerm, paymentFilter, salesTypeFilter, startDate, endDate]);
 
   // Refresh bills when component mounts to show latest bills first
   useEffect(() => {
@@ -170,6 +199,7 @@ const BillHistory = ({ onNavigate, onGoBack }) => {
         page: currentPage,
         limit: itemsPerPage,
         search: searchForBackend,
+        salesType: salesTypeFilter !== 'All' ? salesTypeFilter : undefined,
         paymentMode: paymentFilter !== 'All' ? paymentFilter : undefined,
         startDate: startDate || undefined,
         endDate: endDate || undefined
@@ -181,6 +211,9 @@ const BillHistory = ({ onNavigate, onGoBack }) => {
         setPagination({ totalBills: billsData.length, totalPages: 1, currentPage: 1 });
       } else {
         billsData = data.bills || [];
+        if (data.categoryCounts) {
+          setCategoryCounts(data.categoryCounts);
+        }
         setPagination(data.pagination || {
           totalBills: billsData.length,
           totalPages: Math.max(1, Math.ceil(billsData.length / itemsPerPage)),
@@ -510,9 +543,75 @@ const BillHistory = ({ onNavigate, onGoBack }) => {
         </div>
       </div>
 
+      
+      {/* Sales Channel Tabs: All Bills, Retail, Wholesale, Export */}
+      <div className="flex items-center gap-1.5 px-2 py-1.5 mb-2 bg-surface rounded-xl border border-border shrink-0 shadow-2xs overflow-x-auto no-scrollbar flex-nowrap">
+        <span className="text-[10px] sm:text-xs font-bold text-text-muted uppercase tracking-wider shrink-0 hidden sm:inline mr-1">{t("Sales Type")}:</span>
+
+        <button
+          type="button"
+          onClick={() => { setSalesTypeFilter('All'); setCurrentPage(1); }}
+          className={`px-2.5 sm:px-3 py-1 rounded-full text-[11px] sm:text-xs font-bold transition-all border cursor-pointer flex items-center gap-1.5 shrink-0 whitespace-nowrap ${
+            salesTypeFilter === 'All'
+              ? 'bg-primary text-white border-primary shadow-xs'
+              : 'bg-background text-text-main border-border hover:bg-surface-hover'
+          }`}
+        >
+          {t("All")}
+          <span className={`text-[9px] sm:text-[10px] font-extrabold px-1.5 py-0.5 rounded-full leading-none ${salesTypeFilter === 'All' ? 'bg-white/25 text-white' : 'bg-surface-hover text-text-muted'}`}>
+            {categoryCounts.all ?? pagination.totalBills ?? 0}
+          </span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => { setSalesTypeFilter('Retail'); setCurrentPage(1); }}
+          className={`px-2.5 sm:px-3 py-1 rounded-full text-[11px] sm:text-xs font-bold transition-all border cursor-pointer flex items-center gap-1.5 shrink-0 whitespace-nowrap ${
+            salesTypeFilter === 'Retail'
+              ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
+              : 'bg-emerald-50/70 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800 hover:bg-emerald-100'
+          }`}
+        >
+          {t("Retail")}
+          <span className={`text-[9px] sm:text-[10px] font-extrabold px-1.5 py-0.5 rounded-full leading-none ${salesTypeFilter === 'Retail' ? 'bg-white/25 text-white' : 'bg-emerald-100 dark:bg-emerald-900 text-emerald-800 dark:text-emerald-200'}`}>
+            {categoryCounts.retail ?? 0}
+          </span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => { setSalesTypeFilter('Wholesale'); setCurrentPage(1); }}
+          className={`px-2.5 sm:px-3 py-1 rounded-full text-[11px] sm:text-xs font-bold transition-all border cursor-pointer flex items-center gap-1.5 shrink-0 whitespace-nowrap ${
+            salesTypeFilter === 'Wholesale'
+              ? 'bg-amber-600 text-white border-amber-600 shadow-xs'
+              : 'bg-amber-50/70 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 border-amber-200 dark:border-amber-800 hover:bg-amber-100'
+          }`}
+        >
+          {t("Wholesale")}
+          <span className={`text-[9px] sm:text-[10px] font-extrabold px-1.5 py-0.5 rounded-full leading-none ${salesTypeFilter === 'Wholesale' ? 'bg-white/25 text-white' : 'bg-amber-100 dark:bg-amber-900 text-amber-800 dark:text-amber-200'}`}>
+            {categoryCounts.wholesale ?? 0}
+          </span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => { setSalesTypeFilter('Export'); setCurrentPage(1); }}
+          className={`px-2.5 sm:px-3 py-1 rounded-full text-[11px] sm:text-xs font-bold transition-all border cursor-pointer flex items-center gap-1.5 shrink-0 whitespace-nowrap ${
+            salesTypeFilter === 'Export'
+              ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
+              : 'bg-blue-50/70 dark:bg-blue-950/40 text-blue-800 dark:text-blue-300 border-blue-200 dark:border-blue-800 hover:bg-blue-100'
+          }`}
+        >
+          {t("Export")}
+          <span className={`text-[9px] sm:text-[10px] font-extrabold px-1.5 py-0.5 rounded-full leading-none ${salesTypeFilter === 'Export' ? 'bg-white/25 text-white' : 'bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200'}`}>
+            {categoryCounts.export ?? 0}
+          </span>
+        </button>
+      </div>
+
       <div className="bg-surface border border-border rounded-2xl overflow-hidden flex-1 flex flex-col shadow-xs">
         {/* Desktop Wide Table (Visible on md and larger) */}
-        <div className="hidden md:block overflow-y-auto flex-1">
+        <div className="hidden md:block overflow-y-auto flex-1 touch-pan-y" style={{ WebkitOverflowScrolling: 'touch' }}>
           <table className="w-full text-left border-collapse">
             <thead className="bg-background sticky top-0 z-10 shadow-xs">
               <tr>
@@ -524,7 +623,8 @@ const BillHistory = ({ onNavigate, onGoBack }) => {
                   </div>
                 </th>
                 <th className="px-3 py-2.5 font-bold text-xs uppercase text-text-muted tracking-wider border-b border-border">{t("Customer")}</th>
-                <th className="px-3 py-2.5 font-bold text-xs uppercase text-text-muted tracking-wider border-b border-border">{t("Type")}</th>
+                <th className="px-3 py-2.5 font-bold text-xs uppercase text-text-muted tracking-wider border-b border-border">{t("Sales Type")}</th>
+                <th className="px-3 py-2.5 font-bold text-xs uppercase text-text-muted tracking-wider border-b border-border">{t("Order Type")}</th>
                 <th className="px-3 py-2.5 font-bold text-xs uppercase text-text-muted tracking-wider border-b border-border">{t("Status")}</th>
                 <th className="px-3 py-2.5 font-bold text-xs uppercase text-text-muted tracking-wider border-b border-border">{t("Payment")}</th>
                 <th className="px-3 py-2.5 font-bold text-xs uppercase text-text-muted tracking-wider border-b border-border text-right">{t("Total")}</th>
@@ -540,6 +640,7 @@ const BillHistory = ({ onNavigate, onGoBack }) => {
                     <td className="px-3 py-3"><div className="h-4 w-28 bg-surface-hover rounded-md"></div></td>
                     <td className="px-3 py-3"><div className="h-4 w-16 bg-surface-hover rounded-full"></div></td>
                     <td className="px-3 py-3"><div className="h-4 w-16 bg-surface-hover rounded-full"></div></td>
+                    <td className="px-3 py-3"><div className="h-4 w-16 bg-surface-hover rounded-full"></div></td>
                     <td className="px-3 py-3"><div className="h-4 w-16 bg-surface-hover rounded-md"></div></td>
                     <td className="px-3 py-3 text-right"><div className="h-4 w-16 bg-surface-hover rounded-md ml-auto"></div></td>
                     <td className="px-3 py-3"><div className="h-6 w-16 bg-surface-hover rounded-md mx-auto"></div></td>
@@ -547,7 +648,7 @@ const BillHistory = ({ onNavigate, onGoBack }) => {
                 ))
               ) : filteredBills.length === 0 ? (
                 <tr>
-                  <td colSpan="8" className="p-8 text-center text-text-muted font-medium">{t("No transactions found")}</td>
+                  <td colSpan="9" className="p-8 text-center text-text-muted font-medium">{t("No transactions found")}</td>
                 </tr>
               ) : (
                 filteredBills.map((bill) => (
@@ -677,7 +778,7 @@ const BillHistory = ({ onNavigate, onGoBack }) => {
         </div>
 
         {/* Mobile Responsive Stacked Card List (Visible on screens < 768px) */}
-        <div className="md:hidden overflow-y-auto flex-1 p-3 space-y-3">
+        <div className="md:hidden overflow-y-auto flex-1 p-3 space-y-3 touch-pan-y" style={{ WebkitOverflowScrolling: 'touch' }}>
           {loading ? (
             Array.from({ length: 4 }).map((_, i) => (
               <div key={`mob-skeleton-${i}`} className="bg-background rounded-xl p-3.5 border border-border space-y-3 animate-pulse">
@@ -698,20 +799,21 @@ const BillHistory = ({ onNavigate, onGoBack }) => {
             filteredBills.map((bill) => (
               <div key={bill._id} className={`bg-background rounded-xl p-3.5 border border-border space-y-2.5 ${bill.status === 'Cancelled' ? 'opacity-75 bg-danger/5' : ''}`}>
                 <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1.5 flex-wrap">
                     <button
                       type="button"
                       onClick={() => toggleRow(bill._id)}
-                      className="p-1 hover:bg-surface rounded-lg text-text-muted transition-transform duration-200 cursor-pointer"
+                      className="p-1 hover:bg-surface rounded-lg text-text-muted transition-transform duration-200 cursor-pointer shrink-0"
                       style={{ transform: expandedRows[bill._id] ? 'rotate(180deg)' : 'rotate(0deg)' }}
                       title={t("Toggle order items")}
                     >
                       <ChevronDown size={16} />
                     </button>
-                    <span className="font-bold font-mono text-sm text-text-main">#{bill.billNumber || 'CANCELLED'}</span>
-                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${bill.billType === 'Dine-In' ? 'bg-primary/10 text-primary border-primary/20' : 'bg-amber-50 text-amber-700 border-amber-200'
+                    <span className="font-bold font-mono text-sm text-text-main shrink-0">#{bill.billNumber || 'CANCELLED'}</span>
+                    {getSalesTypeBadge(bill, true)}
+                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border whitespace-nowrap ${bill.billType === 'Dine-In' ? 'bg-primary/10 text-primary border-primary/20' : 'bg-slate-100 text-slate-700 border-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700'
                       }`}>
-                      {t(bill.billType)}
+                      {t(bill.billType || 'Takeaway')}
                     </span>
                   </div>
                   <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${bill.status === 'Paid' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-red-50 text-red-700 border-red-200'

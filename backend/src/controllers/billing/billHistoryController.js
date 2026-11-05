@@ -19,7 +19,7 @@ export const getBills = async (req, res) => {
     const page = Math.max(1, parseInt(req.query.page) || 1);
     const limit = Math.min(Math.max(1, parseInt(req.query.limit) || 20), 500);
     const skip = (page - 1) * limit;
-    const { search, billType, excludeBillType, orderSource, paymentMode, status, startDate, endDate } = req.query;
+    const { search, billType, excludeBillType, orderSource, paymentMode, status, startDate, endDate, salesCategory, salesType, customerCategory } = req.query;
 
     // Build query
     const query = {};
@@ -29,6 +29,34 @@ export const getBills = async (req, res) => {
       query.status = status.includes(',') ? { $in: status.split(',').map(s => s.trim()) } : status;
     } else {
       query.status = { $in: ['Paid', 'Unpaid', 'Cancelled', 'Deleted'] };
+    }
+
+    // Sales Category / Type filter (Retail, Wholesale, Export)
+    const salesCat = (salesCategory || salesType || customerCategory || '').trim();
+    if (salesCat && salesCat !== 'all' && salesCat !== 'All') {
+      const catLower = salesCat.toLowerCase();
+      if (catLower.includes('whole')) {
+        query.$or = [
+          { customerCategory: 'Wholesale' },
+          { orderChannel: /Wholesale/i },
+          { billType: 'Wholesale' },
+          { billNumber: /^WS-/i }
+        ];
+      } else if (catLower.includes('export')) {
+        query.$or = [
+          { customerCategory: 'Export' },
+          { orderChannel: /Export/i },
+          { billType: 'Export' },
+          { billNumber: /^EXP-/i }
+        ];
+      } else if (catLower.includes('retail')) {
+        query.$or = [
+          { customerCategory: 'Retail' },
+          { orderChannel: /Retail|Counter/i },
+          { billType: 'Retail' },
+          { billNumber: /^RET-/i }
+        ];
+      }
     }
 
     // Bill type filter (e.g. Delivery, Takeaway, or Dine-In,Takeaway)
@@ -81,29 +109,53 @@ export const getBills = async (req, res) => {
     // Search filter
     if (search && search.trim()) {
       const searchClean = search.trim().replace(/^#/, '');
-      query.$or = [
+      const searchOr = [
         { billNumber: { $regex: searchClean, $options: 'i' } },
         { tableNo: { $regex: searchClean, $options: 'i' } },
         { customerName: { $regex: searchClean, $options: 'i' } },
         { customerPhone: { $regex: searchClean, $options: 'i' } }
       ];
+      if (query.$or) {
+        query.$and = [{ $or: query.$or }, { $or: searchOr }];
+        delete query.$or;
+      } else {
+        query.$or = searchOr;
+      }
     }
 
     // Run query and count concurrently in parallel for 2x faster execution
-    const [bills, total] = await Promise.all([
+    const [bills, total, retailCount, wholesaleCount, exportCount] = await Promise.all([
       Bill.find(query)
-        .select('billNumber tableNo billType paymentMode splitPayments upiApp amountPaid changeAmount subtotal tax taxBreakdown discount discountType discountValue deliveryCharge containerCharge cuttingCharge total orderSource status customerName customerPhone items billedAt settledAt createdAt updatedAt whatsappSent whatsappSentAt')
+        .select('billNumber tableNo billType customerCategory orderChannel exportSubCategory totalBoxes boxes legacyBillNumber paymentMode splitPayments upiApp amountPaid changeAmount subtotal tax taxBreakdown discount discountType discountValue deliveryCharge containerCharge cuttingCharge total orderSource status customerName customerPhone items billedAt settledAt createdAt updatedAt whatsappSent whatsappSentAt')
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(limit)
         .lean(),
-      Bill.countDocuments(query)
+      Bill.countDocuments(query),
+      Bill.countDocuments({
+        status: query.status,
+        $or: [{ customerCategory: 'Retail' }, { orderChannel: /Retail|Counter/i }, { billType: 'Retail' }, { billNumber: /^RET-/i }]
+      }).catch(() => 0),
+      Bill.countDocuments({
+        status: query.status,
+        $or: [{ customerCategory: 'Wholesale' }, { orderChannel: /Wholesale/i }, { billType: 'Wholesale' }, { billNumber: /^WS-/i }]
+      }).catch(() => 0),
+      Bill.countDocuments({
+        status: query.status,
+        $or: [{ customerCategory: 'Export' }, { orderChannel: /Export/i }, { billType: 'Export' }, { billNumber: /^EXP-/i }]
+      }).catch(() => 0)
     ]);
 
     const validBills = Array.isArray(bills) ? bills : [];
 
     res.json({
       bills: validBills,
+      categoryCounts: {
+        all: total,
+        retail: retailCount,
+        wholesale: wholesaleCount,
+        export: exportCount
+      },
       pagination: {
         currentPage: page,
         totalPages: Math.max(1, Math.ceil(total / limit)),

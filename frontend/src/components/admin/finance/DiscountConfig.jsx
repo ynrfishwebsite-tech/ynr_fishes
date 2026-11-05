@@ -480,7 +480,7 @@ const DiscountConfig = ({ onNavigate, onGoBack }) => {
   }, [discounts, selectedCategoryFilter]);
 
   return (
-    <div className="h-full flex flex-col bg-[#f7f1ea] p-1.5 sm:p-2.5 md:p-4 overflow-y-auto custom-scrollbar">
+    <div className="w-full min-h-full shrink-0 flex flex-col bg-[#f7f1ea] p-1.5 sm:p-2.5 md:p-4 pb-24 touch-pan-y">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-4 gap-3 shrink-0">
         <div className="flex items-center gap-3">

@@ -231,7 +231,7 @@ const EditedBills = ({ onNavigate, onGoBack }) => {
       </header>
 
       {/* Content */}
-      <div className="flex-1 overflow-y-auto p-1.5 sm:p-2.5 md:p-3 custom-scrollbar">
+      <div className="flex-1 overflow-y-auto p-1.5 sm:p-2.5 md:p-3 custom-scrollbar touch-pan-y" style={{ WebkitOverflowScrolling: 'touch' }}>
         {loading && bills.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full min-h-[350px]">
             <div className="relative flex items-center justify-center mb-4">

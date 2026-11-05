@@ -209,15 +209,32 @@ const AdminPanel = ({ onGoBack }) => {
     setIsModalOpen(true);
   };
 
+  const getAvatarStyle = (role) => {
+    switch ((role || '').toLowerCase()) {
+      case 'admin':
+        return 'bg-purple-100 border-purple-300 text-purple-900';
+      case 'manager':
+        return 'bg-emerald-100 border-emerald-300 text-emerald-900';
+      case 'cashier':
+        return 'bg-amber-100 border-amber-300 text-amber-900';
+      case 'driver':
+        return 'bg-blue-100 border-blue-300 text-blue-900';
+      case 'supplier':
+        return 'bg-teal-100 border-teal-300 text-teal-900';
+      default:
+        return 'bg-sky-100 border-sky-300 text-sky-900';
+    }
+  };
+
   return (
-    <div className="w-full h-full flex flex-col px-3 sm:px-6 md:px-8 py-4 sm:py-6 overflow-y-auto">
+    <div className="w-full min-h-full shrink-0 flex flex-col px-3 sm:px-6 md:px-8 py-4 sm:py-6 pb-24 touch-pan-y">
       {/* Header bar */}
       <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between mb-5 sm:mb-6 gap-3.5 sm:gap-4">
         <div className="flex items-start sm:items-center gap-3">
           {onGoBack && <BackButton onClick={onGoBack} label="Back" />}
           <div>
             <h1 className="text-lg sm:text-2xl font-black text-slate-900 flex items-center gap-2">
-              <Shield className="text-amber-400 shrink-0" size={22} />
+              <Shield className="text-amber-600 shrink-0" size={22} />
               <span>Admin Control Panel</span>
             </h1>
             <p className="text-[11px] sm:text-sm text-slate-600 mt-0.5 leading-tight">
@@ -271,17 +288,17 @@ const AdminPanel = ({ onGoBack }) => {
                       <tr key={u._id} className="hover:bg-sky-500/5 transition-colors">
                         <td className="p-4">
                           <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-full bg-sky-500/15 border border-sky-500/30 flex items-center justify-center text-amber-300 font-bold text-sm shrink-0">
+                            <div className={`w-10 h-10 rounded-full border flex items-center justify-center font-black text-sm shrink-0 shadow-xs ${getAvatarStyle(u.role)}`}>
                               {u.username ? u.username.charAt(0).toUpperCase() : 'U'}
                             </div>
                             <div>
                               <span className="font-bold text-slate-900 text-sm block">{u.username}</span>
                               <div className="flex items-center gap-2 mt-0.5">
                                 {u.email && (
-                                  <span className="text-[11px] text-slate-600 font-mono">{u.email}</span>
+                                  <span className="text-[11px] text-slate-700 font-mono font-medium">{u.email}</span>
                                 )}
                                 {u.name && u.name !== u.username && (
-                                  <span className="text-[11px] text-sky-300/40">• {u.name}</span>
+                                  <span className="text-[11px] text-slate-700 font-semibold">• {u.name}</span>
                                 )}
                               </div>
                             </div>
@@ -355,16 +372,16 @@ const AdminPanel = ({ onGoBack }) => {
                     {/* Card Top: Avatar, Name/Username/Email, and Role Badge */}
                     <div className="flex items-center justify-between gap-2">
                       <div className="flex items-center gap-3 min-w-0">
-                        <div className="w-10 h-10 rounded-full bg-sky-500/15 border border-sky-500/30 flex items-center justify-center text-amber-300 font-bold text-sm shrink-0">
+                        <div className={`w-10 h-10 rounded-full border flex items-center justify-center font-black text-sm shrink-0 shadow-xs ${getAvatarStyle(u.role)}`}>
                           {u.username ? u.username.charAt(0).toUpperCase() : 'U'}
                         </div>
                         <div className="min-w-0">
                           <span className="font-bold text-slate-900 text-sm block truncate">{u.username}</span>
                           {u.email && (
-                            <span className="text-[11px] text-slate-600 block truncate font-mono">{u.email}</span>
+                            <span className="text-[11px] text-slate-700 block truncate font-mono font-medium">{u.email}</span>
                           )}
                           {u.name && u.name !== u.username && (
-                            <span className="text-[10px] text-slate-500 block truncate">{u.name}</span>
+                            <span className="text-[11px] text-slate-700 block truncate font-semibold">• {u.name}</span>
                           )}
                         </div>
                       </div>
@@ -387,12 +404,12 @@ const AdminPanel = ({ onGoBack }) => {
                       </span>
                       <div className="flex flex-wrap gap-1.5">
                         {roleStr === 'admin' ? (
-                          <span className="text-[10px] bg-purple-500/15 text-purple-300 px-2 py-0.5 rounded-md font-semibold border border-purple-500/30">
+                          <span className="text-[10px] bg-purple-100 text-purple-800 px-2 py-0.5 rounded-md font-bold border border-purple-300">
                             ⚡ Full Branch Access (All Pages)
                           </span>
                         ) : (
                           pages.map(pageId => (
-                            <span key={pageId} className="text-[10px] bg-[#FAF0E4] text-[#7c3f1d] px-2 py-0.5 rounded-md font-semibold border border-[#E8DCCB]">
+                            <span key={pageId} className="text-[10px] bg-[#FAF0E4] text-slate-800 px-2 py-0.5 rounded-md font-bold border border-[#E8DCCB]">
                               {availablePages.find(p => p.id === pageId)?.label || pageId}
                             </span>
                           ))
@@ -402,7 +419,7 @@ const AdminPanel = ({ onGoBack }) => {
 
                     {/* Card Bottom: Date & Actions */}
                     <div className="flex items-center justify-between pt-1">
-                      <span className="text-[11px] text-sky-200/50">
+                      <span className="text-[11px] text-slate-700 font-medium">
                         Added: {u.createdAt ? new Date(u.createdAt).toLocaleDateString() : 'Active'}
                       </span>
                       <div className="flex items-center gap-1.5">

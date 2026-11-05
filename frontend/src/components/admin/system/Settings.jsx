@@ -707,7 +707,7 @@ const Settings = ({ user, setUser, onNavigate, onGoBack }) => {
 
 
   return (
-    <div className="h-full overflow-y-auto p-1.5 sm:p-2.5 md:p-3">
+    <div className="w-full min-h-full shrink-0 flex flex-col p-1.5 sm:p-2.5 md:p-3 pb-24 touch-pan-y">
       <div className="w-full space-y-2.5 sm:space-y-3">
         {/* Header with Categorized Section Navigation Buttons */}
         <div className="bg-[#FDFBF7] rounded-2xl p-2.5 sm:p-3.5 border border-[#E8DCCB] shadow-xs flex flex-col gap-2.5">
@@ -1719,7 +1719,7 @@ const Settings = ({ user, setUser, onNavigate, onGoBack }) => {
                 </div>
                 <div className="min-w-0">
                   <h2 className="text-sm sm:text-base font-bold text-slate-800 truncate">{t("WhatsApp Automations")}</h2>
-                  <p className="text-[11px] sm:text-xs text-slate-500 truncate">{t("Configure bots, reports, and customer CRM campaigns")}</p>
+                  <p className="text-[11px] sm:text-xs text-slate-600 font-medium truncate">{t("Configure bots, reports, and customer CRM campaigns")}</p>
                 </div>
               </div>
               <button onClick={() => setShowWhatsappSettingsModal(false)} className="w-8 h-8 sm:w-9 sm:h-9 rounded-full hover:bg-sky-500/15 flex items-center justify-center transition-colors cursor-pointer shrink-0">
@@ -1735,7 +1735,7 @@ const Settings = ({ user, setUser, onNavigate, onGoBack }) => {
                   </div>
                   <div className="min-w-0">
                     <p className="text-sm font-bold text-slate-800 leading-snug">{t("WhatsApp Automated Gateway")}</p>
-                    <p className="text-xs text-slate-500 mt-0.5">{t("Link bot to send e-bills & reports automatically")}</p>
+                    <p className="text-xs text-slate-600 font-medium mt-0.5">{t("Link bot to send e-bills & reports automatically")}</p>
                   </div>
                 </div>
                 <button
@@ -1804,7 +1804,7 @@ const Settings = ({ user, setUser, onNavigate, onGoBack }) => {
                 <div className="flex items-center justify-between gap-2">
                   <div className="min-w-0">
                     <label className="text-sm font-bold flex items-center gap-1.5 text-slate-800"><Star size={14} className="text-emerald-400 shrink-0" /><span>{t("Customer Purchase Feedback & Google Reviews")}</span></label>
-                    <p className="text-xs text-slate-500 mt-0.5">{t("Sent to customers automatically after retail bill is settled.")}</p>
+                    <p className="text-xs text-slate-600 font-medium mt-0.5">{t("Sent to customers automatically after retail bill is settled.")}</p>
                   </div>
                   <label className="relative inline-flex items-center cursor-pointer shrink-0"><input type="checkbox" className="sr-only peer" checked={settings.feedback_whatsapp_enabled || false} onChange={(e) => handleInputChange('feedback_whatsapp_enabled', e.target.checked)} /><div className="w-11 h-6 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-500"></div></label>
                 </div>
@@ -1831,7 +1831,7 @@ const Settings = ({ user, setUser, onNavigate, onGoBack }) => {
                       <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-emerald-400 shrink-0"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
                       <span>{t("Show QR Code in WhatsApp e-Bill")}</span>
                     </label>
-                    <p className="text-xs text-slate-500 mt-0.5">{t("Include UPI QR code in the WhatsApp receipt image sent to customers")}</p>
+                    <p className="text-xs text-slate-600 font-medium mt-0.5">{t("Include UPI QR code in the WhatsApp receipt image sent to customers")}</p>
                   </div>
                   <label className="relative inline-flex items-center cursor-pointer shrink-0">
                     <input type="checkbox" className="sr-only peer" checked={settings.whatsappShowQr === true} onChange={(e) => handleInputChange('whatsappShowQr', e.target.checked)} />
@@ -1857,7 +1857,7 @@ const Settings = ({ user, setUser, onNavigate, onGoBack }) => {
                       <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-emerald-400 shrink-0"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
                       <span>{t("Show Logo in WhatsApp e-Bill")}</span>
                     </label>
-                    <p className="text-xs text-slate-500 mt-0.5">{t("Include store logo in the WhatsApp receipt image (independent from printed bill logo setting)")}</p>
+                    <p className="text-xs text-slate-600 font-medium mt-0.5">{t("Include store logo in the WhatsApp receipt image (independent from printed bill logo setting)")}</p>
                   </div>
                   <label className="relative inline-flex items-center cursor-pointer shrink-0">
                     <input type="checkbox" className="sr-only peer" checked={settings.whatsappShowLogo === true} onChange={(e) => handleInputChange('whatsappShowLogo', e.target.checked)} />
@@ -1880,7 +1880,7 @@ const Settings = ({ user, setUser, onNavigate, onGoBack }) => {
                 <div className="flex items-center justify-between gap-2">
                   <div className="min-w-0">
                     <label className="text-sm font-bold flex items-center gap-1.5 text-slate-800"><Gift size={14} className="text-emerald-400 shrink-0" /><span>{t("CRM Win-Back Campaign")}</span></label>
-                    <p className="text-xs text-slate-500 mt-0.5">{t("'We miss you' fresh catch offers sent to inactive customers.")}</p>
+                    <p className="text-xs text-slate-600 font-medium mt-0.5">{t("'We miss you' fresh catch offers sent to inactive customers.")}</p>
                   </div>
                   <label className="relative inline-flex items-center cursor-pointer shrink-0"><input type="checkbox" className="sr-only peer" checked={settings.winback_enabled || false} onChange={(e) => handleInputChange('winback_enabled', e.target.checked)} /><div className="w-11 h-6 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-500"></div></label>
                 </div>
@@ -1899,7 +1899,7 @@ const Settings = ({ user, setUser, onNavigate, onGoBack }) => {
               </div>
             </div>
             <div className="px-4 sm:px-6 py-3 sm:py-4 border-t border-slate-200 bg-[#FDFBF7]/90 shrink-0 flex items-center justify-end gap-2.5 sm:gap-3">
-              <button type="button" onClick={() => setShowWhatsappSettingsModal(false)} className="flex-1 sm:flex-initial px-4 sm:px-5 py-2.5 rounded-xl text-xs sm:text-sm font-bold border border-slate-300 text-slate-700 hover:bg-slate-100 cursor-pointer text-center transition-colors">{t("Cancel")}</button>
+              <button type="button" onClick={() => setShowWhatsappSettingsModal(false)} className="flex-1 sm:flex-initial px-4 sm:px-5 py-2.5 rounded-xl text-xs sm:text-sm font-bold border border-slate-300 text-slate-800 bg-white hover:bg-slate-100 cursor-pointer text-center transition-colors">{t("Cancel")}</button>
               <button type="button" disabled={saving} onClick={() => { setShowWhatsappSettingsModal(false); handleSave(); }} className="flex-1 sm:flex-initial px-4 sm:px-6 py-2.5 bg-gradient-to-r from-sky-500 to-blue-600 hover:from-sky-400 hover:to-blue-500 text-white text-xs sm:text-sm font-bold rounded-xl flex items-center justify-center gap-2 shadow-lg shadow-sky-500/25 transition-all disabled:opacity-70 cursor-pointer">
                 {saving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}{t("Save & Close")}
               </button>

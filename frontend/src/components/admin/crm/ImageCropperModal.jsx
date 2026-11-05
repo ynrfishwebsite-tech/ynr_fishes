@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { X, ZoomIn, ZoomOut, RotateCw, Check, Move } from 'lucide-react';
 import { useLanguage } from '../../../context/LanguageContext';
 
-export default function ImageCropperModal({ imageSrc, onCropComplete, onClose }) {
+export default function ImageCropperModal({ imageSrc, onCropComplete, onClose, title }) {
   const { t } = useLanguage();
   const [zoom, setZoom] = useState(1);
   const [rotation, setRotation] = useState(0);
@@ -116,7 +116,7 @@ export default function ImageCropperModal({ imageSrc, onCropComplete, onClose })
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 bg-[#FDFBF7] border-b border-[#E8DCCB]">
           <div>
-            <h3 className="font-extrabold text-sm text-slate-800">{t('Crop Customer Photo')}</h3>
+            <h3 className="font-extrabold text-sm text-slate-800">{title || t('Crop Photo')}</h3>
             <p className="text-[11px] text-slate-500">{t('Drag to position & zoom to fit')}</p>
           </div>
           <button

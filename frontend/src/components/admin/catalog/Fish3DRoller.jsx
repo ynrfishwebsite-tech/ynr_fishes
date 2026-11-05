@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { ChevronLeft, ChevronRight, ShoppingCart, Minus, Plus, Scale, Package } from 'lucide-react';
+import { ChevronLeft, ChevronRight, ShoppingCart, Minus, Plus, Scale, Package, X } from 'lucide-react';
 
 export default function Fish3DRoller({
   items = [],
@@ -51,8 +51,34 @@ export default function Fish3DRoller({
   const [boxWeightKg, setBoxWeightKg] = useState('50');
 
   const cardRef = useRef(null);
+  const viewportRef = useRef(null);
+  const [viewportWidth, setViewportWidth] = useState(1200);
   const wheelLockRef = useRef(false);
   const touchStartXRef = useRef(null);
+
+  // Monitor dynamic viewport width to automatically adapt 3D spacing when bill summary panel is resized
+  useEffect(() => {
+    if (!viewportRef.current) return;
+    const updateWidth = () => {
+      if (viewportRef.current) {
+        setViewportWidth(Math.round(viewportRef.current.clientWidth || 1200));
+      }
+    };
+    updateWidth();
+    const ro = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        if (entry.contentRect && entry.contentRect.width) {
+          setViewportWidth(Math.round(entry.contentRect.width));
+        }
+      }
+    });
+    ro.observe(viewportRef.current);
+    window.addEventListener('resize', updateWidth);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener('resize', updateWidth);
+    };
+  }, []);
 
   // Sync state when active item changes - Default to 1.000 Kg & Small grade
   useEffect(() => {
@@ -275,6 +301,7 @@ export default function Fish3DRoller({
     >
       {/* 3D HORIZONTAL CAROUSEL VIEWPORT */}
       <div
+        ref={viewportRef}
         className="relative w-full flex-1 flex items-center justify-center min-h-0 md:min-h-[460px] px-1 sm:px-4 md:px-6"
         style={{ perspective: '1400px', transformStyle: 'preserve-3d' }}
       >
@@ -283,24 +310,26 @@ export default function Fish3DRoller({
           type="button"
           disabled={safeActiveIndex === 0}
           onClick={() => setActiveIndex(Math.max(0, safeActiveIndex - 1))}
-          className="absolute left-0.5 sm:left-2 md:left-3 z-30 w-7 h-7 sm:w-9 sm:h-9 md:w-11 md:h-11 rounded-full bg-white shadow-lg border border-slate-200 flex items-center justify-center text-slate-700 hover:text-amber-800 hover:scale-105 active:scale-95 disabled:opacity-20 disabled:cursor-not-allowed cursor-pointer transition-all"
+          className="absolute left-0.5 sm:left-2 md:left-3 z-40 w-7 h-7 sm:w-9 sm:h-9 md:w-11 md:h-11 rounded-full bg-white shadow-lg border border-slate-200 flex items-center justify-center text-slate-700 hover:text-amber-800 hover:scale-105 active:scale-95 disabled:opacity-20 disabled:cursor-not-allowed cursor-pointer transition-all"
           title="Previous Item (Left Arrow)"
         >
           <ChevronLeft className="w-4 h-4 sm:w-5 sm:h-5 md:w-6 md:h-6" />
         </button>
 
-        {/* 1. LEFT PEEK ITEM (3D Tilted, Scaled Down & Soft Blurred) */}
-        {prevItem && (
+        {/* 1. LEFT PEEK ITEM (3D Tilted, Scaled Down & Behind Active Card in 3D Depth) */}
+        {prevItem && viewportWidth >= 880 && (
           <div
             onClick={() => setActiveIndex(safeActiveIndex - 1)}
             style={{
-              transform: 'translateX(-52%) scale(0.80) rotateY(18deg)',
+              transform: viewportWidth < 1080
+                ? 'translateX(-70%) scale(0.68) translateZ(-220px) rotateY(24deg)'
+                : 'translateX(-54%) scale(0.78) translateZ(-160px) rotateY(18deg)',
               transformOrigin: 'right center',
-              filter: 'blur(2.5px)',
-              opacity: 0.5,
-              zIndex: 5
+              filter: 'blur(2px)',
+              opacity: 0.55,
+              zIndex: 1
             }}
-            className={`hidden md:flex absolute left-6 w-[300px] bg-white rounded-3xl p-4 border border-slate-200/80 shadow-md cursor-pointer hover:opacity-75 flex-col items-center text-center pointer-events-auto ${showAnimation ? 'transition-all duration-300' : 'transition-none'}`}
+            className={`hidden md:flex absolute left-4 xl:left-8 ${viewportWidth < 1080 ? 'w-[220px]' : 'w-[280px]'} bg-white rounded-3xl p-3 xl:p-4 border border-slate-200/80 shadow-md cursor-pointer hover:opacity-85 flex-col items-center text-center pointer-events-auto transition-all duration-300`}
           >
             {showImages ? (
               <div className="relative w-full h-40 rounded-2xl bg-slate-100 overflow-hidden mb-2">
@@ -327,21 +356,27 @@ export default function Fish3DRoller({
           </div>
         )}
 
-        {/* 2. CENTER ACTIVE SPOTLIGHT CARD (Sleek, Hero Photo, Compact Controls) */}
+        {/* 2. CENTER ACTIVE SPOTLIGHT CARD (Sleek, Hero Photo, In-Front 3D Depth) */}
         {currentItem && (
           <div
             ref={cardRef}
             style={{
-              transform: 'translateX(0) scale(1) rotateY(0deg)',
-              zIndex: 20,
+              transform: 'translateX(0) scale(1) translateZ(40px) rotateY(0deg)',
+              zIndex: 30,
               boxShadow: '0 20px 50px -10px rgba(245, 158, 11, 0.22), 0 0 0 1.5px rgba(251, 191, 36, 0.45)'
             }}
-            className={`relative w-full max-w-2xl sm:max-w-3xl bg-white rounded-2xl md:rounded-3xl p-2.5 sm:p-3 md:p-5 border border-amber-200/80 flex flex-col md:flex-row gap-2 sm:gap-3 md:gap-5 items-stretch ${showAnimation ? 'transition-all duration-300' : 'transition-none'}`}
+            className={`relative w-full ${
+              viewportWidth < 820
+                ? 'max-w-lg p-2.5 gap-2'
+                : viewportWidth < 980
+                ? 'max-w-xl p-3 gap-3'
+                : 'max-w-2xl xl:max-w-3xl p-3.5 md:p-5 gap-3 md:gap-5'
+            } bg-white rounded-2xl md:rounded-3xl border border-amber-200/80 flex flex-col md:flex-row items-stretch transition-all duration-300`}
           >
             {/* Left Column: Big Hero Fish Photo or Clean Specs Box */}
             {showImages ? (
-              <div className="w-full md:w-72 flex flex-col justify-between shrink-0">
-                <div className="relative w-full h-24 sm:h-36 md:h-64 rounded-xl md:rounded-2xl overflow-hidden bg-slate-100 border border-slate-100 shadow-inner group">
+              <div className={`w-full ${viewportWidth < 880 ? 'md:w-52' : viewportWidth < 1050 ? 'md:w-60' : 'md:w-72'} flex flex-col justify-between shrink-0`}>
+                <div className={`relative w-full ${viewportWidth < 880 ? 'h-24 sm:h-32 md:h-52' : 'h-24 sm:h-36 md:h-64'} rounded-xl md:rounded-2xl overflow-hidden bg-slate-100 border border-slate-100 shadow-inner group`}>
                   <span className="absolute top-1.5 left-1.5 md:top-3 md:left-3 text-[9px] md:text-xs font-black uppercase px-1.5 py-0.5 md:px-2.5 md:py-1 rounded md:rounded-lg bg-white/95 text-amber-900 shadow-sm border border-amber-200 z-10">
                     {isBoxBasedMode ? 'Box' : 'KG'}
                   </span>
@@ -533,61 +568,91 @@ export default function Fish3DRoller({
                     </div>
                   </div>
 
-                  {/* 4. Single Combined Shortcuts Row: Presets + Fractions + Tare */}
-                  <div className="flex items-center gap-0.5 md:gap-1 overflow-x-auto pb-0.5 text-[10px] md:text-xs [&::-webkit-scrollbar]:hidden">
-                    {/* Common Kg Presets */}
-                    {['1', '2', '5', '10'].map((kgVal) => (
-                      <button
-                        key={kgVal}
-                        type="button"
-                        onClick={() => setWeightKg(parseFloat(kgVal).toFixed(3))}
-                        className={`px-1.5 py-0.5 md:px-2 md:py-1 rounded-md md:rounded-lg font-bold shrink-0 transition-all cursor-pointer ${
-                          parseFloat(weightKg) === parseFloat(kgVal)
-                            ? 'bg-amber-700 text-white font-black shadow-xs'
-                            : 'bg-slate-100 text-slate-700 hover:bg-amber-100 border border-slate-200'
-                        }`}
-                      >
-                        {kgVal}k
-                      </button>
-                    ))}
+                  {/* 4. Responsive Shortcuts: Row 1 (Presets) + Row 2 (Tare) */}
+                  <div className="space-y-1 w-full max-w-full">
+                    {/* Row 1: Common Kg Presets & Fractions */}
+                    <div className="flex items-center gap-1 flex-wrap text-[10px] md:text-xs">
+                      {['1', '2', '5', '10'].map((kgVal) => (
+                        <button
+                          key={kgVal}
+                          type="button"
+                          onClick={() => setWeightKg(parseFloat(kgVal).toFixed(3))}
+                          className={`px-1.5 py-0.5 md:px-2 md:py-1 rounded-md md:rounded-lg font-bold shrink-0 transition-all cursor-pointer ${
+                            parseFloat(weightKg) === parseFloat(kgVal)
+                              ? 'bg-amber-700 text-white font-black shadow-xs'
+                              : 'bg-slate-100 text-slate-700 hover:bg-amber-100 border border-slate-200'
+                          }`}
+                        >
+                          {kgVal}k
+                        </button>
+                      ))}
 
-                    <div className="h-3 md:h-4 w-px bg-slate-300 mx-0.5 shrink-0" />
+                      <div className="h-3 md:h-4 w-px bg-slate-300 mx-0.5 shrink-0" />
 
-                    {/* Fractions */}
-                    {[
-                      { g: 0.25, label: '+¼k' },
-                      { g: 0.5, label: '+½k' }
-                    ].map((frac) => (
-                      <button
-                        key={frac.label}
-                        type="button"
-                        onClick={() => {
-                          const base = Math.floor(parseFloat(weightKg) || 0);
-                          setWeightKg((base + frac.g).toFixed(3));
-                        }}
-                        className="px-1.5 py-0.5 md:px-2 md:py-1 rounded-md md:rounded-lg font-bold shrink-0 bg-slate-100 text-slate-700 hover:bg-amber-50 border border-slate-200 transition-all cursor-pointer"
-                      >
-                        {frac.label}
-                      </button>
-                    ))}
+                      {[
+                        { g: 0.25, label: '+¼k' },
+                        { g: 0.5, label: '+½k' }
+                      ].map((frac) => (
+                        <button
+                          key={frac.label}
+                          type="button"
+                          onClick={() => {
+                            const base = Math.floor(parseFloat(weightKg) || 0);
+                            setWeightKg((base + frac.g).toFixed(3));
+                          }}
+                          className="px-1.5 py-0.5 md:px-2 md:py-1 rounded-md md:rounded-lg font-bold shrink-0 bg-slate-100 text-slate-700 hover:bg-amber-50 border border-slate-200 transition-all cursor-pointer"
+                        >
+                          {frac.label}
+                        </button>
+                      ))}
+                    </div>
 
-                    <div className="h-3 md:h-4 w-px bg-slate-300 mx-0.5 shrink-0" />
+                    {/* Row 2: Predefined Tare Presets & Custom Grams Input */}
+                    <div className="flex items-center gap-1 flex-wrap text-[10px] md:text-xs">
+                      <span className="text-[10px] md:text-xs font-bold text-slate-500 uppercase tracking-tight mr-0.5">Tare:</span>
+                      {[0, 20, 50, 100, 200].map((tg) => (
+                        <button
+                          key={tg}
+                          type="button"
+                          onClick={() => setTareGrams(tg)}
+                          className={`px-1.5 py-0.5 md:px-2 md:py-1 rounded-md md:rounded-lg font-bold shrink-0 cursor-pointer transition-colors ${
+                            tareGrams === tg
+                              ? 'bg-amber-700 text-white shadow-xs'
+                              : 'bg-slate-100 text-slate-600 hover:bg-slate-200 border border-slate-200'
+                          }`}
+                        >
+                          {tg === 0 ? 'Zero' : `-${tg}g`}
+                        </button>
+                      ))}
 
-                    {/* Tare */}
-                    {[0, 50].map((tg) => (
-                      <button
-                        key={tg}
-                        type="button"
-                        onClick={() => setTareGrams(tg)}
-                        className={`px-1.5 py-0.5 md:px-2 md:py-1 rounded-md md:rounded-lg font-bold shrink-0 cursor-pointer transition-colors ${
-                          tareGrams === tg && tg !== 0
-                            ? 'bg-amber-700 text-white'
-                            : 'bg-slate-100 text-slate-600 hover:bg-slate-200 border border-slate-200'
-                        }`}
-                      >
-                        {tg === 0 ? 'Tare 0' : '-50g'}
-                      </button>
-                    ))}
+                      {/* Custom Tare Input (Grams only) */}
+                      <div className="flex items-center gap-0.5 bg-white px-1.5 py-0.5 rounded-md md:rounded-lg border border-slate-300 shadow-2xs shrink-0">
+                        <input
+                          type="number"
+                          min="0"
+                          max="5000"
+                          step="1"
+                          value={tareGrams === 0 ? '' : tareGrams}
+                          onChange={(e) => {
+                            const val = parseInt(e.target.value, 10);
+                            setTareGrams(isNaN(val) || val < 0 ? 0 : val);
+                          }}
+                          placeholder="Custom"
+                          className="w-12 text-center font-mono font-bold text-[10.5px] md:text-xs text-slate-900 bg-amber-50/70 border border-amber-200 rounded px-1 py-0.2 focus:outline-none focus:ring-1 focus:ring-amber-600 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                        />
+                        <span className="text-[10px] md:text-xs font-bold text-slate-600">g</span>
+                        {tareGrams > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => setTareGrams(0)}
+                            title="Clear Tare"
+                            className="text-slate-400 hover:text-rose-600 p-0.5 cursor-pointer"
+                          >
+                            <X size={11} />
+                          </button>
+                        )}
+                      </div>
+                    </div>
                   </div>
                 </>
               ) : (
@@ -688,18 +753,20 @@ export default function Fish3DRoller({
           </div>
         )}
 
-        {/* 3. RIGHT PEEK ITEM (3D Tilted, Scaled Down & Soft Blurred) */}
-        {nextItem && (
+        {/* 3. RIGHT PEEK ITEM (3D Tilted, Scaled Down & Behind Active Card in 3D Depth) */}
+        {nextItem && viewportWidth >= 880 && (
           <div
             onClick={() => setActiveIndex(safeActiveIndex + 1)}
             style={{
-              transform: 'translateX(52%) scale(0.80) rotateY(-18deg)',
+              transform: viewportWidth < 1080
+                ? 'translateX(70%) scale(0.68) translateZ(-220px) rotateY(-24deg)'
+                : 'translateX(54%) scale(0.78) translateZ(-160px) rotateY(-18deg)',
               transformOrigin: 'left center',
-              filter: 'blur(2.5px)',
-              opacity: 0.5,
-              zIndex: 5
+              filter: 'blur(2px)',
+              opacity: 0.55,
+              zIndex: 1
             }}
-            className={`hidden md:flex absolute right-6 w-[300px] bg-white rounded-3xl p-4 border border-slate-200/80 shadow-md cursor-pointer hover:opacity-75 flex-col items-center text-center pointer-events-auto ${showAnimation ? 'transition-all duration-300' : 'transition-none'}`}
+            className={`hidden md:flex absolute right-4 xl:right-8 ${viewportWidth < 1080 ? 'w-[220px]' : 'w-[280px]'} bg-white rounded-3xl p-3 xl:p-4 border border-slate-200/80 shadow-md cursor-pointer hover:opacity-85 flex-col items-center text-center pointer-events-auto transition-all duration-300`}
           >
             {showImages ? (
               <div className="relative w-full h-40 rounded-2xl bg-slate-100 overflow-hidden mb-2">
@@ -731,7 +798,7 @@ export default function Fish3DRoller({
           type="button"
           disabled={safeActiveIndex >= items.length - 1}
           onClick={() => setActiveIndex(Math.min(items.length - 1, safeActiveIndex + 1))}
-          className="absolute right-0.5 sm:right-2 md:right-3 z-30 w-7 h-7 sm:w-9 sm:h-9 md:w-11 md:h-11 rounded-full bg-white shadow-lg border border-slate-200 flex items-center justify-center text-slate-700 hover:text-amber-800 hover:scale-105 active:scale-95 disabled:opacity-20 disabled:cursor-not-allowed cursor-pointer transition-all"
+          className="absolute right-0.5 sm:right-2 md:right-3 z-40 w-7 h-7 sm:w-9 sm:h-9 md:w-11 md:h-11 rounded-full bg-white shadow-lg border border-slate-200 flex items-center justify-center text-slate-700 hover:text-amber-800 hover:scale-105 active:scale-95 disabled:opacity-20 disabled:cursor-not-allowed cursor-pointer transition-all"
           title="Next Item (Right Arrow)"
         >
           <ChevronRight className="w-4 h-4 sm:w-5 sm:h-5 md:w-6 md:h-6" />

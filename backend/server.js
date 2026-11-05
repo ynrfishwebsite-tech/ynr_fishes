@@ -22,6 +22,7 @@ import inventoryRoutes from './src/routes/inventory/inventoryRoutes.js';
 import calculatorRoutes from './src/routes/finance/calculatorRoutes.js';
 import vehicleRoutes from './src/routes/operations/vehicleRoutes.js';
 import depotOperationRoutes from './src/routes/operations/depotOperationRoutes.js';
+import supplyRoutes from './src/routes/operations/supplyRoutes.js';
 import { ensureSuperAdmin } from './src/utils/database/seedSuperAdmin.js';
 
 import http from "http";
@@ -96,6 +97,7 @@ app.use("/api/staff", staffRoutes);
 app.use("/api/vehicles", vehicleRoutes);
 app.use("/api/operations", depotOperationRoutes);
 app.use("/api/suppliers", depotOperationRoutes);
+app.use("/api/supplies", supplyRoutes);
 app.use("/api/printer-config", printerConfigRoutes);
 app.use("/api/printer-configs", printerConfigRoutes);
 app.get("/api/discounts", (req, res) => res.json([]));

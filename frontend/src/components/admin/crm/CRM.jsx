@@ -477,7 +477,7 @@ const CRM = ({ onNavigate, onGoBack }) => {
   }
 
   return (
-    <div className="h-full flex flex-col bg-background p-1.5 sm:p-2.5 md:p-3 overflow-y-auto w-full">
+    <div className="w-full min-h-full shrink-0 flex flex-col bg-background p-1.5 sm:p-2.5 md:p-3 pb-24 touch-pan-y">
       {/* Hidden File Input for Image Cropper */}
       <input
         type="file"

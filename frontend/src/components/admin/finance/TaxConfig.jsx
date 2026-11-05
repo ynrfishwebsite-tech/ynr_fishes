@@ -74,7 +74,7 @@ const TaxConfig = ({ onNavigate, onGoBack }) => {const { t } = useLanguage();
   };
 
   return (
-    <div className="h-full flex flex-col bg-[#f7f1ea] p-1.5 sm:p-2.5 md:p-3 overflow-y-auto">
+    <div className="w-full min-h-full shrink-0 flex flex-col bg-[#f7f1ea] p-1.5 sm:p-2.5 md:p-3 pb-24 touch-pan-y">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-2 sm:mb-2.5 gap-2.5 shrink-0">
         <div className="flex items-center gap-3">
           <BackButton onClick={onGoBack} />

@@ -39,6 +39,30 @@ const formatOrderDateTime = (dateStr) => {
   return `${dateFormatted}, ${timeFormatted}`;
 };
 
+export const getOrderCategory = (order) => {
+  if (!order) return 'Retail';
+  if (
+    order.customerCategory === 'Export' ||
+    order.orderMode === 'export' ||
+    order.billType === 'Export' ||
+    order.exportSubCategory
+  ) {
+    return 'Export';
+  }
+  if (
+    order.customerCategory === 'Wholesale' ||
+    order.orderChannel === 'Wholesale-Box' ||
+    order.orderMode === 'bulk' ||
+    order.billType === 'Wholesale' ||
+    (Number(order.totalBoxes) > 0) ||
+    (Array.isArray(order.boxes) && order.boxes.length > 0) ||
+    order.items?.some(i => i.isWholesaleBox || Number(i.boxNumber || 0) > 0 || i.pricingTier === 'wholesale' || Number(i.weight || i.weightKg || i.enteredWeight || 0) >= 20)
+  ) {
+    return 'Wholesale';
+  }
+  return 'Retail';
+};
+
 const ActiveOrders = ({ onSelectOrder, onNavigate, onGoBack }) => {
   const { t } = useLanguage();
   const [orders, setOrders] = useState([]);
@@ -117,7 +141,7 @@ const ActiveOrders = ({ onSelectOrder, onNavigate, onGoBack }) => {
 
     // Channel check
     if (channelFilter !== 'All') {
-      const cat = o.customerCategory || (o.billType === 'Wholesale' ? 'Wholesale' : (o.billType === 'Export' ? 'Export' : 'Retail'));
+      const cat = getOrderCategory(o);
       const sub = o.exportSubCategory || 'Local';
 
       if (channelFilter === 'Retail' && cat !== 'Retail') return false;
@@ -134,24 +158,33 @@ const ActiveOrders = ({ onSelectOrder, onNavigate, onGoBack }) => {
     'Open': orders.filter(o => o && o.status === 'Open').length,
   };
 
-  const handleSelect = (tableNo, action = 'open') => {
+  const handleSelect = (orderOrTableNo, action = 'open') => {
+    let tableNo = typeof orderOrTableNo === 'object' ? orderOrTableNo?.tableNo : orderOrTableNo;
+    let mode = 'individual';
+    if (typeof orderOrTableNo === 'object') {
+      const cat = getOrderCategory(orderOrTableNo);
+      mode = cat === 'Wholesale' ? 'bulk' : (cat === 'Export' ? 'export' : 'individual');
+    } else {
+      const found = orders.find(o => o.tableNo === tableNo);
+      if (found) {
+        const cat = getOrderCategory(found);
+        mode = cat === 'Wholesale' ? 'bulk' : (cat === 'Export' ? 'export' : 'individual');
+      }
+    }
+
     try {
       if (tableNo) {
         sessionStorage.setItem('ms_initial_table', tableNo);
       }
-      if (action === 'settle') {
-        sessionStorage.setItem('ms_initial_action', 'settle');
-      } else {
-        sessionStorage.removeItem('ms_initial_action');
-      }
+      sessionStorage.removeItem('ms_initial_action');
     } catch (e) {
       console.warn('sessionStorage error', e);
     }
 
     if (onSelectOrder) {
-      onSelectOrder(tableNo, action);
+      onSelectOrder(tableNo, 'open', mode);
     } else if (onNavigate) {
-      onNavigate('billing', { table: tableNo, action });
+      onNavigate('billing', { table: tableNo, action: 'open', mode });
     }
   };
 
@@ -207,36 +240,40 @@ const ActiveOrders = ({ onSelectOrder, onNavigate, onGoBack }) => {
   };
 
   const getChannelBadge = (order) => {
-    const cat = order.customerCategory || (order.billType === 'Wholesale' ? 'Wholesale' : (order.billType === 'Export' ? 'Export' : 'Retail'));
+    const cat = getOrderCategory(order);
     const sub = order.exportSubCategory || 'Local';
 
     if (cat === 'Wholesale') {
+      const boxCount = Number(order.totalBoxes) || (Array.isArray(order.boxes) ? order.boxes.length : 0) || 1;
       return (
-        <span className="inline-flex items-center gap-0.5 sm:gap-1 px-1.5 sm:px-2 py-0.5 rounded-md text-[9px] sm:text-[10px] font-semibold bg-amber-50 text-amber-800 border border-amber-200 whitespace-nowrap shrink-0">
-          <Building size={9} className="sm:w-2.5 sm:h-2.5" />
-          {t("Wholesale")}
+        <span className="inline-flex items-center gap-0.5 sm:gap-1 px-1.5 sm:px-2 py-0.5 rounded-md text-[9px] sm:text-[10px] font-bold bg-amber-100 text-amber-900 border border-amber-300 whitespace-nowrap shrink-0 shadow-2xs">
+          <Package size={10} className="sm:w-3 sm:h-3 text-amber-800" />
+          <span>{t("Wholesale")}</span>
+          <span className="bg-amber-200/90 text-amber-950 px-1 py-0.2 rounded text-[8.5px] font-mono font-black">
+            {boxCount} {boxCount === 1 ? 'Box' : 'Boxes'}
+          </span>
         </span>
       );
     }
     if (cat === 'Export') {
       if (sub === 'DAM') {
         return (
-          <span className="inline-flex items-center gap-0.5 sm:gap-1 px-1.5 sm:px-2 py-0.5 rounded-md text-[9px] sm:text-[10px] font-semibold bg-purple-50 text-purple-800 border border-purple-200 whitespace-nowrap shrink-0">
-            <ArrowUpRight size={9} className="sm:w-2.5 sm:h-2.5" />
+          <span className="inline-flex items-center gap-0.5 sm:gap-1 px-1.5 sm:px-2 py-0.5 rounded-md text-[9px] sm:text-[10px] font-bold bg-purple-100 text-purple-900 border border-purple-300 whitespace-nowrap shrink-0 shadow-2xs">
+            <ArrowUpRight size={10} className="sm:w-3 sm:h-3 text-purple-800" />
             {t("Export DAM")}
           </span>
         );
       }
       return (
-        <span className="inline-flex items-center gap-0.5 sm:gap-1 px-1.5 sm:px-2 py-0.5 rounded-md text-[9px] sm:text-[10px] font-semibold bg-sky-50 text-sky-800 border border-sky-200 whitespace-nowrap shrink-0">
-          <ArrowUpRight size={9} className="sm:w-2.5 sm:h-2.5" />
+        <span className="inline-flex items-center gap-0.5 sm:gap-1 px-1.5 sm:px-2 py-0.5 rounded-md text-[9px] sm:text-[10px] font-bold bg-sky-100 text-sky-900 border border-sky-300 whitespace-nowrap shrink-0 shadow-2xs">
+          <ArrowUpRight size={10} className="sm:w-3 sm:h-3 text-sky-800" />
           {t("Export Local")}
         </span>
       );
     }
     return (
-      <span className="inline-flex items-center gap-0.5 sm:gap-1 px-1.5 sm:px-2 py-0.5 rounded-md text-[9px] sm:text-[10px] font-semibold bg-slate-100 text-slate-700 border border-slate-200 whitespace-nowrap shrink-0">
-        <Fish size={9} className="sm:w-2.5 sm:h-2.5" />
+      <span className="inline-flex items-center gap-0.5 sm:gap-1 px-1.5 sm:px-2 py-0.5 rounded-md text-[9px] sm:text-[10px] font-bold bg-slate-100 text-slate-700 border border-slate-300 whitespace-nowrap shrink-0 shadow-2xs">
+        <Fish size={10} className="sm:w-3 sm:h-3 text-slate-600" />
         {t("Retail")}
       </span>
     );
@@ -408,7 +445,7 @@ const ActiveOrders = ({ onSelectOrder, onNavigate, onGoBack }) => {
               return (
                 <div
                   key={order._id || order.tableNo}
-                  onClick={() => handleSelect(order.tableNo, isBilled ? 'settle' : 'open')}
+                  onClick={() => handleSelect(order, 'open')}
                   className="bg-white rounded-xl border border-slate-200 hover:border-slate-300 transition-all p-2 sm:p-3 md:p-4 flex flex-col justify-between shadow-xs hover:shadow-md cursor-pointer group"
                 >
                   <div>
@@ -448,39 +485,90 @@ const ActiveOrders = ({ onSelectOrder, onNavigate, onGoBack }) => {
                       </span>
                     </div>
 
-                    {/* Customer Information (Clean card) */}
+                    {/* Customer Information (Neat Card Arrangement) */}
                     {(order.customerName || order.customerPhone) ? (
-                      <div className="mb-2 p-1.5 sm:p-2 rounded-lg bg-slate-50 border border-slate-100 flex items-center gap-1.5 sm:gap-2">
+                      <div className="mb-2 p-1.5 sm:p-2 rounded-lg bg-orange-50/50 border border-orange-100 flex items-center gap-2">
                         {order.customerPhoto ? (
                           <img
                             src={order.customerPhoto}
                             alt={order.customerName}
-                            className="w-6 h-6 sm:w-7 sm:h-7 rounded-full object-cover border border-slate-200 shrink-0"
+                            className="w-7 h-7 sm:w-8 sm:h-8 rounded-full object-cover border border-orange-200 shrink-0"
                           />
                         ) : (
-                          <div className="w-6 h-6 sm:w-7 sm:h-7 rounded-full bg-slate-200 text-slate-700 font-bold text-[10px] sm:text-xs flex items-center justify-center shrink-0">
+                          <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-gradient-to-br from-[#ea580c] to-[#c2410c] text-white font-bold text-[10px] sm:text-xs flex items-center justify-center shrink-0 shadow-2xs">
                             {(order.customerName || 'C').charAt(0).toUpperCase()}
                           </div>
                         )}
 
                         <div className="min-w-0 flex-1">
-                          <div className="font-bold text-[11px] sm:text-xs text-slate-900 truncate">
-                            {order.customerName || 'Customer'}
+                          <div className="flex items-center justify-between gap-1">
+                            <span className="font-bold text-[11px] sm:text-xs text-slate-900 truncate">
+                              {order.customerName || 'Customer'}
+                            </span>
+                            {order.customerCategory && (
+                              <span className="text-[8.5px] font-mono px-1 py-0.2 rounded bg-orange-100 text-[#ea580c] font-black uppercase shrink-0">
+                                {order.customerCategory}
+                              </span>
+                            )}
                           </div>
-                          <div className="font-mono text-[9.5px] sm:text-[10.5px] text-slate-500 truncate">
-                            {order.customerPhone || '—'}
-                          </div>
+                          {order.customerPhone && (
+                            <div className="font-mono text-[9.5px] sm:text-[10px] text-slate-600 flex items-center gap-1 mt-0.5">
+                              <Phone size={9} className="text-slate-400 shrink-0" />
+                              <span>{order.customerPhone}</span>
+                            </div>
+                          )}
                           {order.customerAddress && (
-                            <div className="text-[9px] sm:text-[10px] text-slate-400 truncate flex items-center gap-0.5 mt-0.5">
-                              <MapPin size={8} className="shrink-0" />
+                            <div className="text-[9px] text-slate-400 truncate flex items-center gap-0.5 mt-0.5">
+                              <MapPin size={8} className="shrink-0 text-slate-400" />
                               <span className="truncate">{order.customerAddress}</span>
                             </div>
                           )}
                         </div>
                       </div>
                     ) : (
-                      <div className="text-[10px] sm:text-[11px] text-slate-400 font-medium py-1 mb-1.5 sm:mb-2 truncate">
-                        Counter Walk-in Order
+                      <div className="flex items-center gap-1 text-[10px] text-slate-400 font-medium py-1 mb-1.5 px-1 bg-slate-50/80 rounded border border-slate-100">
+                        <User size={10} className="shrink-0 text-slate-400" />
+                        <span className="truncate">Counter Walk-in Order</span>
+                      </div>
+                    )}
+
+                    {/* Ordered Fish Items Breakdown (Neat list showing Fish name, cut, qty, price) */}
+                    {Array.isArray(order.items) && order.items.filter(i => !i?.isCancelled).length > 0 && (
+                      <div className="mb-2 p-1.5 rounded-lg bg-amber-50/60 border border-amber-200/70 space-y-1">
+                        <div className="text-[9px] font-black uppercase tracking-wider text-amber-900/80 flex items-center justify-between px-0.5">
+                          <span>Items ({order.items.filter(i => !i?.isCancelled).length})</span>
+                          <span className="text-[8.5px] font-mono text-amber-700">Detailed</span>
+                        </div>
+                        <div className="max-h-28 overflow-y-auto space-y-1 pr-0.5 no-scrollbar">
+                          {order.items.filter(i => !i?.isCancelled).map((it, idx) => {
+                            const itemName = it.name || it.dishName || it.title || 'Seafood Item';
+                            const telugu = it.nameTelugu || it.teluguName || '';
+                            const weightStr = it.weight ? `${it.weight} kg` : (it.weightKg ? `${it.weightKg} kg` : (it.quantity ? `${it.quantity} ${it.unit || 'qty'}` : '1 kg'));
+                            const cut = it.cuttingStyle || it.cutType || '';
+                            const itemPrice = it.price || it.totalPrice || it.rate || 0;
+                            return (
+                              <div key={idx} className="flex items-start justify-between text-[10px] sm:text-[10.5px] leading-tight text-slate-700 bg-white/90 p-1 rounded-md border border-amber-100 shadow-2xs">
+                                <div className="min-w-0 flex-1 mr-1">
+                                  <span className="font-bold text-slate-800 truncate block">
+                                    {itemName} {telugu && <span className="font-normal text-slate-500 text-[9px]">({telugu})</span>}
+                                  </span>
+                                  <div className="flex items-center gap-1 text-[8.5px] sm:text-[9px] text-slate-500 font-mono mt-0.5 flex-wrap">
+                                    <span className="bg-amber-100 text-amber-900 font-bold px-1 rounded">{weightStr}</span>
+                                    {(it.boxNumber || it.isWholesaleBox || getOrderCategory(order) === 'Wholesale') && (
+                                      <span className="bg-amber-200/90 text-amber-950 font-black px-1 rounded flex items-center gap-0.5">
+                                        <Package size={8} /> Box #{it.boxNumber || 1}
+                                      </span>
+                                    )}
+                                    {cut && <span className="bg-slate-100 text-slate-600 px-1 rounded">{cut}</span>}
+                                  </div>
+                                </div>
+                                <span className="font-mono font-extrabold text-slate-900 shrink-0 text-right mt-0.5">
+                                  ₹{Number(itemPrice).toLocaleString()}
+                                </span>
+                              </div>
+                            );
+                          })}
+                        </div>
                       </div>
                     )}
 
@@ -523,7 +611,7 @@ const ActiveOrders = ({ onSelectOrder, onNavigate, onGoBack }) => {
                       type="button"
                       onClick={(e) => {
                         e.stopPropagation();
-                        handleSelect(order.tableNo, isBilled ? 'settle' : 'open');
+                        handleSelect(order, 'open');
                       }}
                       className={`w-full py-1.5 sm:py-2 md:py-2.5 rounded-lg font-bold text-[11px] sm:text-xs md:text-sm flex items-center justify-center gap-1 sm:gap-1.5 transition-colors cursor-pointer ${style.button}`}
                     >

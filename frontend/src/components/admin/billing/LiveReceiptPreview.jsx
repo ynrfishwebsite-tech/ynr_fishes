@@ -61,9 +61,9 @@ const LiveReceiptPreview = ({ settings, previewTab, t, user, menuPreviewItems, o
         }} />
 
         {/* Info bar at top of preview */}
-        <div className="flex items-center justify-between px-3 py-1.5 bg-[#FAF0E4] border-b border-[#E8DCCB] text-[9px] text-[#7c3f1d] font-sans select-none">
-          <span className="font-bold text-red-600 truncate max-w-[55%]">{previewFont.shortName}</span>
-          <span className="font-semibold">{RECEIPT_FONT_SIZES.find(s => s.id === (settings.receiptFontSize || 'medium'))?.label || 'Medium'} ({previewMetrics.bodySize})</span>
+        <div className="flex items-center justify-between px-3 py-1.5 bg-[#FAF0E4] border-b border-[#E8DCCB] text-[10px] text-slate-800 font-sans select-none">
+          <span className="font-bold text-slate-900 truncate max-w-[55%]">{previewFont.shortName}</span>
+          <span className="font-bold text-slate-800">{RECEIPT_FONT_SIZES.find(s => s.id === (settings.receiptFontSize || 'medium'))?.label || 'Medium'} ({previewMetrics.bodySize})</span>
         </div>
 
         {/* Tax Invoice / Receipt Preview */}

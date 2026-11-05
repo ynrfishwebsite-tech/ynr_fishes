@@ -777,59 +777,41 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
       }
     }
 
-    // Build the active order number set from currently open/billed orders only.
-    // Cancelled orders are intentionally excluded so their numbers can be reused.
-    const activeOrderNos = new Set();
+    // Build the set of all known order numbers from active orders, settled orders, and active table
+    const countedNos = new Set();
+
     if (openOrdersList && Array.isArray(openOrdersList)) {
       openOrdersList.forEach((o) => {
-        if (!o.tableNo || !o.tableNo.startsWith(prefix)) return;
-        const orderDate = o.createdAt
-          ? new Date(o.createdAt).toDateString()
-          : (o.updatedAt ? new Date(o.updatedAt).toDateString() : todayStr);
-        // Only include Open / Billed (active) orders from today
-        if (orderDate === todayStr && (o.status === 'Open' || o.status === 'Billed')) {
-          activeOrderNos.add(o.tableNo);
-        }
+        if (o?.tableNo) countedNos.add(String(o.tableNo));
       });
     }
 
-    // Build settled order number set from all of today's bills (these numbers must NOT be reused)
-    const settledOrderNos = new Set();
     if (dailyStats?.todayTableNos && Array.isArray(dailyStats.todayTableNos)) {
       dailyStats.todayTableNos.forEach((tNo) => {
-        if (tNo && tNo.startsWith(prefix)) {
-          settledOrderNos.add(tNo);
-        }
+        if (tNo) countedNos.add(String(tNo));
       });
     }
 
-    // Clean up newlyGeneratedTables: remove any entry that is neither in active orders
-    // nor in settled orders (i.e. it was cancelled — don't keep it, allow reuse)
+    if (activeTable) {
+      countedNos.add(String(activeTable));
+    }
+
     if (newlyGeneratedTables.current) {
       newlyGeneratedTables.current.forEach((tNo) => {
-        if (!tNo || !tNo.startsWith(prefix)) return;
-        const isActive = activeOrderNos.has(tNo);
-        const isSettled = settledOrderNos.has(tNo);
-        if (!isActive && !isSettled) {
-          // This number was generated locally but the order was cancelled → remove it so it can be reused
-          newlyGeneratedTables.current.delete(tNo);
-        }
+        if (tNo) countedNos.add(String(tNo));
       });
     }
 
-    // The "highest used number" is the max across active orders, settled orders and any still-valid locally generated ones
+    // Extract maximum numeric sequence used for this depot today
     let maxNum = 0;
-    const countedNos = new Set([...activeOrderNos, ...settledOrderNos]);
-    if (newlyGeneratedTables.current) {
-      newlyGeneratedTables.current.forEach((tNo) => {
-        if (tNo && tNo.startsWith(prefix)) countedNos.add(tNo);
-      });
-    }
     countedNos.forEach((tNo) => {
-      const numPart = tNo.replace(prefix, '').trim();
-      const num = parseInt(numPart, 10);
-      if (!isNaN(num) && num < 10000 && num > maxNum) {
-        maxNum = num;
+      if (!tNo || typeof tNo !== 'string') return;
+      const numMatch = tNo.match(/\d+/);
+      if (numMatch) {
+        const num = parseInt(numMatch[0], 10);
+        if (!isNaN(num) && num < 10000 && num > maxNum) {
+          maxNum = num;
+        }
       }
     });
 
@@ -1404,6 +1386,22 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
           setOrderStatus(cached.status);
           setBillNumber(cached.billNumber);
           setBillType(cached.billType || (cached.tableNo?.startsWith('DEL-') ? 'Delivery' : (cached.tableNo?.startsWith('TAK-') ? 'Takeaway' : 'Dine-In')));
+
+          // ⚡ Automatically sync catalog view mode with order type (Retail vs Wholesale vs Export)
+          const isCachedExport = cached.customerCategory === 'Export' || cached.orderChannel?.includes('Export') || cached.orderMode === 'export' || cached.billType === 'Export' || Boolean(cached.exportSubCategory);
+          const isCachedWholesale = cached.customerCategory === 'Wholesale' || cached.orderChannel === 'Wholesale-Box' || cached.orderMode === 'bulk' || cached.billType === 'Wholesale' || (Number(cached.totalBoxes) > 0) || (Array.isArray(cached.boxes) && cached.boxes.length > 0) || cached.items?.some(i => i.isWholesaleBox || Number(i.boxNumber || 0) > 0 || i.pricingTier === 'wholesale' || Number(i.weight || i.weightKg || i.enteredWeight || 0) >= 20);
+
+          if (isCachedExport) {
+            setFishOrderMode('export');
+            setCustomerCategory('Export');
+            if (cached.exportSubCategory) setExportSubCategory(cached.exportSubCategory);
+          } else if (isCachedWholesale) {
+            setFishOrderMode('bulk');
+            setCustomerCategory('Wholesale');
+          } else {
+            setFishOrderMode('individual');
+            setCustomerCategory('Retail');
+          }
           if (cached.orderSource) {
             setOrderSource(cached.orderSource);
           } else if (cached.billType === 'Delivery' || cached.tableNo?.startsWith('DEL-')) {
@@ -1584,6 +1582,22 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
         setOrderStatus(order.status);
         setBillNumber(order.billNumber);
         setBillType(order.billType || 'Dine-In');
+
+        // ⚡ Automatically sync catalog view mode with order type (Retail vs Wholesale vs Export)
+        const isOrderExport = order.customerCategory === 'Export' || order.orderChannel?.includes('Export') || order.orderMode === 'export' || order.billType === 'Export' || Boolean(order.exportSubCategory);
+        const isOrderWholesale = order.customerCategory === 'Wholesale' || order.orderChannel === 'Wholesale-Box' || order.orderMode === 'bulk' || order.billType === 'Wholesale' || (Number(order.totalBoxes) > 0) || (Array.isArray(order.boxes) && order.boxes.length > 0) || order.items?.some(i => i.isWholesaleBox || Number(i.boxNumber || 0) > 0 || i.pricingTier === 'wholesale' || Number(i.weight || i.weightKg || i.enteredWeight || 0) >= 20);
+
+        if (isOrderExport) {
+          setFishOrderMode('export');
+          setCustomerCategory('Export');
+          if (order.exportSubCategory) setExportSubCategory(order.exportSubCategory);
+        } else if (isOrderWholesale) {
+          setFishOrderMode('bulk');
+          setCustomerCategory('Wholesale');
+        } else {
+          setFishOrderMode('individual');
+          setCustomerCategory('Retail');
+        }
         if (order.billType === 'Delivery') {
           setOrderSource(order.orderSource || 'Direct');
         }
@@ -2143,6 +2157,8 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
       tableNo: tableNo,
       items: cart,
       billType: billType || (fishOrderMode === 'bulk' ? 'Wholesale' : (fishOrderMode === 'export' ? 'Export' : 'Retail')),
+      orderChannel: fishOrderMode === 'bulk' ? 'Wholesale-Box' : (fishOrderMode === 'export' ? 'Online-Delivery' : 'Counter-Retail'),
+      orderMode: fishOrderMode,
       customerName,
       customerPhone,
       customerCategory: customerCategory || (fishOrderMode === 'bulk' ? 'Wholesale' : (fishOrderMode === 'export' ? 'Export' : 'Retail')),
@@ -2398,11 +2414,16 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
     // Set new active table immediately
     setActiveTable(newOrderNo);
 
+    // Sync with top header / AdminDashboard so active table doesn't get stuck on previous order
+    if (onNavigate) {
+      onNavigate('billing', { table: newOrderNo, action: 'open' });
+    }
+
     // Switch to menu tab on mobile
     setMobileTab('menu');
 
     showToast(`${t('newOrder')} #${newOrderNo.replace(/^(TAK-|DEL-|ORD-)/i, '')}`, 'success');
-  }, [billType, activeTable, showToast, t, generateSequentialOrderNo]);
+  }, [billType, activeTable, showToast, t, generateSequentialOrderNo, fishOrderMode, onNavigate]);
 
   const handleGenerateBill = async () => {
     let tableToUse = activeTable;

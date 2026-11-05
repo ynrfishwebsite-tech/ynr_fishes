@@ -4,7 +4,6 @@ import { useLanguage } from '../../../context/LanguageContext';
 import { getDailyStats, getBillById, deleteBill } from '../../../api/billing/billing';
 import { getMenuItems } from '../../../api/catalog/menu';
 import { LayoutDashboard, Clock, ChevronDown, Calendar, Crown, BarChart2, Fish, Scale, Boxes, TrendingUp, Ship, Package, IndianRupee, Wallet, ArrowDownLeft, RotateCcw, Truck } from 'lucide-react';
-import OperationModal from '../operations/OperationModal';
 import { getOperationsSummary } from '../../../api/operations/operations';
 import realtimeService from '../../../services/realtimeService';
 import {
@@ -44,7 +43,6 @@ const Dashboard = ({ onNavigate, onGoBack }) => {
   const [customDateRange, setCustomDateRange] = useState({ start: '', end: '' });
   const [isFilterDropdownOpen, setIsFilterDropdownOpen] = useState(false);
   const [menuCatalog, setMenuCatalog] = useState([]);
-  const [activeOperationModal, setActiveOperationModal] = useState(null);
   const [operationsData, setOperationsData] = useState({
     import: { totalAmount: 0, totalNetKg: 0, count: 0 },
     export: { totalAmount: 0, totalNetKg: 0, totalBoxes: 0, count: 0 },
@@ -260,12 +258,9 @@ const Dashboard = ({ onNavigate, onGoBack }) => {
             <span className="text-xs sm:text-sm font-black uppercase tracking-wider text-slate-800">
               YNR Fishes Operations Grid
             </span>
-            <span className="px-2 py-0.5 rounded-full text-[9px] font-black bg-amber-100 text-amber-900 border border-amber-300">
-              8 Core Modules
-            </span>
           </div>
           <span className="text-[10.5px] text-slate-500 font-bold">
-            Tap any box to record or view ledger
+            Live operations summary & quick access
           </span>
         </div>
 
@@ -276,8 +271,9 @@ const Dashboard = ({ onNavigate, onGoBack }) => {
         }}>
           {/* Row 1, Card 1: IMPORT */}
           <div
-            onClick={() => setActiveOperationModal('Import')}
+            onClick={() => onNavigate && onNavigate('inventory')}
             className="cursor-pointer group rounded-2xl p-3.5 sm:p-4 bg-gradient-to-br from-sky-50 to-blue-100/60 border border-sky-300 shadow-sm hover:shadow-md hover:border-sky-500 transition-all active:scale-[0.98] flex flex-col justify-between min-h-[120px]"
+            title="Go to Stock / Inventory"
           >
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2 min-w-0">
@@ -305,8 +301,9 @@ const Dashboard = ({ onNavigate, onGoBack }) => {
 
           {/* Row 1, Card 2: EXPORT */}
           <div
-            onClick={() => setActiveOperationModal('Export')}
+            onClick={() => onNavigate && onNavigate('billing', { mode: 'export' })}
             className="cursor-pointer group rounded-2xl p-3.5 sm:p-4 bg-gradient-to-br from-amber-50 to-orange-100/60 border border-amber-300 shadow-sm hover:shadow-md hover:border-amber-500 transition-all active:scale-[0.98] flex flex-col justify-between min-h-[120px]"
+            title="Go to New Order (Export Mode)"
           >
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2 min-w-0">
@@ -334,8 +331,9 @@ const Dashboard = ({ onNavigate, onGoBack }) => {
 
           {/* Row 1, Card 3: SALES */}
           <div
-            onClick={() => onNavigate ? onNavigate('billing') : setActiveOperationModal('Sales')}
+            onClick={() => onNavigate && onNavigate('billing')}
             className="cursor-pointer group rounded-2xl p-3.5 sm:p-4 bg-gradient-to-br from-emerald-50 to-green-100/60 border border-emerald-300 shadow-sm hover:shadow-md hover:border-emerald-500 transition-all active:scale-[0.98] flex flex-col justify-between min-h-[120px]"
+            title="Go to New Order / POS"
           >
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2 min-w-0">
@@ -363,8 +361,9 @@ const Dashboard = ({ onNavigate, onGoBack }) => {
 
           {/* Row 1, Card 4: EXPENSES */}
           <div
-            onClick={() => setActiveOperationModal('Expenses')}
+            onClick={() => onNavigate && onNavigate('expenses')}
             className="cursor-pointer group rounded-2xl p-3.5 sm:p-4 bg-gradient-to-br from-rose-50 to-red-100/60 border border-rose-300 shadow-sm hover:shadow-md hover:border-rose-500 transition-all active:scale-[0.98] flex flex-col justify-between min-h-[120px]"
+            title="Go to Expenses"
           >
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2 min-w-0">
@@ -392,8 +391,7 @@ const Dashboard = ({ onNavigate, onGoBack }) => {
 
           {/* Row 2, Card 5: PURCHASE */}
           <div
-            onClick={() => setActiveOperationModal('Purchase')}
-            className="cursor-pointer group rounded-2xl p-3.5 sm:p-4 bg-gradient-to-br from-blue-50 to-indigo-100/60 border border-blue-300 shadow-sm hover:shadow-md hover:border-blue-500 transition-all active:scale-[0.98] flex flex-col justify-between min-h-[120px]"
+            className="rounded-2xl p-3.5 sm:p-4 bg-gradient-to-br from-blue-50 to-indigo-100/60 border border-blue-300 shadow-sm flex flex-col justify-between min-h-[120px] select-none"
           >
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2 min-w-0">
@@ -421,8 +419,7 @@ const Dashboard = ({ onNavigate, onGoBack }) => {
 
           {/* Row 2, Card 6: PURCHASE RETURN */}
           <div
-            onClick={() => setActiveOperationModal('Purchase Return')}
-            className="cursor-pointer group rounded-2xl p-3.5 sm:p-4 bg-gradient-to-br from-amber-50 via-yellow-50 to-amber-100/70 border border-amber-400 shadow-sm hover:shadow-md hover:border-amber-600 transition-all active:scale-[0.98] flex flex-col justify-between min-h-[120px]"
+            className="rounded-2xl p-3.5 sm:p-4 bg-gradient-to-br from-amber-50 via-yellow-50 to-amber-100/70 border border-amber-400 shadow-sm flex flex-col justify-between min-h-[120px] select-none"
           >
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2 min-w-0">
@@ -450,8 +447,7 @@ const Dashboard = ({ onNavigate, onGoBack }) => {
 
           {/* Row 2, Card 7: SALES RETURN */}
           <div
-            onClick={() => setActiveOperationModal('Sales Return')}
-            className="cursor-pointer group rounded-2xl p-3.5 sm:p-4 bg-gradient-to-br from-orange-50 to-amber-100/60 border border-orange-300 shadow-sm hover:shadow-md hover:border-orange-500 transition-all active:scale-[0.98] flex flex-col justify-between min-h-[120px]"
+            className="rounded-2xl p-3.5 sm:p-4 bg-gradient-to-br from-orange-50 to-amber-100/60 border border-orange-300 shadow-sm flex flex-col justify-between min-h-[120px] select-none"
           >
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2 min-w-0">
@@ -479,8 +475,9 @@ const Dashboard = ({ onNavigate, onGoBack }) => {
 
           {/* Row 2, Card 8: VEHICLE / OTHERS */}
           <div
-            onClick={() => setActiveOperationModal('Vehicle / Others')}
+            onClick={() => onNavigate && onNavigate('vehicles')}
             className="cursor-pointer group rounded-2xl p-3.5 sm:p-4 bg-gradient-to-br from-purple-50 to-violet-100/60 border border-purple-300 shadow-sm hover:shadow-md hover:border-purple-500 transition-all active:scale-[0.98] flex flex-col justify-between min-h-[120px]"
+            title="Go to Vehicles & Transport"
           >
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2 min-w-0">
@@ -698,19 +695,7 @@ const Dashboard = ({ onNavigate, onGoBack }) => {
       {toast && (
         <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />
       )}
-
-    
-      {/* Operation Management Modal */}
-      {activeOperationModal && (
-        <OperationModal
-          isOpen={!!activeOperationModal}
-          onClose={() => setActiveOperationModal(null)}
-          operationType={activeOperationModal}
-          onSaved={fetchOperations}
-          menuCatalog={menuCatalog}
-        />
-      )}
-</div>
+    </div>
   );
 };
 

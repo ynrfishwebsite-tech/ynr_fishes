@@ -11,12 +11,78 @@ const getModels = (req) => ({
   Menu: getTenantModel(req, 'Menu', MenuDefault)
 });
 
-// 10. Get Stock Logs (Audit Trail)
+// 10. Get Stock Logs (Audit Trail with Backend Pagination & Filters)
 export const getLogs = async (req, res) => {
   try {
     const { StockLog } = getModels(req);
-    const logs = await StockLog.find().sort({ createdAt: -1 }).limit(200);
-    res.status(200).json(logs);
+    const { page = 1, limit = 15, type = 'All', search = '', startDate, endDate } = req.query;
+
+    const query = {};
+
+    // Filter by Transaction Type
+    if (type && type !== 'All') {
+      if (type.includes('Procurement') || type.includes('Stock-In')) {
+        query.type = { $regex: 'Procurement|Stock-In', $options: 'i' };
+      } else if (type.includes('Shrinkage') || type.includes('Wastage')) {
+        query.type = { $regex: 'Shrinkage|Wastage', $options: 'i' };
+      } else if (type.includes('POS')) {
+        query.type = { $regex: 'POS Sale', $options: 'i' };
+      } else if (type.includes('Online')) {
+        query.type = { $regex: 'Online Sale', $options: 'i' };
+      } else if (type.includes('Refund') || type.includes('Reversal')) {
+        query.type = { $regex: 'Refund|Reversal', $options: 'i' };
+      } else {
+        query.type = type;
+      }
+    }
+
+    // Search by itemName, billNumber, supplierName, performedBy
+    if (search && search.trim()) {
+      const q = search.trim();
+      query.$or = [
+        { itemName: { $regex: q, $options: 'i' } },
+        { billNumber: { $regex: q, $options: 'i' } },
+        { supplierName: { $regex: q, $options: 'i' } },
+        { performedBy: { $regex: q, $options: 'i' } }
+      ];
+    }
+
+    // Date range filter
+    if (startDate || endDate) {
+      query.createdAt = {};
+      if (startDate) query.createdAt.$gte = new Date(startDate);
+      if (endDate) {
+        const end = new Date(endDate);
+        end.setHours(23, 59, 59, 999);
+        query.createdAt.$lte = end;
+      }
+    }
+
+    const pageNum = parseInt(page) || 1;
+    const limitNum = parseInt(limit) || 15;
+    const skip = (pageNum - 1) * limitNum;
+
+    const [total, logs] = await Promise.all([
+      StockLog.countDocuments(query),
+      StockLog.find(query)
+        .sort({ createdAt: -1, _id: -1 })
+        .skip(skip)
+        .limit(limitNum)
+    ]);
+
+    // Backward compatibility for callers expecting array directly
+    if (req.query.legacy === 'true') {
+      return res.status(200).json(logs);
+    }
+
+    res.status(200).json({
+      success: true,
+      data: logs,
+      total,
+      page: pageNum,
+      limit: limitNum,
+      totalPages: Math.ceil(total / limitNum) || 1
+    });
   } catch (error) {
     res.status(500).json({ message: error.message || 'Error fetching stock logs' });
   }
@@ -463,86 +529,128 @@ export const getFishInventory = async (req, res) => {
   }
 };
 
-// 16. Local Stock-In (Fishermen / Local Market Catch)
+// 16. Local Stock-In (Fishermen / Local Market Catch with Multi-Fish & Box support)
 export const recordLocalStockIn = async (req, res) => {
   try {
     const { Menu, StockLog } = getModels(req);
     const {
-      menuItemId,
       supplierName,
       supplierPhone,
-      sizeBracket = 'Medium', // 'Big' | 'Medium' | 'Small'
-      weightOption = '1+',    // '1+' | '0-1'
+      companyName = '',
+      vehicleNumber = '',
+      harbor = '',
+      items = [], // Multi-fish intake array
+      menuItemId, // Single item fallback
       kg = 0,
       grams = 0,
+      boxes = 0,
+      kgPerBox = 0,
       ratePerKg = 0,
+      sizeBracket = 'Medium',
+      weightOption = '1+',
       iceCharges = 0,
       boxTapeCharges = 0,
       advanceAmount = 0,
       notes = ''
     } = req.body;
 
-    const totalWeightKg = Number((Number(kg) + Number(grams) / 1000).toFixed(3));
-    if (!menuItemId || totalWeightKg <= 0) {
-      return res.status(400).json({ message: 'Valid fish variety and weight (Kg/Grams) are required' });
+    const intakeItems = Array.isArray(items) && items.length > 0 ? items : [
+      {
+        menuItemId,
+        kg,
+        grams,
+        boxes,
+        kgPerBox,
+        ratePerKg,
+        sizeBracket,
+        weightOption,
+        notes
+      }
+    ];
+
+    let totalGrossKg = 0;
+    let totalBaseAmount = 0;
+    const updatedFishes = [];
+
+    for (const item of intakeItems) {
+      let itemWeightKg = 0;
+      const numBoxes = Number(item.boxes || 0);
+      const perBoxKg = Number(item.kgPerBox || 0);
+
+      if (Number(item.kg || 0) > 0 || Number(item.grams || 0) > 0) {
+        itemWeightKg = Number((Number(item.kg || 0) + Number(item.grams || 0) / 1000).toFixed(3));
+      } else if (numBoxes > 0 && perBoxKg > 0) {
+        itemWeightKg = Number((numBoxes * perBoxKg).toFixed(3));
+      }
+
+      if (!item.menuItemId || itemWeightKg <= 0) continue;
+
+      const fishDoc = await Menu.findById(item.menuItemId);
+      if (!fishDoc) continue;
+
+      const rate = Number(item.ratePerKg || item.rate || item.purchaseRate || 0);
+      const rowBase = Number((itemWeightKg * rate).toFixed(2));
+      totalGrossKg += itemWeightKg;
+      totalBaseAmount += rowBase;
+
+      const prevStock = Number(fishDoc.stock ?? fishDoc.openingStock ?? 0);
+      const newStock = Number((prevStock + itemWeightKg).toFixed(3));
+      fishDoc.stock = newStock;
+      if (rate > 0) fishDoc.purchasePrice = rate;
+      if (supplierName) fishDoc.lastSupplier = supplierName.trim();
+      fishDoc.lastProcurementDate = new Date();
+      await fishDoc.save();
+
+      const logNotes = `Local Catch (${item.weightOption || '1+'}, ${item.sizeBracket || 'Medium'}): +${itemWeightKg}kg${numBoxes > 0 ? ` (${numBoxes} boxes @ ${perBoxKg}kg/box)` : ''} @ ₹${rate}/kg. Base: ₹${rowBase}.${notes ? ' Note: ' + notes : ''}`;
+
+      await StockLog.create({
+        fishItem: fishDoc._id,
+        itemName: fishDoc.name,
+        type: 'Procurement (Stock-In)',
+        quantityChange: itemWeightKg,
+        grossKgChange: itemWeightKg,
+        finalStock: newStock,
+        balanceGrossKg: newStock,
+        unit: 'kg',
+        supplierName: supplierName ? supplierName.trim() : 'Local Fisherman',
+        companyName: companyName ? companyName.trim() : '',
+        vehicleNumber: vehicleNumber ? vehicleNumber.trim() : '',
+        harbor: harbor ? harbor.trim() : '',
+        boxes: numBoxes,
+        kgPerBox: perBoxKg,
+        notes: logNotes,
+        performedBy: req.user?.username || req.user?.name || 'Local Incharge',
+        createdAt: new Date()
+      });
+
+      emitSocketEvent(req, 'fishStockUpdated', {
+        menuItemId: fishDoc._id,
+        name: fishDoc.name,
+        previousStock: prevStock,
+        newStock,
+        grossAdded: itemWeightKg
+      });
+
+      updatedFishes.push({ name: fishDoc.name, addedKg: itemWeightKg, newStock });
     }
 
-    const fishDoc = await Menu.findById(menuItemId);
-    if (!fishDoc) {
-      return res.status(404).json({ message: 'Fish item not found' });
+    if (totalGrossKg <= 0) {
+      return res.status(400).json({ message: 'Please select a fish variety and enter valid weight or boxes' });
     }
 
-    const baseAmount = Number((totalWeightKg * Number(ratePerKg || 0)).toFixed(2));
-    const subtotal = Number((baseAmount - Number(iceCharges || 0) + Number(boxTapeCharges || 0)).toFixed(2));
+    const subtotal = Number((totalBaseAmount - Number(iceCharges || 0) + Number(boxTapeCharges || 0)).toFixed(2));
     const netPayable = Number((subtotal - Number(advanceAmount || 0)).toFixed(2));
-
-    const prevStock = Number(fishDoc.stock ?? fishDoc.openingStock ?? 0);
-    const newStock = Number((prevStock + totalWeightKg).toFixed(3));
-    fishDoc.stock = newStock;
-    if (ratePerKg && Number(ratePerKg) > 0) {
-      fishDoc.purchasePrice = Number(ratePerKg);
-    }
-    if (supplierName) {
-      fishDoc.lastSupplier = supplierName.trim();
-    }
-    fishDoc.lastProcurementDate = new Date();
-    await fishDoc.save();
-
-    const logNotes = `Local Catch (${weightOption}, ${sizeBracket}): +${totalWeightKg}kg @ ₹${ratePerKg}/kg. Base: ₹${baseAmount}, Ice: -₹${iceCharges}, Box/Tape: +₹${boxTapeCharges}, Adv: ₹${advanceAmount}, Net: ₹${netPayable}.${notes ? ' Note: ' + notes : ''}`;
-
-    const log = await StockLog.create({
-      fishItem: fishDoc._id,
-      itemName: fishDoc.name,
-      type: 'Procurement (Stock-In)',
-      quantityChange: totalWeightKg,
-      grossKgChange: totalWeightKg,
-      finalStock: newStock,
-      balanceGrossKg: newStock,
-      unit: 'kg',
-      supplierName: supplierName ? supplierName.trim() : 'Local Fisherman',
-      notes: logNotes,
-      performedBy: req.user?.username || req.user?.name || 'Procurement Incharge'
-    });
-
-    emitSocketEvent(req, 'fishStockUpdated', {
-      menuItemId: fishDoc._id,
-      name: fishDoc.name,
-      previousStock: prevStock,
-      newStock,
-      grossAdded: totalWeightKg
-    });
 
     res.status(200).json({
       success: true,
-      message: `Local Stock-In recorded: +${totalWeightKg}kg of ${fishDoc.name} (Net ₹${netPayable})`,
-      stock: newStock,
+      message: `Local Catch recorded: ${updatedFishes.length} varieties, +${totalGrossKg.toFixed(2)}kg (Net ₹${netPayable})`,
+      updatedFishes,
       calculation: {
-        totalWeightKg,
-        baseAmount,
+        totalGrossKg: Number(totalGrossKg.toFixed(3)),
+        totalBaseAmount: Number(totalBaseAmount.toFixed(2)),
         subtotal,
         netPayable
-      },
-      log
+      }
     });
   } catch (error) {
     console.error('[InventoryController] Local Stock-In error:', error);
@@ -550,7 +658,7 @@ export const recordLocalStockIn = async (req, res) => {
   }
 };
 
-// 17. DAM Consignment Stock-In (Multi-Fish A4 Sheet Tally & 5-Point Cr/Dr Settlement)
+// 17. DAM Consignment Stock-In (Multi-Fish Consignment & Settlements)
 export const recordDamStockIn = async (req, res) => {
   try {
     const { Menu, StockLog } = getModels(req);
@@ -558,6 +666,9 @@ export const recordDamStockIn = async (req, res) => {
       contractorId,
       contractorName,
       contractorPhone,
+      companyName = '',
+      vehicleNumber = '',
+      harbor = '',
       tallyItems = [],
       settlements = {
         advance: { type: 'Dr', amount: 0 },
@@ -570,7 +681,7 @@ export const recordDamStockIn = async (req, res) => {
     } = req.body;
 
     if (!Array.isArray(tallyItems) || tallyItems.length === 0) {
-      return res.status(400).json({ message: 'At least one fish tally row is required for DAM Stock-In' });
+      return res.status(400).json({ message: 'At least one fish variety is required for DAM Stock-In' });
     }
 
     let totalGrossKg = 0;
@@ -578,7 +689,16 @@ export const recordDamStockIn = async (req, res) => {
     const updatedFishes = [];
 
     for (const item of tallyItems) {
-      const itemKg = Number((Number(item.kg || 0) + Number(item.grams || 0) / 1000).toFixed(3));
+      let itemKg = 0;
+      const numBoxes = Number(item.boxes || 0);
+      const perBoxKg = Number(item.kgPerBox || 0);
+
+      if (Number(item.kg || 0) > 0 || Number(item.grams || 0) > 0) {
+        itemKg = Number((Number(item.kg || 0) + Number(item.grams || 0) / 1000).toFixed(3));
+      } else if (numBoxes > 0 && perBoxKg > 0) {
+        itemKg = Number((numBoxes * perBoxKg).toFixed(3));
+      }
+
       if (itemKg <= 0) continue;
 
       const rate = Number(item.price || item.rate || 0);
@@ -612,8 +732,14 @@ export const recordDamStockIn = async (req, res) => {
           balanceGrossKg: newStock,
           unit: 'kg',
           supplierName: contractorName ? contractorName.trim() : 'DAM Contractor',
-          notes: `DAM Consignment Catch: +${itemKg}kg @ ₹${rate}/kg. Total: ₹${rowTotal} (Contractor: ${contractorName || 'DAM Dealer'})`,
-          performedBy: req.user?.username || req.user?.name || 'Dam Incharge'
+          companyName: companyName ? companyName.trim() : '',
+          vehicleNumber: vehicleNumber ? vehicleNumber.trim() : '',
+          harbor: harbor ? harbor.trim() : '',
+          boxes: numBoxes,
+          kgPerBox: perBoxKg,
+          notes: `DAM Catch: +${itemKg}kg${numBoxes > 0 ? ` (${numBoxes} boxes @ ${perBoxKg}kg/box)` : ''} @ ₹${rate}/kg. Total: ₹${rowTotal} (Contractor: ${contractorName || 'DAM Syndicate'})`,
+          performedBy: req.user?.username || req.user?.name || 'Dam Incharge',
+          createdAt: new Date()
         });
 
         emitSocketEvent(req, 'fishStockUpdated', {
@@ -628,7 +754,10 @@ export const recordDamStockIn = async (req, res) => {
       }
     }
 
-    // 5-Point Cr / Dr Settlement Accounting Calculation
+    if (totalGrossKg <= 0) {
+      return res.status(400).json({ message: 'Please enter valid weight or box details for at least one fish variety' });
+    }
+
     let totalCredits = 0;
     let totalDebits = 0;
     const settlementDetails = {};
@@ -648,10 +777,13 @@ export const recordDamStockIn = async (req, res) => {
 
     res.status(200).json({
       success: true,
-      message: `DAM Consignment registered: ${totalGrossKg.toFixed(2)} Kg across ${updatedFishes.length} species. Net Settlement: ₹${netConsignmentSettlement}`,
+      message: `DAM Catch registered: ${totalGrossKg.toFixed(2)} Kg across ${updatedFishes.length} varieties. Net Settlement: ₹${netConsignmentSettlement}`,
       consignmentSummary: {
         contractorName: contractorName || 'DAM Contractor',
         contractorPhone: contractorPhone || '',
+        companyName,
+        vehicleNumber,
+        harbor,
         totalGrossKg: Number(totalGrossKg.toFixed(3)),
         catchTotalValue: Number(catchTotalValue.toFixed(2)),
         totalCredits: Number(totalCredits.toFixed(2)),

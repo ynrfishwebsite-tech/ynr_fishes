@@ -411,7 +411,7 @@ const Analytics = ({ onNavigate, onGoBack }) => {
   };
 
   return (
-    <div className="min-h-full h-full bg-[#F7EFE2] text-slate-800 p-1.5 sm:p-2.5 md:p-3 overflow-y-auto overflow-x-hidden w-full max-w-full" key={`analytics-view-${animKey}`}>
+    <div className="w-full min-h-full shrink-0 flex flex-col bg-[#F7EFE2] text-slate-800 p-1.5 sm:p-2.5 md:p-3 pb-24 overflow-x-hidden max-w-full touch-pan-y" key={`analytics-view-${animKey}`}>
       {/* Analytics Dynamic Styles & Keyframe Animations */}
       <style>{`
         .glass-card {
