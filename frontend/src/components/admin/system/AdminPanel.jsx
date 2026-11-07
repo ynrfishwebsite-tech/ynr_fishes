@@ -1,8 +1,14 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import axios from 'axios';
-import { Shield, Plus, Edit2, Trash2, Key, Eye, EyeOff, Fingerprint, RefreshCw, ArrowLeft } from 'lucide-react';
+import { 
+  Shield, Plus, Edit2, Trash2, Key, Eye, EyeOff, Fingerprint, RefreshCw, ArrowLeft,
+  Truck, Building, Upload, Image as ImageIcon, Crop, User, Check, AlertTriangle
+} from 'lucide-react';
 import BackButton from '../common/BackButton';
 import { getApiUrl } from '../../../config.js';
+import ImageCropperModal from '../crm/ImageCropperModal';
+import { getVehicles } from '../../../api/operations/vehicle';
+import { getSuppliers } from '../../../api/operations/operations';
 
 const AdminPanel = ({ onGoBack }) => {
   const [users, setUsers] = useState([]);
@@ -20,15 +26,71 @@ const AdminPanel = ({ onGoBack }) => {
   const [alertDialog, setAlertDialog] = useState({ isOpen: false, title: '', message: '', isError: false });
   const [formData, setFormData] = useState({ 
     username: '', 
+    name: '',
+    phone: '',
+    email: '',
     password: '', 
     role: 'cashier',
+    profileImage: '',
     permittedPages: ['billing', 'active-orders', 'bill-history']
   });
+
+  // Dynamic Driver & Supplier linking lists
+  const [availableDrivers, setAvailableDrivers] = useState([]);
+  const [availableSuppliers, setAvailableSuppliers] = useState([]);
+  const [selectedDriverId, setSelectedDriverId] = useState('');
+  const [selectedSupplierId, setSelectedSupplierId] = useState('');
+
+  // Image Cropper State for Staff Profile Photo
+  const [uploadFileInfo, setUploadFileInfo] = useState(null);
+  const [isCropperOpen, setIsCropperOpen] = useState(false);
+  const [cropperRawSrc, setCropperRawSrc] = useState(null);
+  const [cropperPendingInfo, setCropperPendingInfo] = useState(null);
 
   useEffect(() => {
     fetchUsers();
     fetchRolesAndPages();
+    fetchDrivers();
+    fetchSuppliersList();
   }, []);
+
+  const fetchDrivers = async () => {
+    try {
+      const vehList = await getVehicles();
+      if (Array.isArray(vehList)) {
+        const driversMap = new Map();
+        vehList.forEach(v => {
+          if (v.driverName && v.driverName.trim()) {
+            const trimmed = v.driverName.trim();
+            const key = trimmed.toLowerCase();
+            if (!driversMap.has(key)) {
+              driversMap.set(key, {
+                id: v._id || trimmed,
+                name: trimmed,
+                phone: v.driverPhone || '',
+                driverPhoto: v.driverPhoto || '',
+                vehicleNumber: v.vehicleNumber || ''
+              });
+            }
+          }
+        });
+        setAvailableDrivers(Array.from(driversMap.values()));
+      }
+    } catch (e) {
+      console.warn('Could not fetch vehicles for drivers:', e);
+    }
+  };
+
+  const fetchSuppliersList = async () => {
+    try {
+      const suppList = await getSuppliers();
+      if (Array.isArray(suppList)) {
+        setAvailableSuppliers(suppList);
+      }
+    } catch (e) {
+      console.warn('Could not fetch suppliers:', e);
+    }
+  };
 
   const fetchRolesAndPages = async () => {
     try {
@@ -77,11 +139,198 @@ const AdminPanel = ({ onGoBack }) => {
   const handleRoleChange = (newRole) => {
     const matchedRole = backendRoles.find(r => r.id === newRole);
     const defaultPages = matchedRole?.defaultPages || ['billing', 'active-orders', 'bill-history'];
-    setFormData({
-      ...formData,
+    setSelectedDriverId('');
+    setSelectedSupplierId('');
+    setFormData(prev => ({
+      ...prev,
       role: newRole,
       permittedPages: defaultPages
-    });
+    }));
+
+    if (newRole === 'driver') {
+      fetchDrivers();
+    } else if (newRole === 'supplier') {
+      fetchSuppliersList();
+    }
+  };
+
+  // Helper to check if a fleet driver already has an active user login
+  const getDriverExistingUser = useCallback((driver) => {
+    if (!driver || !users.length) return null;
+    const cleanSlug = (driver.name || '')
+      .toLowerCase()
+      .replace(/[^a-z0-9]/g, '_')
+      .replace(/_+/g, '_')
+      .replace(/^_|_$/g, '')
+      .slice(0, 20);
+    const generatedUsername = cleanSlug ? `driver_${cleanSlug}` : '';
+
+    return users.find(u => {
+      if (editingUser && u._id === editingUser._id) return false;
+      // Match generated username
+      if (generatedUsername && u.username?.toLowerCase() === generatedUsername.toLowerCase()) return true;
+      // Match phone if available
+      if (driver.phone && u.phone && u.phone.replace(/\D/g, '') === driver.phone.replace(/\D/g, '')) return true;
+      // Match full name if role is driver
+      if (driver.name && u.name && u.role === 'driver' && u.name.trim().toLowerCase() === driver.name.trim().toLowerCase()) return true;
+      return false;
+    }) || null;
+  }, [users, editingUser]);
+
+  // Helper to check if a directory supplier already has an active user login
+  const getSupplierExistingUser = useCallback((supp) => {
+    if (!supp || !users.length) return null;
+    const cleanSlug = (supp.name || '')
+      .toLowerCase()
+      .replace(/[^a-z0-9]/g, '_')
+      .replace(/_+/g, '_')
+      .replace(/^_|_$/g, '')
+      .slice(0, 20);
+    const generatedUsername = cleanSlug ? `supp_${cleanSlug}` : '';
+
+    return users.find(u => {
+      if (editingUser && u._id === editingUser._id) return false;
+      // Match generated username
+      if (generatedUsername && u.username?.toLowerCase() === generatedUsername.toLowerCase()) return true;
+      // Match phone if available
+      if (supp.phone && u.phone && u.phone.replace(/\D/g, '') === supp.phone.replace(/\D/g, '')) return true;
+      // Match name if role is supplier
+      if (supp.name && u.name && u.role === 'supplier' && u.name.trim().toLowerCase() === supp.name.trim().toLowerCase()) return true;
+      return false;
+    }) || null;
+  }, [users, editingUser]);
+
+  // Real-time duplicate username check across all current users
+  const duplicateUser = useMemo(() => {
+    const currentUsername = (formData.username || '').trim().toLowerCase();
+    if (!currentUsername) return null;
+    return users.find(u => {
+      if (editingUser && u._id === editingUser._id) return false;
+      return u.username?.toLowerCase() === currentUsername;
+    }) || null;
+  }, [formData.username, users, editingUser]);
+
+  // Auto-fill Username and Profile details when selecting an existing Driver
+  const handleDriverSelect = (driverKey) => {
+    setSelectedDriverId(driverKey);
+    const driver = availableDrivers.find(d => (d.id === driverKey || d.name === driverKey));
+    if (!driver) return;
+
+    // Check if this driver already has a user account
+    const existingDriverUser = getDriverExistingUser(driver);
+
+    // Generate clean username slug
+    const cleanSlug = (driver.name || '')
+      .toLowerCase()
+      .replace(/[^a-z0-9]/g, '_')
+      .replace(/_+/g, '_')
+      .replace(/^_|_$/g, '')
+      .slice(0, 20);
+
+    const generatedUsername = cleanSlug ? `driver_${cleanSlug}` : '';
+    const generatedEmail = driver.phone ? `${cleanSlug || 'driver'}@driver.local` : '';
+
+    setFormData(prev => ({
+      ...prev,
+      username: generatedUsername || prev.username,
+      name: driver.name,
+      phone: driver.phone || prev.phone,
+      email: prev.email || generatedEmail,
+      profileImage: driver.driverPhoto || prev.profileImage
+    }));
+
+    if (driver.driverPhoto) {
+      setUploadFileInfo({
+        name: `${driver.name} (Driver Photo)`,
+        extension: 'img',
+        size: 'Auto-linked'
+      });
+    }
+
+    if (existingDriverUser) {
+      setAlertDialog({
+        isOpen: true,
+        title: 'Driver Already Created',
+        message: `This driver "${driver.name}" already has an active login account (Username: "${existingDriverUser.username}"). You cannot create a duplicate account for this driver.`,
+        isError: true
+      });
+    }
+  };
+
+  // Auto-fill Username and Profile details when selecting an existing Supplier
+  const handleSupplierSelect = (supplierId) => {
+    setSelectedSupplierId(supplierId);
+    const supp = availableSuppliers.find(s => s._id === supplierId);
+    if (!supp) return;
+
+    // Check if this supplier already has a user account
+    const existingSuppUser = getSupplierExistingUser(supp);
+
+    // Generate clean username slug
+    const cleanSlug = (supp.name || '')
+      .toLowerCase()
+      .replace(/[^a-z0-9]/g, '_')
+      .replace(/_+/g, '_')
+      .replace(/^_|_$/g, '')
+      .slice(0, 20);
+
+    const generatedUsername = cleanSlug ? `supp_${cleanSlug}` : '';
+    const generatedEmail = supp.email || (cleanSlug ? `${cleanSlug}@supplier.local` : '');
+
+    setFormData(prev => ({
+      ...prev,
+      username: generatedUsername || prev.username,
+      name: supp.name,
+      phone: supp.phone || prev.phone,
+      email: prev.email || generatedEmail,
+      profileImage: supp.profileImage || prev.profileImage
+    }));
+
+    if (supp.profileImage) {
+      setUploadFileInfo({
+        name: `${supp.name} (Supplier Photo)`,
+        extension: 'img',
+        size: 'Auto-linked'
+      });
+    }
+
+    if (existingSuppUser) {
+      setAlertDialog({
+        isOpen: true,
+        title: 'Supplier Already Created',
+        message: `This supplier "${supp.name}" already has an active login account (Username: "${existingSuppUser.username}"). You cannot create a duplicate account for this supplier.`,
+        isError: true
+      });
+    }
+  };
+
+  // Image Upload with <= 5MB validation & Image Cropper trigger
+  const handleImageUpload = (file) => {
+    if (!file) return;
+    if (file.size > 5 * 1024 * 1024) {
+      setAlertDialog({
+        isOpen: true,
+        title: 'File Too Large',
+        message: 'Image size must be less than or equal to 5MB',
+        isError: true
+      });
+      return;
+    }
+    const extension = file.name.split('.').pop() || 'jpg';
+    const sizeInMb = (file.size / (1024 * 1024)).toFixed(2);
+    const fileInfo = {
+      name: file.name,
+      extension: extension,
+      size: `${sizeInMb} MB`
+    };
+
+    const reader = new FileReader();
+    reader.onloadend = (event) => {
+      setCropperRawSrc(event.target.result);
+      setCropperPendingInfo(fileInfo);
+      setIsCropperOpen(true);
+    };
+    reader.readAsDataURL(file);
   };
 
   const togglePagePermission = (pageId) => {
@@ -108,6 +357,17 @@ const AdminPanel = ({ onGoBack }) => {
   const handleSave = async (e) => {
     e.preventDefault();
     try {
+      // Client-side duplicate user validation
+      if (!editingUser && duplicateUser) {
+        setAlertDialog({
+          isOpen: true,
+          title: 'User Already Created',
+          message: `This ${formData.role === 'driver' ? 'driver' : formData.role === 'supplier' ? 'supplier' : 'user'} username "${formData.username}" is already created in this branch. You cannot create a duplicate account.`,
+          isError: true
+        });
+        return;
+      }
+
       const API_BASE_URL = getApiUrl();
       const token = localStorage.getItem('accessToken') || localStorage.getItem('token');
       const headers = { 
@@ -120,7 +380,10 @@ const AdminPanel = ({ onGoBack }) => {
           username: formData.username, 
           email: formData.email,
           role: formData.role,
-          permittedPages: formData.permittedPages
+          permittedPages: formData.permittedPages,
+          profileImage: formData.profileImage || '',
+          name: formData.name || '',
+          phone: formData.phone || ''
         };
         if (formData.password) {
           updateData.password = formData.password;
@@ -132,7 +395,10 @@ const AdminPanel = ({ onGoBack }) => {
           email: formData.email,
           password: formData.password,
           role: formData.role,
-          permittedPages: formData.permittedPages
+          permittedPages: formData.permittedPages,
+          profileImage: formData.profileImage || '',
+          name: formData.name || '',
+          phone: formData.phone || ''
         };
         await axios.post(`${API_BASE_URL}/admin/users`, payload, { headers });
       }
@@ -180,12 +446,18 @@ const AdminPanel = ({ onGoBack }) => {
 
   const openAddModal = () => {
     setEditingUser(null);
+    setSelectedDriverId('');
+    setSelectedSupplierId('');
+    setUploadFileInfo(null);
     const defaultPages = backendRoles.find(r => r.id === 'cashier')?.defaultPages || ['billing', 'active-orders', 'bill-history'];
     setFormData({ 
       username: '', 
+      name: '',
+      phone: '',
       email: '',
       password: '', 
       role: 'cashier',
+      profileImage: '',
       permittedPages: defaultPages
     });
     setShowPassword(false);
@@ -194,15 +466,21 @@ const AdminPanel = ({ onGoBack }) => {
 
   const openEditModal = (user) => {
     setEditingUser(user);
+    setSelectedDriverId('');
+    setSelectedSupplierId('');
+    setUploadFileInfo(user.profileImage ? { name: `${user.username} Profile Photo`, extension: 'img', size: 'Saved' } : null);
     const existingPages = Array.isArray(user.permittedPages) && user.permittedPages.length > 0
       ? user.permittedPages
       : (backendRoles.find(r => r.id === user.role?.toLowerCase())?.defaultPages || ['billing', 'active-orders', 'bill-history']);
     
     setFormData({ 
-      username: user.username, 
+      username: user.username || '', 
+      name: user.name || '',
+      phone: user.phone || '',
       email: user.email || '',
       password: '', 
       role: (user.role || 'cashier').toLowerCase(),
+      profileImage: user.profileImage || '',
       permittedPages: existingPages
     });
     setShowPassword(false);
@@ -288,9 +566,17 @@ const AdminPanel = ({ onGoBack }) => {
                       <tr key={u._id} className="hover:bg-sky-500/5 transition-colors">
                         <td className="p-4">
                           <div className="flex items-center gap-3">
-                            <div className={`w-10 h-10 rounded-full border flex items-center justify-center font-black text-sm shrink-0 shadow-xs ${getAvatarStyle(u.role)}`}>
-                              {u.username ? u.username.charAt(0).toUpperCase() : 'U'}
-                            </div>
+                            {u.profileImage ? (
+                              <img
+                                src={u.profileImage}
+                                alt={u.username}
+                                className="w-10 h-10 rounded-full object-cover border border-[#E8DCCB] shrink-0 shadow-xs"
+                              />
+                            ) : (
+                              <div className={`w-10 h-10 rounded-full border flex items-center justify-center font-black text-sm shrink-0 shadow-xs ${getAvatarStyle(u.role)}`}>
+                                {u.username ? u.username.charAt(0).toUpperCase() : 'U'}
+                              </div>
+                            )}
                             <div>
                               <span className="font-bold text-slate-900 text-sm block">{u.username}</span>
                               <div className="flex items-center gap-2 mt-0.5">
@@ -372,9 +658,17 @@ const AdminPanel = ({ onGoBack }) => {
                     {/* Card Top: Avatar, Name/Username/Email, and Role Badge */}
                     <div className="flex items-center justify-between gap-2">
                       <div className="flex items-center gap-3 min-w-0">
-                        <div className={`w-10 h-10 rounded-full border flex items-center justify-center font-black text-sm shrink-0 shadow-xs ${getAvatarStyle(u.role)}`}>
-                          {u.username ? u.username.charAt(0).toUpperCase() : 'U'}
-                        </div>
+                        {u.profileImage ? (
+                          <img
+                            src={u.profileImage}
+                            alt={u.username}
+                            className="w-10 h-10 rounded-full object-cover border border-[#E8DCCB] shrink-0 shadow-xs"
+                          />
+                        ) : (
+                          <div className={`w-10 h-10 rounded-full border flex items-center justify-center font-black text-sm shrink-0 shadow-xs ${getAvatarStyle(u.role)}`}>
+                            {u.username ? u.username.charAt(0).toUpperCase() : 'U'}
+                          </div>
+                        )}
                         <div className="min-w-0">
                           <span className="font-bold text-slate-900 text-sm block truncate">{u.username}</span>
                           {u.email && (
@@ -473,19 +767,194 @@ const AdminPanel = ({ onGoBack }) => {
             </div>
             
             <form onSubmit={handleSave} className="p-4 sm:p-6 space-y-4 sm:space-y-5 overflow-y-auto flex-1">
+              {/* Assigned Role */}
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5 font-bold">
+                  Assigned Role (Backend Dynamic)
+                </label>
+                <select
+                  value={formData.role}
+                  onChange={(e) => handleRoleChange(e.target.value)}
+                  className="w-full px-4 py-2.5 bg-[#F7EFE2] border border-[#E8DCCB] rounded-xl text-slate-800 text-sm focus:outline-none focus:border-[#ea580c] focus:bg-white capitalize font-semibold"
+                >
+                  {backendRoles.length > 0 ? (
+                    backendRoles.map(r => (
+                      <option key={r.id} value={r.id}>
+                        {r.label}
+                      </option>
+                    ))
+                  ) : (
+                    <>
+                      <option value="cashier">Cashier (Billing & Printing)</option>
+                      <option value="worker">Worker / Operator (POS & Orders)</option>
+                      <option value="manager">Manager (Operations & Analytics)</option>
+                      <option value="driver">Driver (Assigned Deliveries - View Only)</option>
+                      <option value="supplier">Supplier (Catch Passbook & Khata - View Only)</option>
+                      <option value="admin">Admin (Full Branch Access)</option>
+                    </>
+                  )}
+                </select>
+              </div>
+
+              {/* Dynamic Auto-Fetch & Auto-Fill for DRIVER */}
+              {formData.role === 'driver' && (
+                <div className="p-3 bg-blue-50/80 border border-blue-200 rounded-xl space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-bold text-blue-900 flex items-center gap-1.5">
+                      <Truck size={14} className="text-blue-600" />
+                      Select Existing Driver from Fleet
+                    </label>
+                    <span className="text-[10.5px] text-blue-600 font-semibold">
+                      Auto-fills Username & Photo
+                    </span>
+                  </div>
+                  <select
+                    value={selectedDriverId}
+                    onChange={(e) => handleDriverSelect(e.target.value)}
+                    className="w-full px-3 py-2 bg-white border border-blue-300 rounded-lg text-slate-800 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-blue-400"
+                  >
+                    <option value="">-- Choose a Fleet Driver ({availableDrivers.length} available) --</option>
+                    {availableDrivers.map(d => {
+                      const existing = getDriverExistingUser(d);
+                      return (
+                        <option key={d.id || d.name} value={d.id || d.name}>
+                          {existing ? `⚠️ [Created: ${existing.username}] ` : ''}
+                          {d.name} {d.phone ? `(${d.phone})` : ''} {d.vehicleNumber ? `• ${d.vehicleNumber}` : ''}
+                        </option>
+                      );
+                    })}
+                  </select>
+
+                  {/* Warning Alert if Selected Driver Already Exists */}
+                  {selectedDriverId && (() => {
+                    const driver = availableDrivers.find(d => (d.id === selectedDriverId || d.name === selectedDriverId));
+                    const existing = getDriverExistingUser(driver);
+                    if (!existing) return null;
+                    return (
+                      <div className="p-2.5 bg-amber-100/90 border border-amber-300 rounded-xl text-xs text-amber-950 flex items-start justify-between gap-2 shadow-2xs animate-fade-in">
+                        <div className="flex items-start gap-2">
+                          <AlertTriangle size={16} className="text-amber-600 shrink-0 mt-0.5" />
+                          <div>
+                            <div className="font-extrabold text-amber-950">
+                              Driver Already Created!
+                            </div>
+                            <div className="text-[11px] text-amber-900 mt-0.5">
+                              This driver already has an active login: <span className="font-mono font-bold bg-amber-200/90 px-1.5 py-0.2 rounded border border-amber-400">{existing.username}</span>
+                              {existing.phone ? ` • Phone: ${existing.phone}` : ''}
+                            </div>
+                            <div className="text-[10.5px] text-amber-800 mt-0.5">
+                              You cannot create a duplicate account with this username. Edit the existing user instead.
+                            </div>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => openEditModal(existing)}
+                          className="px-2.5 py-1.5 bg-[#ea580c] hover:bg-[#c2410c] text-white rounded-lg text-[11px] font-black transition-all shrink-0 cursor-pointer shadow-2xs active:scale-95"
+                        >
+                          Edit User
+                        </button>
+                      </div>
+                    );
+                  })()}
+                </div>
+              )}
+
+              {/* Dynamic Auto-Fetch & Auto-Fill for SUPPLIER */}
+              {formData.role === 'supplier' && (
+                <div className="p-3 bg-teal-50/80 border border-teal-200 rounded-xl space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-bold text-teal-900 flex items-center gap-1.5">
+                      <Building size={14} className="text-teal-600" />
+                      Select Existing Supplier from Directory
+                    </label>
+                    <span className="text-[10.5px] text-teal-600 font-semibold">
+                      Auto-fills Username & Photo
+                    </span>
+                  </div>
+                  <select
+                    value={selectedSupplierId}
+                    onChange={(e) => handleSupplierSelect(e.target.value)}
+                    className="w-full px-3 py-2 bg-white border border-teal-300 rounded-lg text-slate-800 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-teal-400"
+                  >
+                    <option value="">-- Choose a Registered Supplier ({availableSuppliers.length} available) --</option>
+                    {availableSuppliers.map(s => {
+                      const existing = getSupplierExistingUser(s);
+                      return (
+                        <option key={s._id} value={s._id}>
+                          {existing ? `⚠️ [Created: ${existing.username}] ` : ''}
+                          {s.name} {s.companyName ? `(${s.companyName})` : ''} {s.phone ? `• ${s.phone}` : ''}
+                        </option>
+                      );
+                    })}
+                  </select>
+
+                  {/* Warning Alert if Selected Supplier Already Exists */}
+                  {selectedSupplierId && (() => {
+                    const supp = availableSuppliers.find(s => s._id === selectedSupplierId);
+                    const existing = getSupplierExistingUser(supp);
+                    if (!existing) return null;
+                    return (
+                      <div className="p-2.5 bg-amber-100/90 border border-amber-300 rounded-xl text-xs text-amber-950 flex items-start justify-between gap-2 shadow-2xs animate-fade-in">
+                        <div className="flex items-start gap-2">
+                          <AlertTriangle size={16} className="text-amber-600 shrink-0 mt-0.5" />
+                          <div>
+                            <div className="font-extrabold text-amber-950">
+                              Supplier Already Created!
+                            </div>
+                            <div className="text-[11px] text-amber-900 mt-0.5">
+                              This supplier already has an active login: <span className="font-mono font-bold bg-amber-200/90 px-1.5 py-0.2 rounded border border-amber-400">{existing.username}</span>
+                              {existing.phone ? ` • Phone: ${existing.phone}` : ''}
+                            </div>
+                            <div className="text-[10.5px] text-amber-800 mt-0.5">
+                              You cannot create a duplicate account with this username. Edit the existing user instead.
+                            </div>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => openEditModal(existing)}
+                          className="px-2.5 py-1.5 bg-[#ea580c] hover:bg-[#c2410c] text-white rounded-lg text-[11px] font-black transition-all shrink-0 cursor-pointer shadow-2xs active:scale-95"
+                        >
+                          Edit User
+                        </button>
+                      </div>
+                    );
+                  })()}
+                </div>
+              )}
+
+              {/* Username & Email Address */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 sm:gap-4">
                 <div>
-                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5 font-bold">
-                    Username
-                  </label>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="text-xs font-bold uppercase tracking-wider text-slate-700 font-bold">
+                      Username
+                    </label>
+                    {(formData.role === 'driver' || formData.role === 'supplier') && (
+                      <span className="text-[10.5px] text-emerald-600 font-semibold">Auto-fill active</span>
+                    )}
+                  </div>
                   <input
                     type="text"
                     value={formData.username}
                     onChange={(e) => setFormData({ ...formData, username: e.target.value })}
                     placeholder="e.g. cashier_kdp or operator_vizag"
-                    className="w-full px-4 py-2.5 bg-[#F7EFE2] border border-[#E8DCCB] rounded-xl text-slate-800 text-sm focus:outline-none focus:border-[#ea580c] focus:bg-white"
+                    className={`w-full px-4 py-2.5 bg-[#F7EFE2] border rounded-xl text-slate-800 text-sm focus:outline-none transition-all ${
+                      duplicateUser
+                        ? 'border-rose-500 bg-rose-50/60 focus:border-rose-600'
+                        : 'border-[#E8DCCB] focus:border-[#ea580c] focus:bg-white'
+                    }`}
                     required 
                   />
+                  {duplicateUser && (
+                    <div className="mt-1 flex items-center gap-1.5 text-rose-600 text-[11px] font-bold animate-fade-in">
+                      <AlertTriangle size={12} className="shrink-0" />
+                      <span>
+                        This username is already created ({duplicateUser.role?.toUpperCase()} • {duplicateUser.name || duplicateUser.username})!
+                      </span>
+                    </div>
+                  )}
                 </div>
 
                 <div>
@@ -503,6 +972,7 @@ const AdminPanel = ({ onGoBack }) => {
                 </div>
               </div>
 
+              {/* Password & Profile Image Upload */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 sm:gap-4">
                 <div>
                   <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5 font-bold flex justify-between">
@@ -529,30 +999,82 @@ const AdminPanel = ({ onGoBack }) => {
                   </div>
                 </div>
 
+                {/* Profile Photo Upload with <= 5MB validation & Image Cropper */}
                 <div>
-                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5 font-bold">
-                    Assigned Role (Backend Dynamic)
-                  </label>
-                  <select
-                    value={formData.role}
-                    onChange={(e) => handleRoleChange(e.target.value)}
-                    className="w-full px-4 py-2.5 bg-[#F7EFE2] border border-[#E8DCCB] rounded-xl text-slate-800 text-sm focus:outline-none focus:border-[#ea580c] focus:bg-white capitalize"
-                  >
-                    {backendRoles.length > 0 ? (
-                      backendRoles.map(r => (
-                        <option key={r.id} value={r.id}>
-                          {r.label}
-                        </option>
-                      ))
-                    ) : (
-                      <>
-                        <option value="cashier">Cashier (Billing & Printing)</option>
-                        <option value="worker">Worker / Operator (POS & Orders)</option>
-                        <option value="manager">Manager (Operations & Analytics)</option>
-                        <option value="admin">Admin (Full Branch Access)</option>
-                      </>
-                    )}
-                  </select>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="text-xs font-bold uppercase tracking-wider text-slate-700">
+                      Profile Photo (Optional)
+                    </label>
+                    <span className="text-[10px] text-slate-500 font-medium">Max 5MB • JPG, PNG</span>
+                  </div>
+                  {!formData.profileImage ? (
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        value=""
+                        readOnly
+                        className="flex-1 px-3 py-2 bg-[#F7EFE2] border border-[#E8DCCB] rounded-xl text-xs text-slate-400 focus:outline-none"
+                        placeholder="Upload user profile photo..."
+                      />
+                      <label className="bg-orange-50 hover:bg-orange-100 text-[#ea580c] px-3.5 py-2 rounded-xl cursor-pointer flex items-center gap-1.5 text-xs border border-orange-200 shrink-0 font-bold transition-all shadow-2xs">
+                        <Upload size={13} />
+                        <span>Upload</span>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={(e) => {
+                            const file = e.target.files[0];
+                            if (file) handleImageUpload(file);
+                            e.target.value = '';
+                          }}
+                        />
+                      </label>
+                    </div>
+                  ) : (
+                    <div className="flex items-center justify-between p-2 bg-[#FAF0E4] border border-[#E8DCCB] rounded-xl gap-2">
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <img
+                          src={formData.profileImage}
+                          alt="Staff Preview"
+                          className="w-10 h-10 rounded-full object-cover border border-orange-300 shrink-0 shadow-2xs"
+                        />
+                        <div className="min-w-0">
+                          <span className="text-xs font-bold text-slate-800 truncate block">
+                            {uploadFileInfo?.name || (formData.username ? `${formData.username}'s Photo` : 'User Photo')}
+                          </span>
+                          <span className="text-[10px] text-slate-500">
+                            {uploadFileInfo ? `.${uploadFileInfo.extension} • ${uploadFileInfo.size}` : 'Uploaded'}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1 shrink-0">
+                        <label className="px-2 py-1 bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 rounded-lg text-[10.5px] font-bold cursor-pointer transition-colors">
+                          <span>Change</span>
+                          <input
+                            type="file"
+                            accept="image/*"
+                            className="hidden"
+                            onChange={(e) => {
+                              const file = e.target.files[0];
+                              if (file) handleImageUpload(file);
+                              e.target.value = '';
+                            }}
+                          />
+                        </label>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setUploadFileInfo(null);
+                            setFormData({ ...formData, profileImage: '' });
+                          }}
+                          className="px-2 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-lg text-[10.5px] font-bold cursor-pointer transition-colors"
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -623,9 +1145,19 @@ const AdminPanel = ({ onGoBack }) => {
                 </button>
                 <button
                   type="submit"
-                  className="flex-1 py-2.5 bg-gradient-to-r from-[#ea580c] to-[#c2410c] hover:from-[#f97316] hover:to-[#ea580c] text-white font-bold rounded-xl transition-all shadow-md text-sm cursor-pointer"
+                  disabled={Boolean(!editingUser && duplicateUser)}
+                  className={`flex-1 py-2.5 text-white font-bold rounded-xl transition-all shadow-md text-sm ${
+                    !editingUser && duplicateUser
+                      ? 'bg-slate-400 cursor-not-allowed opacity-60 shadow-none'
+                      : 'bg-gradient-to-r from-[#ea580c] to-[#c2410c] hover:from-[#f97316] hover:to-[#ea580c] cursor-pointer'
+                  }`}
+                  title={!editingUser && duplicateUser ? `User "${duplicateUser.username}" is already created` : ''}
                 >
-                  {editingUser ? 'Save Permissions' : 'Create Staff Login'}
+                  {editingUser
+                    ? 'Save Permissions'
+                    : duplicateUser
+                      ? 'User Already Created'
+                      : 'Create Staff Login'}
                 </button>
               </div>
             </form>
@@ -671,6 +1203,21 @@ const AdminPanel = ({ onGoBack }) => {
             </button>
           </div>
         </div>
+      )}
+      {/* Staff Profile Photo Cropper Modal */}
+      {isCropperOpen && (
+        <ImageCropperModal
+          title="Crop Staff Profile Photo"
+          imageSrc={cropperRawSrc}
+          onCropComplete={(croppedDataUrl) => {
+            setFormData(prev => ({ ...prev, profileImage: croppedDataUrl }));
+            if (cropperPendingInfo) {
+              setUploadFileInfo(cropperPendingInfo);
+            }
+            setIsCropperOpen(false);
+          }}
+          onClose={() => setIsCropperOpen(false)}
+        />
       )}
     </div>
   );

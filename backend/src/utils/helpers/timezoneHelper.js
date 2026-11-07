@@ -44,6 +44,33 @@ export const getISTDayRange = (input) => {
 };
 
 /**
+ * Resolves query params or custom filters into exact IST UTC Date boundaries.
+ */
+export const resolveISTDateRange = (startDate, endDate) => {
+  if (startDate && endDate) {
+    const s = new Date(startDate);
+    const e = new Date(endDate);
+    if (!isNaN(s.getTime()) && !isNaN(e.getTime())) {
+      if (s.getTime() === e.getTime() || (typeof startDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(startDate.trim()))) {
+        const startDay = getISTDayRange(s);
+        const endDay = getISTDayRange(e);
+        return { startDate: startDay.startDate, endDate: endDay.endDate };
+      }
+      return { startDate: s, endDate: e };
+    }
+  }
+  return getISTDayRange();
+};
+
+/**
+ * Formats a Date object to IST string
+ */
+export const formatToISTString = (dateInput = new Date()) => {
+  const d = new Date(dateInput);
+  return d.toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', hour12: true });
+};
+
+/**
  * Returns UTC Date objects for start and end of an IST month.
  * @param {number} year - e.g. 2026
  * @param {number} month - 1-12

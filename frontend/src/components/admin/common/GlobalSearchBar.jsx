@@ -25,7 +25,8 @@ import {
   Lock,
   Printer,
   FileEdit,
-  Smartphone
+  Smartphone,
+  Boxes
 } from 'lucide-react';
 import { useLanguage } from '../../../context/LanguageContext';
 
@@ -121,9 +122,81 @@ export default function GlobalSearchBar({
       keywords: ['export', 'dam', 'local export', 'consignment', 'export mode', 'bulk export']
     },
     {
+      id: 'retail-active-orders',
+      title: 'Retail Active Orders',
+      subtitle: 'Live Counter Walk-in Queue',
+      category: 'Billing',
+      icon: Clock,
+      iconColor: '#059669',
+      iconBg: '#ecfdf5',
+      navView: 'retail-active-orders',
+      navOptions: {},
+      keywords: ['retail active', 'retail orders', 'counter queue', 'walk-in queue', 'active']
+    },
+    {
+      id: 'wholesale-active-orders',
+      title: 'Wholesale Active Orders',
+      subtitle: 'Daily Box & Dealer Orders',
+      category: 'Billing',
+      icon: Boxes,
+      iconColor: '#d97706',
+      iconBg: '#fffbeb',
+      navView: 'wholesale-active-orders',
+      navOptions: {},
+      keywords: ['wholesale active', 'wholesale orders', 'box queue', 'crates queue', 'active']
+    },
+    {
+      id: 'export-active-orders',
+      title: 'Export Active Orders',
+      subtitle: 'Local & DAM Export Consignments',
+      category: 'Billing',
+      icon: Truck,
+      iconColor: '#2563eb',
+      iconBg: '#eff6ff',
+      navView: 'export-active-orders',
+      navOptions: {},
+      keywords: ['export active', 'export orders', 'cargo queue', 'dam queue', 'active']
+    },
+    {
+      id: 'retail-bill-history',
+      title: 'Retail Bill History',
+      subtitle: 'Past Counter Retail Invoices',
+      category: 'Billing',
+      icon: FileText,
+      iconColor: '#059669',
+      iconBg: '#ecfdf5',
+      navView: 'retail-bill-history',
+      navOptions: {},
+      keywords: ['retail bills', 'retail bill history', 'retail invoices', 'receipts']
+    },
+    {
+      id: 'wholesale-bill-history',
+      title: 'Wholesale Bill History',
+      subtitle: 'Past Wholesale Box Bills & Dealers',
+      category: 'Billing',
+      icon: FileText,
+      iconColor: '#d97706',
+      iconBg: '#fffbeb',
+      navView: 'wholesale-bill-history',
+      navOptions: {},
+      keywords: ['wholesale bills', 'wholesale bill history', 'wholesale invoices', 'crates history']
+    },
+    {
+      id: 'export-bill-history',
+      title: 'Export Bill History',
+      subtitle: 'Past Local & DAM Export Consignments',
+      category: 'Billing',
+      icon: FileText,
+      iconColor: '#2563eb',
+      iconBg: '#eff6ff',
+      navView: 'export-bill-history',
+      navOptions: {},
+      keywords: ['export bills', 'export bill history', 'export invoices', 'consignments history']
+    },
+    {
       id: 'active-orders',
-      title: 'Active Orders',
-      subtitle: 'Live Counter & Export Queue',
+      title: 'All Active Orders',
+      subtitle: 'Master Queue (All Channels)',
       category: 'Billing',
       icon: Clock,
       iconColor: '#ea580c',
@@ -134,8 +207,8 @@ export default function GlobalSearchBar({
     },
     {
       id: 'bill-history',
-      title: 'Bill History',
-      subtitle: 'Past Invoices & Receipts',
+      title: 'All Bill History',
+      subtitle: 'Master Past Invoices (All Channels)',
       category: 'Billing',
       icon: FileText,
       iconColor: '#2563eb',
@@ -358,30 +431,6 @@ export default function GlobalSearchBar({
       navView: 'notifications',
       navOptions: {},
       keywords: ['alerts', 'notifications', 'notices', 'warnings', 'messages']
-    },
-    {
-      id: 'driver-portal',
-      title: 'Driver Portal',
-      subtitle: 'Assigned Deliveries & Box Shipments',
-      category: 'Operations',
-      icon: Truck,
-      iconColor: '#0284c7',
-      iconBg: '#f0f9ff',
-      navView: 'driver-portal',
-      navOptions: {},
-      keywords: ['driver portal', 'driver', 'trips', 'delivery route', 'my trips']
-    },
-    {
-      id: 'supplier-portal',
-      title: 'Supplier Portal',
-      subtitle: 'Catch Vouchers & Ledger Passbook',
-      category: 'Finance',
-      icon: BookMarked,
-      iconColor: '#059669',
-      iconBg: '#ecfdf5',
-      navView: 'supplier-portal',
-      navOptions: {},
-      keywords: ['supplier portal', 'supplier', 'catch vouchers', 'passbook', 'ledger']
     },
     {
       id: 'suppliers',

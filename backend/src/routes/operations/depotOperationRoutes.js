@@ -1,4 +1,5 @@
 import express from 'express';
+import { optionalAuthenticateToken } from '../../middleware/auth.js';
 import {
   getOperationsSummary,
   getSuppliers,
@@ -10,7 +11,7 @@ import {
 const router = express.Router();
 
 // Operations Summary for Second Dashboard
-router.get('/summary', getOperationsSummary);
+router.get('/summary', optionalAuthenticateToken, getOperationsSummary);
 
 // Suppliers Endpoints
 router.get('/suppliers', getSuppliers);

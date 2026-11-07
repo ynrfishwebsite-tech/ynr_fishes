@@ -266,3 +266,13 @@ export const getDailyStats = async (startDate, endDate, force = false) => {
 
   return dailyStatsInFlight;
 };
+
+export const getNextDailyOrderNo = async (category = 'Retail') => {
+  try {
+    const res = await api.get('/bills/next-order-no', { params: { category } });
+    return res.data?.orderNo;
+  } catch (err) {
+    console.warn('[Billing API] Error getting next daily order no:', err);
+    return null;
+  }
+};

@@ -52,7 +52,7 @@ io.on("connection", (socket) => {
 
   socket.on("clientNotification", (notif) => {
     if (notif) {
-      socket.broadcast.emit("new_notification", notif);
+      io.emit("new_notification", notif);
     }
   });
 

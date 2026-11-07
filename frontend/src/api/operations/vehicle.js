@@ -58,6 +58,11 @@ export const logTrip = async (tripData) => {
   return response.data;
 };
 
+export const updateTripStatus = async (tripId, statusData) => {
+  const response = await api.patch(`/vehicles/trips/${tripId}/status`, statusData);
+  return response.data;
+};
+
 export const deleteTrip = async (id) => {
   const response = await api.delete(`/vehicles/trips/${id}`);
   return response.data;

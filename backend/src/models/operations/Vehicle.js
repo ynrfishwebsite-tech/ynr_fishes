@@ -28,6 +28,25 @@ const vehicleSchema = new mongoose.Schema({
     trim: true,
     default: ''
   },
+  driverPhoto: {
+    type: String,
+    trim: true,
+    default: ''
+  },
+  assignedSupplierId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Supplier',
+    default: null
+  },
+  assignedSupplierName: {
+    type: String,
+    default: ''
+  },
+  operationalMode: {
+    type: String,
+    enum: ['All', 'Local Catch', 'DAM Consignments', 'Supplies & Packaging', 'Depot Distribution'],
+    default: 'All'
+  },
   currentKm: {
     type: Number,
     required: true,

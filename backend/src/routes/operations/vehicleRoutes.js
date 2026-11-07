@@ -6,6 +6,7 @@ import {
   deleteVehicle,
   getTrips,
   createTrip,
+  updateTripStatus,
   deleteTrip,
   getFuelLogs,
   createFuelLog,
@@ -44,6 +45,8 @@ router.get('/live-locations', getLiveLocations);
 // Trips & KMs Routes
 router.get('/trips/list', getTrips);
 router.post('/trips/log', createTrip);
+router.patch('/trips/:id/status', updateTripStatus);
+router.put('/trips/:id', updateTripStatus);
 router.delete('/trips/:id', deleteTrip);
 
 // Fuel Management Routes

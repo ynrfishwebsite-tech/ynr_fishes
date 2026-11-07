@@ -11,6 +11,7 @@ import { emitNotification, emitDismissNotification } from '../../utils/communica
 import { emitSocketEvent } from '../../utils/communication/socket.js';
 import { printKOTToPrinters } from '../../services/printerService.js';
 import { getTableMatchCondition, getDynamicTaxRate, getTenantShopName } from '../../utils/helpers/billHelpers.js';
+import { getISTDayRange } from '../../utils/helpers/timezoneHelper.js';
 const syncOrderKotsWithItems = () => {};
 import CreditAccountDefault from '../../models/finance/CreditAccount.js';
 
@@ -173,6 +174,72 @@ export const generateUniqueBillNumber = async (BillModel, categoryOrOrder = 'Ret
       console.error('Fallback generation failed:', fallbackErr);
       return `${prefix}${Date.now().toString().slice(-4)}`;
     }
+  }
+};
+
+/**
+ * Generates an isolated sequential daily order number for a specific category in IST.
+ * Formats: RET-001, WS-001, EXP-001, DEL-001. Resets each calendar day in IST.
+ */
+export const generateDailyOrderNumber = async (BillModel, categoryOrOrder = 'Retail') => {
+  let prefix = 'RET-';
+  const catStr = typeof categoryOrOrder === 'object'
+    ? String(categoryOrOrder.customerCategory || categoryOrOrder.orderMode || categoryOrOrder.billType || categoryOrOrder.orderChannel || '').toLowerCase()
+    : String(categoryOrOrder || '').toLowerCase();
+
+  if (catStr.includes('export')) {
+    prefix = 'EXP-';
+  } else if (catStr.includes('whole') || catStr.includes('bulk')) {
+    prefix = 'WS-';
+  } else if (catStr.includes('deliv')) {
+    prefix = 'DEL-';
+  } else {
+    prefix = 'RET-';
+  }
+
+  const { startDate, endDate } = getISTDayRange();
+  const prefixRegex = new RegExp(`^${prefix}(\\d+)`, 'i');
+
+  try {
+    const todayBills = await BillModel.find({
+      $or: [
+        { createdAt: { $gte: startDate, $lte: endDate } },
+        { billedAt: { $gte: startDate, $lte: endDate } },
+        { clearedAt: { $gte: startDate, $lte: endDate } },
+        { status: { $in: ['Open', 'Billed'] } }
+      ],
+      tableNo: prefixRegex
+    }).select('tableNo createdAt').lean();
+
+    let maxNum = 0;
+    for (const b of todayBills) {
+      if (b && b.tableNo) {
+        const match = String(b.tableNo).trim().match(prefixRegex);
+        if (match && match[1]) {
+          const num = parseInt(match[1], 10);
+          if (!isNaN(num) && num > maxNum && num < 100000) {
+            maxNum = num;
+          }
+        }
+      }
+    }
+
+    const nextNum = maxNum + 1;
+    return `${prefix}${String(nextNum).padStart(3, '0')}`;
+  } catch (err) {
+    console.error('[generateDailyOrderNumber] Error:', err);
+    return `${prefix}001`;
+  }
+};
+
+export const getNextDailyOrderNo = async (req, res) => {
+  try {
+    const Bill = getTenantModel(req, 'Bill', BillDefault);
+    const category = req.query.category || req.query.mode || 'Retail';
+    const orderNo = await generateDailyOrderNumber(Bill, category);
+    res.json({ success: true, orderNo });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
   }
 };
 
@@ -387,8 +454,11 @@ export const saveOrder = async (req, res) => {
       showLogo
     } = req.body;
 
-    // Assign default counter token if no tableNo provided
-    const effectiveTableNo = tableNo || req.body.orderNo || `COUNTER-${Date.now().toString().slice(-4)}`;
+    // Assign default daily counter order number in IST if no tableNo provided
+    let effectiveTableNo = tableNo || req.body.orderNo;
+    if (!effectiveTableNo || effectiveTableNo === 'NEW_ORDER' || effectiveTableNo === 'DEL-NEW' || effectiveTableNo === 'TAK-NEW') {
+      effectiveTableNo = await generateDailyOrderNumber(Bill, req.body);
+    }
     req.body.tableNo = effectiveTableNo;
 
     // ⚡⚡ OPTIMISTIC INSTANT NOTIFICATION — fires the moment Save is pressed, before any DB work.
@@ -1540,7 +1610,7 @@ export const getOpenOrders = async (req, res) => {
     const orders = await Bill.find({
       status: { $in: ['Open', 'Billed'] }
     })
-      .select('tableNo items total subtotal tax discount discountType discountValue discountName applicableTo targetCategory deliveryCharge containerCharge cuttingCharge customerName customerPhone status billNumber billType orderSource queueNumber tokenNo createdAt')
+      .select('tableNo orderNo items total subtotal tax discount discountType discountValue discountName applicableTo targetCategory customerCategory orderMode orderChannel exportSubCategory totalBoxes boxes deliveryCharge containerCharge cuttingCharge customerName customerPhone status billNumber billType orderSource queueNumber tokenNo createdAt')
       .sort({ createdAt: -1 })
       .limit(100)
       .lean();

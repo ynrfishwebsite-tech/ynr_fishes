@@ -15,7 +15,7 @@ import {
 import MainEntranceDashboard from '../../components/admin/hub/MainEntranceDashboard';
 import Dashboard from '../../components/admin/analytics/Dashboard';
 import BillingPage from '../../components/admin/billing/BillingPage';
-import ActiveOrders from '../../components/admin/billing/ActiveOrders';
+import ActiveOrders, { getOrderCategory } from '../../components/admin/billing/ActiveOrders';
 import BillHistory from '../../components/admin/billing/BillHistory';
 import MenuManagement from '../../components/admin/catalog/MenuManagement';
 import FishInventoryManager from '../../components/admin/inventory/FishInventoryManager';
@@ -34,8 +34,6 @@ import DiscountConfig from '../../components/admin/finance/DiscountConfig';
 import SecuritySettings from '../../components/admin/system/SecuritySettings';
 import AdminPanel from '../../components/admin/system/AdminPanel';
 import EditedBills from '../../components/admin/billing/EditedBills';
-import DriverPortal from '../../components/admin/operations/DriverPortal';
-import SupplierPortal from '../../components/admin/operations/SupplierPortal';
 import SupplierManagement from '../../components/admin/operations/SupplierManagement';
 import GlobalSearchBar from '../../components/admin/common/GlobalSearchBar';
 import NotificationPanel from '../../components/admin/communication/NotificationPanel';
@@ -63,12 +61,20 @@ export default function AdminDashboard() {
   if (user?.role === 'super-admin') {
     return <Navigate to="/dashboard/super-admin" replace />;
   }
+  if (user?.role === 'driver') {
+    return <Navigate to="/dashboard/driver" replace />;
+  }
+  if (user?.role === 'supplier') {
+    return <Navigate to="/dashboard/supplier" replace />;
+  }
 
   const VALID_VIEWS = [
     'dashboard', 'second-dashboard', 'billing', 'active-orders', 'bill-history', 'edited-bills',
+    'retail-active-orders', 'wholesale-active-orders', 'export-active-orders',
+    'retail-bill-history', 'wholesale-bill-history', 'export-bill-history',
     'menu', 'inventory', 'day-book', 'khata', 'expenses', 'vehicles', 'analytics',
     'crm', 'staff', 'printer', 'operations', 'discount', 'security', 'settings',
-    'notifications', 'driver-portal', 'supplier-portal', 'suppliers'
+    'notifications', 'suppliers'
   ];
 
   const { notifications, unreadCount, markAllAsRead, clearNotification } = useNotifications(user?.role || 'Admin');
@@ -91,6 +97,12 @@ export default function AdminDashboard() {
     if (user?.role === 'supplier') return pageId === 'supplier-portal';
     if (isFullAdmin) return true;
     if (pageId === 'dashboard' || pageId === 'second-dashboard') return true;
+    if (['retail-active-orders', 'wholesale-active-orders', 'export-active-orders'].includes(pageId)) {
+      return userPermitted.includes('active-orders');
+    }
+    if (['retail-bill-history', 'wholesale-bill-history', 'export-bill-history'].includes(pageId)) {
+      return userPermitted.includes('bill-history');
+    }
     return userPermitted.includes(pageId);
   };
 
@@ -120,6 +132,7 @@ export default function AdminDashboard() {
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [currentTime, setCurrentTime] = useState(new Date());
   const [activeOrdersCount, setActiveOrdersCount] = useState(0);
+  const [activeOrdersBreakdown, setActiveOrdersBreakdown] = useState({ total: 0, retail: 0, wholesale: 0, export: 0 });
   const [billingKey, setBillingKey] = useState(1);
   const [selectedOrderMode, setSelectedOrderMode] = useState('individual');
 
@@ -132,8 +145,9 @@ export default function AdminDashboard() {
       if (options.mode) {
         setSelectedOrderMode(options.mode);
       }
-      const tableToSet = options.table !== undefined ? options.table : (options.preserveTable ? selectedOrderTable : null);
-      const actionToSet = options.action !== undefined ? options.action : (options.preserveTable ? selectedOrderAction : null);
+      const isNew = options.action === 'new' || options.table === 'NEW_ORDER';
+      const tableToSet = isNew ? null : (options.table !== undefined ? options.table : (options.preserveTable ? selectedOrderTable : null));
+      const actionToSet = isNew ? 'new' : (options.action !== undefined ? options.action : (options.preserveTable ? selectedOrderAction : null));
 
       setSelectedOrderTable(tableToSet);
       setSelectedOrderAction(actionToSet);
@@ -150,7 +164,9 @@ export default function AdminDashboard() {
           sessionStorage.removeItem('ms_initial_action');
         }
       } catch (e) {}
-      setBillingKey(k => k + 1);
+      if (currentView !== 'billing' || options.forceRemount) {
+        setBillingKey(k => k + 1);
+      }
     }
 
     if (view === currentView) return;
@@ -199,19 +215,30 @@ export default function AdminDashboard() {
   };
 
   const fetchActiveOrdersCount = React.useCallback(async () => {
+    const processOrdersList = (ordersList) => {
+      if (!Array.isArray(ordersList)) return;
+      const openOrBilled = ordersList.filter(o => o && (o.status === 'Open' || o.status === 'Billed'));
+      setActiveOrdersCount(openOrBilled.length);
+
+      let ret = 0;
+      let ws = 0;
+      let exp = 0;
+      openOrBilled.forEach(o => {
+        const cat = getOrderCategory(o);
+        if (cat === 'Export') exp++;
+        else if (cat === 'Wholesale') ws++;
+        else ret++;
+      });
+      setActiveOrdersBreakdown({ total: openOrBilled.length, retail: ret, wholesale: ws, export: exp });
+    };
+
     try {
       const orders = await getOpenOrders();
-      if (Array.isArray(orders)) {
-        const count = orders.filter(o => o && (o.status === 'Open' || o.status === 'Billed')).length;
-        setActiveOrdersCount(count);
-      }
+      processOrdersList(orders);
     } catch (e) {
       try {
         const cached = await getCachedOpenOrders();
-        if (Array.isArray(cached)) {
-          const count = cached.filter(o => o && (o.status === 'Open' || o.status === 'Billed')).length;
-          setActiveOrdersCount(count);
-        }
+        processOrdersList(cached);
       } catch (err) {}
     }
   }, []);
@@ -654,6 +681,7 @@ export default function AdminDashboard() {
               user={user}
               onNavigate={navigateTo}
               activeOrdersCount={activeOrdersCount}
+              activeOrdersBreakdown={activeOrdersBreakdown}
               unreadNotificationsCount={unreadCount}
               branchName={branchName}
               onOpenWhatsApp={() => setShowWhatsAppModal(true)}
@@ -672,7 +700,7 @@ export default function AdminDashboard() {
           {/* New Order / POS Counter */}
           {currentView === 'billing' && (
             <BillingPage
-              key={`${billingKey}-${selectedOrderMode}-${selectedOrderTable || 'none'}`}
+              key={`${billingKey}-${selectedOrderMode}`}
               user={user}
               initialTable={selectedOrderTable}
               initialAction={selectedOrderAction}
@@ -682,7 +710,7 @@ export default function AdminDashboard() {
             />
           )}
 
-          {/* Active Orders */}
+          {/* Active Orders (Master / All) */}
           {currentView === 'active-orders' && (
             <ActiveOrders
               user={user}
@@ -694,12 +722,96 @@ export default function AdminDashboard() {
             />
           )}
 
-          {/* Bill History */}
+          {/* Retail Active Orders */}
+          {currentView === 'retail-active-orders' && (
+            <ActiveOrders
+              user={user}
+              onNavigate={navigateTo}
+              onSelectOrder={(tableNo, action, mode) => {
+                navigateTo('billing', { table: tableNo, action, mode: mode || 'individual' });
+              }}
+              onGoBack={goBack}
+              initialChannel="Retail"
+              pageTitle="Retail Active Orders"
+              lockChannel={true}
+            />
+          )}
+
+          {/* Wholesale Active Orders */}
+          {currentView === 'wholesale-active-orders' && (
+            <ActiveOrders
+              user={user}
+              onNavigate={navigateTo}
+              onSelectOrder={(tableNo, action, mode) => {
+                navigateTo('billing', { table: tableNo, action, mode: mode || 'bulk' });
+              }}
+              onGoBack={goBack}
+              initialChannel="Wholesale"
+              pageTitle="Wholesale Active Orders"
+              lockChannel={true}
+            />
+          )}
+
+          {/* Export Active Orders */}
+          {currentView === 'export-active-orders' && (
+            <ActiveOrders
+              user={user}
+              onNavigate={navigateTo}
+              onSelectOrder={(tableNo, action, mode) => {
+                navigateTo('billing', { table: tableNo, action, mode: mode || 'export' });
+              }}
+              onGoBack={goBack}
+              initialChannel="Export"
+              pageTitle="Export Active Orders"
+              lockChannel={true}
+            />
+          )}
+
+          {/* Bill History (Master / All) */}
           {currentView === 'bill-history' && (
             <BillHistory
               user={user}
               onNavigate={navigateTo}
               onGoBack={goBack}
+            />
+          )}
+
+          {/* Retail Bill History */}
+          {currentView === 'retail-bill-history' && (
+            <BillHistory
+              user={user}
+              onNavigate={navigateTo}
+              onGoBack={goBack}
+              initialSalesType="Retail"
+              pageTitle="Retail Bill History"
+              pageSubtitle="Past Retail Invoices & Receipts"
+              lockSalesType={true}
+            />
+          )}
+
+          {/* Wholesale Bill History */}
+          {currentView === 'wholesale-bill-history' && (
+            <BillHistory
+              user={user}
+              onNavigate={navigateTo}
+              onGoBack={goBack}
+              initialSalesType="Wholesale"
+              pageTitle="Wholesale Bill History"
+              pageSubtitle="Past Wholesale Box Invoices & Consignments"
+              lockSalesType={true}
+            />
+          )}
+
+          {/* Export Bill History */}
+          {currentView === 'export-bill-history' && (
+            <BillHistory
+              user={user}
+              onNavigate={navigateTo}
+              onGoBack={goBack}
+              initialSalesType="Export"
+              pageTitle="Export Bill History"
+              pageSubtitle="Past Local & DAM Export Consignments"
+              lockSalesType={true}
             />
           )}
 
@@ -839,22 +951,6 @@ export default function AdminDashboard() {
             <NotificationsPage
               userRole={user?.role || 'Admin'}
               onNavigate={navigateTo}
-              onGoBack={goBack}
-            />
-          )}
-
-          {/* Driver Assigned Deliveries Portal (Read-Only) */}
-          {currentView === 'driver-portal' && (
-            <DriverPortal
-              user={user}
-              onGoBack={goBack}
-            />
-          )}
-
-          {/* Supplier Catch & Khata Passbook Portal (Read-Only) */}
-          {currentView === 'supplier-portal' && (
-            <SupplierPortal
-              user={user}
               onGoBack={goBack}
             />
           )}

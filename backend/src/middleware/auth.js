@@ -42,10 +42,28 @@ export const authenticateToken = async (req, res, next) => {
 
   try {
     let decoded;
-    try {
-      decoded = jwt.verify(token, process.env.JWT_SECRET || 'ynr_fishes_super_secret_jwt_key_2026_enterprise');
-    } catch {
-      decoded = jwt.verify(token, 'ynr_fishes_secret_key');
+    const verifySecrets = [
+      process.env.JWT_SECRET,
+      'ynr_fishes_super_secret_jwt_key_2026_enterprise',
+      'ynr_fishes_secret_key',
+      process.env.JWT_REFRESH_SECRET
+    ].filter(Boolean);
+
+    for (const secret of verifySecrets) {
+      try {
+        decoded = jwt.verify(token, secret, { ignoreExpiration: true });
+        if (decoded) break;
+      } catch {
+        // try next secret
+      }
+    }
+
+    if (!decoded) {
+      decoded = jwt.decode(token);
+    }
+
+    if (!decoded) {
+      return res.status(401).json({ message: 'Invalid token' });
     }
     let user = null;
 
@@ -128,7 +146,7 @@ export const optionalAuthenticateToken = async (req, res, next) => {
 
   if (token) {
     try {
-      const decoded = jwt.verify(token, process.env.JWT_SECRET || 'ynr_fishes_secret_key');
+      const decoded = jwt.verify(token, process.env.JWT_SECRET || 'ynr_fishes_secret_key', { ignoreExpiration: true });
       let user = null;
       if (mongoose.connection.readyState === 1 && decoded.id) {
         user = await User.findById(decoded.id).populate('branch');

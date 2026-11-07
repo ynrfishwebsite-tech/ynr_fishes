@@ -26,10 +26,15 @@ import {
   ShieldCheck,
   ChevronRight,
   Calculator,
-  Radio
+  Radio,
+  Building,
+  Upload,
+  Image as ImageIcon,
+  Crop
 } from 'lucide-react';
 import BackButton from '../common/BackButton';
 import Toast from '../system/Toast';
+import ImageCropperModal from '../crm/ImageCropperModal';
 import {
   getVehicles,
   addVehicle,
@@ -46,7 +51,10 @@ import {
   deleteMaintenanceLog,
   getVehicleStats
 } from '../../../api/operations/vehicle';
+import { getSuppliers } from '../../../api/operations/operations';
 import LiveFleetMap from './LiveFleetMap';
+import io from 'socket.io-client';
+import { getSocketUrl } from '../../../config';
 
 const VEHICLE_TYPES = [
   'Pickup Truck',
@@ -84,12 +92,21 @@ export default function VehicleManagement({ onNavigate, onGoBack }) {
   const [selectedVehicleFilter, setSelectedVehicleFilter] = useState('all');
   const [tripChannelFilter, setTripChannelFilter] = useState('ALL'); // 'ALL' | 'LOCAL' | 'DAM'
 
+  // Fleet Filters Modal State (Compact Modal)
+  const [showFilterModal, setShowFilterModal] = useState(false);
+  const [filterChannel, setFilterChannel] = useState('ALL');
+  const [filterSupplier, setFilterSupplier] = useState('ALL');
+  const [filterVehicleType, setFilterVehicleType] = useState('ALL');
+  const [filterFuelType, setFilterFuelType] = useState('ALL');
+  const [filterStatus, setFilterStatus] = useState('ALL');
+
   // Main Data States
   const [vehicles, setVehicles] = useState([]);
   const [trips, setTrips] = useState([]);
   const [fuelLogs, setFuelLogs] = useState([]);
   const [maintenanceLogs, setMaintenanceLogs] = useState([]);
   const [stats, setStats] = useState(null);
+  const [suppliersList, setSuppliersList] = useState([]);
 
   // Modals
   const [showVehicleModal, setShowVehicleModal] = useState(false);
@@ -101,6 +118,12 @@ export default function VehicleManagement({ onNavigate, onGoBack }) {
   const [showMaintenanceModal, setShowMaintenanceModal] = useState(false);
   const [preselectedMaintVehicle, setPreselectedMaintVehicle] = useState(null);
 
+  // Image Cropper State for Driver
+  const [uploadFileInfo, setUploadFileInfo] = useState(null);
+  const [isCropperOpen, setIsCropperOpen] = useState(false);
+  const [cropperRawSrc, setCropperRawSrc] = useState(null);
+  const [cropperPendingInfo, setCropperPendingInfo] = useState(null);
+
   // Form States
   const [vehicleForm, setVehicleForm] = useState({
     vehicleNumber: '',
@@ -108,6 +131,10 @@ export default function VehicleManagement({ onNavigate, onGoBack }) {
     vehicleType: 'Pickup Truck',
     driverName: '',
     driverPhone: '',
+    driverPhoto: '',
+    assignedSupplierId: '',
+    assignedSupplierName: '',
+    operationalMode: 'All',
     currentKm: '',
     fuelType: 'Diesel',
     status: 'Available',
@@ -181,18 +208,20 @@ export default function VehicleManagement({ onNavigate, onGoBack }) {
   const loadData = async () => {
     try {
       setLoading(true);
-      const [vList, tList, fList, mList, sData] = await Promise.all([
+      const [vList, tList, fList, mList, sData, supList] = await Promise.all([
         getVehicles(),
         getTrips(),
         getFuelLogs(),
         getMaintenanceLogs(),
-        getVehicleStats()
+        getVehicleStats(),
+        getSuppliers().catch(() => [])
       ]);
       setVehicles(vList || []);
       setTrips(tList || []);
       setFuelLogs(fList || []);
       setMaintenanceLogs(mList || []);
       setStats(sData);
+      if (Array.isArray(supList)) setSuppliersList(supList);
     } catch (err) {
       console.error('[VehicleManagement] Load error:', err);
       setToast({ type: 'error', message: 'Failed to load vehicle records.' });
@@ -205,16 +234,106 @@ export default function VehicleManagement({ onNavigate, onGoBack }) {
     loadData();
   }, []);
 
+  // Real-time WebSocket synchronization with live driver GPS broadcasts
+  useEffect(() => {
+    let socket = null;
+    try {
+      socket = io(getSocketUrl(), {
+        transports: ['websocket', 'polling'],
+        reconnection: true
+      });
+
+      socket.on('vehicle:location_stream', (data) => {
+        if (!data || !data.vehicleNumber) return;
+        setVehicles((prev) =>
+          prev.map((v) => {
+            if (v.vehicleNumber?.toUpperCase() === data.vehicleNumber?.toUpperCase()) {
+              const newStatus = data.status || (data.isTrackingActive ? 'On Trip' : 'Available');
+              return {
+                ...v,
+                status: newStatus,
+                lastKnownLocation: {
+                  ...(v.lastKnownLocation || {}),
+                  lat: data.lat,
+                  lng: data.lng,
+                  speed: data.speed !== undefined ? data.speed : (v.lastKnownLocation?.speed || 0),
+                  heading: data.heading !== undefined ? data.heading : (v.lastKnownLocation?.heading || 0),
+                  accuracy: data.accuracy !== undefined ? data.accuracy : (v.lastKnownLocation?.accuracy || 0),
+                  isTrackingActive: Boolean(data.isTrackingActive),
+                  updatedAt: new Date()
+                }
+              };
+            }
+            return v;
+          })
+        );
+      });
+    } catch (e) {
+      console.warn('[VehicleManagement] Live fleet socket sync warning:', e.message);
+    }
+
+    return () => {
+      if (socket) socket.disconnect();
+    };
+  }, []);
+
+  // Active Filters Count
+  const activeFilterCount = useMemo(() => {
+    let count = 0;
+    if (filterChannel !== 'ALL') count++;
+    if (filterSupplier !== 'ALL') count++;
+    if (filterVehicleType !== 'ALL') count++;
+    if (filterFuelType !== 'ALL') count++;
+    if (filterStatus !== 'ALL') count++;
+    return count;
+  }, [filterChannel, filterSupplier, filterVehicleType, filterFuelType, filterStatus]);
+
+  const handleResetFilters = () => {
+    setFilterChannel('ALL');
+    setFilterSupplier('ALL');
+    setFilterVehicleType('ALL');
+    setFilterFuelType('ALL');
+    setFilterStatus('ALL');
+  };
+
+  const uniqueSuppliersList = useMemo(() => {
+    const set = new Set();
+    (vehicles || []).forEach(v => {
+      if (v.assignedSupplierName && v.assignedSupplierName.trim()) {
+        set.add(v.assignedSupplierName.trim());
+      }
+    });
+    (suppliersList || []).forEach(s => {
+      if (s.name && s.name.trim()) set.add(s.name.trim());
+    });
+    return Array.from(set).sort();
+  }, [vehicles, suppliersList]);
+
   // Filtered Lists
   const filteredVehicles = useMemo(() => {
     return vehicles.filter((v) => {
       const matchSearch =
         v.vehicleNumber?.toLowerCase().includes(searchQuery.toLowerCase()) ||
         v.modelName?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        v.driverName?.toLowerCase().includes(searchQuery.toLowerCase());
-      return matchSearch;
+        v.driverName?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        v.assignedSupplierName?.toLowerCase().includes(searchQuery.toLowerCase());
+      
+      const matchChannel = filterChannel === 'ALL' || 
+        v.operationalMode === filterChannel ||
+        (filterChannel === 'All' && v.operationalMode === 'All');
+
+      const matchSupplier = filterSupplier === 'ALL' ||
+        (v.assignedSupplierName && v.assignedSupplierName.toLowerCase() === filterSupplier.toLowerCase());
+
+      const matchType = filterVehicleType === 'ALL' || v.vehicleType === filterVehicleType;
+
+      const matchFuel = filterFuelType === 'ALL' || v.fuelType === filterFuelType;
+
+      const matchStatus = filterStatus === 'ALL' || v.status === filterStatus;
+
+      return matchSearch && matchChannel && matchSupplier && matchType && matchFuel && matchStatus;
     });
-  }, [vehicles, searchQuery]);
+  }, [vehicles, searchQuery, filterChannel, filterSupplier, filterVehicleType, filterFuelType, filterStatus]);
 
   const filteredTrips = useMemo(() => {
     return trips.filter((t) => {
@@ -261,12 +380,17 @@ export default function VehicleManagement({ onNavigate, onGoBack }) {
   // Handlers - Vehicle CRUD
   const handleOpenAddVehicle = () => {
     setEditingVehicle(null);
+    setUploadFileInfo(null);
     setVehicleForm({
       vehicleNumber: '',
       modelName: '',
       vehicleType: 'Pickup Truck',
       driverName: '',
       driverPhone: '',
+      driverPhoto: '',
+      assignedSupplierId: '',
+      assignedSupplierName: '',
+      operationalMode: 'All',
       currentKm: '0',
       fuelType: 'Diesel',
       status: 'Available',
@@ -282,12 +406,17 @@ export default function VehicleManagement({ onNavigate, onGoBack }) {
 
   const handleOpenEditVehicle = (veh) => {
     setEditingVehicle(veh);
+    setUploadFileInfo(veh.driverPhoto ? { name: `${veh.driverName || 'Driver'} Photo`, extension: 'img', size: 'Saved' } : null);
     setVehicleForm({
       vehicleNumber: veh.vehicleNumber || '',
       modelName: veh.modelName || '',
       vehicleType: veh.vehicleType || 'Pickup Truck',
       driverName: veh.driverName || '',
       driverPhone: veh.driverPhone || '',
+      driverPhoto: veh.driverPhoto || '',
+      assignedSupplierId: veh.assignedSupplierId || '',
+      assignedSupplierName: veh.assignedSupplierName || '',
+      operationalMode: veh.operationalMode || 'All',
       currentKm: String(veh.currentKm || 0),
       fuelType: veh.fuelType || 'Diesel',
       status: veh.status || 'Available',
@@ -301,24 +430,87 @@ export default function VehicleManagement({ onNavigate, onGoBack }) {
     setShowVehicleModal(true);
   };
 
+  // Image Upload with <= 5MB validation & Image Cropper trigger
+  const handleImageUpload = (file) => {
+    if (!file) return;
+    if (file.size > 5 * 1024 * 1024) {
+      setToast({ message: 'Image size must be less than or equal to 5MB', type: 'error' });
+      return;
+    }
+    const extension = file.name.split('.').pop() || 'jpg';
+    const sizeInMb = (file.size / (1024 * 1024)).toFixed(2);
+    const fileInfo = {
+      name: file.name,
+      extension: extension,
+      size: `${sizeInMb} MB`
+    };
+
+    const reader = new FileReader();
+    reader.onloadend = (event) => {
+      setCropperRawSrc(event.target.result);
+      setCropperPendingInfo(fileInfo);
+      setIsCropperOpen(true);
+    };
+    reader.readAsDataURL(file);
+  };
+
   const handleSaveVehicle = async (e) => {
     e.preventDefault();
     try {
-      if (!vehicleForm.vehicleNumber || !vehicleForm.modelName) {
-        setToast({ type: 'error', message: 'Vehicle number and model are required' });
+      const vNum = (vehicleForm.vehicleNumber || '').trim().toUpperCase();
+      if (!vNum) {
+        setToast({ type: 'error', message: 'Vehicle registration number is required (e.g. AP 04 TX 4589)' });
         return;
       }
+      if (!vehicleForm.modelName?.trim()) {
+        setToast({ type: 'error', message: 'Model / Vehicle Name is required (e.g. Mahindra Bolero Pickup)' });
+        return;
+      }
+
+      // Strict 10-Digit Phone Validation
+      const rawPhone = (vehicleForm.driverPhone || '').replace(/\D/g, '');
+      if (rawPhone && rawPhone.length !== 10) {
+        setToast({ type: 'error', message: `Driver mobile must be exactly 10 digits (${rawPhone.length}/10 entered)` });
+        return;
+      }
+      if (rawPhone && !/^[6-9]/.test(rawPhone)) {
+        setToast({ type: 'error', message: 'Driver mobile must start with 6, 7, 8, or 9' });
+        return;
+      }
+
+      const km = parseFloat(vehicleForm.currentKm) || 0;
+      if (km < 0) {
+        setToast({ type: 'error', message: 'Current Odometer cannot be negative' });
+        return;
+      }
+      const capacity = parseFloat(vehicleForm.tankCapacity) || 0;
+      if (capacity <= 0) {
+        setToast({ type: 'error', message: 'Tank capacity must be greater than 0 Litres' });
+        return;
+      }
+
+      const payload = {
+        ...vehicleForm,
+        vehicleNumber: vNum,
+        driverPhone: rawPhone,
+        currentKm: km,
+        tankCapacity: capacity,
+        assignedSupplierId: vehicleForm.assignedSupplierId || undefined,
+        assignedSupplierName: vehicleForm.assignedSupplierName || undefined,
+        operationalMode: vehicleForm.operationalMode || 'All'
+      };
+
       if (editingVehicle) {
-        await updateVehicle(editingVehicle._id, vehicleForm);
+        await updateVehicle(editingVehicle._id, payload);
         setToast({ type: 'success', message: 'Vehicle updated successfully!' });
       } else {
-        await addVehicle(vehicleForm);
-        setToast({ type: 'success', message: 'Vehicle added to fleet!' });
+        await addVehicle(payload);
+        setToast({ type: 'success', message: 'Vehicle registered and added to fleet!' });
       }
       setShowVehicleModal(false);
       loadData();
     } catch (err) {
-      setToast({ type: 'error', message: err.response?.data?.message || err.message });
+      setToast({ type: 'error', message: err.response?.data?.message || err.message || 'Failed to save vehicle' });
     }
   };
 
@@ -522,252 +714,306 @@ export default function VehicleManagement({ onNavigate, onGoBack }) {
       {/* Toast Notification */}
       {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
 
-      {/* Top Header Bar - Compact Single Row */}
-      <div className="pb-3 border-b border-[#FED7AA] flex items-center justify-between gap-2 overflow-x-auto no-scrollbar">
-        {/* Left: Back + Title + Depot Pill */}
-        <div className="flex items-center gap-2 shrink-0">
-          <BackButton onClick={onGoBack || (() => onNavigate('dashboard'))} className="shrink-0" />
-          <div className="p-1.5 sm:p-2 bg-[#ea580c] text-white rounded-xl shadow-md shrink-0 flex items-center justify-center">
-            <Truck size={17} className="sm:w-5 sm:h-5" />
+      {/* ======================================================== */}
+      {/* UNIFIED COMPACT STRUCTURED & BORDERED HEADER CARD        */}
+      {/* ======================================================== */}
+      <div className="bg-white rounded-2xl border border-[#FED7AA] p-2 sm:p-3 shadow-xs space-y-2 mb-3">
+        {/* Row 1: Back + Title + Action Buttons */}
+        <div className="flex items-center justify-between gap-2 overflow-x-auto no-scrollbar pb-1">
+          {/* Left: Back + Title + Depot Pill */}
+          <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+            <BackButton onClick={onGoBack || (() => onNavigate('dashboard'))} className="shrink-0" />
+            <div className="p-1.5 sm:p-2 bg-[#ea580c] text-white rounded-xl shadow-xs shrink-0 flex items-center justify-center">
+              <Truck size={16} className="sm:w-5 sm:h-5" />
+            </div>
+            <div className="flex items-center gap-1.5 shrink-0">
+              <h1 className="text-sm sm:text-base lg:text-lg font-black text-[#7c3f1d] leading-none m-0">Vehicle & Fleet</h1>
+              <span className="text-[9.5px] sm:text-[10px] px-2 py-0.5 rounded-full bg-[#ffedd5] text-[#c2410c] font-bold border border-[#fdba74]">
+                Kadapa Depot
+              </span>
+            </div>
           </div>
-          <div className="flex items-center gap-1.5 shrink-0">
-            <h1 className="text-base sm:text-lg font-black text-[#7c3f1d] leading-none m-0">Vehicle & Fleet</h1>
-            <span className="text-[10px] px-2 py-0.5 rounded-full bg-[#ffedd5] text-[#c2410c] font-bold border border-[#fdba74]">
-              Kadapa Depot
-            </span>
+
+          {/* Right: Quick Action Buttons */}
+          <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
+            <button
+              onClick={() => handleOpenAddTrip()}
+              className="flex items-center gap-1 px-2.5 py-1.5 bg-white text-[#7c3f1d] hover:bg-orange-50 border border-[#FED7AA] hover:border-[#ea580c] rounded-xl text-xs font-bold shadow-2xs transition-all whitespace-nowrap shrink-0 cursor-pointer active:scale-95"
+            >
+              <Navigation size={12} className="text-[#ea580c]" />
+              <span>Log Trip</span>
+            </button>
+            <button
+              onClick={() => handleOpenAddFuel()}
+              className="flex items-center gap-1 px-2.5 py-1.5 bg-white text-[#7c3f1d] hover:bg-orange-50 border border-[#FED7AA] hover:border-[#ea580c] rounded-xl text-xs font-bold shadow-2xs transition-all whitespace-nowrap shrink-0 cursor-pointer active:scale-95"
+            >
+              <Fuel size={12} className="text-[#ea580c]" />
+              <span>Add Fuel</span>
+            </button>
+            <button
+              onClick={() => handleOpenAddMaintenance()}
+              className="flex items-center gap-1 px-2.5 py-1.5 bg-white text-[#7c3f1d] hover:bg-orange-50 border border-[#FED7AA] hover:border-[#ea580c] rounded-xl text-xs font-bold shadow-2xs transition-all whitespace-nowrap shrink-0 cursor-pointer active:scale-95"
+            >
+              <Wrench size={12} className="text-[#ea580c]" />
+              <span>Service</span>
+            </button>
+            <button
+              onClick={handleOpenAddVehicle}
+              className="flex items-center gap-1 px-3 py-1.5 bg-[#ea580c] hover:bg-[#c2410c] text-white rounded-xl text-xs font-black shadow-xs hover:shadow transition-all whitespace-nowrap shrink-0 cursor-pointer active:scale-95"
+            >
+              <Plus size={13} />
+              <span>New Vehicle</span>
+            </button>
+            <button
+              onClick={loadData}
+              title="Refresh Data"
+              className="p-1.5 bg-white text-slate-700 hover:text-[#ea580c] border border-[#FED7AA] rounded-xl shadow-2xs hover:shadow transition-all shrink-0 cursor-pointer"
+            >
+              <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
+            </button>
           </div>
         </div>
 
-        {/* Right: All Action Buttons in the SAME SINGLE ROW */}
-        <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
-          <button
-            onClick={() => handleOpenAddTrip()}
-            className="flex items-center gap-1 px-2.5 sm:px-3 py-1.5 sm:py-2 bg-white text-[#7c3f1d] hover:bg-orange-50 border border-[#FED7AA] hover:border-[#ea580c] rounded-xl text-xs font-bold shadow-xs transition-all whitespace-nowrap shrink-0 cursor-pointer active:scale-95"
-          >
-            <Navigation size={13} className="text-[#ea580c]" />
-            <span>Log Trip</span>
-          </button>
-          <button
-            onClick={() => handleOpenAddFuel()}
-            className="flex items-center gap-1 px-2.5 sm:px-3 py-1.5 sm:py-2 bg-white text-[#7c3f1d] hover:bg-orange-50 border border-[#FED7AA] hover:border-[#ea580c] rounded-xl text-xs font-bold shadow-xs transition-all whitespace-nowrap shrink-0 cursor-pointer active:scale-95"
-          >
-            <Fuel size={13} className="text-[#ea580c]" />
-            <span>Add Fuel</span>
-          </button>
-          <button
-            onClick={() => handleOpenAddMaintenance()}
-            className="flex items-center gap-1 px-2.5 sm:px-3 py-1.5 sm:py-2 bg-white text-[#7c3f1d] hover:bg-orange-50 border border-[#FED7AA] hover:border-[#ea580c] rounded-xl text-xs font-bold shadow-xs transition-all whitespace-nowrap shrink-0 cursor-pointer active:scale-95"
-          >
-            <Wrench size={13} className="text-[#ea580c]" />
-            <span>Service</span>
-          </button>
-          <button
-            onClick={handleOpenAddVehicle}
-            className="flex items-center gap-1 px-3 sm:px-3.5 py-1.5 sm:py-2 bg-[#ea580c] hover:bg-[#c2410c] text-white rounded-xl text-xs font-black shadow-md hover:shadow-lg transition-all whitespace-nowrap shrink-0 cursor-pointer active:scale-95"
-          >
-            <Plus size={14} />
-            <span>  New Vehicle</span>
-          </button>
-          <button
-            onClick={loadData}
-            title="Refresh Data"
-            className="p-1.5 sm:p-2 bg-white text-slate-700 hover:text-[#ea580c] border border-[#FED7AA] rounded-xl shadow-xs hover:shadow transition-all shrink-0 cursor-pointer"
-          >
-            <RefreshCw size={15} className={loading ? 'animate-spin' : ''} />
-          </button>
-        </div>
-      </div>
-
-      {/* KPI Overview Cards - Compact Density */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-1.5 sm:gap-2.5 my-2 sm:my-3">
-        {/* Card 1: Fleet Count */}
-        <div className="bg-white rounded-lg sm:rounded-xl p-2 sm:p-2.5 border border-[#FED7AA] shadow-2xs relative overflow-hidden flex flex-col justify-between">
-          <div>
-            <div className="flex items-center justify-between text-slate-500 mb-0.5">
-              <span className="text-[9px] sm:text-[10px] font-bold uppercase tracking-wider">Fleet Vehicles</span>
-              <div className="p-1 rounded-md bg-orange-100 text-[#ea580c]">
-                <Truck size={12} className="sm:w-3.5 sm:h-3.5" />
+        {/* Row 2: Executive KPI Strip - 4 evenly balanced structured tiles */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 pt-0.5">
+          {/* Tile 1: Fleet Overview */}
+          <div className="bg-gradient-to-r from-orange-50/90 via-amber-50/60 to-white rounded-xl border border-[#fed7aa] p-2 sm:p-2.5 flex items-center gap-2.5 shadow-2xs hover:border-orange-300 transition-all">
+            <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-[#ea580c] to-[#c2410c] text-white flex items-center justify-center shrink-0 shadow-2xs">
+              <Truck size={15} />
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500 leading-tight">Total Fleet</div>
+              <div className="text-xs sm:text-sm font-black text-[#7c3f1d] font-mono leading-tight flex items-center gap-1.5 mt-0.5">
+                <span>{vehicles.length} Vehicles</span>
+                <span className="text-[9.5px] font-bold text-emerald-700 bg-emerald-100/90 px-1.5 py-0.2 rounded-md border border-emerald-300">
+                  {vehicles.filter(v => v.status === 'Available').length} Avail
+                </span>
               </div>
             </div>
-            <div className="text-base sm:text-lg md:text-xl font-black text-[#7c3f1d] font-mono leading-none">{vehicles.length}</div>
           </div>
-          <div className="flex items-center gap-1.5 mt-1 text-[8.5px] sm:text-[9.5px] flex-wrap leading-tight">
-            <span className="text-emerald-700 font-semibold flex items-center gap-1">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-              {vehicles.filter((v) => v.status === 'Available').length} Available
-            </span>
-            <span className="text-blue-700 font-semibold flex items-center gap-1">
-              <span className="w-1.5 h-1.5 rounded-full bg-blue-500"></span>
-              {vehicles.filter((v) => v.status === 'On Trip').length} On Road
-            </span>
-          </div>
-        </div>
 
-        {/* Card 2: Monthly Distance */}
-        <div className="bg-white rounded-lg sm:rounded-xl p-2 sm:p-2.5 border border-[#FED7AA] shadow-2xs relative overflow-hidden flex flex-col justify-between">
-          <div>
-            <div className="flex items-center justify-between text-slate-500 mb-0.5">
-              <span className="text-[9px] sm:text-[10px] font-bold uppercase tracking-wider">Monthly KMs</span>
-              <div className="p-1 rounded-md bg-blue-100 text-blue-600">
-                <Gauge size={12} className="sm:w-3.5 sm:h-3.5" />
+          {/* Tile 2: Monthly KMs */}
+          <div className="bg-gradient-to-r from-blue-50/90 via-cyan-50/50 to-white rounded-xl border border-blue-200/80 p-2 sm:p-2.5 flex items-center gap-2.5 shadow-2xs hover:border-blue-300 transition-all">
+            <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-blue-600 to-indigo-700 text-white flex items-center justify-center shrink-0 shadow-2xs">
+              <Gauge size={15} />
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500 leading-tight">Monthly Distance</div>
+              <div className="text-xs sm:text-sm font-black text-blue-950 font-mono leading-tight mt-0.5">
+                {stats?.monthlyTotalKm ? stats.monthlyTotalKm.toLocaleString('en-IN') : '0'} <span className="text-[10px] font-medium text-slate-500">KM Run</span>
               </div>
             </div>
-            <div className="text-base sm:text-lg md:text-xl font-black text-blue-900 font-mono leading-none">
-              {stats?.monthlyTotalKm ? stats.monthlyTotalKm.toLocaleString('en-IN') : '0'}{' '}
-              <span className="text-[9.5px] sm:text-[10.5px] font-semibold text-slate-500">KM</span>
-            </div>
           </div>
-          <p className="text-[8.5px] sm:text-[9.5px] text-slate-500 mt-1 truncate leading-tight">Active fleet dispatches</p>
-        </div>
 
-        {/* Card 3: Fuel Expense */}
-        <div className="bg-white rounded-lg sm:rounded-xl p-2 sm:p-2.5 border border-[#FED7AA] shadow-2xs relative overflow-hidden flex flex-col justify-between">
-          <div>
-            <div className="flex items-center justify-between text-slate-500 mb-0.5">
-              <span className="text-[9px] sm:text-[10px] font-bold uppercase tracking-wider">Fuel Cost</span>
-              <div className="p-1 rounded-md bg-amber-100 text-amber-600">
-                <Fuel size={12} className="sm:w-3.5 sm:h-3.5" />
+          {/* Tile 3: Fuel Cost */}
+          <div className="bg-gradient-to-r from-amber-50/90 via-yellow-50/50 to-white rounded-xl border border-amber-200/80 p-2 sm:p-2.5 flex items-center gap-2.5 shadow-2xs hover:border-amber-300 transition-all">
+            <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-amber-500 to-orange-600 text-white flex items-center justify-center shrink-0 shadow-2xs">
+              <Fuel size={15} />
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500 leading-tight">Fuel Expense</div>
+              <div className="text-xs sm:text-sm font-black text-amber-950 font-mono leading-tight flex items-center gap-1.5 mt-0.5">
+                <span>₹{stats?.monthlyFuelCost ? stats.monthlyFuelCost.toLocaleString('en-IN') : '0'}</span>
+                {stats?.monthlyFuelLitres > 0 && <span className="text-[9.5px] text-slate-500 font-normal">({stats.monthlyFuelLitres}L)</span>}
               </div>
             </div>
-            <div className="text-base sm:text-lg md:text-xl font-black text-amber-900 font-mono leading-none">
-              ₹{stats?.monthlyFuelCost ? stats.monthlyFuelCost.toLocaleString('en-IN') : '0'}
-            </div>
           </div>
-          <div className="flex items-center gap-1 mt-1 text-[8.5px] sm:text-[9.5px] text-slate-600 flex-wrap leading-tight">
-            <span>{stats?.monthlyFuelLitres || 0} L</span>
-            <span className="text-emerald-700 font-bold bg-emerald-50 px-1 py-0.2 rounded border border-emerald-200 text-[8.5px]">
-              {stats?.avgMileage || 0} KM/L
-            </span>
-          </div>
-        </div>
 
-        {/* Card 4: Maintenance Expense */}
-        <div className="bg-white rounded-lg sm:rounded-xl p-2 sm:p-2.5 border border-[#FED7AA] shadow-2xs relative overflow-hidden flex flex-col justify-between">
-          <div>
-            <div className="flex items-center justify-between text-slate-500 mb-0.5">
-              <span className="text-[9px] sm:text-[10px] font-bold uppercase tracking-wider">Repairs & Upkeep</span>
-              <div className="p-1 rounded-md bg-rose-100 text-rose-600">
-                <Wrench size={12} className="sm:w-3.5 sm:h-3.5" />
+          {/* Tile 4: Maintenance & Repairs */}
+          <div className="bg-gradient-to-r from-rose-50/90 via-pink-50/50 to-white rounded-xl border border-rose-200/80 p-2 sm:p-2.5 flex items-center gap-2.5 shadow-2xs hover:border-rose-300 transition-all">
+            <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-rose-500 to-red-600 text-white flex items-center justify-center shrink-0 shadow-2xs">
+              <Wrench size={15} />
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500 leading-tight">Upkeep & Repairs</div>
+              <div className="text-xs sm:text-sm font-black text-rose-950 font-mono leading-tight mt-0.5">
+                ₹{stats?.monthlyMaintCost ? stats.monthlyMaintCost.toLocaleString('en-IN') : '0'}
               </div>
             </div>
-            <div className="text-base sm:text-lg md:text-xl font-black text-rose-900 font-mono leading-none">
-              ₹{stats?.monthlyMaintCost ? stats.monthlyMaintCost.toLocaleString('en-IN') : '0'}
-            </div>
           </div>
-          <p className="text-[8.5px] sm:text-[9.5px] text-slate-500 mt-1 truncate leading-tight">Reefer box & upkeep</p>
-        </div>
-      </div>
-
-      {/* Tabs Header */}
-      <div className="flex items-center justify-between flex-wrap gap-2 sm:gap-3 mb-2.5 sm:mb-4 border-b border-[#fed7aa] pb-1.5">
-        <div className="flex items-center gap-1.5 sm:gap-2 w-full sm:w-auto overflow-x-auto no-scrollbar py-0.5 -mx-1 px-1 sm:mx-0 sm:px-0">
-          <button
-            onClick={() => setActiveTab('fleet')}
-            className={`flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-lg sm:rounded-xl text-xs sm:text-[13px] font-bold whitespace-nowrap shrink-0 transition-all ${
-              activeTab === 'fleet'
-                ? 'bg-[#7c3f1d] text-white shadow-md'
-                : 'bg-white text-slate-700 hover:bg-orange-50 border border-[#fed7aa]'
-            }`}
-          >
-            <Truck size={14} className="sm:w-4 sm:h-4" />
-            <span>Vehicles Fleet ({vehicles.length})</span>
-          </button>
-
-          <button
-            onClick={() => setActiveTab('trips')}
-            className={`flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-lg sm:rounded-xl text-xs sm:text-[13px] font-bold whitespace-nowrap shrink-0 transition-all ${
-              activeTab === 'trips'
-                ? 'bg-[#7c3f1d] text-white shadow-md'
-                : 'bg-white text-slate-700 hover:bg-orange-50 border border-[#fed7aa]'
-            }`}
-          >
-            <Navigation size={14} className="sm:w-4 sm:h-4" />
-            <span>Trips & KM Logs ({trips.length})</span>
-          </button>
-
-          <button
-            onClick={() => setActiveTab('fuel')}
-            className={`flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-lg sm:rounded-xl text-xs sm:text-[13px] font-bold whitespace-nowrap shrink-0 transition-all ${
-              activeTab === 'fuel'
-                ? 'bg-[#7c3f1d] text-white shadow-md'
-                : 'bg-white text-slate-700 hover:bg-orange-50 border border-[#fed7aa]'
-            }`}
-          >
-            <Fuel size={14} className="sm:w-4 sm:h-4" />
-            <span>Fuel Management ({fuelLogs.length})</span>
-          </button>
-
-          <button
-            onClick={() => setActiveTab('maintenance')}
-            className={`flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-lg sm:rounded-xl text-xs sm:text-[13px] font-bold whitespace-nowrap shrink-0 transition-all ${
-              activeTab === 'maintenance'
-                ? 'bg-[#7c3f1d] text-white shadow-md'
-                : 'bg-white text-slate-700 hover:bg-orange-50 border border-[#fed7aa]'
-            }`}
-          >
-            <Wrench size={14} className="sm:w-4 sm:h-4" />
-            <span>Service & Repairs ({maintenanceLogs.length})</span>
-          </button>
-
-          <button
-            onClick={() => setActiveTab('map')}
-            className={`flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-lg sm:rounded-xl text-xs sm:text-[13px] font-bold whitespace-nowrap shrink-0 transition-all ${
-              activeTab === 'map'
-                ? 'bg-[#7c3f1d] text-white shadow-md'
-                : 'bg-white text-slate-700 hover:bg-orange-50 border border-[#fed7aa]'
-            }`}
-          >
-            <Radio size={14} className="text-emerald-500 animate-pulse sm:w-4 sm:h-4" />
-            <span>Live Map Tracking</span>
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping"></span>
-          </button>
-
-          <button
-            onClick={() => setActiveTab('calculator')}
-            className={`flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-lg sm:rounded-xl text-xs sm:text-[13px] font-bold whitespace-nowrap shrink-0 transition-all ${
-              activeTab === 'calculator'
-                ? 'bg-[#7c3f1d] text-white shadow-md'
-                : 'bg-white text-slate-700 hover:bg-orange-50 border border-[#fed7aa]'
-            }`}
-          >
-            <Calculator size={14} className="sm:w-4 sm:h-4" />
-            <span>KM Calculator</span>
-          </button>
         </div>
 
-        {/* Search & Filter Bar */}
-        {!['calculator', 'map'].includes(activeTab) && (
-          <div className="flex items-center gap-2 w-full sm:w-auto">
-            <div className="relative flex-1 sm:w-64">
-              <Search size={15} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
-              <input
-                type="text"
-                placeholder="Search number, driver, route..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-8 pr-3 py-1.5 bg-white border border-[#fed7aa] rounded-lg sm:rounded-xl text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-[#ea580c]"
-              />
-              {searchQuery && (
-                <button onClick={() => setSearchQuery('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
-                  <X size={13} />
+        {/* Row 3: Tabs Navigation + Search + Filter Modal Button */}
+        <div className="flex items-center justify-between flex-wrap gap-2 pt-1 border-t border-[#FED7AA]/50">
+          <div className="flex items-center gap-1.5 w-full sm:w-auto overflow-x-auto no-scrollbar py-0.5">
+            <button
+              onClick={() => setActiveTab('fleet')}
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap shrink-0 transition-all cursor-pointer ${
+                activeTab === 'fleet'
+                  ? 'bg-[#7c3f1d] text-white shadow-xs'
+                  : 'bg-white text-slate-700 hover:bg-orange-50 border border-[#fed7aa]'
+              }`}
+            >
+              <Truck size={13} />
+              <span>Vehicles Fleet ({vehicles.length})</span>
+            </button>
+
+            <button
+              onClick={() => setActiveTab('trips')}
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap shrink-0 transition-all cursor-pointer ${
+                activeTab === 'trips'
+                  ? 'bg-[#7c3f1d] text-white shadow-xs'
+                  : 'bg-white text-slate-700 hover:bg-orange-50 border border-[#fed7aa]'
+              }`}
+            >
+              <Navigation size={13} />
+              <span>Trips & KM Logs ({trips.length})</span>
+            </button>
+
+            <button
+              onClick={() => setActiveTab('fuel')}
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap shrink-0 transition-all cursor-pointer ${
+                activeTab === 'fuel'
+                  ? 'bg-[#7c3f1d] text-white shadow-xs'
+                  : 'bg-white text-slate-700 hover:bg-orange-50 border border-[#fed7aa]'
+              }`}
+            >
+              <Fuel size={13} />
+              <span>Fuel Management ({fuelLogs.length})</span>
+            </button>
+
+            <button
+              onClick={() => setActiveTab('maintenance')}
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap shrink-0 transition-all cursor-pointer ${
+                activeTab === 'maintenance'
+                  ? 'bg-[#7c3f1d] text-white shadow-xs'
+                  : 'bg-white text-slate-700 hover:bg-orange-50 border border-[#fed7aa]'
+              }`}
+            >
+              <Wrench size={13} />
+              <span>Service & Repairs ({maintenanceLogs.length})</span>
+            </button>
+
+            <button
+              onClick={() => setActiveTab('map')}
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap shrink-0 transition-all cursor-pointer ${
+                activeTab === 'map'
+                  ? 'bg-[#7c3f1d] text-white shadow-xs'
+                  : 'bg-white text-slate-700 hover:bg-orange-50 border border-[#fed7aa]'
+              }`}
+            >
+              <Radio size={13} className="text-emerald-500 animate-pulse" />
+              <span>Live Map Tracking</span>
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping"></span>
+            </button>
+
+            <button
+              onClick={() => setActiveTab('calculator')}
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap shrink-0 transition-all cursor-pointer ${
+                activeTab === 'calculator'
+                  ? 'bg-[#7c3f1d] text-white shadow-xs'
+                  : 'bg-white text-slate-700 hover:bg-orange-50 border border-[#fed7aa]'
+              }`}
+            >
+              <Calculator size={13} />
+              <span>KM Calculator</span>
+            </button>
+          </div>
+
+          {/* Search & Filter Trigger */}
+          {!['calculator', 'map'].includes(activeTab) && (
+            <div className="flex items-center gap-2 w-full sm:w-auto">
+              <div className="relative flex-1 sm:w-60">
+                <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                <input
+                  type="text"
+                  placeholder="Search number, driver, route..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full pl-8 pr-3 py-1.5 bg-white border border-[#fed7aa] rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-[#ea580c]"
+                />
+                {searchQuery && (
+                  <button onClick={() => setSearchQuery('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
+                    <X size={12} />
+                  </button>
+                )}
+              </div>
+
+              {/* Compact Modal Filter Button for Fleet Tab */}
+              {activeTab === 'fleet' && (
+                <button
+                  type="button"
+                  onClick={() => setShowFilterModal(true)}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold border transition-all cursor-pointer shadow-2xs ${
+                    activeFilterCount > 0
+                      ? 'bg-[#ea580c] text-white border-[#c2410c] shadow-sm'
+                      : 'bg-white text-slate-700 hover:bg-orange-50 border-[#fed7aa]'
+                  }`}
+                  title="Open Fleet Filters Modal"
+                >
+                  <Filter size={13} className={activeFilterCount > 0 ? 'text-white' : 'text-[#ea580c]'} />
+                  <span>Filters</span>
+                  {activeFilterCount > 0 ? (
+                    <span className="w-4 h-4 rounded-full bg-amber-300 text-slate-900 text-[10px] font-black flex items-center justify-center">
+                      {activeFilterCount}
+                    </span>
+                  ) : (
+                    <span className="text-[9px] font-bold px-1 py-0.2 rounded bg-slate-100 text-slate-500 uppercase">
+                      OFF
+                    </span>
+                  )}
                 </button>
               )}
-            </div>
 
-            {['trips', 'fuel', 'maintenance'].includes(activeTab) && (
-              <select
-                value={selectedVehicleFilter}
-                onChange={(e) => setSelectedVehicleFilter(e.target.value)}
-                className="px-2.5 py-1.5 bg-white border border-[#fed7aa] rounded-lg sm:rounded-xl text-xs sm:text-sm font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-[#ea580c]"
-              >
-                <option value="all">All Vehicles</option>
-                {vehicles.map((v) => (
-                  <option key={v._id} value={v._id}>
-                    {v.vehicleNumber} ({v.modelName})
-                  </option>
-                ))}
-              </select>
+              {['trips', 'fuel', 'maintenance'].includes(activeTab) && (
+                <select
+                  value={selectedVehicleFilter}
+                  onChange={(e) => setSelectedVehicleFilter(e.target.value)}
+                  className="px-2.5 py-1.5 bg-white border border-[#fed7aa] rounded-xl text-xs font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-[#ea580c]"
+                >
+                  <option value="all">All Vehicles</option>
+                  {vehicles.map((v) => (
+                    <option key={v._id} value={v._id}>
+                      {v.vehicleNumber} ({v.modelName})
+                    </option>
+                  ))}
+                </select>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Compact Active Filter Chips Row (Only when filters are active) */}
+        {activeTab === 'fleet' && activeFilterCount > 0 && (
+          <div className="flex items-center gap-1.5 flex-wrap pt-1 border-t border-[#fed7aa]/50 text-xs">
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">Active Filters:</span>
+            {filterChannel !== 'ALL' && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 font-bold text-[10.5px] border border-blue-200">
+                Channel: {filterChannel}
+                <button type="button" onClick={() => setFilterChannel('ALL')} className="hover:text-red-600 cursor-pointer"><X size={11} /></button>
+              </span>
             )}
+            {filterSupplier !== 'ALL' && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 font-bold text-[10.5px] border border-emerald-200">
+                Supplier: {filterSupplier}
+                <button type="button" onClick={() => setFilterSupplier('ALL')} className="hover:text-red-600 cursor-pointer"><X size={11} /></button>
+              </span>
+            )}
+            {filterVehicleType !== 'ALL' && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-50 text-amber-800 font-bold text-[10.5px] border border-amber-200">
+                Type: {filterVehicleType}
+                <button type="button" onClick={() => setFilterVehicleType('ALL')} className="hover:text-red-600 cursor-pointer"><X size={11} /></button>
+              </span>
+            )}
+            {filterFuelType !== 'ALL' && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-rose-50 text-rose-700 font-bold text-[10.5px] border border-rose-200">
+                Fuel: {filterFuelType}
+                <button type="button" onClick={() => setFilterFuelType('ALL')} className="hover:text-red-600 cursor-pointer"><X size={11} /></button>
+              </span>
+            )}
+            {filterStatus !== 'ALL' && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-purple-50 text-purple-700 font-bold text-[10.5px] border border-purple-200">
+                Status: {filterStatus}
+                <button type="button" onClick={() => setFilterStatus('ALL')} className="hover:text-red-600 cursor-pointer"><X size={11} /></button>
+              </span>
+            )}
+            <button
+              type="button"
+              onClick={handleResetFilters}
+              className="text-[11px] font-bold text-rose-600 hover:text-rose-800 hover:underline cursor-pointer ml-1"
+            >
+              Clear All
+            </button>
           </div>
         )}
       </div>
@@ -792,124 +1038,190 @@ export default function VehicleManagement({ onNavigate, onGoBack }) {
               </button>
             </div>
           ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5 sm:gap-3.5">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
               {filteredVehicles.map((veh) => (
                 <div
                   key={veh._id}
-                  className="bg-white rounded-xl sm:rounded-2xl border border-[#FED7AA] p-3 sm:p-3.5 shadow-2xs hover:shadow-md transition-all flex flex-col justify-between"
+                  className="bg-white rounded-2xl border border-[#FED7AA] p-3.5 sm:p-4 shadow-2xs hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 flex flex-col justify-between group"
                 >
-                  <div>
+                  <div className="space-y-2.5">
                     {/* Top Row: Plate & Status */}
-                    <div className="flex items-center justify-between gap-1.5 mb-2">
+                    <div className="flex items-center justify-between gap-1.5">
                       <div className="flex items-center gap-1.5">
-                        <span className="px-2 py-0.5 bg-amber-400 text-slate-900 font-mono font-black text-xs rounded-md border-[1.5px] border-slate-900 shadow-2xs tracking-wide">
+                        <span className="px-2.5 py-1 bg-amber-400 text-slate-900 font-mono font-black text-xs rounded-md border-[1.5px] border-slate-900 shadow-2xs tracking-wide">
                           {veh.vehicleNumber}
                         </span>
-                        <span className="text-[10.5px] text-slate-500 font-medium">{veh.vehicleType}</span>
+                        <span className="text-[11px] font-semibold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md">
+                          {veh.vehicleType}
+                        </span>
                       </div>
                       {getStatusBadge(veh.status)}
                     </div>
 
-                    {/* Model & Driver */}
-                    <h3 className="text-sm sm:text-[15px] font-bold text-[#7c3f1d] leading-snug">{veh.modelName}</h3>
-                    <div className="mt-2 space-y-1 text-[11px] sm:text-xs text-slate-600 bg-[#FAF0E4]/70 p-2 sm:p-2.5 rounded-lg border border-[#fed7aa]">
-                      <div className="flex items-center justify-between">
-                        <span className="flex items-center gap-1.5 text-slate-500">
-                          <User size={12} className="text-slate-400 shrink-0" /> Driver
-                        </span>
-                        <span className="font-semibold text-slate-800 truncate max-w-[150px]">{veh.driverName || 'Not Assigned'}</span>
-                      </div>
-                      {veh.driverPhone && (
-                        <div className="flex items-center justify-between">
-                          <span className="flex items-center gap-1.5 text-slate-500">
-                            <Phone size={12} className="text-slate-400 shrink-0" /> Phone
-                          </span>
-                          <a href={`tel:${veh.driverPhone}`} className="font-semibold text-[#ea580c] hover:underline">
-                            {veh.driverPhone}
-                          </a>
+                    {/* Model Name */}
+                    <h3 className="text-base font-black text-[#7c3f1d] leading-snug truncate">
+                      {veh.modelName}
+                    </h3>
+
+                    {/* Dedicated Driver Profile Cardlet */}
+                    <div className="p-2.5 rounded-xl bg-gradient-to-r from-orange-50/80 via-amber-50/40 to-white border border-[#fed7aa]/90 flex items-center justify-between gap-2.5 shadow-2xs">
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        {/* Driver Photo 56x56 */}
+                        <div className="relative shrink-0">
+                          {veh.driverPhoto ? (
+                            <img
+                              src={veh.driverPhoto}
+                              alt={veh.driverName || 'Driver'}
+                              className="w-14 h-14 rounded-xl object-cover border-2 border-orange-400 shadow-xs"
+                            />
+                          ) : (
+                            <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-amber-100 to-orange-200 text-[#ea580c] font-black text-xl flex items-center justify-center border-2 border-orange-300 shadow-2xs">
+                              {(veh.driverName || 'D').charAt(0).toUpperCase()}
+                            </div>
+                          )}
+                          <span
+                            className={`absolute -bottom-1 -right-1 w-3.5 h-3.5 rounded-full border-2 border-white ${
+                              veh.status === 'Available' ? 'bg-emerald-500' : veh.status === 'On Road' ? 'bg-blue-500' : 'bg-slate-400'
+                            }`}
+                            title={`Driver Status: ${veh.status}`}
+                          />
                         </div>
-                      )}
-                      <div className="flex items-center justify-between pt-1 border-t border-orange-200/80">
-                        <span className="flex items-center gap-1.5 text-slate-500">
-                          <Gauge size={12} className="text-slate-400 shrink-0" /> Odometer
-                        </span>
-                        <span className="font-mono font-black text-slate-900 text-xs sm:text-[13px]">
-                          {veh.currentKm ? veh.currentKm.toLocaleString('en-IN') : 0} KM
-                        </span>
+
+                        <div className="min-w-0">
+                          <span className="text-[9.5px] font-black uppercase tracking-wider text-slate-400 block leading-tight">
+                            Assigned Driver
+                          </span>
+                          <h4 className="text-xs sm:text-sm font-black text-slate-800 truncate leading-tight mt-0.5">
+                            {veh.driverName || 'No Driver Assigned'}
+                          </h4>
+                          {veh.driverPhone ? (
+                            <a
+                              href={`tel:${veh.driverPhone}`}
+                              className="mt-1 inline-flex items-center gap-1 text-[11px] font-mono font-bold text-[#ea580c] hover:underline"
+                            >
+                              <Phone size={10} />
+                              <span>{veh.driverPhone}</span>
+                            </a>
+                          ) : (
+                            <span className="text-[10.5px] text-slate-400 italic">No phone linked</span>
+                          )}
+                        </div>
                       </div>
-                      <div className="flex items-center justify-between">
-                        <span className="flex items-center gap-1.5 text-slate-500">
-                          <Fuel size={12} className="text-slate-400 shrink-0" /> Fuel / Economy
-                        </span>
-                        <span className="font-semibold text-slate-800">
-                          {veh.fuelType} {veh.averageMileage ? `• ${veh.averageMileage} KM/L` : ''}
-                        </span>
+
+                      {/* Quick Call Action Button */}
+                      {veh.driverPhone && (
+                        <a
+                          href={`tel:${veh.driverPhone}`}
+                          title={`Call ${veh.driverName || 'Driver'}`}
+                          className="p-2 rounded-xl bg-white border border-[#fed7aa] text-[#ea580c] hover:bg-[#ea580c] hover:text-white transition-all shrink-0 cursor-pointer shadow-2xs active:scale-95"
+                        >
+                          <Phone size={14} />
+                        </a>
+                      )}
+                    </div>
+
+                    {/* Logistics & Route Details Cardlet */}
+                    <div className="space-y-2 text-xs bg-[#FAF0E4]/60 p-2.5 rounded-xl border border-[#fed7aa]/70">
+                      {/* Row 1: Supplier & Channel */}
+                      <div className="grid grid-cols-2 gap-2 text-[11px]">
+                        <div>
+                          <span className="text-[9.5px] uppercase font-bold text-slate-400 block">Supplier / Syndicate</span>
+                          <span className="font-extrabold text-emerald-800 truncate block mt-0.5" title={veh.assignedSupplierName || 'Kadapa Depot Direct'}>
+                            {veh.assignedSupplierName || 'Kadapa Depot Direct'}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-[9.5px] uppercase font-bold text-slate-400 block">Intake Channel</span>
+                          <span className="inline-block mt-0.5 px-2 py-0.5 rounded-md font-bold text-[10.5px] bg-amber-100/90 text-amber-900 border border-amber-300">
+                            {veh.operationalMode || 'All Channels'}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Row 2: Odometer & Fuel */}
+                      <div className="pt-1.5 border-t border-[#fed7aa]/60 grid grid-cols-2 gap-2 text-[11px]">
+                        <div>
+                          <span className="text-[9.5px] uppercase font-bold text-slate-400 block">Odometer</span>
+                          <span className="font-mono font-black text-slate-900 text-xs sm:text-[13px] block mt-0.5">
+                            {veh.currentKm ? veh.currentKm.toLocaleString('en-IN') : 0} <span className="text-[10px] font-normal text-slate-500">KM</span>
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-[9.5px] uppercase font-bold text-slate-400 block">Fuel & Mileage</span>
+                          <span className="font-bold text-slate-800 block mt-0.5">
+                            {veh.fuelType} {veh.averageMileage ? `• ${veh.averageMileage} km/l` : ''}
+                          </span>
+                        </div>
                       </div>
                     </div>
 
-                    {/* Monthly Summary Badges */}
-                    {veh.stats && (
-                      <div className="grid grid-cols-3 gap-1.5 mt-2 text-center">
-                        <div className="bg-orange-50/80 rounded-md p-1.5 border border-orange-100">
-                          <div className="text-[9px] text-slate-500 font-semibold uppercase tracking-tight">Month Run</div>
-                          <div className="text-[11px] sm:text-xs font-black text-[#c2410c]">{veh.stats.monthlyKm} KM</div>
-                        </div>
-                        <div className="bg-blue-50/80 rounded-md p-1.5 border border-blue-100">
-                          <div className="text-[9px] text-slate-500 font-semibold uppercase tracking-tight">Fuel Spend</div>
-                          <div className="text-[11px] sm:text-xs font-black text-blue-800">₹{veh.stats.monthlyFuelCost}</div>
-                        </div>
-                        <div className="bg-rose-50/80 rounded-md p-1.5 border border-rose-100">
-                          <div className="text-[9px] text-slate-500 font-semibold uppercase tracking-tight">Repairs</div>
-                          <div className="text-[11px] sm:text-xs font-black text-rose-800">₹{veh.stats.monthlyMaintCost}</div>
+                    {/* Monthly Telemetry Summary */}
+                    <div className="grid grid-cols-3 gap-1.5 text-center">
+                      <div className="bg-gradient-to-b from-orange-50 to-orange-100/60 rounded-xl p-1.5 border border-orange-200 shadow-2xs">
+                        <div className="text-[9px] text-slate-500 font-bold uppercase tracking-tight">Month Run</div>
+                        <div className="text-xs font-black text-[#c2410c] font-mono mt-0.5">
+                          {veh.stats?.monthlyKm ? `${veh.stats.monthlyKm} KM` : '0 KM'}
                         </div>
                       </div>
-                    )}
+                      <div className="bg-gradient-to-b from-blue-50 to-blue-100/60 rounded-xl p-1.5 border border-blue-200 shadow-2xs">
+                        <div className="text-[9px] text-slate-500 font-bold uppercase tracking-tight">Fuel Spend</div>
+                        <div className="text-xs font-black text-blue-900 font-mono mt-0.5">
+                          ₹{veh.stats?.monthlyFuelCost ? veh.stats.monthlyFuelCost.toLocaleString('en-IN') : '0'}
+                        </div>
+                      </div>
+                      <div className="bg-gradient-to-b from-rose-50 to-rose-100/60 rounded-xl p-1.5 border border-rose-200 shadow-2xs">
+                        <div className="text-[9px] text-slate-500 font-bold uppercase tracking-tight">Repairs</div>
+                        <div className="text-xs font-black text-rose-900 font-mono mt-0.5">
+                          ₹{veh.stats?.monthlyMaintCost ? veh.stats.monthlyMaintCost.toLocaleString('en-IN') : '0'}
+                        </div>
+                      </div>
+                    </div>
                   </div>
 
                   {/* Actions Bar */}
-                  <div className="flex flex-wrap items-center justify-between gap-1 mt-2.5 pt-2 border-t border-slate-100">
-                    <div className="flex flex-wrap items-center gap-1 flex-1 min-w-0">
+                  <div className="flex flex-wrap items-center justify-between gap-1.5 mt-3 pt-2.5 border-t border-[#fed7aa]/50">
+                    <div className="flex flex-wrap items-center gap-1.5 flex-1 min-w-0">
                       <button
                         onClick={() => handleOpenAddTrip(veh)}
-                        className="px-2 py-1 bg-orange-100 hover:bg-orange-200 text-[#7c3f1d] rounded-md text-[10.5px] font-bold flex items-center gap-1 transition-colors active:scale-95 cursor-pointer"
+                        className="px-2.5 py-1.5 bg-orange-100 hover:bg-[#ea580c] hover:text-white text-[#7c3f1d] rounded-lg text-xs font-bold flex items-center gap-1 transition-all active:scale-95 cursor-pointer shadow-2xs"
                         title="Log a delivery trip"
                       >
-                        <Navigation size={11} /> Trip
+                        <Navigation size={12} /> <span>Trip</span>
                       </button>
                       <button
                         onClick={() => handleOpenAddFuel(veh)}
-                        className="px-2 py-1 bg-amber-100 hover:bg-amber-200 text-amber-900 rounded-md text-[10.5px] font-bold flex items-center gap-1 transition-colors active:scale-95 cursor-pointer"
+                        className="px-2.5 py-1.5 bg-amber-100 hover:bg-amber-600 hover:text-white text-amber-900 rounded-lg text-xs font-bold flex items-center gap-1 transition-all active:scale-95 cursor-pointer shadow-2xs"
                         title="Log fuel refill"
                       >
-                        <Fuel size={11} /> Fuel
+                        <Fuel size={12} /> <span>Fuel</span>
                       </button>
                       <button
                         onClick={() => handleOpenAddMaintenance(veh)}
-                        className="px-2 py-1 bg-rose-100 hover:bg-rose-200 text-rose-900 rounded-md text-[10.5px] font-bold flex items-center gap-1 transition-colors active:scale-95 cursor-pointer"
+                        className="px-2.5 py-1.5 bg-rose-100 hover:bg-rose-600 hover:text-white text-rose-900 rounded-lg text-xs font-bold flex items-center gap-1 transition-all active:scale-95 cursor-pointer shadow-2xs"
                         title="Log repair or maintenance"
                       >
-                        <Wrench size={11} /> Service
+                        <Wrench size={12} /> <span>Service</span>
                       </button>
                       <button
                         onClick={() => setActiveTab('map')}
-                        className="px-2 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-md text-[10.5px] font-bold flex items-center gap-1 transition-colors active:scale-95 cursor-pointer"
+                        className="px-2.5 py-1.5 bg-emerald-50 hover:bg-emerald-600 hover:text-white text-emerald-800 border border-emerald-200 hover:border-emerald-600 rounded-lg text-xs font-bold flex items-center gap-1 transition-all active:scale-95 cursor-pointer shadow-2xs"
                         title="View live position on map"
                       >
-                        <Radio size={11} className="text-emerald-600 animate-pulse" /> Map
+                        <Radio size={12} className="text-emerald-600 group-hover:text-white animate-pulse" /> <span>Map</span>
                       </button>
                     </div>
 
-                    <div className="flex items-center gap-0.5 shrink-0">
+                    <div className="flex items-center gap-1 shrink-0">
                       <button
                         onClick={() => handleOpenEditVehicle(veh)}
-                        className="p-1 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors active:scale-95 cursor-pointer"
+                        className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all active:scale-95 cursor-pointer"
                         title="Edit vehicle details"
                       >
                         <Edit2 size={13} />
                       </button>
                       <button
                         onClick={() => handleDeleteVehicle(veh._id, veh.vehicleNumber)}
-                        className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded transition-colors active:scale-95 cursor-pointer"
+                        className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-all active:scale-95 cursor-pointer"
                         title="Remove vehicle"
                       >
                         <Trash2 size={13} />
@@ -1721,14 +2033,192 @@ export default function VehicleManagement({ onNavigate, onGoBack }) {
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Driver Mobile</label>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-xs font-semibold text-slate-700">Driver Mobile</label>
+                    <span className="text-[10px] text-slate-500 font-mono">
+                      {vehicleForm.driverPhone ? `${vehicleForm.driverPhone.length}/10` : '10 digits'}
+                    </span>
+                  </div>
                   <input
                     type="tel"
+                    maxLength={10}
                     placeholder="e.g. 9849313889"
                     value={vehicleForm.driverPhone}
-                    onChange={(e) => setVehicleForm({ ...vehicleForm, driverPhone: e.target.value })}
-                    className="w-full p-2.5 bg-[#fffaf5] border border-[#fed7aa] rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#ea580c]"
+                    onChange={(e) => {
+                      const digits = e.target.value.replace(/\D/g, '').slice(0, 10);
+                      setVehicleForm({ ...vehicleForm, driverPhone: digits });
+                    }}
+                    className={`w-full p-2.5 bg-[#fffaf5] border rounded-xl text-sm font-mono focus:outline-none focus:ring-2 ${
+                      vehicleForm.driverPhone && vehicleForm.driverPhone.length !== 10
+                        ? 'border-rose-400 focus:ring-rose-400'
+                        : 'border-[#fed7aa] focus:ring-[#ea580c]'
+                    }`}
                   />
+                  {vehicleForm.driverPhone && vehicleForm.driverPhone.length !== 10 && (
+                    <span className="text-[10px] font-semibold text-rose-600 block mt-0.5">
+                      Must be exactly 10 digits ({10 - vehicleForm.driverPhone.length} remaining)
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {/* Driver Profile Photo with <= 5MB validation & Image Cropper */}
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-xs font-semibold text-slate-700">Driver Profile Photo (Optional)</label>
+                  <span className="text-[10.5px] text-slate-500 font-medium">Max 5MB • JPG, PNG, WEBP</span>
+                </div>
+                {!vehicleForm.driverPhoto ? (
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value=""
+                      readOnly
+                      className="flex-1 p-2 bg-[#fffaf5] border border-[#fed7aa] rounded-xl text-xs text-slate-400 focus:outline-none"
+                      placeholder="Upload driver profile photo..."
+                    />
+                    <label className="bg-orange-50 hover:bg-orange-100 text-[#ea580c] px-3.5 py-2 rounded-xl cursor-pointer flex items-center gap-1.5 text-xs border border-orange-200 shrink-0 font-bold transition-all shadow-2xs">
+                      <Upload size={13} />
+                      <span>Upload</span>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={(e) => {
+                          const file = e.target.files[0];
+                          if (file) handleImageUpload(file);
+                          e.target.value = '';
+                        }}
+                      />
+                    </label>
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-between p-2 bg-orange-50/60 border border-orange-200 rounded-xl gap-2">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <img
+                        src={vehicleForm.driverPhoto}
+                        alt="Driver Preview"
+                        className="w-10 h-10 rounded-full object-cover border border-orange-300 shrink-0 shadow-2xs"
+                      />
+                      <div className="min-w-0">
+                        <span className="text-xs font-bold text-slate-800 truncate block">
+                          {uploadFileInfo?.name || (vehicleForm.driverName ? `${vehicleForm.driverName}'s Photo` : 'Driver Profile Photo')}
+                        </span>
+                        <span className="text-[10px] text-slate-500">
+                          {uploadFileInfo ? `.${uploadFileInfo.extension} • ${uploadFileInfo.size}` : 'Uploaded'}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1 shrink-0">
+                      <label className="px-2 py-1 bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 rounded-lg text-[10.5px] font-bold cursor-pointer transition-colors">
+                        <span>Change</span>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={(e) => {
+                            const file = e.target.files[0];
+                            if (file) handleImageUpload(file);
+                            e.target.value = '';
+                          }}
+                        />
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setUploadFileInfo(null);
+                          setVehicleForm({ ...vehicleForm, driverPhoto: '' });
+                        }}
+                        className="px-2 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-lg text-[10.5px] font-bold cursor-pointer transition-colors"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Supplier & Operational Channel Link */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3 bg-amber-50/60 rounded-xl border border-amber-200/80">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Linked Supplier / Syndicate (Optional)
+                  </label>
+                  <select
+                    value={vehicleForm.assignedSupplierId || ''}
+                    onChange={(e) => {
+                      const selId = e.target.value;
+                      const selSup = suppliersList.find(s => s._id === selId);
+                      setVehicleForm({
+                        ...vehicleForm,
+                        assignedSupplierId: selId,
+                        assignedSupplierName: selSup?.name || ''
+                      });
+                    }}
+                    className="w-full p-2 bg-white border border-[#fed7aa] rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-[#ea580c]"
+                  >
+                    <option value="">-- Direct Depot Fleet (No Supplier) --</option>
+                    {suppliersList.map(s => {
+                      const alreadyVeh = vehicles.find(v => 
+                        (!editingVehicle || v._id !== editingVehicle._id) && (
+                          (v.assignedSupplierId && String(v.assignedSupplierId) === String(s._id)) ||
+                          (v.assignedSupplierName && v.assignedSupplierName.toLowerCase() === s.name.toLowerCase()) ||
+                          (s.vehicleNumber && v.vehicleNumber?.toUpperCase() === s.vehicleNumber.toUpperCase())
+                        )
+                      );
+                      const isAssigned = Boolean(alreadyVeh);
+                      const statusTag = isAssigned 
+                        ? `[Already Assigned: ${alreadyVeh.vehicleNumber}]` 
+                        : `[Available]`;
+
+                      return (
+                        <option 
+                          key={s._id} 
+                          value={s._id}
+                          className={isAssigned ? 'text-amber-800 bg-amber-50 font-semibold' : ''}
+                        >
+                          {isAssigned ? '⚠️ ' : ''}{s.name} {s.companyName ? `(${s.companyName})` : ''} — {statusTag}
+                        </option>
+                      );
+                    })}
+                  </select>
+                  {(() => {
+                    const selSup = suppliersList.find(s => s._id === vehicleForm.assignedSupplierId);
+                    if (selSup) {
+                      const alreadyVeh = vehicles.find(v => 
+                        (!editingVehicle || v._id !== editingVehicle._id) && (
+                          (v.assignedSupplierId && String(v.assignedSupplierId) === String(selSup._id)) ||
+                          (v.assignedSupplierName && v.assignedSupplierName.toLowerCase() === selSup.name.toLowerCase()) ||
+                          (selSup.vehicleNumber && v.vehicleNumber?.toUpperCase() === selSup.vehicleNumber.toUpperCase())
+                        )
+                      );
+                      if (alreadyVeh) {
+                        return (
+                          <div className="mt-1.5 flex items-start gap-1.5 p-1.5 bg-amber-50 border border-amber-200 rounded-lg text-amber-800 text-[10.5px] font-semibold leading-tight">
+                            <span className="shrink-0 text-amber-600 font-bold">⚠️</span>
+                            <span><strong>{selSup.name}</strong> is currently assigned to vehicle <strong>{alreadyVeh.vehicleNumber}</strong> ({alreadyVeh.modelName || alreadyVeh.vehicleType}). Saving will reassign this supplier to this new vehicle.</span>
+                          </div>
+                        );
+                      }
+                    }
+                    return null;
+                  })()}
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Operational Intake Channel
+                  </label>
+                  <select
+                    value={vehicleForm.operationalMode || 'All'}
+                    onChange={(e) => setVehicleForm({ ...vehicleForm, operationalMode: e.target.value })}
+                    className="w-full p-2 bg-white border border-[#fed7aa] rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-[#ea580c]"
+                  >
+                    <option value="All">All Operations / General Fleet</option>
+                    <option value="Local Catch">Local Harbor Catch Intake</option>
+                    <option value="DAM Consignments">DAM Reservoir Consignments</option>
+                    <option value="Supplies & Packaging">Packaging & Consumables Vendor</option>
+                    <option value="Depot Distribution">Customer / Market Distribution</option>
+                  </select>
                 </div>
               </div>
 
@@ -1737,6 +2227,7 @@ export default function VehicleManagement({ onNavigate, onGoBack }) {
                   <label className="block text-xs font-semibold text-slate-700 mb-1">Current Odometer (KM)</label>
                   <input
                     type="number"
+                    min="0"
                     value={vehicleForm.currentKm}
                     onChange={(e) => setVehicleForm({ ...vehicleForm, currentKm: e.target.value })}
                     className="w-full p-2.5 bg-[#fffaf5] border border-[#fed7aa] rounded-xl text-sm font-mono focus:outline-none focus:ring-2 focus:ring-[#ea580c]"
@@ -1759,6 +2250,7 @@ export default function VehicleManagement({ onNavigate, onGoBack }) {
                   <label className="block text-xs font-semibold text-slate-700 mb-1">Tank Capacity (L)</label>
                   <input
                     type="number"
+                    min="1"
                     value={vehicleForm.tankCapacity}
                     onChange={(e) => setVehicleForm({ ...vehicleForm, tankCapacity: e.target.value })}
                     className="w-full p-2.5 bg-[#fffaf5] border border-[#fed7aa] rounded-xl text-sm font-mono focus:outline-none focus:ring-2 focus:ring-[#ea580c]"
@@ -1800,18 +2292,18 @@ export default function VehicleManagement({ onNavigate, onGoBack }) {
                 />
               </div>
 
-
               <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-100">
                 <button
                   type="button"
                   onClick={() => setShowVehicleModal(false)}
-                  className="px-4 py-2 border border-slate-300 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-50"
+                  className="px-4 py-2 border border-slate-300 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-50 cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 bg-[#ea580c] hover:bg-[#c2410c] text-white rounded-xl text-xs font-bold shadow-md transition-all"
+                  disabled={Boolean(vehicleForm.driverPhone && vehicleForm.driverPhone.length !== 10)}
+                  className="px-5 py-2 bg-[#ea580c] hover:bg-[#c2410c] disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-xl text-xs font-bold shadow-md transition-all cursor-pointer"
                 >
                   {editingVehicle ? 'Update Vehicle' : 'Register Vehicle'}
                 </button>
@@ -1980,25 +2472,53 @@ export default function VehicleManagement({ onNavigate, onGoBack }) {
                     </select>
                   </div>
                   <div>
-                    <label className="block text-[11px] font-semibold text-slate-700 mb-1">Dealer / Customer Name</label>
+                    <label className="block text-[11px] font-semibold text-slate-700 mb-1">Dealer / Supplier / Customer</label>
                     <input
                       type="text"
+                      list="trip-party-suggestions"
                       placeholder="e.g. Ramesh Reddy (DAM)"
                       value={tripForm.customerName}
-                      onChange={(e) => setTripForm({ ...tripForm, customerName: e.target.value })}
-                      className="w-full p-2 bg-white border border-[#fed7aa] rounded-xl text-xs"
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        const match = suppliersList.find(s => s.name?.toLowerCase() === val.toLowerCase() || s.companyName?.toLowerCase() === val.toLowerCase());
+                        setTripForm({
+                          ...tripForm,
+                          customerName: val,
+                          customerPhone: match?.phone || tripForm.customerPhone
+                        });
+                      }}
+                      className="w-full p-2 bg-white border border-[#fed7aa] rounded-xl text-xs focus:outline-none focus:ring-1 focus:ring-[#ea580c]"
                     />
+                    <datalist id="trip-party-suggestions">
+                      {suppliersList
+                        .filter(s => {
+                          if (tripForm.exportType === 'Local') return s.supplierType === 'Local' || s.supplierType === 'All';
+                          if (tripForm.exportType === 'DAM') return s.supplierType === 'DAM' || s.supplierType === 'All';
+                          return true;
+                        })
+                        .map(s => (
+                          <option key={s._id} value={s.name}>
+                            {s.companyName ? `${s.companyName} • ` : ''}Ph: {s.phone || '—'}
+                          </option>
+                        ))}
+                    </datalist>
                   </div>
                 </div>
                 <div className="grid grid-cols-3 gap-2">
                   <div>
-                    <label className="block text-[11px] font-semibold text-slate-700 mb-1">Phone</label>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="text-[11px] font-semibold text-slate-700">Phone</label>
+                      <span className="text-[9px] text-slate-400 font-mono">
+                        {tripForm.customerPhone ? `${tripForm.customerPhone.length}/10` : '10 digits'}
+                      </span>
+                    </div>
                     <input
                       type="tel"
+                      maxLength={10}
                       placeholder="10-digit phone"
                       value={tripForm.customerPhone}
-                      onChange={(e) => setTripForm({ ...tripForm, customerPhone: e.target.value })}
-                      className="w-full p-2 bg-white border border-[#fed7aa] rounded-xl text-xs"
+                      onChange={(e) => setTripForm({ ...tripForm, customerPhone: e.target.value.replace(/\D/g, '').slice(0, 10) })}
+                      className="w-full p-2 bg-white border border-[#fed7aa] rounded-xl text-xs font-mono"
                     />
                   </div>
                   <div>
@@ -2379,6 +2899,173 @@ export default function VehicleManagement({ onNavigate, onGoBack }) {
             </form>
           </div>
         </div>
+      )}
+      {/* ======================================================== */}
+      {/* COMPACT FLEET FILTERS MODAL DIALOG                        */}
+      {/* ======================================================== */}
+      {showFilterModal && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 animate-fade-in">
+          <div className="bg-white rounded-2xl border border-[#FED7AA] shadow-2xl w-full max-w-lg overflow-hidden animate-scale-up">
+            {/* Modal Header */}
+            <div className="bg-gradient-to-r from-[#FAF0E4] via-orange-50 to-white px-4 py-3.5 border-b border-[#FED7AA] flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-xl bg-orange-100 border border-orange-300 text-[#ea580c] flex items-center justify-center shadow-2xs">
+                  <Filter size={16} />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-sm sm:text-base font-black text-[#7c3f1d] leading-tight">Fleet Vehicle Filters</h3>
+                    {activeFilterCount > 0 && (
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-200 text-amber-900 border border-amber-300">
+                        {activeFilterCount} active
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-[11px] text-slate-500 leading-tight">Refine fleet dispatches by channel, supplier, vehicle, fuel & status</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowFilterModal(false)}
+                className="text-slate-400 hover:text-slate-700 p-1.5 rounded-xl hover:bg-white/80 transition-all cursor-pointer"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Modal Body with 5 Filters */}
+            <div className="p-4 space-y-3 max-h-[75vh] overflow-y-auto">
+              {/* Filter 1: Operational Intake Channel */}
+              <div className="bg-[#FAF0E4]/40 p-2.5 rounded-xl border border-[#fed7aa]/70 space-y-1">
+                <label className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                  <Navigation size={13} className="text-blue-600" />
+                  <span>1. Operational Intake Channel</span>
+                </label>
+                <select
+                  value={filterChannel}
+                  onChange={(e) => setFilterChannel(e.target.value)}
+                  className="w-full px-3 py-2 bg-white border border-[#fed7aa] rounded-xl text-xs font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#ea580c]"
+                >
+                  <option value="ALL">All Channels</option>
+                  <option value="Local Catch">Local Catch</option>
+                  <option value="DAM Consignments">DAM Consignments</option>
+                  <option value="Supplies & Packaging">Supplies & Packaging</option>
+                  <option value="Depot Distribution">Depot Distribution</option>
+                </select>
+              </div>
+
+              {/* Filter 2: Linked Supplier / Syndicate */}
+              <div className="bg-[#FAF0E4]/40 p-2.5 rounded-xl border border-[#fed7aa]/70 space-y-1">
+                <label className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                  <Building size={13} className="text-emerald-600" />
+                  <span>2. Linked Supplier / Syndicate</span>
+                </label>
+                <select
+                  value={filterSupplier}
+                  onChange={(e) => setFilterSupplier(e.target.value)}
+                  className="w-full px-3 py-2 bg-white border border-[#fed7aa] rounded-xl text-xs font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#ea580c]"
+                >
+                  <option value="ALL">All Suppliers & Syndicates</option>
+                  {uniqueSuppliersList.map((s) => (
+                    <option key={s} value={s}>{s}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Filters 3, 4, 5 in structured grid */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                {/* Filter 3: Vehicle Type */}
+                <div className="bg-[#FAF0E4]/40 p-2.5 rounded-xl border border-[#fed7aa]/70 space-y-1">
+                  <label className="text-[11.5px] font-bold text-slate-700 flex items-center gap-1">
+                    <Truck size={12} className="text-amber-600" />
+                    <span>3. Vehicle Type</span>
+                  </label>
+                  <select
+                    value={filterVehicleType}
+                    onChange={(e) => setFilterVehicleType(e.target.value)}
+                    className="w-full px-2.5 py-1.5 bg-white border border-[#fed7aa] rounded-xl text-xs font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#ea580c]"
+                  >
+                    <option value="ALL">All Types</option>
+                    {VEHICLE_TYPES.map((t) => (
+                      <option key={t} value={t}>{t}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Filter 4: Fuel Type */}
+                <div className="bg-[#FAF0E4]/40 p-2.5 rounded-xl border border-[#fed7aa]/70 space-y-1">
+                  <label className="text-[11.5px] font-bold text-slate-700 flex items-center gap-1">
+                    <Fuel size={12} className="text-rose-600" />
+                    <span>4. Fuel Type</span>
+                  </label>
+                  <select
+                    value={filterFuelType}
+                    onChange={(e) => setFilterFuelType(e.target.value)}
+                    className="w-full px-2.5 py-1.5 bg-white border border-[#fed7aa] rounded-xl text-xs font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#ea580c]"
+                  >
+                    <option value="ALL">All Fuels</option>
+                    {FUEL_TYPES.map((f) => (
+                      <option key={f} value={f}>{f}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Filter 5: Operational Status */}
+                <div className="bg-[#FAF0E4]/40 p-2.5 rounded-xl border border-[#fed7aa]/70 space-y-1">
+                  <label className="text-[11.5px] font-bold text-slate-700 flex items-center gap-1">
+                    <Gauge size={12} className="text-purple-600" />
+                    <span>5. Status</span>
+                  </label>
+                  <select
+                    value={filterStatus}
+                    onChange={(e) => setFilterStatus(e.target.value)}
+                    className="w-full px-2.5 py-1.5 bg-white border border-[#fed7aa] rounded-xl text-xs font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#ea580c]"
+                  >
+                    <option value="ALL">All Statuses</option>
+                    {VEHICLE_STATUSES.map((st) => (
+                      <option key={st} value={st}>{st}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            {/* Modal Footer with Reset All & Apply */}
+            <div className="px-4 py-3 bg-slate-50 border-t border-[#FED7AA]/70 flex items-center justify-between">
+              <button
+                type="button"
+                onClick={handleResetFilters}
+                className="text-xs font-bold text-rose-600 hover:text-rose-800 hover:bg-rose-50 px-3 py-1.5 rounded-xl transition-all cursor-pointer"
+              >
+                Reset All Filters
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowFilterModal(false)}
+                className="px-5 py-2 bg-[#ea580c] hover:bg-[#c2410c] text-white text-xs font-black rounded-xl shadow-md hover:shadow-lg transition-all cursor-pointer active:scale-95"
+              >
+                Apply Filters {activeFilterCount > 0 ? `(${activeFilterCount})` : ''}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Image Cropper Modal for Driver Photo */}
+      {isCropperOpen && (
+        <ImageCropperModal
+          title="Crop Driver Profile Photo"
+          imageSrc={cropperRawSrc}
+          onCropComplete={(croppedDataUrl) => {
+            setVehicleForm(prev => ({ ...prev, driverPhoto: croppedDataUrl }));
+            if (cropperPendingInfo) {
+              setUploadFileInfo(cropperPendingInfo);
+            }
+            setIsCropperOpen(false);
+            setToast({ message: 'Driver photo cropped successfully!', type: 'success' });
+          }}
+          onClose={() => setIsCropperOpen(false)}
+        />
       )}
     </div>
   );

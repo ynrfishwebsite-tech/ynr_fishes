@@ -13,6 +13,7 @@ import { getCachedMenuItems, getCachedCategories } from '../../../db/offlineDb';
 import realtimeService from '../../../services/realtimeService';
 import Fish3DRoller from './Fish3DRoller';
 import FishSmartwatchDial from './FishSmartwatchDial';
+import SearchableDropdown from '../../common/SearchableDropdown';
 
 const getCategoryIcon = (catName, isSelected = false) => {
   const name = catName.toLowerCase();
@@ -385,6 +386,25 @@ const MenuGrid = ({
     const maxNum = (cart || []).reduce((max, it) => Math.max(max, Number(it.boxNumber || 0)), 0);
     return maxNum + 1;
   }, [cart]);
+
+  // Formatted fish species dropdown options for SearchableDropdown in Wholesale & Export Box Packer
+  const fishBoxOptions = useMemo(() => {
+    return (items || []).map(fish => {
+      const fishRate = fishOrderMode === 'export'
+        ? (parseFloat(fish.exportPricePerKg) || parseFloat(fish.wholesalePricePerKg) || parseFloat(fish.price) || 0)
+        : (parseFloat(fish.wholesalePricePerKg) || parseFloat(fish.price) || 0);
+      const stockKg = Number(fish.stock ?? fish.inventoryStock ?? fish.currentStock ?? 0);
+      return {
+        value: fish._id,
+        label: fish.name,
+        badge: `Stock: ${stockKg}kg`,
+        badgeColor: stockKg > 0 ? 'emerald' : 'slate',
+        subtitle: `₹${fishRate}/Kg (${fishOrderMode === 'export' ? 'Export' : 'Wholesale'})`,
+        price: fishRate,
+        raw: fish
+      };
+    });
+  }, [items, fishOrderMode]);
 
   // Open the Wholesale Box Builder
   const openBoxPackerModal = useCallback((initialFish = null) => {
@@ -2567,23 +2587,20 @@ const MenuGrid = ({
                             <label className="text-[9.5px] sm:text-[10px] font-bold text-slate-500 uppercase block mb-0.5 sm:mb-1">
                               Select Fish Variety
                             </label>
-                            <select
+                            <SearchableDropdown
+                              mode="select"
                               value={slot.fishId || ''}
-                              onChange={(e) => handleSlotFishChange(index, e.target.value)}
-                              className="w-full bg-[#FAF0E4] border border-[#E8DCCB] rounded-lg sm:rounded-xl px-2 py-1 sm:py-1.5 text-[11px] sm:text-xs font-bold text-slate-800 focus:outline-none focus:border-amber-500 truncate cursor-pointer"
-                            >
-                              <option value="" disabled>-- Choose a fish --</option>
-                              {items.map(fish => {
-                                const fishRate = fishOrderMode === 'export'
-                                  ? (parseFloat(fish.exportPricePerKg) || parseFloat(fish.wholesalePricePerKg) || parseFloat(fish.price) || 0)
-                                  : (parseFloat(fish.wholesalePricePerKg) || parseFloat(fish.price) || 0);
-                                return (
-                                  <option key={fish._id} value={fish._id}>
-                                    {fish.name} (₹{fishRate}/Kg)
-                                  </option>
-                                );
-                              })}
-                            </select>
+                              onChange={(val) => handleSlotFishChange(index, val)}
+                              options={fishBoxOptions}
+                              placeholder="-- Choose Fish Variety --"
+                              searchPlaceholder="Search fish species..."
+                              className="w-full"
+                              inputClassName="!h-9 !py-0 !rounded-lg sm:!rounded-xl !text-[11px] sm:!text-xs flex items-center font-bold !bg-[#FAF0E4] !border-[#E8DCCB]"
+                              minDropdownWidth={290}
+                              accentColor="orange"
+                              clearable={false}
+                              required
+                            />
                           </div>
 
                           {/* Weight (Kg) (Row 2 on mobile, inline on tab/desktop) */}

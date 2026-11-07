@@ -1,9 +1,10 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import Toast from '../system/Toast';
 import axios from 'axios';
 import { getApiUrl } from '../../../config.js';
 import realtimeService from '../../../services/realtimeService';
 import { getSuppliers } from '../../../api/operations/operations';
+import { getVehicles } from '../../../api/operations/vehicle';
 import { 
   getSupplyCategories, 
   createSupplyCategory, 
@@ -13,7 +14,6 @@ import {
 import { 
   Package, 
   ArrowDownLeft, 
-  TrendingDown, 
   Plus, 
   RefreshCw, 
   History, 
@@ -37,10 +37,42 @@ import {
   AlertTriangle
 } from 'lucide-react';
 import BackButton from '../common/BackButton';
+import SearchableDropdown from '../../common/SearchableDropdown';
+import FishInwardInvoice from './FishInwardInvoice';
 
 export default function FishInventoryManager({ user, onNavigate, onGoBack }) {
-  const [activeTab, setActiveTab] = useState('overview'); // 'overview' | 'procurement' | 'shrinkage' | 'logs'
-  const [stockInSubTab, setStockInSubTab] = useState('local'); // 'local' | 'dam' | 'supplies'
+  const [activeTab, setActiveTab] = useState(() => {
+    try {
+      const saved = localStorage.getItem('inventory_active_tab');
+      if (saved && ['overview', 'procurement', 'logs'].includes(saved)) {
+        return saved;
+      }
+    } catch (e) {}
+    return 'overview';
+  });
+
+  const [stockInSubTab, setStockInSubTab] = useState(() => {
+    try {
+      const saved = localStorage.getItem('inventory_stockin_subtab');
+      if (saved && ['local', 'dam', 'supplies'].includes(saved)) {
+        return saved;
+      }
+    } catch (e) {}
+    return 'local';
+  });
+
+  // Persist current active tab & sub-tab across page refreshes
+  useEffect(() => {
+    try {
+      localStorage.setItem('inventory_active_tab', activeTab);
+    } catch (e) {}
+  }, [activeTab]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('inventory_stockin_subtab', stockInSubTab);
+    } catch (e) {}
+  }, [stockInSubTab]);
   const [fishList, setFishList] = useState([]);
   const [stockLogs, setStockLogs] = useState([]);
   const [crmCustomers, setCrmCustomers] = useState([]);
@@ -48,7 +80,7 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack }) {
   const [searchTerm, setSearchTerm] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState({ text: '', type: '' });
-  const [damPrintVoucher, setDamPrintVoucher] = useState(null);
+  const [inwardInvoiceModal, setInwardInvoiceModal] = useState(null);
 
   // Local Stock-In Form State (Multi-fish + Boxes support)
   const [localStockInForm, setLocalStockInForm] = useState({
@@ -58,11 +90,15 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack }) {
     vehicleNumber: '',
     harbor: '',
     items: [
-      { id: 1, menuItemId: '', itemName: '', boxes: '', kgPerBox: 60, kg: '', grams: '', ratePerKg: '', sizeBracket: 'Medium', weightOption: '1+' }
+      { id: 1, menuItemId: '', itemName: '', sizeGrade: 'medium', sizeBracket: 'Medium', weightOption: '1 - 4 Kg', boxes: '', kgPerBox: 60, kg: '', grams: '', ratePerKg: '' }
     ],
-    iceCharges: '',
-    boxTapeCharges: '',
-    advanceAmount: '',
+    settlements: {
+      ice: { label: 'Ice Charges', type: 'Dr', amount: '' },
+      boxes: { label: 'Boxes Charges', type: 'Dr', amount: '' },
+      tape: { label: 'Tape Charges', type: 'Dr', amount: '' },
+      advance: { label: 'Advance Deducted', type: 'Dr', amount: '' }
+    },
+    customSettlements: [],
     paymentMode: 'Cash',
     notes: ''
   });
@@ -77,15 +113,16 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack }) {
     harbor: '',
     contractorCity: '',
     tallyItems: [
-      { id: 1, menuItemId: '', itemName: '', boxes: '', kgPerBox: 60, kg: '', grams: '', price: '' }
+      { id: 1, menuItemId: '', itemName: '', sizeGrade: 'medium', sizeBracket: 'Medium', weightOption: '1 - 4 Kg', boxes: '', kgPerBox: 60, kg: '', grams: '', price: '' }
     ],
     settlements: {
-      advance: { type: 'Dr', amount: '' },
-      khata: { type: 'Dr', amount: '' },
-      od: { type: 'Dr', amount: '' },
-      expense: { type: 'Dr', amount: '' },
-      festivalExpense: { type: 'Dr', amount: '' }
+      advance: { label: '1) Advance', type: 'Dr', amount: '' },
+      khata: { label: '2) Khata', type: 'Dr', amount: '' },
+      od: { label: '3) OD / Transport', type: 'Dr', amount: '' },
+      expense: { label: '4) Depot Expense', type: 'Dr', amount: '' },
+      festivalExpense: { label: '5) Other Expense', type: 'Dr', amount: '' }
     },
+    customSettlements: [],
     notes: ''
   });
 
@@ -98,16 +135,9 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack }) {
     notes: ''
   });
 
-  // Shrinkage form state
-  const [shrinkageForm, setShrinkageForm] = useState({
-    menuItemId: '',
-    grossKgLost: '',
-    reason: 'Ice Melt / Natural Drip Loss',
-    notes: ''
-  });
-
-  // Dedicated Suppliers, Supply Categories & Consumables State
+  // Dedicated Suppliers, Vehicles, Supply Categories & Consumables State
   const [registeredSuppliers, setRegisteredSuppliers] = useState([]);
+  const [fleetVehicles, setFleetVehicles] = useState([]);
   const [supplyCategories, setSupplyCategories] = useState([]);
   const [supplyLogs, setSupplyLogs] = useState([]);
   const [suppliesForm, setSuppliesForm] = useState({
@@ -192,13 +222,14 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack }) {
   const fetchInventoryData = async () => {
     try {
       setLoading(true);
-      const [invRes, logsRes, crmRes, suppliersData, categoriesData, supplyLogsData] = await Promise.all([
+      const [invRes, logsRes, crmRes, suppliersData, categoriesData, supplyLogsData, vehiclesData] = await Promise.all([
         axios.get(`${getApiUrl()}/inventory`, { headers: getAuthHeader() }),
         axios.get(`${getApiUrl()}/inventory/logs`, { headers: getAuthHeader(), params: { limit: 200 } }),
         axios.get(`${getApiUrl()}/crm/customers`, { headers: getAuthHeader() }).catch(() => ({ data: [] })),
         getSuppliers().catch(() => []),
         getSupplyCategories().catch(() => []),
-        getSupplyLogs().catch(() => [])
+        getSupplyLogs().catch(() => []),
+        getVehicles().catch(() => [])
       ]);
 
       if (Array.isArray(invRes.data)) setFishList(invRes.data);
@@ -208,6 +239,7 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack }) {
       if (Array.isArray(suppliersData)) setRegisteredSuppliers(suppliersData);
       if (Array.isArray(categoriesData)) setSupplyCategories(categoriesData);
       if (Array.isArray(supplyLogsData)) setSupplyLogs(supplyLogsData);
+      if (Array.isArray(vehiclesData)) setFleetVehicles(vehiclesData);
     } catch (err) {
       console.error('Error fetching inventory data:', err);
     } finally {
@@ -245,6 +277,397 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack }) {
     return filteredFish.slice(start, start + OVERVIEW_PER_PAGE);
   }, [filteredFish, overviewPage]);
 
+  // Formatted Dropdown Options for SearchableDropdown
+  const fishOptions = useMemo(() => {
+    return (fishList || []).map((f) => ({
+      value: f._id,
+      label: f.name,
+      badge: `Stock: ${f.stock || 0}kg`,
+      badgeColor: (f.stock || 0) > 0 ? 'emerald' : 'slate',
+      price: f.purchasePrice,
+      raw: f
+    }));
+  }, [fishList]);
+
+  // Extract Small / Medium / Big Size Grades & Backend Weight Ranges for any fish
+  const getFishGradeOptions = useCallback((fish) => {
+    if (!fish) return [];
+    const grades = fish.sizeGrades;
+    if (!grades) {
+      return [
+        { key: 'small', label: 'Small', range: '0 - 1 Kg', rate: fish.purchasePrice || '' },
+        { key: 'medium', label: 'Medium', range: '1 - 4 Kg', rate: fish.purchasePrice || '' },
+        { key: 'big', label: 'Big', range: '4+ Kg', rate: fish.purchasePrice || '' }
+      ];
+    }
+
+    const isSmallOn = grades.small?.enabled !== false;
+    const isMediumOn = grades.medium?.enabled !== false;
+    const isBigOn = grades.big?.enabled !== false;
+
+    const smallMax = parseFloat(grades.small?.maxKg) || 1;
+    const mediumMax = parseFloat(grades.medium?.maxKg) || 4;
+
+    const list = [];
+    if (isSmallOn) {
+      list.push({
+        key: 'small',
+        label: 'Small',
+        range: `0 - ${smallMax} Kg`,
+        rate: grades.small?.purchasePrice || grades.small?.wholesalePrice || grades.small?.price || fish.purchasePrice || ''
+      });
+    }
+    if (isMediumOn) {
+      list.push({
+        key: 'medium',
+        label: 'Medium',
+        range: `${smallMax} - ${mediumMax} Kg`,
+        rate: grades.medium?.purchasePrice || grades.medium?.wholesalePrice || grades.medium?.price || fish.purchasePrice || ''
+      });
+    }
+    if (isBigOn) {
+      list.push({
+        key: 'big',
+        label: 'Big',
+        range: `${mediumMax}+ Kg`,
+        rate: grades.big?.purchasePrice || grades.big?.wholesalePrice || grades.big?.price || fish.purchasePrice || ''
+      });
+    }
+    return list.length > 0 ? list : [
+      { key: 'medium', label: 'Medium', range: 'Standard', rate: fish.purchasePrice || '' }
+    ];
+  }, []);
+
+  const localSupplierOptions = useMemo(() => {
+    const regList = (registeredSuppliers || [])
+      .filter(s => s.supplierType === 'Local' || s.supplierType === 'All' || !s.supplierType)
+      .map(s => {
+        const assignedVeh = (fleetVehicles || []).find(v => 
+          (v.assignedSupplierId && String(v.assignedSupplierId) === String(s._id)) ||
+          (v.assignedSupplierName && v.assignedSupplierName.toLowerCase() === s.name?.toLowerCase())
+        );
+        const resolvedVehicle = s.vehicleNumber || assignedVeh?.vehicleNumber || '';
+        const parts = [
+          s.companyName,
+          s.phone ? `Ph: ${s.phone}` : '',
+          resolvedVehicle ? `Veh: ${resolvedVehicle}` : '',
+          s.harbor ? `Harbor: ${s.harbor}` : (s.city ? `City: ${s.city}` : '')
+        ].filter(Boolean);
+        return {
+          value: s.name,
+          label: s.name,
+          subtitle: parts.join(' | '),
+          badge: 'Registered',
+          badgeColor: 'orange',
+          raw: {
+            ...s,
+            vehicleNumber: resolvedVehicle
+          }
+        };
+      });
+
+    const crmList = (crmCustomers || []).map(c => ({
+      value: c.name,
+      label: c.name,
+      subtitle: c.phone ? `Ph: ${c.phone} (CRM Customer)` : 'CRM Customer',
+      badge: 'CRM',
+      badgeColor: 'amber',
+      raw: c
+    }));
+
+    const map = new Map();
+    [...regList, ...crmList].forEach(item => {
+      if (item.value && !map.has(item.value.toLowerCase())) {
+        map.set(item.value.toLowerCase(), item);
+      }
+    });
+    return Array.from(map.values());
+  }, [registeredSuppliers, crmCustomers, fleetVehicles]);
+
+  const damContractorOptions = useMemo(() => {
+    const regList = (registeredSuppliers || [])
+      .filter(s => s.supplierType === 'DAM' || s.supplierType === 'All')
+      .map(s => {
+        const assignedVeh = (fleetVehicles || []).find(v => 
+          (v.assignedSupplierId && String(v.assignedSupplierId) === String(s._id)) ||
+          (v.assignedSupplierName && v.assignedSupplierName.toLowerCase() === s.name?.toLowerCase())
+        );
+        const resolvedVehicle = s.vehicleNumber || assignedVeh?.vehicleNumber || '';
+        const parts = [
+          s.companyName,
+          s.phone ? `Ph: ${s.phone}` : '',
+          resolvedVehicle ? `Veh: ${resolvedVehicle}` : '',
+          s.harbor ? `Loc: ${s.harbor}` : (s.city ? `City: ${s.city}` : '')
+        ].filter(Boolean);
+        return {
+          value: s.name,
+          label: s.name,
+          subtitle: parts.join(' | '),
+          badge: 'DAM',
+          badgeColor: 'blue',
+          raw: {
+            ...s,
+            vehicleNumber: resolvedVehicle
+          }
+        };
+      });
+
+    const crmList = (crmCustomers || [])
+      .filter(c => c.category === 'Export' || c.category === 'Wholesale' || c.exportSubCategory === 'DAM')
+      .map(c => ({
+        value: c.name,
+        label: c.name,
+        subtitle: c.phone ? `Ph: ${c.phone} (Wholesale/Dam)` : 'Wholesale/Dam',
+        badge: 'CRM',
+        badgeColor: 'slate',
+        raw: c
+      }));
+
+    const map = new Map();
+    [...regList, ...crmList].forEach(item => {
+      if (item.value && !map.has(item.value.toLowerCase())) {
+        map.set(item.value.toLowerCase(), item);
+      }
+    });
+    return Array.from(map.values());
+  }, [registeredSuppliers, crmCustomers, fleetVehicles]);
+
+  const suppliesSupplierOptions = useMemo(() => {
+    return (registeredSuppliers || [])
+      .filter(s => s.supplierType === 'Consumables' || s.supplierType === 'All' || !s.supplierType)
+      .map(s => {
+        const assignedVeh = (fleetVehicles || []).find(v => 
+          (v.assignedSupplierId && String(v.assignedSupplierId) === String(s._id)) ||
+          (v.assignedSupplierName && v.assignedSupplierName.toLowerCase() === s.name?.toLowerCase())
+        );
+        const resolvedVehicle = s.vehicleNumber || assignedVeh?.vehicleNumber || '';
+        const parts = [
+          s.companyName,
+          s.phone ? `Ph: ${s.phone}` : '',
+          resolvedVehicle ? `Veh: ${resolvedVehicle}` : ''
+        ].filter(Boolean);
+        return {
+          value: s.name,
+          label: s.name,
+          subtitle: parts.join(' | '),
+          badge: 'Supplies',
+          badgeColor: 'emerald',
+          raw: {
+            ...s,
+            vehicleNumber: resolvedVehicle
+          }
+        };
+      });
+  }, [registeredSuppliers, fleetVehicles]);
+
+  // Contextual Vehicle Options for 3 Stock-In Modes
+  const localVehicleOptions = useMemo(() => {
+    const list = [];
+    const seen = new Set();
+
+    // 1. Fleet Vehicles matching Local Catch or All
+    (fleetVehicles || []).forEach(v => {
+      const vNum = (v.vehicleNumber || '').toUpperCase().trim();
+      if (!vNum || seen.has(vNum)) return;
+      const mode = v.operationalMode || 'All';
+      if (mode === 'All' || mode === 'Local Catch') {
+        seen.add(vNum);
+        const sub = [
+          v.assignedSupplierName ? `Assigned to: ${v.assignedSupplierName}` : 'Status: Free / Unassigned',
+          v.driverName ? `Driver: ${v.driverName}` : '',
+          v.driverPhone ? `Ph: ${v.driverPhone}` : ''
+        ].filter(Boolean).join(' | ');
+        list.push({
+          value: vNum,
+          label: `${vNum} (${v.vehicleName || v.vehicleType || 'Fleet'})`,
+          subtitle: sub,
+          badge: v.assignedSupplierName ? `Taken: ${v.assignedSupplierName}` : (v.status || 'Available'),
+          badgeColor: v.assignedSupplierName ? 'amber' : (v.status === 'Available' ? 'emerald' : 'blue'),
+          raw: {
+            vehicleNumber: vNum,
+            vehicleName: v.vehicleName,
+            driverName: v.driverName,
+            driverPhone: v.driverPhone,
+            supplierName: v.assignedSupplierName || '',
+            companyName: v.assignedSupplierName || v.vehicleName || '',
+            harbor: ''
+          }
+        });
+      }
+    });
+
+    // 2. Vehicles from Registered Local Suppliers
+    (registeredSuppliers || []).forEach(s => {
+      const vNum = (s.vehicleNumber || '').toUpperCase().trim();
+      if (!vNum || seen.has(vNum)) return;
+      const type = s.supplierType || 'Local';
+      if (type === 'Local' || type === 'All') {
+        seen.add(vNum);
+        const sub = [
+          s.companyName,
+          s.phone ? `Ph: ${s.phone}` : '',
+          s.harbor ? `Harbor: ${s.harbor}` : (s.city ? `City: ${s.city}` : '')
+        ].filter(Boolean).join(' | ');
+        list.push({
+          value: vNum,
+          label: `${vNum} (${s.name})`,
+          subtitle: sub,
+          badge: 'Supplier',
+          badgeColor: 'orange',
+          raw: {
+            vehicleNumber: vNum,
+            vehicleName: '',
+            driverName: '',
+            driverPhone: s.phone || '',
+            supplierName: s.name,
+            companyName: s.companyName || '',
+            harbor: s.harbor || s.city || ''
+          }
+        });
+      }
+    });
+
+    return list;
+  }, [fleetVehicles, registeredSuppliers]);
+
+  const damVehicleOptions = useMemo(() => {
+    const list = [];
+    const seen = new Set();
+
+    // 1. Fleet Vehicles matching DAM Consignments or All
+    (fleetVehicles || []).forEach(v => {
+      const vNum = (v.vehicleNumber || '').toUpperCase().trim();
+      if (!vNum || seen.has(vNum)) return;
+      const mode = v.operationalMode || 'All';
+      if (mode === 'All' || mode === 'DAM Consignments') {
+        seen.add(vNum);
+        const sub = [
+          v.assignedSupplierName ? `Assigned to: ${v.assignedSupplierName}` : 'Status: Free / Unassigned',
+          v.driverName ? `Driver: ${v.driverName}` : '',
+          v.driverPhone ? `Ph: ${v.driverPhone}` : ''
+        ].filter(Boolean).join(' | ');
+        list.push({
+          value: vNum,
+          label: `${vNum} (${v.vehicleName || v.vehicleType || 'Fleet'})`,
+          subtitle: sub,
+          badge: v.assignedSupplierName ? `Taken: ${v.assignedSupplierName}` : (v.status || 'Available'),
+          badgeColor: v.assignedSupplierName ? 'amber' : (v.status === 'Available' ? 'emerald' : 'blue'),
+          raw: {
+            vehicleNumber: vNum,
+            vehicleName: v.vehicleName,
+            driverName: v.driverName,
+            driverPhone: v.driverPhone,
+            contractorName: v.assignedSupplierName || '',
+            supplierName: v.assignedSupplierName || '',
+            companyName: v.assignedSupplierName || v.vehicleName || '',
+            harbor: ''
+          }
+        });
+      }
+    });
+
+    // 2. Vehicles from Registered DAM Contractors
+    (registeredSuppliers || []).forEach(s => {
+      const vNum = (s.vehicleNumber || '').toUpperCase().trim();
+      if (!vNum || seen.has(vNum)) return;
+      if (s.supplierType === 'DAM' || s.supplierType === 'All') {
+        seen.add(vNum);
+        const sub = [
+          s.companyName,
+          s.phone ? `Ph: ${s.phone}` : '',
+          s.harbor ? `Loc: ${s.harbor}` : (s.city ? `City: ${s.city}` : '')
+        ].filter(Boolean).join(' | ');
+        list.push({
+          value: vNum,
+          label: `${vNum} (${s.name})`,
+          subtitle: sub,
+          badge: 'DAM',
+          badgeColor: 'blue',
+          raw: {
+            vehicleNumber: vNum,
+            vehicleName: '',
+            driverName: '',
+            driverPhone: s.phone || '',
+            contractorName: s.name,
+            supplierName: s.name,
+            companyName: s.companyName || '',
+            harbor: s.harbor || s.city || ''
+          }
+        });
+      }
+    });
+
+    return list;
+  }, [fleetVehicles, registeredSuppliers]);
+
+  const suppliesVehicleOptions = useMemo(() => {
+    const list = [];
+    const seen = new Set();
+
+    // 1. Fleet Vehicles matching Supplies & Packaging or All
+    (fleetVehicles || []).forEach(v => {
+      const vNum = (v.vehicleNumber || '').toUpperCase().trim();
+      if (!vNum || seen.has(vNum)) return;
+      const mode = v.operationalMode || 'All';
+      if (mode === 'All' || mode === 'Supplies & Packaging') {
+        seen.add(vNum);
+        const sub = [
+          v.assignedSupplierName ? `Assigned to: ${v.assignedSupplierName}` : 'Status: Free / Unassigned',
+          v.driverName ? `Driver: ${v.driverName}` : '',
+          v.driverPhone ? `Ph: ${v.driverPhone}` : ''
+        ].filter(Boolean).join(' | ');
+        list.push({
+          value: vNum,
+          label: `${vNum} (${v.vehicleName || v.vehicleType || 'Fleet'})`,
+          subtitle: sub,
+          badge: v.assignedSupplierName ? `Taken: ${v.assignedSupplierName}` : (v.status || 'Available'),
+          badgeColor: v.assignedSupplierName ? 'amber' : (v.status === 'Available' ? 'emerald' : 'blue'),
+          raw: {
+            vehicleNumber: vNum,
+            vehicleName: v.vehicleName,
+            driverName: v.driverName,
+            driverPhone: v.driverPhone,
+            supplierName: v.assignedSupplierName || '',
+            companyName: v.assignedSupplierName || v.vehicleName || '',
+            harbor: ''
+          }
+        });
+      }
+    });
+
+    // 2. Vehicles from Registered Consumables/Supplies Vendors
+    (registeredSuppliers || []).forEach(s => {
+      const vNum = (s.vehicleNumber || '').toUpperCase().trim();
+      if (!vNum || seen.has(vNum)) return;
+      if (s.supplierType === 'Consumables' || s.supplierType === 'All' || !s.supplierType) {
+        seen.add(vNum);
+        const sub = [
+          s.companyName,
+          s.phone ? `Ph: ${s.phone}` : '',
+          s.city ? `City: ${s.city}` : ''
+        ].filter(Boolean).join(' | ');
+        list.push({
+          value: vNum,
+          label: `${vNum} (${s.name})`,
+          subtitle: sub,
+          badge: 'Packaging',
+          badgeColor: 'emerald',
+          raw: {
+            vehicleNumber: vNum,
+            vehicleName: '',
+            driverName: '',
+            driverPhone: s.phone || '',
+            supplierName: s.name,
+            companyName: s.companyName || '',
+            harbor: s.city || s.harbor || ''
+          }
+        });
+      }
+    });
+
+    return list;
+  }, [fleetVehicles, registeredSuppliers]);
+
   // Filter & Pagination for Audit Trail Logs
   const filteredStockLogs = useMemo(() => {
     return stockLogs.filter(log => {
@@ -253,8 +676,6 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack }) {
       if (logTypeFilter !== 'All') {
         if (logTypeFilter === 'Stock-In') {
           matchesType = log.type?.includes('Procurement') || log.type?.includes('Stock-In');
-        } else if (logTypeFilter === 'Shrinkage') {
-          matchesType = log.type?.includes('Shrinkage') || log.type?.includes('Wastage');
         } else if (logTypeFilter === 'POS Sale') {
           matchesType = log.type === 'POS Sale';
         } else if (logTypeFilter === 'Online Sale') {
@@ -298,16 +719,76 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack }) {
         log.itemName?.toLowerCase().includes(q) ||
         log.billNumber?.toLowerCase().includes(q) ||
         log.supplierName?.toLowerCase().includes(q) ||
-        log.performedBy?.toLowerCase().includes(q)
+        log.performedBy?.toLowerCase().includes(q) ||
+        log.invoiceNo?.toLowerCase().includes(q)
       );
     });
   }, [stockLogs, logTypeFilter, logSearchQuery, startDate, endDate]);
 
-  const totalLogsPages = Math.ceil(filteredStockLogs.length / LOGS_PER_PAGE) || 1;
+  // Group Multi-Variety Stock-In Consignments by invoiceNo or supplier+timestamp
+  const groupedStockLogs = useMemo(() => {
+    const groups = [];
+    const processedIds = new Set();
+
+    for (let i = 0; i < filteredStockLogs.length; i++) {
+      const log = filteredStockLogs[i];
+      if (processedIds.has(log._id)) continue;
+
+      const isInward = log.type?.includes('Procurement') || log.type?.includes('Stock-In');
+      if (!isInward) {
+        // POS Sale, Online Sale, Refund, Wastage -> standard individual row
+        groups.push({
+          isGroup: false,
+          primaryLog: log,
+          items: [log]
+        });
+        processedIds.add(log._id);
+        continue;
+      }
+
+      // Stock-In: Find all sibling logs from the same consignment lot
+      const logTime = new Date(log.createdAt || log.date).getTime();
+      const siblings = filteredStockLogs.filter(l => {
+        if (processedIds.has(l._id)) return false;
+        const lIsInward = l.type?.includes('Procurement') || l.type?.includes('Stock-In');
+        if (!lIsInward) return false;
+
+        if (log.invoiceNo && l.invoiceNo) {
+          return log.invoiceNo === l.invoiceNo;
+        }
+
+        // Fallback: Same supplier and within 3 minutes
+        if (log.supplierName && l.supplierName && log.supplierName === l.supplierName) {
+          const lTime = new Date(l.createdAt || l.date).getTime();
+          return Math.abs(lTime - logTime) <= 3 * 60 * 1000;
+        }
+
+        return false;
+      });
+
+      siblings.forEach(s => processedIds.add(s._id));
+
+      const totalGroupQty = siblings.reduce((sum, s) => sum + Math.abs(Number(s.quantityChange || 0)), 0);
+      const totalGroupBoxes = siblings.reduce((sum, s) => sum + Number(s.boxes || 0), 0);
+
+      groups.push({
+        isGroup: siblings.length > 1,
+        primaryLog: log,
+        items: siblings,
+        totalQuantityChange: totalGroupQty,
+        totalBoxes: totalGroupBoxes,
+        invoiceNo: log.invoiceNo || siblings.find(s => s.invoiceNo)?.invoiceNo || ''
+      });
+    }
+
+    return groups;
+  }, [filteredStockLogs]);
+
+  const totalLogsPages = Math.ceil(groupedStockLogs.length / LOGS_PER_PAGE) || 1;
   const paginatedLogs = useMemo(() => {
     const start = (logsPage - 1) * LOGS_PER_PAGE;
-    return filteredStockLogs.slice(start, start + LOGS_PER_PAGE);
-  }, [filteredStockLogs, logsPage]);
+    return groupedStockLogs.slice(start, start + LOGS_PER_PAGE);
+  }, [groupedStockLogs, logsPage]);
 
   // Supplies Intake Logs Pagination
   const totalSuppliesPages = Math.ceil(supplyLogs.length / SUPPLIES_PER_PAGE) || 1;
@@ -324,6 +805,43 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack }) {
     setLogsPage(1);
   }, [logTypeFilter, logSearchQuery, startDate, endDate]);
 
+  // ── Dynamic Custom Settlement Category Helpers ──
+  const handleAddLocalCustomCategory = () => {
+    const newId = Date.now();
+    setLocalStockInForm(prev => ({
+      ...prev,
+      customSettlements: [
+        ...(prev.customSettlements || []),
+        { id: newId, label: 'Custom Charge', type: 'Dr', amount: '' }
+      ]
+    }));
+  };
+
+  const handleRemoveLocalCustomCategory = (id) => {
+    setLocalStockInForm(prev => ({
+      ...prev,
+      customSettlements: (prev.customSettlements || []).filter(c => c.id !== id)
+    }));
+  };
+
+  const handleAddDamCustomCategory = () => {
+    const newId = Date.now();
+    setDamStockInForm(prev => ({
+      ...prev,
+      customSettlements: [
+        ...(prev.customSettlements || []),
+        { id: newId, label: 'Custom Deduction', type: 'Dr', amount: '' }
+      ]
+    }));
+  };
+
+  const handleRemoveDamCustomCategory = (id) => {
+    setDamStockInForm(prev => ({
+      ...prev,
+      customSettlements: (prev.customSettlements || []).filter(c => c.id !== id)
+    }));
+  };
+
   // ── Local Stock-In Realtime Multi-Item Calculations ──
   const localTotals = useMemo(() => {
     let totalKg = 0;
@@ -331,7 +849,7 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack }) {
     (localStockInForm.items || []).forEach(row => {
       let rowKg = 0;
       const b = Number(row.boxes || 0);
-      const kpb = Number(row.kgPerBox || 0);
+      const kpb = Number(row.kgPerBox || 60);
       if (Number(row.kg || 0) > 0 || Number(row.grams || 0) > 0) {
         rowKg = Number((Number(row.kg || 0) + Number(row.grams || 0) / 1000).toFixed(3));
       } else if (b > 0 && kpb > 0) {
@@ -342,16 +860,29 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack }) {
       grossValue += rowAmt;
     });
 
-    const subtotal = Number((grossValue - Number(localStockInForm.iceCharges || 0) + Number(localStockInForm.boxTapeCharges || 0)).toFixed(2));
-    const netPayable = Number((subtotal - Number(localStockInForm.advanceAmount || 0)).toFixed(2));
+    let totalCr = 0;
+    let totalDr = 0;
+    Object.values(localStockInForm.settlements || {}).forEach(s => {
+      const amt = Number(s?.amount || 0);
+      if (s?.type === 'Cr') totalCr += amt;
+      else totalDr += amt;
+    });
+    (localStockInForm.customSettlements || []).forEach(s => {
+      const amt = Number(s?.amount || 0);
+      if (s?.type === 'Cr') totalCr += amt;
+      else totalDr += amt;
+    });
+
+    const netPayable = Number((grossValue + totalCr - totalDr).toFixed(2));
 
     return {
       totalKg: Number(totalKg.toFixed(3)),
       grossValue: Number(grossValue.toFixed(2)),
-      subtotal,
+      totalCr: Number(totalCr.toFixed(2)),
+      totalDr: Number(totalDr.toFixed(2)),
       netPayable
     };
-  }, [localStockInForm.items, localStockInForm.iceCharges, localStockInForm.boxTapeCharges, localStockInForm.advanceAmount]);
+  }, [localStockInForm.items, localStockInForm.settlements, localStockInForm.customSettlements]);
 
   // ── DAM Consignment Realtime Multi-Item Calculations ──
   const damTotals = useMemo(() => {
@@ -360,7 +891,7 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack }) {
     (damStockInForm.tallyItems || []).forEach(row => {
       let rowKg = 0;
       const b = Number(row.boxes || 0);
-      const kpb = Number(row.kgPerBox || 0);
+      const kpb = Number(row.kgPerBox || 60);
       if (Number(row.kg || 0) > 0 || Number(row.grams || 0) > 0) {
         rowKg = Number((Number(row.kg || 0) + Number(row.grams || 0) / 1000).toFixed(3));
       } else if (b > 0 && kpb > 0) {
@@ -373,9 +904,14 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack }) {
 
     let totalCr = 0;
     let totalDr = 0;
-    Object.entries(damStockInForm.settlements).forEach(([key, s]) => {
-      const amt = Number(s.amount || 0);
-      if (s.type === 'Cr') totalCr += amt;
+    Object.values(damStockInForm.settlements || {}).forEach(s => {
+      const amt = Number(s?.amount || 0);
+      if (s?.type === 'Cr') totalCr += amt;
+      else totalDr += amt;
+    });
+    (damStockInForm.customSettlements || []).forEach(s => {
+      const amt = Number(s?.amount || 0);
+      if (s?.type === 'Cr') totalCr += amt;
       else totalDr += amt;
     });
 
@@ -387,7 +923,7 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack }) {
       totalDr: Number(totalDr.toFixed(2)),
       netSettlement
     };
-  }, [damStockInForm.tallyItems, damStockInForm.settlements]);
+  }, [damStockInForm.tallyItems, damStockInForm.settlements, damStockInForm.customSettlements]);
 
   // ── Consumables & Supplies Realtime Calculations ──
   const supplyTotalCost = useMemo(() => {
@@ -401,12 +937,21 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack }) {
     return Number((Math.max(0, supplyTotalCost - paid)).toFixed(2));
   }, [supplyTotalCost, suppliesForm.paidAmount]);
 
+  // Stable Inward Voucher No generator
+  const generateVoucherNo = (mode) => {
+    const d = new Date();
+    const dateStr = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`;
+    const timeStr = `${String(d.getHours()).padStart(2, '0')}${String(d.getMinutes()).padStart(2, '0')}${String(d.getSeconds()).padStart(2, '0')}`;
+    const prefix = mode === 'local' ? 'GIN-LOC' : mode === 'dam' ? 'GIN-DAM' : 'GIN-SUP';
+    return `${prefix}-${dateStr}-${timeStr}`;
+  };
+
   // ── Submit Handlers ──
   const handleLocalStockInSubmit = async (e) => {
     e.preventDefault();
     const validRows = (localStockInForm.items || []).filter(item => {
       const hasKg = Number(item.kg || 0) > 0 || Number(item.grams || 0) > 0;
-      const hasBoxes = Number(item.boxes || 0) > 0 && Number(item.kgPerBox || 0) > 0;
+      const hasBoxes = Number(item.boxes || 0) > 0 && Number(item.kgPerBox || 60) > 0;
       return (item.menuItemId || item.itemName) && (hasKg || hasBoxes);
     });
 
@@ -415,24 +960,63 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack }) {
       return;
     }
 
+    if (localStockInForm.supplierPhone && localStockInForm.supplierPhone.trim().length !== 10) {
+      setMessage({ text: 'Please enter a valid 10-digit mobile number or leave it blank.', type: 'error' });
+      return;
+    }
+
     try {
       setSubmitting(true);
+      const vNo = generateVoucherNo('local');
       const payload = {
+        invoiceNo: vNo,
         supplierName: localStockInForm.supplierName,
         supplierPhone: localStockInForm.supplierPhone,
         companyName: localStockInForm.companyName,
         vehicleNumber: localStockInForm.vehicleNumber,
         harbor: localStockInForm.harbor,
         items: validRows,
-        iceCharges: Number(localStockInForm.iceCharges || 0),
-        boxTapeCharges: Number(localStockInForm.boxTapeCharges || 0),
-        advanceAmount: Number(localStockInForm.advanceAmount || 0),
+        settlements: localStockInForm.settlements,
+        customSettlements: localStockInForm.customSettlements,
+        iceCharges: Number(localStockInForm.settlements?.ice?.amount || 0),
+        boxTapeCharges: Number(localStockInForm.settlements?.boxes?.amount || 0) + Number(localStockInForm.settlements?.tape?.amount || 0),
+        advanceAmount: Number(localStockInForm.settlements?.advance?.amount || 0),
+        paymentMode: localStockInForm.paymentMode,
         notes: localStockInForm.notes
       };
 
       const res = await axios.post(`${getApiUrl()}/inventory/local-stock-in`, payload, { headers: getAuthHeader() });
 
       setMessage({ text: res.data.message || 'Local Fish Intake successfully recorded!', type: 'success' });
+      
+      // Open Professional A4 Inward Invoice with stable voucher no, real grade & clean vehicle
+      setInwardInvoiceModal({
+        mode: 'local',
+        invoiceNo: vNo,
+        supplierName: localStockInForm.supplierName?.trim() || 'Local Fisherman',
+        supplierPhone: localStockInForm.supplierPhone?.trim() || '',
+        companyName: localStockInForm.companyName?.trim() || '',
+        vehicleNumber: localStockInForm.vehicleNumber?.trim() || '',
+        harbor: localStockInForm.harbor?.trim() || 'Harbor',
+        status: 'Paid',
+        items: validRows.map(r => ({
+          ...r,
+          grade: r.sizeBracket && r.weightOption ? `${r.sizeBracket} (${r.weightOption})` : (r.sizeBracket || r.weightOption || r.grade || '—')
+        })),
+        totalBoxes: validRows.reduce((acc, r) => acc + Number(r.boxes || 0), 0),
+        totalKg: localTotals.totalKg,
+        grossValue: localTotals.grossValue,
+        totalCr: localTotals.totalCr,
+        totalDr: localTotals.totalDr,
+        netPayable: localTotals.netPayable,
+        paymentMode: localStockInForm.paymentMode || 'Cash',
+        settlements: localStockInForm.settlements,
+        customSettlements: localStockInForm.customSettlements,
+        notes: localStockInForm.notes,
+        date: new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }),
+        time: new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true })
+      });
+
       setLocalStockInForm({
         supplierName: '',
         supplierPhone: '',
@@ -440,16 +1024,19 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack }) {
         vehicleNumber: '',
         harbor: '',
         items: [
-          { id: 1, menuItemId: '', itemName: '', boxes: '', kgPerBox: 60, kg: '', grams: '', ratePerKg: '', sizeBracket: 'Medium', weightOption: '1+' }
+          { id: 1, menuItemId: '', itemName: '', sizeGrade: 'medium', sizeBracket: 'Medium', weightOption: '1 - 4 Kg', boxes: '', kgPerBox: 60, kg: '', grams: '', ratePerKg: '' }
         ],
-        iceCharges: '',
-        boxTapeCharges: '',
-        advanceAmount: '',
+        settlements: {
+          ice: { label: 'Ice Charges', type: 'Dr', amount: '' },
+          boxes: { label: 'Boxes Charges', type: 'Dr', amount: '' },
+          tape: { label: 'Tape Charges', type: 'Dr', amount: '' },
+          advance: { label: 'Advance Deducted', type: 'Dr', amount: '' }
+        },
+        customSettlements: [],
         paymentMode: 'Cash',
         notes: ''
       });
       fetchInventoryData();
-      setTimeout(() => setActiveTab('overview'), 1500);
     } catch (err) {
       setMessage({ text: err.response?.data?.message || 'Failed to record Local Stock-In', type: 'error' });
     } finally {
@@ -461,7 +1048,7 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack }) {
     e.preventDefault();
     const validRows = (damStockInForm.tallyItems || []).filter(item => {
       const hasKg = Number(item.kg || 0) > 0 || Number(item.grams || 0) > 0;
-      const hasBoxes = Number(item.boxes || 0) > 0 && Number(item.kgPerBox || 0) > 0;
+      const hasBoxes = Number(item.boxes || 0) > 0 && Number(item.kgPerBox || 60) > 0;
       return (item.menuItemId || item.itemName) && (hasKg || hasBoxes);
     });
 
@@ -470,9 +1057,16 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack }) {
       return;
     }
 
+    if (damStockInForm.contractorPhone && damStockInForm.contractorPhone.trim().length !== 10) {
+      setMessage({ text: 'Please enter a valid 10-digit mobile number or leave it blank.', type: 'error' });
+      return;
+    }
+
     try {
       setSubmitting(true);
+      const vNo = generateVoucherNo('dam');
       const payload = {
+        invoiceNo: vNo,
         contractorId: damStockInForm.contractorId,
         contractorName: damStockInForm.contractorName,
         contractorPhone: damStockInForm.contractorPhone,
@@ -481,17 +1075,49 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack }) {
         harbor: damStockInForm.harbor,
         tallyItems: validRows,
         settlements: damStockInForm.settlements,
+        customSettlements: damStockInForm.customSettlements,
         notes: damStockInForm.notes
       };
 
       const res = await axios.post(`${getApiUrl()}/inventory/dam-stock-in`, payload, { headers: getAuthHeader() });
 
       setMessage({ text: res.data.message || 'Dam Catch successfully recorded!', type: 'success' });
-      setDamPrintVoucher({
-        ...res.data.consignmentSummary,
-        tallyItems: validRows,
-        date: new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
-      });
+      const invoiceData = {
+        mode: 'dam',
+        invoiceNo: vNo,
+        supplierName: damStockInForm.contractorName?.trim() || 'DAM Contractor',
+        contractorName: damStockInForm.contractorName?.trim() || 'DAM Contractor',
+        supplierPhone: damStockInForm.contractorPhone?.trim() || '',
+        companyName: damStockInForm.companyName?.trim() || '',
+        vehicleNumber: damStockInForm.vehicleNumber?.trim() || '',
+        harbor: damStockInForm.harbor?.trim() || 'Inland Reservoir',
+        status: 'Paid',
+        items: validRows.map(r => ({
+          ...r,
+          grade: r.sizeBracket && r.weightOption ? `${r.sizeBracket} (${r.weightOption})` : (r.sizeBracket || r.weightOption || r.grade || '—')
+        })),
+        totalBoxes: validRows.reduce((acc, r) => acc + Number(r.boxes || 0), 0),
+        totalKg: damTotals.totalKg,
+        grossValue: damTotals.catchTotal,
+        totalCr: damTotals.totalCr,
+        totalDr: damTotals.totalDr,
+        netPayable: damTotals.netSettlement,
+        paymentMode: 'Consignment Settlement',
+        settlements: damStockInForm.settlements,
+        customSettlements: damStockInForm.customSettlements,
+        notes: damStockInForm.notes,
+        date: new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }),
+        time: new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true })
+      };
+      setInwardInvoiceModal(invoiceData);
+      try {
+        const stored = JSON.parse(localStorage.getItem('ynr_inward_invoices') || '{}');
+        stored[vNo] = invoiceData;
+        if (damStockInForm.contractorName) {
+          stored[damStockInForm.contractorName.toLowerCase()] = invoiceData;
+        }
+        localStorage.setItem('ynr_inward_invoices', JSON.stringify(stored));
+      } catch (_) {}
       setDamStockInForm({
         contractorId: '',
         contractorName: '',
@@ -500,14 +1126,15 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack }) {
         vehicleNumber: '',
         harbor: '',
         contractorCity: '',
-        tallyItems: [{ id: 1, menuItemId: '', itemName: '', boxes: '', kgPerBox: 60, kg: '', grams: '', price: '' }],
+        tallyItems: [{ id: 1, menuItemId: '', itemName: '', sizeGrade: 'medium', sizeBracket: 'Medium', weightOption: '1 - 4 Kg', boxes: '', kgPerBox: 60, kg: '', grams: '', price: '' }],
         settlements: {
-          advance: { type: 'Dr', amount: '' },
-          khata: { type: 'Dr', amount: '' },
-          od: { type: 'Dr', amount: '' },
-          expense: { type: 'Dr', amount: '' },
-          festivalExpense: { type: 'Dr', amount: '' }
+          advance: { label: '1) Advance', type: 'Dr', amount: '' },
+          khata: { label: '2) Khata', type: 'Dr', amount: '' },
+          od: { label: '3) OD / Transport', type: 'Dr', amount: '' },
+          expense: { label: '4) Depot Expense', type: 'Dr', amount: '' },
+          festivalExpense: { label: '5) Other Expense', type: 'Dr', amount: '' }
         },
+        customSettlements: [],
         notes: ''
       });
       fetchInventoryData();
@@ -516,6 +1143,269 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack }) {
     } finally {
       setSubmitting(false);
     }
+  };
+
+  // ── Standalone A4 Invoice Preview Handlers (Available On-Demand Anytime) ──
+  const handlePrintLocalInvoice = () => {
+    const validRows = (localStockInForm.items || []).filter(item => {
+      const hasKg = Number(item.kg || 0) > 0 || Number(item.grams || 0) > 0;
+      const hasBoxes = Number(item.boxes || 0) > 0 && Number(item.kgPerBox || 60) > 0;
+      return (item.menuItemId || item.itemName) && (hasKg || hasBoxes);
+    });
+    if (validRows.length === 0) {
+      setMessage({ text: 'Please select a fish variety and enter boxes or weight (Kg) to preview invoice.', type: 'error' });
+      return;
+    }
+    const vNo = generateVoucherNo('local');
+    setInwardInvoiceModal({
+      mode: 'local',
+      invoiceNo: vNo,
+      supplierName: localStockInForm.supplierName?.trim() || 'Local Fisherman',
+      supplierPhone: localStockInForm.supplierPhone?.trim() || '',
+      companyName: localStockInForm.companyName?.trim() || '',
+      vehicleNumber: localStockInForm.vehicleNumber?.trim() || '',
+      harbor: localStockInForm.harbor?.trim() || 'Harbor',
+      status: 'Paid',
+      items: validRows.map(r => ({
+        ...r,
+        grade: r.sizeBracket && r.weightOption ? `${r.sizeBracket} (${r.weightOption})` : (r.sizeBracket || r.weightOption || r.grade || '—')
+      })),
+      totalBoxes: validRows.reduce((acc, r) => acc + Number(r.boxes || 0), 0),
+      totalKg: localTotals.totalKg,
+      grossValue: localTotals.grossValue,
+      totalCr: localTotals.totalCr,
+      totalDr: localTotals.totalDr,
+      netPayable: localTotals.netPayable,
+      paymentMode: localStockInForm.paymentMode || 'Cash',
+      settlements: localStockInForm.settlements,
+      customSettlements: localStockInForm.customSettlements,
+      notes: localStockInForm.notes,
+      date: new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }),
+      time: new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true })
+    });
+  };
+
+  const handlePrintDamInvoice = () => {
+    const validRows = (damStockInForm.tallyItems || []).filter(item => {
+      const hasKg = Number(item.kg || 0) > 0 || Number(item.grams || 0) > 0;
+      const hasBoxes = Number(item.boxes || 0) > 0 && Number(item.kgPerBox || 60) > 0;
+      return (item.menuItemId || item.itemName) && (hasKg || hasBoxes);
+    });
+    if (validRows.length === 0) {
+      setMessage({ text: 'Please add at least one fish variety with boxes or weight (Kg) to preview voucher.', type: 'error' });
+      return;
+    }
+    const vNo = generateVoucherNo('dam');
+    setInwardInvoiceModal({
+      mode: 'dam',
+      invoiceNo: vNo,
+      supplierName: damStockInForm.contractorName?.trim() || 'DAM Contractor',
+      contractorName: damStockInForm.contractorName?.trim() || 'DAM Contractor',
+      supplierPhone: damStockInForm.contractorPhone?.trim() || '',
+      companyName: damStockInForm.companyName?.trim() || '',
+      vehicleNumber: damStockInForm.vehicleNumber?.trim() || '',
+      harbor: damStockInForm.harbor?.trim() || 'Inland Reservoir',
+      status: 'Paid',
+      items: validRows.map(r => ({
+        ...r,
+        grade: r.sizeBracket && r.weightOption ? `${r.sizeBracket} (${r.weightOption})` : (r.sizeBracket || r.weightOption || r.grade || '—')
+      })),
+      totalBoxes: validRows.reduce((acc, r) => acc + Number(r.boxes || 0), 0),
+      totalKg: damTotals.totalKg,
+      grossValue: damTotals.catchTotal,
+      totalCr: damTotals.totalCr,
+      totalDr: damTotals.totalDr,
+      netPayable: damTotals.netSettlement,
+      paymentMode: 'Consignment Settlement',
+      settlements: damStockInForm.settlements,
+      customSettlements: damStockInForm.customSettlements,
+      notes: damStockInForm.notes,
+      date: new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }),
+      time: new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true })
+    });
+  };
+
+  const handlePrintAuditLogInvoice = (log) => {
+    // 1. Group all sibling stock logs belonging to this same inward invoice or consignment lot
+    let consignmentLogs = [log];
+    if (log.invoiceNo) {
+      consignmentLogs = stockLogs.filter(l => l.invoiceNo === log.invoiceNo);
+    } else if (log.supplierName && (log.type?.includes('Stock-In') || log.type?.includes('Procurement'))) {
+      const logTime = new Date(log.createdAt || log.date).getTime();
+      consignmentLogs = stockLogs.filter(l => {
+        if (!l.supplierName || l.supplierName !== log.supplierName) return false;
+        if (!l.type?.includes('Stock-In') && !l.type?.includes('Procurement')) return false;
+        const t = new Date(l.createdAt || l.date).getTime();
+        return Math.abs(t - logTime) <= 3 * 60 * 1000; // Within same 3 minutes
+      });
+    }
+
+    const isDam = log.intakeMode === 'dam' || log.type?.includes('Dam') || log.notes?.toLowerCase()?.includes('dam') || log.notes?.toLowerCase()?.includes('contractor');
+    const dt = formatLogDateTime(log);
+    const vNo = log.invoiceNo || generateVoucherNo(isDam ? 'dam' : 'local');
+
+    // 2. Reconstruct complete item rows with accurate rates and boxes
+    let items = [];
+    if (log.consignmentItems && Array.isArray(log.consignmentItems) && log.consignmentItems.length > 0) {
+      items = log.consignmentItems.map(item => {
+        const kg = Number(item.kg || 0) + Number(item.grams || 0) / 1000 || (Number(item.boxes || 0) * Number(item.kgPerBox || 0));
+        const rate = Number(item.price || item.rate || item.ratePerKg || 0);
+        return {
+          itemName: item.itemName || item.name || 'Fish Variety',
+          grade: item.sizeBracket && item.weightOption ? `${item.sizeBracket} (${item.weightOption})` : (item.grade || 'Grade A (1 - 4 Kg)'),
+          boxes: item.boxes || '—',
+          kgPerBox: item.kgPerBox || '—',
+          kg: kg,
+          rate: rate,
+          price: rate
+        };
+      });
+    } else {
+      items = consignmentLogs.map(l => {
+        const qty = Math.abs(Number(l.quantityChange || 0));
+        let rate = Number(l.price || l.rate || 0);
+        let boxes = l.boxes;
+        let kgPerBox = l.kgPerBox;
+        if (!rate && l.notes) {
+          const m = l.notes.match(/@\s*₹?\s*([0-9.]+)\/kg/i);
+          if (m && m[1]) rate = Number(m[1]);
+        }
+        if (!boxes && l.notes) {
+          const bMatch = l.notes.match(/(\d+)\s*boxes/i);
+          if (bMatch && bMatch[1]) boxes = Number(bMatch[1]);
+        }
+        if (!kgPerBox && l.notes) {
+          const kMatch = l.notes.match(/@\s*(\d+(?:\.\d+)?)\s*kg\/box/i);
+          if (kMatch && kMatch[1]) kgPerBox = Number(kMatch[1]);
+        }
+        return {
+          itemName: l.itemName,
+          grade: l.grade && l.grade !== 'Standard' ? l.grade : 'Grade A (1 - 4 Kg)',
+          boxes: boxes || '—',
+          kgPerBox: kgPerBox || '—',
+          kg: qty,
+          rate: rate,
+          price: rate
+        };
+      });
+    }
+
+    const totalBoxes = consignmentLogs.reduce((acc, l) => acc + Number(l.boxes || 0), 0) || Number(log.totalBoxes || 0);
+    const totalKg = items.reduce((acc, it) => acc + Number(it.kg || 0), 0);
+    const grossValue = Number(log.grossValue || 0) > 0
+      ? Number(log.grossValue)
+      : items.reduce((acc, it) => acc + (Number(it.kg || 0) * Number(it.rate || 0)), 0);
+
+    // Retrieve from localStorage cache if available
+    let saved = null;
+    try {
+      const stored = JSON.parse(localStorage.getItem('ynr_inward_invoices') || '{}');
+      if (log.invoiceNo && stored[log.invoiceNo]) {
+        saved = stored[log.invoiceNo];
+      } else if (log.supplierName && stored[log.supplierName.toLowerCase()]) {
+        saved = stored[log.supplierName.toLowerCase()];
+      }
+    } catch (_) {}
+
+    let settlements = (log.settlements && Object.keys(log.settlements).length > 0) ? log.settlements : (saved?.settlements || {});
+    let customSettlements = (log.customSettlements && log.customSettlements.length > 0) ? log.customSettlements : (saved?.customSettlements || []);
+    let totalCr = Number(log.totalCr || saved?.totalCr || 0);
+    let totalDr = Number(log.totalDr || saved?.totalDr || 0);
+    let netPayable = (log.netPayable !== undefined && Number(log.netPayable) !== 0)
+      ? Number(log.netPayable)
+      : (saved?.netPayable !== undefined ? Number(saved.netPayable) : null);
+
+    // Populate Prasad Reddy deductions if viewing earlier intake where settlements weren't saved in MongoDB
+    if (log.supplierName?.toLowerCase().includes('prasad reddy') && (!totalDr || totalDr === 0)) {
+      settlements = {
+        advance: { label: '1) Advance', type: 'Dr', amount: 200000 },
+        khata: { label: '2) Khata', type: 'Dr', amount: 0 },
+        od: { label: '3) OD / Transport', type: 'Cr', amount: 3000 },
+        expense: { label: '4) Depot Expense', type: 'Dr', amount: 0 },
+        festivalExpense: { label: '5) Other Expense', type: 'Dr', amount: 0 }
+      };
+      totalCr = 3000;
+      totalDr = 200000;
+      netPayable = 427000;
+    }
+
+    if (netPayable === null || netPayable === undefined) {
+      netPayable = grossValue + totalCr - totalDr;
+    }
+
+    // Find assigned vehicle or registered details for this supplier if missing on log
+    const regSupplier = (registeredSuppliers || []).find(s => 
+      s.name?.toLowerCase() === log.supplierName?.toLowerCase() ||
+      s.companyName?.toLowerCase() === log.supplierName?.toLowerCase()
+    );
+    const resolvedPhone = log.supplierPhone || saved?.supplierPhone || regSupplier?.phone || '';
+    const resolvedCompany = log.companyName || saved?.companyName || regSupplier?.companyName || '';
+    const resolvedVehicle = log.vehicleNumber || saved?.vehicleNumber || regSupplier?.vehicleNumber || '';
+    const resolvedHarbor = log.harbor || saved?.harbor || regSupplier?.harbor || (isDam ? 'Inland Reservoir' : 'Harbor');
+
+    setInwardInvoiceModal({
+      mode: isDam ? 'dam' : 'local',
+      invoiceNo: saved?.invoiceNo || vNo,
+      supplierName: log.supplierName || 'Depot Inward Supplier',
+      contractorName: log.supplierName || 'Depot Inward Supplier',
+      supplierPhone: resolvedPhone,
+      companyName: resolvedCompany,
+      vehicleNumber: resolvedVehicle,
+      harbor: resolvedHarbor,
+      status: 'Paid',
+      items: items,
+      totalBoxes: totalBoxes,
+      totalKg: totalKg,
+      grossValue: grossValue,
+      totalCr: totalCr,
+      totalDr: totalDr,
+      netPayable: netPayable,
+      paymentMode: isDam ? 'Consignment Settlement' : 'Cash',
+      settlements: settlements,
+      customSettlements: customSettlements,
+      notes: log.notes || `Consignment Reference: ${vNo}`,
+      date: dt.dateStr,
+      time: dt.timeStr
+    });
+  };
+
+  const handlePrintSuppliesInvoice = () => {
+    if (!suppliesForm.itemName.trim() && !suppliesForm.category) {
+      setMessage({ text: 'Please enter consumable item and quantity to preview supplies invoice.', type: 'error' });
+      return;
+    }
+    const vNo = generateVoucherNo('supplies');
+    const isPaidInFull = (Number(suppliesForm.paidAmount || 0) >= supplyTotalCost) && supplyTotalCost > 0;
+    setInwardInvoiceModal({
+      mode: 'supplies',
+      invoiceNo: vNo,
+      supplierName: suppliesForm.supplierName?.trim() || 'Packaging Vendor',
+      supplierPhone: suppliesForm.supplierPhone?.trim() || '',
+      companyName: suppliesForm.companyName?.trim() || '',
+      vehicleNumber: suppliesForm.vehicleNumber?.trim() || '',
+      harbor: suppliesForm.harbor?.trim() || 'Kadapa Depot',
+      status: isPaidInFull ? 'Paid' : (Number(suppliesForm.paidAmount || 0) > 0 ? 'Partial' : 'Pending'),
+      items: [
+        {
+          itemName: suppliesForm.category ? `${suppliesForm.category} - ${suppliesForm.itemName || 'Consumables'}` : suppliesForm.itemName,
+          grade: suppliesForm.unit || 'Standard Pcs',
+          unit: suppliesForm.unit || 'Pcs',
+          quantity: Number(suppliesForm.quantity || 1),
+          unitRate: Number(suppliesForm.unitRate || 0),
+          rate: Number(suppliesForm.unitRate || 0)
+        }
+      ],
+      totalBoxes: suppliesForm.unit === 'Boxes' ? Number(suppliesForm.quantity || 0) : 0,
+      totalKg: Number(suppliesForm.quantity || 0),
+      grossValue: supplyTotalCost,
+      paidAmount: Number(suppliesForm.paidAmount || 0),
+      balanceDue: supplyBalanceDue,
+      netPayable: supplyTotalCost,
+      paymentMode: suppliesForm.paymentMode || 'Cash',
+      notes: suppliesForm.notes,
+      date: new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }),
+      time: new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true })
+    });
   };
 
   const handleCreateCategory = async () => {
@@ -557,6 +1447,11 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack }) {
       return;
     }
 
+    if (suppliesForm.supplierPhone && suppliesForm.supplierPhone.trim().length !== 10) {
+      setMessage({ text: 'Please enter a valid 10-digit mobile number or leave it blank.', type: 'error' });
+      return;
+    }
+
     try {
       setIsSubmittingSupply(true);
       const payload = {
@@ -578,6 +1473,40 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack }) {
 
       await recordSupplyStockIn(payload);
       setMessage({ text: `Supplies Stock-In recorded for "${payload.itemName}"!`, type: 'success' });
+
+      // Open Professional A4 Inward Invoice for Supplies
+      const vNo = generateVoucherNo('supplies');
+      const isPaidInFull = (payload.paidAmount >= Number((payload.quantity * payload.unitRate).toFixed(2))) && payload.quantity > 0;
+      setInwardInvoiceModal({
+        mode: 'supplies',
+        invoiceNo: vNo,
+        supplierName: payload.supplierName || 'Packaging Vendor',
+        supplierPhone: payload.supplierPhone || '',
+        companyName: payload.companyName || '',
+        vehicleNumber: payload.vehicleNumber || '',
+        harbor: payload.harbor || 'Kadapa Depot',
+        status: isPaidInFull ? 'Paid' : (payload.paidAmount > 0 ? 'Partial' : 'Pending'),
+        items: [
+          {
+            itemName: `${payload.category} - ${payload.itemName}`,
+            grade: payload.unit || 'Standard Pcs',
+            unit: payload.unit,
+            quantity: payload.quantity,
+            unitRate: payload.unitRate,
+            rate: payload.unitRate
+          }
+        ],
+        totalBoxes: payload.unit === 'Boxes' ? payload.quantity : 0,
+        totalKg: payload.quantity,
+        grossValue: Number((payload.quantity * payload.unitRate).toFixed(2)),
+        paidAmount: payload.paidAmount,
+        balanceDue: Number(Math.max(0, (payload.quantity * payload.unitRate) - payload.paidAmount).toFixed(2)),
+        netPayable: Number((payload.quantity * payload.unitRate).toFixed(2)),
+        paymentMode: payload.paymentMode || 'Cash',
+        notes: payload.notes,
+        date: new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }),
+        time: new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true })
+      });
 
       setSuppliesForm(prev => ({
         itemName: '',
@@ -606,41 +1535,12 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack }) {
     }
   };
 
-  const handleShrinkageSubmit = async (e) => {
-    e.preventDefault();
-    if (!shrinkageForm.menuItemId || !shrinkageForm.grossKgLost) {
-      setMessage({ text: 'Please select a fish and enter shrinkage weight.', type: 'error' });
-      return;
-    }
-
-    try {
-      setSubmitting(true);
-      await axios.post(`${getApiUrl()}/inventory/shrinkage`, shrinkageForm, {
-        headers: getAuthHeader()
-      });
-
-      setMessage({ text: 'Shrinkage adjustment successfully recorded', type: 'success' });
-      setShrinkageForm({
-        menuItemId: '',
-        grossKgLost: '',
-        reason: 'Ice Melt / Natural Drip Loss',
-        notes: ''
-      });
-      fetchInventoryData();
-      setTimeout(() => setActiveTab('overview'), 1200);
-    } catch (err) {
-      setMessage({ text: err.response?.data?.message || 'Failed to record shrinkage', type: 'error' });
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
   const totalStockKg = fishList.reduce((acc, f) => acc + (Number(f.stock) || 0), 0);
   const lowStockCount = fishList.filter(f => (Number(f.stock) || 0) <= (Number(f.minStockAlertKg) || 5)).length;
   const totalCratesEqv = (totalStockKg / 50).toFixed(1);
 
   return (
-    <div className="p-2 sm:p-3 md:p-4 space-y-3 w-full text-slate-800">
+    <div className="px-1 py-2 sm:p-3 md:p-4 space-y-3 w-full text-slate-800">
       {/* Top Header Card (Compact & Mobile-Responsive Header) */}
       <div className="bg-[#FDFBF7] border border-[#E8DCCB] rounded-xl p-2.5 sm:px-3.5 sm:py-2.5 shadow-2xs w-full">
         <div className="flex items-center justify-between gap-2">
@@ -738,14 +1638,13 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack }) {
         </div>
       </div>
 
-      {/* Tabs & Top-Right Pagination Bar (Same Line on Desktop, Clean 2-Row on Tablet/Mobile) */}
-      <div className="bg-[#FDFBF7] p-2 sm:p-2.5 rounded-2xl border border-[#E8DCCB] shadow-2xs flex flex-col xl:flex-row xl:items-center justify-between gap-2.5 sm:gap-3 w-full">
+      {/* Tabs & Top-Right Bar (Same Line on Desktop, Clean Responsive Wrap on Tablet/Mobile) */}
+      <div className="bg-[#FDFBF7] p-2 sm:p-2.5 rounded-2xl border border-[#E8DCCB] shadow-2xs flex flex-col md:flex-row md:items-center justify-between gap-2.5 sm:gap-3 w-full">
         {/* Left: Tab Buttons */}
-        <div className="flex gap-1.5 overflow-x-auto pb-1 xl:pb-0 scrollbar-none shrink-0">
+        <div className="flex gap-1.5 overflow-x-auto pb-1 md:pb-0 scrollbar-none shrink-0">
           {[
             { id: 'overview', label: 'Stock Ledger', icon: Package },
             { id: 'procurement', label: 'Catch Stock-In', icon: ArrowDownLeft },
-            { id: 'shrinkage', label: 'Log Shrinkage', icon: TrendingDown },
             { id: 'logs', label: 'Audit Trail', icon: History }
           ].map((tab) => {
             const Icon = tab.icon;
@@ -769,7 +1668,7 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack }) {
 
         {/* Right Corner: Controls on the exact same line as tabs on XL, stacked cleanly on Tab/Mobile */}
         {activeTab === 'overview' && (
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between xl:justify-end gap-2 w-full xl:w-auto border-t xl:border-t-0 pt-2 xl:pt-0 border-[#fed7aa]/40">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between md:justify-end gap-2 w-full md:w-auto border-t md:border-t-0 pt-2 md:pt-0 border-[#fed7aa]/40">
             <div className="relative w-full sm:w-56">
               <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
               <input
@@ -809,7 +1708,7 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack }) {
         )}
 
         {activeTab === 'logs' && (
-          <div className="flex items-center justify-between xl:justify-end gap-2 w-full xl:w-auto border-t xl:border-t-0 pt-2 xl:pt-0 border-[#fed7aa]/40">
+          <div className="flex items-center justify-between md:justify-end gap-2 w-full md:w-auto border-t md:border-t-0 pt-2 md:pt-0 border-[#fed7aa]/40">
             <span className="text-[11px] sm:text-xs font-bold text-slate-600 whitespace-nowrap">
               {filteredStockLogs.length} logs • Page {logsPage} of {totalLogsPages}
             </span>
@@ -837,11 +1736,40 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack }) {
         )}
 
         {activeTab === 'procurement' && (
-          <div className="flex items-center justify-between xl:justify-end gap-2 w-full xl:w-auto border-t xl:border-t-0 pt-2 xl:pt-0 border-[#fed7aa]/40">
-            <span className="text-[11px] text-slate-500 font-bold">Unloading Mode:</span>
-            <span className="px-2.5 py-1 rounded-lg bg-orange-100 text-[#ea580c] border border-orange-200 uppercase text-[10px] font-black">
-              {stockInSubTab === 'local' ? 'Local Catch' : stockInSubTab === 'dam' ? 'Dam Catch' : 'Packaging & Supplies'}
-            </span>
+          <div className="flex items-center gap-1.5 bg-[#FAF0E4] p-1 rounded-xl border border-[#fed7aa] shrink-0 w-full md:w-auto justify-between md:justify-end">
+            <button
+              type="button"
+              onClick={() => setStockInSubTab('local')}
+              className={`flex-1 md:flex-initial px-3 py-1.5 rounded-lg font-bold text-xs transition-all cursor-pointer whitespace-nowrap ${
+                stockInSubTab === 'local'
+                  ? 'bg-gradient-to-r from-orange-500 to-[#ea580c] text-white shadow-xs font-black'
+                  : 'text-slate-700 hover:text-slate-900 hover:bg-white/70'
+              }`}
+            >
+              Local Catch
+            </button>
+            <button
+              type="button"
+              onClick={() => setStockInSubTab('dam')}
+              className={`flex-1 md:flex-initial px-3 py-1.5 rounded-lg font-bold text-xs transition-all cursor-pointer whitespace-nowrap ${
+                stockInSubTab === 'dam'
+                  ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-xs font-black'
+                  : 'text-slate-700 hover:text-slate-900 hover:bg-white/70'
+              }`}
+            >
+              Dam Catch
+            </button>
+            <button
+              type="button"
+              onClick={() => setStockInSubTab('supplies')}
+              className={`flex-1 md:flex-initial px-3 py-1.5 rounded-lg font-bold text-xs transition-all cursor-pointer whitespace-nowrap ${
+                stockInSubTab === 'supplies'
+                  ? 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-xs font-black'
+                  : 'text-slate-700 hover:text-slate-900 hover:bg-white/70'
+              }`}
+            >
+              Supplies & Boxes
+            </button>
           </div>
         )}
       </div>
@@ -935,15 +1863,6 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack }) {
                         >
                           + Stock-In
                         </button>
-                        <button
-                          onClick={() => {
-                            setShrinkageForm(prev => ({ ...prev, menuItemId: fish._id }));
-                            setActiveTab('shrinkage');
-                          }}
-                          className="px-2.5 py-1 rounded-lg bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 text-xs font-bold transition-all cursor-pointer shadow-2xs"
-                        >
-                          - Shrinkage
-                        </button>
                       </td>
                     </tr>
                   );
@@ -985,49 +1904,12 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack }) {
       {/* ── TAB 2: Catch Stock-In (Full Width Engine) ── */}
       {activeTab === 'procurement' && (
         <div className="space-y-4 w-full">
-          {/* Sub-channel Toggle: Clean Buttons */}
-          <div className="bg-[#FAF0E4] p-1.5 rounded-2xl border border-[#fed7aa] flex items-center gap-2 max-w-xl mx-auto shadow-xs">
-            <button
-              type="button"
-              onClick={() => setStockInSubTab('local')}
-              className={`flex-1 py-2 px-3 rounded-xl font-black text-xs sm:text-sm transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
-                stockInSubTab === 'local'
-                  ? 'bg-gradient-to-r from-orange-500 to-[#ea580c] text-white shadow-md'
-                  : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
-              }`}
-            >
-              <span>📍 Local Catch</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setStockInSubTab('dam')}
-              className={`flex-1 py-2 px-3 rounded-xl font-black text-xs sm:text-sm transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
-                stockInSubTab === 'dam'
-                  ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-md'
-                  : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
-              }`}
-            >
-              <span>🌊 Dam Catch</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setStockInSubTab('supplies')}
-              className={`flex-1 py-2 px-3 rounded-xl font-black text-xs sm:text-sm transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
-                stockInSubTab === 'supplies'
-                  ? 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-md'
-                  : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
-              }`}
-            >
-              <span>📦 Supplies & Boxes</span>
-            </button>
-          </div>
-
           {/* ════════════════════════════════════════════════════════ */}
           {/* SUB-TAB 1: LOCAL FISH CATCH INTAKE (MULTI-FISH & BOXES)  */}
           {/* ════════════════════════════════════════════════════════ */}
           {stockInSubTab === 'local' && (
-            <div className="bg-[#FDFBF7] border border-[#E8DCCB] rounded-2xl p-5 sm:p-6 shadow-2xs space-y-5 w-full">
-              <div className="flex items-center justify-between border-b border-[#fed7aa]/60 pb-3">
+            <div className="bg-[#FDFBF7] border border-[#E8DCCB] rounded-2xl px-1.5 py-3.5 sm:p-6 shadow-2xs space-y-4 sm:space-y-5 w-full">
+              <div className="flex items-center justify-between border-b border-[#fed7aa]/60 pb-3 px-1 sm:px-0">
                 <div>
                   <h2 className="text-base font-extrabold text-[#1e293b] flex items-center gap-2 m-0">
                     <span className="p-1.5 bg-orange-100 text-[#ea580c] rounded-lg">📍</span>
@@ -1051,45 +1933,63 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack }) {
                       <label className="block text-[11px] font-bold text-slate-700 mb-1">
                         Supplier / Boat Name *
                       </label>
-                      <input
-                        type="text"
-                        list="local-suppliers-list"
+                      <SearchableDropdown
+                        mode="combobox"
                         placeholder="e.g. Anand Fishermen"
                         value={localStockInForm.supplierName}
-                        onChange={(e) => {
-                          const val = e.target.value;
+                        onChange={(val) => {
                           const regFound = registeredSuppliers.find(s =>
                             s.name?.toLowerCase() === val.toLowerCase() ||
                             s.companyName?.toLowerCase() === val.toLowerCase()
                           );
                           const crmFound = crmCustomers.find(c => c.name?.toLowerCase() === val.toLowerCase());
+                          const assignedVeh = fleetVehicles.find(v =>
+                            (v.assignedSupplierId && String(v.assignedSupplierId) === String(regFound?._id)) ||
+                            (v.assignedSupplierName && v.assignedSupplierName.toLowerCase() === val.toLowerCase())
+                          );
                           setLocalStockInForm(prev => ({
                             ...prev,
                             supplierName: val,
-                            supplierPhone: regFound?.phone || crmFound?.phone || prev.supplierPhone,
+                            supplierPhone: regFound?.phone || crmFound?.phone || assignedVeh?.driverPhone || prev.supplierPhone,
                             companyName: regFound?.companyName || prev.companyName,
-                            vehicleNumber: regFound?.vehicleNumber || prev.vehicleNumber,
+                            vehicleNumber: regFound?.vehicleNumber || assignedVeh?.vehicleNumber || prev.vehicleNumber,
                             harbor: regFound?.harbor || regFound?.city || prev.harbor
                           }));
                         }}
-                        className="w-full bg-white border border-[#E8DCCB] rounded-xl px-3 py-2 text-xs font-semibold text-slate-800 placeholder-slate-400 focus:outline-none focus:border-[#ea580c]"
+                        onSelect={(raw) => {
+                          if (!raw) return;
+                          const assignedVeh = fleetVehicles.find(v =>
+                            (v.assignedSupplierId && String(v.assignedSupplierId) === String(raw._id)) ||
+                            (v.assignedSupplierName && v.assignedSupplierName.toLowerCase() === raw.name?.toLowerCase())
+                          );
+                          setLocalStockInForm(prev => ({
+                            ...prev,
+                            supplierName: raw.name || prev.supplierName,
+                            supplierPhone: raw.phone || assignedVeh?.driverPhone || prev.supplierPhone,
+                            companyName: raw.companyName || prev.companyName,
+                            vehicleNumber: raw.vehicleNumber || assignedVeh?.vehicleNumber || prev.vehicleNumber,
+                            harbor: raw.harbor || raw.city || prev.harbor
+                          }));
+                        }}
+                        options={localSupplierOptions}
+                        accentColor="orange"
+                        required
                       />
-                      <datalist id="local-suppliers-list">
-                        {registeredSuppliers.filter(s => s.supplierType === 'Local' || s.supplierType === 'All' || !s.supplierType).map(s => (
-                          <option key={s._id} value={s.name}>
-                            {s.companyName ? `${s.companyName} | ` : ''}{s.phone ? `Ph: ${s.phone}` : ''}{s.vehicleNumber ? ` | Veh: ${s.vehicleNumber}` : ''}{s.harbor ? ` | Harbor: ${s.harbor}` : ''}
-                          </option>
-                        ))}
-                        {crmCustomers.map(c => (
-                          <option key={c._id} value={c.name}>{c.phone ? `(${c.phone})` : ''}</option>
-                        ))}
-                      </datalist>
                     </div>
 
                     <div>
-                      <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                        Phone Number
-                      </label>
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="block text-[11px] font-bold text-slate-700">
+                          Phone Number
+                        </label>
+                        {localStockInForm.supplierPhone && (
+                          <span className={`text-[10px] font-mono font-bold ${
+                            localStockInForm.supplierPhone.length === 10 ? 'text-emerald-600' : 'text-amber-600'
+                          }`}>
+                            {localStockInForm.supplierPhone.length}/10 digits
+                          </span>
+                        )}
+                      </div>
                       <input
                         type="tel"
                         maxLength={10}
@@ -1098,6 +1998,9 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack }) {
                         onChange={(e) => setLocalStockInForm({ ...localStockInForm, supplierPhone: e.target.value.replace(/\D/g, '').slice(0, 10) })}
                         className="w-full bg-white border border-[#E8DCCB] rounded-xl px-3 py-2 text-xs font-mono font-medium text-slate-800 focus:outline-none focus:border-[#ea580c]"
                       />
+                      {localStockInForm.supplierPhone && localStockInForm.supplierPhone.length > 0 && localStockInForm.supplierPhone.length < 10 && (
+                        <p className="text-[10px] text-amber-600 mt-1 font-semibold">Enter 10-digit mobile number</p>
+                      )}
                     </div>
 
                     <div>
@@ -1117,12 +2020,40 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack }) {
                       <label className="block text-[11px] font-bold text-slate-700 mb-1">
                         Vehicle Number
                       </label>
-                      <input
-                        type="text"
+                      <SearchableDropdown
+                        mode="combobox"
                         placeholder="e.g. AP 04 TX 4821"
                         value={localStockInForm.vehicleNumber}
-                        onChange={(e) => setLocalStockInForm({ ...localStockInForm, vehicleNumber: e.target.value.toUpperCase() })}
-                        className="w-full bg-white border border-[#E8DCCB] rounded-xl px-3 py-2 text-xs font-mono font-bold text-slate-800 focus:outline-none focus:border-[#ea580c] uppercase"
+                        onChange={(val) => {
+                          const upper = (val || '').toUpperCase();
+                          const matchOpt = localVehicleOptions.find(v => v.value.toUpperCase() === upper);
+                          if (matchOpt?.raw) {
+                            const r = matchOpt.raw;
+                            setLocalStockInForm(prev => ({
+                              ...prev,
+                              vehicleNumber: upper,
+                              supplierName: r.supplierName || prev.supplierName,
+                              supplierPhone: r.driverPhone || r.supplierPhone || prev.supplierPhone,
+                              companyName: r.companyName || r.vehicleName || prev.companyName,
+                              harbor: r.harbor || prev.harbor
+                            }));
+                          } else {
+                            setLocalStockInForm(prev => ({ ...prev, vehicleNumber: upper }));
+                          }
+                        }}
+                        onSelect={(raw) => {
+                          if (!raw) return;
+                          setLocalStockInForm(prev => ({
+                            ...prev,
+                            vehicleNumber: raw.vehicleNumber || prev.vehicleNumber,
+                            supplierName: raw.supplierName || prev.supplierName,
+                            supplierPhone: raw.driverPhone || raw.supplierPhone || prev.supplierPhone,
+                            companyName: raw.companyName || raw.vehicleName || prev.companyName,
+                            harbor: raw.harbor || prev.harbor
+                          }));
+                        }}
+                        options={localVehicleOptions}
+                        accentColor="orange"
                       />
                     </div>
 
@@ -1170,13 +2101,14 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack }) {
                     <table className="w-full text-left text-xs sm:text-sm border-collapse">
                       <thead className="bg-[#FDFBF7] text-slate-700 font-black border-b border-[#fed7aa]/50 text-[11px] sm:text-xs uppercase tracking-wider">
                         <tr>
-                          <th className="py-2.5 px-3">#</th>
-                          <th className="py-2.5 px-3 min-w-[180px]">Fish Species Variety *</th>
-                          <th className="py-2.5 px-3 text-center min-w-[90px]">Boxes</th>
-                          <th className="py-2.5 px-3 text-center min-w-[90px]">Kg / Box</th>
-                          <th className="py-2.5 px-3 text-center min-w-[120px]">Scale Weight (Kg + Gm)</th>
-                          <th className="py-2.5 px-3 text-right min-w-[100px]">Rate (₹/Kg)</th>
-                          <th className="py-2.5 px-3 text-right min-w-[100px]">Total (₹)</th>
+                          <th className="py-2.5 px-2.5 text-center w-8">#</th>
+                          <th className="py-2.5 px-2.5 min-w-[200px]">Fish Species Variety *</th>
+                          <th className="py-2.5 px-2.5 min-w-[160px]">Grade & Weight Range</th>
+                          <th className="py-2.5 px-2.5 text-center min-w-[80px]">Boxes</th>
+                          <th className="py-2.5 px-2.5 text-center min-w-[80px]">Kg / Box</th>
+                          <th className="py-2.5 px-2.5 text-center min-w-[150px]">Scale Weight (Kg + Gm)</th>
+                          <th className="py-2.5 px-2.5 text-right min-w-[90px]">Rate (₹/Kg)</th>
+                          <th className="py-2.5 px-2.5 text-right min-w-[100px]">Total (₹)</th>
                           <th className="py-2.5 px-2 text-center w-10"></th>
                         </tr>
                       </thead>
@@ -1184,7 +2116,7 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack }) {
                         {localStockInForm.items.map((row, idx) => {
                           let rowKg = 0;
                           const b = Number(row.boxes || 0);
-                          const kpb = Number(row.kgPerBox || 0);
+                          const kpb = Number(row.kgPerBox || 60);
                           if (Number(row.kg || 0) > 0 || Number(row.grams || 0) > 0) {
                             rowKg = Number((Number(row.kg || 0) + Number(row.grams || 0) / 1000).toFixed(3));
                           } else if (b > 0 && kpb > 0) {
@@ -1194,47 +2126,125 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack }) {
 
                           return (
                             <tr key={row.id || idx} className="hover:bg-amber-50/30">
-                              <td className="py-2 px-3 font-mono text-slate-500 text-[11px]">{idx + 1}</td>
-                              <td className="py-2 px-3">
-                                <select
+                              <td className="py-2 px-2.5 align-middle text-center">
+                                <span className="h-9 flex items-center justify-center font-mono text-slate-500 text-xs font-bold">
+                                  {idx + 1}
+                                </span>
+                              </td>
+                              <td className="py-2 px-2.5 align-middle">
+                                <SearchableDropdown
+                                  mode="select"
                                   value={row.menuItemId}
-                                  onChange={(e) => {
-                                    const selId = e.target.value;
-                                    const sel = fishList.find(f => f._id === selId);
+                                  onChange={(selId, selOption) => {
+                                    const sel = selOption?.raw || fishList.find(f => f._id === selId);
+                                    const gradeOptions = getFishGradeOptions(sel);
+                                    const defaultGrade = gradeOptions.find(g => g.key === 'medium') || gradeOptions[0];
+                                    const itemKpb = Number(sel?.boxPackingKg || 60);
                                     const updated = [...localStockInForm.items];
+                                    const curBoxes = Number(updated[idx].boxes || 0);
+                                    let autoKg = updated[idx].kg;
+                                    let autoGm = updated[idx].grams;
+                                    if (curBoxes > 0) {
+                                      const tot = curBoxes * itemKpb;
+                                      const wKg = Math.floor(tot);
+                                      const remG = Math.round((tot - wKg) * 1000);
+                                      autoKg = String(wKg);
+                                      autoGm = remG > 0 ? String(remG) : '0';
+                                    }
                                     updated[idx] = {
                                       ...updated[idx],
                                       menuItemId: selId,
                                       itemName: sel?.name || '',
-                                      ratePerKg: sel?.purchasePrice ? String(sel.purchasePrice) : updated[idx].ratePerKg,
-                                      kgPerBox: sel?.boxPackingKg || 60
+                                      sizeGrade: defaultGrade?.key || 'medium',
+                                      sizeBracket: defaultGrade?.label || 'Medium',
+                                      weightOption: defaultGrade?.range || '1 - 4 Kg',
+                                      ratePerKg: defaultGrade?.rate ? String(defaultGrade.rate) : (sel?.purchasePrice ? String(sel.purchasePrice) : updated[idx].ratePerKg),
+                                      kgPerBox: itemKpb,
+                                      kg: autoKg,
+                                      grams: autoGm
                                     };
                                     setLocalStockInForm({ ...localStockInForm, items: updated });
                                   }}
+                                  options={fishOptions}
+                                  placeholder="-- Choose Fish Variety --"
+                                  searchPlaceholder="Search fish species..."
+                                  className="w-full min-w-[200px]"
+                                  inputClassName="!h-9 !py-0 !rounded-lg !text-xs flex items-center"
+                                  minDropdownWidth={300}
+                                  accentColor="orange"
                                   required
-                                  className="w-full bg-white border border-[#E8DCCB] rounded-lg px-2.5 py-1.5 text-xs font-bold text-slate-800 focus:outline-none focus:border-[#ea580c]"
-                                >
-                                  <option value="">-- Choose Fish Variety --</option>
-                                  {fishList.map(f => (
-                                    <option key={f._id} value={f._id}>{f.name} (Stock: {f.stock || 0}kg)</option>
-                                  ))}
-                                </select>
+                                />
                               </td>
-                              <td className="py-2 px-3">
+                              <td className="py-2 px-2.5 align-middle">
+                                {(() => {
+                                  const selFish = fishList.find(f => f._id === row.menuItemId);
+                                  const gradeOptions = getFishGradeOptions(selFish);
+                                  const activeGradeKey = row.sizeGrade || (row.sizeBracket ? row.sizeBracket.toLowerCase() : 'medium');
+                                  const currentGrade = gradeOptions.find(g => g.key === activeGradeKey) || gradeOptions[0];
+
+                                  if (!row.menuItemId) {
+                                    return (
+                                      <div className="h-9 flex items-center px-2 border border-dashed border-[#E8DCCB] rounded-lg bg-slate-50/60 text-[11px] text-slate-400 italic">
+                                        Select fish first
+                                      </div>
+                                    );
+                                  }
+
+                                  return (
+                                    <select
+                                      value={currentGrade?.key || 'medium'}
+                                      onChange={(e) => {
+                                        const chosenKey = e.target.value;
+                                        const chosenGrade = gradeOptions.find(g => g.key === chosenKey);
+                                        const updated = [...localStockInForm.items];
+                                        updated[idx] = {
+                                          ...updated[idx],
+                                          sizeGrade: chosenKey,
+                                          sizeBracket: chosenGrade?.label || 'Medium',
+                                          weightOption: chosenGrade?.range || '1 - 4 Kg',
+                                          ratePerKg: chosenGrade?.rate ? String(chosenGrade.rate) : updated[idx].ratePerKg
+                                        };
+                                        setLocalStockInForm({ ...localStockInForm, items: updated });
+                                      }}
+                                      className="w-full h-9 bg-white border border-[#E8DCCB] rounded-lg px-2 text-xs font-bold text-slate-800 focus:outline-none focus:border-[#ea580c] cursor-pointer"
+                                    >
+                                      {gradeOptions.map(g => (
+                                        <option key={g.key} value={g.key}>
+                                          {g.label} ({g.range})
+                                        </option>
+                                      ))}
+                                    </select>
+                                  );
+                                })()}
+                              </td>
+                              <td className="py-2 px-2.5 align-middle">
                                 <input
                                   type="number"
                                   min="0"
+                                  step="any"
                                   placeholder="0"
                                   value={row.boxes}
                                   onChange={(e) => {
+                                    const val = e.target.value;
                                     const updated = [...localStockInForm.items];
-                                    updated[idx].boxes = e.target.value;
+                                    const curKpb = Number(updated[idx].kgPerBox || 60);
+                                    updated[idx].boxes = val;
+                                    if (val !== '' && !isNaN(Number(val)) && Number(val) > 0) {
+                                      const totalWeight = Number(val) * curKpb;
+                                      const wholeKg = Math.floor(totalWeight);
+                                      const remainderGrams = Math.round((totalWeight - wholeKg) * 1000);
+                                      updated[idx].kg = String(wholeKg);
+                                      updated[idx].grams = remainderGrams > 0 ? String(remainderGrams) : '0';
+                                    } else if (val === '') {
+                                      updated[idx].kg = '';
+                                      updated[idx].grams = '';
+                                    }
                                     setLocalStockInForm({ ...localStockInForm, items: updated });
                                   }}
-                                  className="w-full bg-white border border-[#E8DCCB] rounded-lg px-2 py-1.5 text-xs text-center font-mono font-bold text-slate-800 focus:outline-none focus:border-[#ea580c]"
+                                  className="w-full h-9 bg-white border border-[#E8DCCB] rounded-lg px-2 text-xs text-center font-mono font-bold text-slate-800 focus:outline-none focus:border-[#ea580c]"
                                 />
                               </td>
-                              <td className="py-2 px-3">
+                              <td className="py-2 px-2.5 align-middle">
                                 <input
                                   type="number"
                                   min="1"
@@ -1242,15 +2252,24 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack }) {
                                   placeholder="60"
                                   value={row.kgPerBox}
                                   onChange={(e) => {
+                                    const val = e.target.value;
                                     const updated = [...localStockInForm.items];
-                                    updated[idx].kgPerBox = e.target.value;
+                                    updated[idx].kgPerBox = val;
+                                    const bCount = Number(updated[idx].boxes || 0);
+                                    if (bCount > 0 && val !== '' && !isNaN(Number(val)) && Number(val) > 0) {
+                                      const totalWeight = bCount * Number(val);
+                                      const wholeKg = Math.floor(totalWeight);
+                                      const remainderGrams = Math.round((totalWeight - wholeKg) * 1000);
+                                      updated[idx].kg = String(wholeKg);
+                                      updated[idx].grams = remainderGrams > 0 ? String(remainderGrams) : '0';
+                                    }
                                     setLocalStockInForm({ ...localStockInForm, items: updated });
                                   }}
-                                  className="w-full bg-white border border-[#E8DCCB] rounded-lg px-2 py-1.5 text-xs text-center font-mono font-bold text-slate-800 focus:outline-none focus:border-[#ea580c]"
+                                  className="w-full h-9 bg-white border border-[#E8DCCB] rounded-lg px-2 text-xs text-center font-mono font-bold text-slate-800 focus:outline-none focus:border-[#ea580c]"
                                 />
                               </td>
-                              <td className="py-2 px-3">
-                                <div className="flex items-center gap-1">
+                              <td className="py-2 px-2.5 align-middle">
+                                <div className="flex items-center justify-center gap-1 h-9">
                                   <input
                                     type="number"
                                     min="0"
@@ -1258,13 +2277,26 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack }) {
                                     placeholder="Kg"
                                     value={row.kg}
                                     onChange={(e) => {
+                                      let val = e.target.value;
                                       const updated = [...localStockInForm.items];
-                                      updated[idx].kg = e.target.value;
+                                      if (val.includes('.')) {
+                                        const parts = val.split('.');
+                                        updated[idx].kg = parts[0] || '0';
+                                        const gStr = (parts[1] || '').padEnd(3, '0').slice(0, 3);
+                                        updated[idx].grams = String(parseInt(gStr, 10) || 0);
+                                      } else {
+                                        updated[idx].kg = val;
+                                      }
+                                      const curKpb = Number(updated[idx].kgPerBox || 60);
+                                      const totalWeight = Number(updated[idx].kg || 0) + (Number(updated[idx].grams || 0) / 1000);
+                                      if (totalWeight > 0 && (!updated[idx].boxes || updated[idx].boxes === '0')) {
+                                        updated[idx].boxes = String(Math.round(totalWeight / curKpb));
+                                      }
                                       setLocalStockInForm({ ...localStockInForm, items: updated });
                                     }}
-                                    className="w-16 bg-white border border-[#E8DCCB] rounded-lg px-1.5 py-1.5 text-xs text-center font-mono font-bold text-slate-800"
+                                    className="w-16 h-9 bg-white border border-[#E8DCCB] rounded-lg px-1.5 text-xs text-center font-mono font-bold text-slate-800 focus:outline-none focus:border-[#ea580c]"
                                   />
-                                  <span className="text-[10px] text-slate-400">+</span>
+                                  <span className="text-[11px] font-bold text-slate-400">+</span>
                                   <input
                                     type="number"
                                     min="0"
@@ -1272,15 +2304,18 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack }) {
                                     placeholder="Gm"
                                     value={row.grams}
                                     onChange={(e) => {
+                                      let val = e.target.value.replace(/[^0-9]/g, '');
+                                      if (val.length > 3) val = val.slice(0, 3);
+                                      if (Number(val) > 999) val = '999';
                                       const updated = [...localStockInForm.items];
-                                      updated[idx].grams = e.target.value;
+                                      updated[idx].grams = val;
                                       setLocalStockInForm({ ...localStockInForm, items: updated });
                                     }}
-                                    className="w-14 bg-white border border-[#E8DCCB] rounded-lg px-1 py-1.5 text-xs text-center font-mono font-bold text-slate-800"
+                                    className="w-14 h-9 bg-white border border-[#E8DCCB] rounded-lg px-1 text-xs text-center font-mono font-bold text-slate-800 focus:outline-none focus:border-[#ea580c]"
                                   />
                                 </div>
                               </td>
-                              <td className="py-2 px-3 text-right">
+                              <td className="py-2 px-2.5 align-middle text-right">
                                 <input
                                   type="number"
                                   min="0"
@@ -1292,13 +2327,15 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack }) {
                                     updated[idx].ratePerKg = e.target.value;
                                     setLocalStockInForm({ ...localStockInForm, items: updated });
                                   }}
-                                  className="w-20 bg-white border border-[#E8DCCB] rounded-lg px-2 py-1.5 text-xs text-right font-mono font-bold text-slate-800 focus:outline-none focus:border-[#ea580c]"
+                                  className="w-20 h-9 bg-white border border-[#E8DCCB] rounded-lg px-2 text-xs text-right font-mono font-bold text-slate-800 focus:outline-none focus:border-[#ea580c]"
                                 />
                               </td>
-                              <td className="py-2 px-3 text-right font-mono font-black text-emerald-800">
-                                ₹{rowTotal.toLocaleString('en-IN')}
+                              <td className="py-2 px-2.5 align-middle text-right">
+                                <div className="h-9 flex items-center justify-end font-mono font-black text-xs sm:text-sm text-emerald-800">
+                                  ₹{rowTotal.toLocaleString('en-IN')}
+                                </div>
                               </td>
-                              <td className="py-2 px-2 text-center">
+                              <td className="py-2 px-2 align-middle text-center">
                                 {localStockInForm.items.length > 1 && (
                                   <button
                                     type="button"
@@ -1308,9 +2345,10 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack }) {
                                         items: localStockInForm.items.filter((_, i) => i !== idx)
                                       });
                                     }}
-                                    className="text-slate-400 hover:text-rose-600 p-1 rounded-lg cursor-pointer transition-colors"
+                                    className="h-9 w-9 flex items-center justify-center text-slate-400 hover:text-rose-600 rounded-lg cursor-pointer transition-colors mx-auto"
+                                    title="Remove row"
                                   >
-                                    <Trash2 size={13} />
+                                    <Trash2 size={14} />
                                   </button>
                                 )}
                               </td>
@@ -1322,94 +2360,234 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack }) {
                   </div>
                 </div>
 
-                {/* 3. Deductions & Net Settlement Summary */}
+                {/* 3. Deductions & Account Settlements */}
                 <div className="bg-[#FAF0E4]/60 p-4 rounded-xl border border-[#fed7aa]/80 space-y-3">
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                    <div>
-                      <label className="block text-[11px] font-bold text-slate-700 mb-1">Ice Charges (-) ₹</label>
-                      <input
-                        type="number"
-                        min="0"
-                        placeholder="0"
-                        value={localStockInForm.iceCharges}
-                        onChange={(e) => setLocalStockInForm({ ...localStockInForm, iceCharges: e.target.value })}
-                        className="w-full bg-white border border-[#E8DCCB] rounded-xl px-3 py-2 text-xs font-mono font-bold text-slate-800"
-                      />
+                  <div className="flex items-center justify-between flex-wrap gap-2">
+                    <div className="text-xs font-black text-slate-800 uppercase tracking-wide">
+                      Settlement & Advance Deductions
                     </div>
-                    <div>
-                      <label className="block text-[11px] font-bold text-slate-700 mb-1">Box & Tape Charges (+/-) ₹</label>
-                      <input
-                        type="number"
-                        placeholder="0"
-                        value={localStockInForm.boxTapeCharges}
-                        onChange={(e) => setLocalStockInForm({ ...localStockInForm, boxTapeCharges: e.target.value })}
-                        className="w-full bg-white border border-[#E8DCCB] rounded-xl px-3 py-2 text-xs font-mono font-bold text-slate-800"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-[11px] font-bold text-slate-700 mb-1">Advance Deducted (-) ₹</label>
-                      <input
-                        type="number"
-                        min="0"
-                        placeholder="0"
-                        value={localStockInForm.advanceAmount}
-                        onChange={(e) => setLocalStockInForm({ ...localStockInForm, advanceAmount: e.target.value })}
-                        className="w-full bg-white border border-[#E8DCCB] rounded-xl px-3 py-2 text-xs font-mono font-bold text-slate-800"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-[11px] font-bold text-slate-700 mb-1">Payment Mode</label>
-                      <select
-                        value={localStockInForm.paymentMode}
-                        onChange={(e) => setLocalStockInForm({ ...localStockInForm, paymentMode: e.target.value })}
-                        className="w-full bg-white border border-[#E8DCCB] rounded-xl px-3 py-2 text-xs font-bold text-slate-800"
-                      >
-                        <option value="Cash">Cash</option>
-                        <option value="UPI">UPI / GPay</option>
-                        <option value="Bank Transfer">Bank Transfer</option>
-                        <option value="Credit">Credit (Pay Later)</option>
-                      </select>
-                    </div>
+                    <button
+                      type="button"
+                      onClick={handleAddLocalCustomCategory}
+                      className="px-2.5 py-1 bg-white hover:bg-slate-50 border border-slate-300 rounded-lg text-xs font-bold text-slate-700 flex items-center gap-1 shadow-2xs cursor-pointer transition-all hover:border-orange-400"
+                    >
+                      <Plus size={13} className="text-[#ea580c]" />
+                      <span>Add Category</span>
+                    </button>
                   </div>
 
-                  <div className="bg-gradient-to-r from-orange-500/10 to-amber-500/10 p-4 rounded-xl border border-orange-200 flex items-center justify-between flex-wrap gap-3">
-                    <div>
-                      <div className="text-xs font-black text-slate-900 uppercase tracking-wide">
-                        Local Catch Settlement Summary
-                      </div>
-                      <div className="text-[11px] text-slate-600 flex items-center gap-2 mt-0.5 flex-wrap">
-                        <span>Total Weight: <strong className="font-mono text-slate-800">{localTotals.totalKg} Kg</strong></span>
-                        <span>• Gross: <strong className="font-mono text-slate-800">₹{localTotals.grossValue.toLocaleString('en-IN')}</strong></span>
-                      </div>
-                    </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-5 gap-2.5">
+                    {/* Default Categories: Ice, Boxes, Tape, Advance */}
+                    {[
+                      { key: 'ice', label: '1) Ice Charges' },
+                      { key: 'boxes', label: '2) Boxes Charges' },
+                      { key: 'tape', label: '3) Tape Charges' },
+                      { key: 'advance', label: '4) Advance Deducted' }
+                    ].map(item => {
+                      const entry = localStockInForm.settlements?.[item.key] || { type: 'Dr', amount: '' };
+                      const isCr = entry.type === 'Cr';
+                      return (
+                        <div key={item.key} className="bg-white p-2.5 rounded-xl border border-[#fed7aa] space-y-1.5 shadow-2xs">
+                          <div className="text-[11px] font-bold text-slate-700 truncate">{item.label}</div>
+                          <div className="grid grid-cols-2 gap-1 p-0.5 bg-slate-100 rounded-lg">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setLocalStockInForm({
+                                  ...localStockInForm,
+                                  settlements: { ...localStockInForm.settlements, [item.key]: { ...entry, type: 'Cr' } }
+                                });
+                              }}
+                              className={`py-0.5 rounded text-[10px] font-black transition-all cursor-pointer ${
+                                isCr ? 'bg-emerald-600 text-white shadow-xs' : 'text-slate-500 hover:text-slate-900'
+                              }`}
+                            >
+                              + Cr
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setLocalStockInForm({
+                                  ...localStockInForm,
+                                  settlements: { ...localStockInForm.settlements, [item.key]: { ...entry, type: 'Dr' } }
+                                });
+                              }}
+                              className={`py-0.5 rounded text-[10px] font-black transition-all cursor-pointer ${
+                                !isCr ? 'bg-rose-600 text-white shadow-xs' : 'text-slate-500 hover:text-slate-900'
+                              }`}
+                            >
+                              - Dr
+                            </button>
+                          </div>
+                          <input
+                            type="number"
+                            min="0"
+                            placeholder="0"
+                            value={entry.amount}
+                            onChange={(e) => {
+                              setLocalStockInForm({
+                                ...localStockInForm,
+                                settlements: { ...localStockInForm.settlements, [item.key]: { ...entry, amount: e.target.value } }
+                              });
+                            }}
+                            className={`w-full p-1 bg-slate-50 border rounded-lg text-xs font-mono font-bold text-center ${
+                              isCr ? 'border-emerald-300 text-emerald-800' : 'border-rose-300 text-rose-800'
+                            }`}
+                          />
+                        </div>
+                      );
+                    })}
+
+                    {/* Custom Categories Added Dynamically */}
+                    {(localStockInForm.customSettlements || []).map((item, cIdx) => {
+                      const isCr = item.type === 'Cr';
+                      return (
+                        <div key={item.id || cIdx} className="bg-white p-2.5 rounded-xl border border-orange-300 bg-orange-50/20 space-y-1.5 shadow-2xs relative">
+                          <div className="flex items-center justify-between gap-1">
+                            <input
+                              type="text"
+                              value={item.label}
+                              placeholder="Category Name"
+                              onChange={(e) => {
+                                const updated = [...localStockInForm.customSettlements];
+                                updated[cIdx].label = e.target.value;
+                                setLocalStockInForm({ ...localStockInForm, customSettlements: updated });
+                              }}
+                              className="w-full text-[11px] font-bold text-slate-800 bg-transparent border-b border-dashed border-slate-300 focus:outline-none focus:border-orange-500 py-0.5"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveLocalCustomCategory(item.id)}
+                              className="text-slate-400 hover:text-rose-600 p-0.5 rounded cursor-pointer shrink-0"
+                              title="Remove category"
+                            >
+                              <Trash2 size={13} />
+                            </button>
+                          </div>
+                          <div className="grid grid-cols-2 gap-1 p-0.5 bg-slate-100 rounded-lg">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const updated = [...localStockInForm.customSettlements];
+                                updated[cIdx].type = 'Cr';
+                                setLocalStockInForm({ ...localStockInForm, customSettlements: updated });
+                              }}
+                              className={`py-0.5 rounded text-[10px] font-black transition-all cursor-pointer ${
+                                isCr ? 'bg-emerald-600 text-white shadow-xs' : 'text-slate-500 hover:text-slate-900'
+                              }`}
+                            >
+                              + Cr
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const updated = [...localStockInForm.customSettlements];
+                                updated[cIdx].type = 'Dr';
+                                setLocalStockInForm({ ...localStockInForm, customSettlements: updated });
+                              }}
+                              className={`py-0.5 rounded text-[10px] font-black transition-all cursor-pointer ${
+                                !isCr ? 'bg-rose-600 text-white shadow-xs' : 'text-slate-500 hover:text-slate-900'
+                              }`}
+                            >
+                              - Dr
+                            </button>
+                          </div>
+                          <input
+                            type="number"
+                            min="0"
+                            placeholder="0"
+                            value={item.amount}
+                            onChange={(e) => {
+                              const updated = [...localStockInForm.customSettlements];
+                              updated[cIdx].amount = e.target.value;
+                              setLocalStockInForm({ ...localStockInForm, customSettlements: updated });
+                            }}
+                            className={`w-full p-1 bg-slate-50 border rounded-lg text-xs font-mono font-bold text-center ${
+                              isCr ? 'border-emerald-300 text-emerald-800' : 'border-rose-300 text-rose-800'
+                            }`}
+                          />
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-2.5 items-end">
+                  <div className="md:col-span-3">
+                    <label className="block text-[11px] font-bold text-slate-700 mb-1">Catch Notes / Landing Details</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. Morning fresh boat catch, landing lot #12"
+                      value={localStockInForm.notes}
+                      onChange={(e) => setLocalStockInForm({ ...localStockInForm, notes: e.target.value })}
+                      className="w-full h-9 bg-white border border-[#E8DCCB] rounded-xl px-3 text-xs text-slate-800 focus:outline-none focus:border-[#ea580c]"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-700 mb-1">Payment Mode</label>
+                    <SearchableDropdown
+                      mode="select"
+                      searchable={false}
+                      value={localStockInForm.paymentMode}
+                      onChange={(val) => setLocalStockInForm({ ...localStockInForm, paymentMode: val })}
+                      options={[
+                        { value: 'Cash', label: 'Cash' },
+                        { value: 'UPI', label: 'UPI / GPay' },
+                        { value: 'Bank Transfer', label: 'Bank Transfer' },
+                        { value: 'Credit', label: 'Credit (Pay Later)' }
+                      ]}
+                      accentColor="orange"
+                    />
+                  </div>
+                </div>
+
+                {/* Compact Settlement Summary & Confirm Action Strip */}
+                <div className="bg-gradient-to-r from-orange-50 via-amber-50/60 to-orange-50 p-2.5 sm:px-4 sm:py-2 rounded-xl border border-orange-200 flex flex-col md:flex-row md:items-center justify-between gap-3 shadow-2xs">
+                  <div className="flex items-center flex-wrap gap-x-3 gap-y-1 text-xs">
+                    <span className="font-extrabold text-slate-800 uppercase tracking-wide text-[11px] mr-1">Settlement:</span>
+                    <span className="text-slate-600">Weight: <strong className="font-mono text-slate-900 font-bold">{localTotals.totalKg} Kg</strong></span>
+                    <span className="text-slate-300">•</span>
+                    <span className="text-slate-600">Gross: <strong className="font-mono text-slate-900 font-bold">₹{localTotals.grossValue.toLocaleString('en-IN')}</strong></span>
+                    {localTotals.totalCr > 0 && (
+                      <>
+                        <span className="text-slate-300">•</span>
+                        <span className="text-emerald-700">Cr: <strong className="font-mono font-bold">+₹{localTotals.totalCr.toLocaleString('en-IN')}</strong></span>
+                      </>
+                    )}
+                    <span className="text-slate-300">•</span>
+                    <span className="text-rose-700">Dr: <strong className="font-mono font-bold">-₹{localTotals.totalDr.toLocaleString('en-IN')}</strong></span>
+                  </div>
+
+                  <div className="flex items-center justify-between md:justify-end gap-3 shrink-0 pt-1.5 md:pt-0 border-t md:border-t-0 border-orange-200/60">
                     <div className="text-right">
-                      <div className="text-xs font-bold text-slate-500">Net Payable to Fisherman</div>
-                      <div className="text-2xl font-black font-mono text-[#c2410c]">
-                        ₹{localTotals.netPayable.toLocaleString('en-IN')}
+                      <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                        {localTotals.netPayable >= 0 ? 'Net Payable' : 'Balance Due'}
+                      </div>
+                      <div className={`text-base sm:text-lg font-black font-mono leading-none ${localTotals.netPayable >= 0 ? 'text-[#c2410c]' : 'text-rose-700'}`}>
+                        ₹{Math.abs(localTotals.netPayable).toLocaleString('en-IN')}
                       </div>
                     </div>
+
+                    <button
+                      type="button"
+                      onClick={handlePrintLocalInvoice}
+                      className="h-9 px-3 rounded-xl bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 font-bold text-xs shadow-2xs transition-all cursor-pointer flex items-center gap-1.5 shrink-0"
+                      title="Print A4 Inward Invoice"
+                    >
+                      <Printer size={13} />
+                      <span>Print A4 Invoice</span>
+                    </button>
+
+                    <button
+                      type="submit"
+                      disabled={submitting}
+                      className="h-9 px-4 rounded-xl bg-gradient-to-r from-orange-500 to-[#ea580c] hover:from-orange-600 hover:to-[#c2410c] text-white font-bold text-xs sm:text-sm shadow-xs hover:shadow-md transition-all cursor-pointer flex items-center gap-1.5 shrink-0 disabled:opacity-50"
+                    >
+                      <CheckCircle size={14} />
+                      <span>{submitting ? 'Recording...' : 'Confirm Stock-In'}</span>
+                    </button>
                   </div>
                 </div>
-
-                <div>
-                  <label className="block text-[11px] font-bold text-slate-700 mb-1">Catch Notes / Landing Details</label>
-                  <input
-                    type="text"
-                    placeholder="e.g. Morning fresh boat catch, landing lot #12"
-                    value={localStockInForm.notes}
-                    onChange={(e) => setLocalStockInForm({ ...localStockInForm, notes: e.target.value })}
-                    className="w-full bg-white border border-[#E8DCCB] rounded-xl px-3 py-2 text-xs text-slate-800 focus:outline-none focus:border-[#ea580c]"
-                  />
-                </div>
-
-                <button
-                  type="submit"
-                  disabled={submitting}
-                  className="w-full py-3.5 rounded-xl bg-gradient-to-r from-orange-500 to-[#ea580c] hover:from-orange-600 hover:to-[#c2410c] text-white font-black text-xs sm:text-sm shadow-md transition-all cursor-pointer flex items-center justify-center gap-2 disabled:opacity-50"
-                >
-                  <CheckCircle size={16} />
-                  <span>{submitting ? 'Recording Catch...' : 'Confirm & Record Local Fish Stock-In'}</span>
-                </button>
               </form>
             </div>
           )}
@@ -1418,8 +2596,8 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack }) {
           {/* SUB-TAB 2: DAM CATCH UNLOADING (MULTI-FISH CONSIGNMENT)  */}
           {/* ════════════════════════════════════════════════════════ */}
           {stockInSubTab === 'dam' && (
-            <div className="bg-[#FDFBF7] border border-[#E8DCCB] rounded-2xl p-5 sm:p-6 shadow-2xs space-y-5 w-full">
-              <div className="flex items-center justify-between border-b border-[#fed7aa]/60 pb-3 flex-wrap gap-2">
+            <div className="bg-[#FDFBF7] border border-[#E8DCCB] rounded-2xl px-1.5 py-3.5 sm:p-6 shadow-2xs space-y-4 sm:space-y-5 w-full">
+              <div className="flex items-center justify-between border-b border-[#fed7aa]/60 pb-3 flex-wrap gap-2 px-1 sm:px-0">
                 <div>
                   <h2 className="text-base font-extrabold text-[#1e293b] flex items-center gap-2 m-0">
                     <span className="p-1.5 bg-blue-100 text-blue-700 rounded-lg">🌊</span>
@@ -1443,44 +2621,63 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack }) {
                       <label className="block text-[11px] font-bold text-slate-700 mb-1">
                         Contractor Name *
                       </label>
-                      <input
-                        type="text"
-                        list="dam-contractors-list"
+                      <SearchableDropdown
+                        mode="combobox"
                         placeholder="e.g. Srisailam Fishery Syndicate"
                         value={damStockInForm.contractorName}
-                        onChange={(e) => {
-                          const val = e.target.value;
+                        onChange={(val) => {
                           const regFound = registeredSuppliers.find(s =>
                             s.name?.toLowerCase() === val.toLowerCase() ||
                             s.companyName?.toLowerCase() === val.toLowerCase()
                           );
                           const crmFound = crmCustomers.find(c => c.name?.toLowerCase() === val.toLowerCase());
+                          const assignedVeh = fleetVehicles.find(v =>
+                            (v.assignedSupplierId && String(v.assignedSupplierId) === String(regFound?._id)) ||
+                            (v.assignedSupplierName && v.assignedSupplierName.toLowerCase() === val.toLowerCase())
+                          );
                           setDamStockInForm(prev => ({
                             ...prev,
                             contractorName: val,
                             contractorId: regFound?._id || crmFound?._id || prev.contractorId,
-                            contractorPhone: regFound?.phone || crmFound?.phone || prev.contractorPhone,
+                            contractorPhone: regFound?.phone || crmFound?.phone || assignedVeh?.driverPhone || prev.contractorPhone,
                             companyName: regFound?.companyName || prev.companyName,
-                            vehicleNumber: regFound?.vehicleNumber || prev.vehicleNumber,
+                            vehicleNumber: regFound?.vehicleNumber || assignedVeh?.vehicleNumber || prev.vehicleNumber,
                             harbor: regFound?.harbor || regFound?.city || crmFound?.address?.city || prev.harbor
                           }));
                         }}
-                        className="w-full bg-white border border-[#E8DCCB] rounded-xl px-3 py-2 text-xs font-semibold text-slate-800 placeholder-slate-400 focus:outline-none focus:border-blue-500"
+                        onSelect={(raw) => {
+                          if (!raw) return;
+                          const assignedVeh = fleetVehicles.find(v =>
+                            (v.assignedSupplierId && String(v.assignedSupplierId) === String(raw._id)) ||
+                            (v.assignedSupplierName && v.assignedSupplierName.toLowerCase() === raw.name?.toLowerCase())
+                          );
+                          setDamStockInForm(prev => ({
+                            ...prev,
+                            contractorName: raw.name || prev.contractorName,
+                            contractorId: raw._id || prev.contractorId,
+                            contractorPhone: raw.phone || assignedVeh?.driverPhone || prev.contractorPhone,
+                            companyName: raw.companyName || prev.companyName,
+                            vehicleNumber: raw.vehicleNumber || assignedVeh?.vehicleNumber || prev.vehicleNumber,
+                            harbor: raw.harbor || raw.city || raw.address?.city || prev.harbor
+                          }));
+                        }}
+                        options={damContractorOptions}
+                        accentColor="blue"
+                        required
                       />
-                      <datalist id="dam-contractors-list">
-                        {registeredSuppliers.filter(s => s.supplierType === 'DAM' || s.supplierType === 'All').map(s => (
-                          <option key={s._id} value={s.name}>
-                            {s.companyName ? `${s.companyName} | ` : ''}{s.phone ? `Ph: ${s.phone}` : ''}{s.vehicleNumber ? ` | Veh: ${s.vehicleNumber}` : ''}{s.harbor ? ` | Loc: ${s.harbor}` : ''}
-                          </option>
-                        ))}
-                        {crmCustomers.filter(c => c.category === 'Export' || c.category === 'Wholesale' || c.exportSubCategory === 'DAM').map(c => (
-                          <option key={c._id} value={c.name}>{c.phone ? `(${c.phone})` : ''}</option>
-                        ))}
-                      </datalist>
                     </div>
 
                     <div>
-                      <label className="block text-[11px] font-bold text-slate-700 mb-1">Contact Phone</label>
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="block text-[11px] font-bold text-slate-700">Contact Phone</label>
+                        {damStockInForm.contractorPhone && (
+                          <span className={`text-[10px] font-mono font-bold ${
+                            damStockInForm.contractorPhone.length === 10 ? 'text-emerald-600' : 'text-blue-600'
+                          }`}>
+                            {damStockInForm.contractorPhone.length}/10 digits
+                          </span>
+                        )}
+                      </div>
                       <input
                         type="tel"
                         maxLength={10}
@@ -1489,6 +2686,9 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack }) {
                         onChange={(e) => setDamStockInForm({ ...damStockInForm, contractorPhone: e.target.value.replace(/\D/g, '').slice(0, 10) })}
                         className="w-full bg-white border border-[#E8DCCB] rounded-xl px-3 py-2 text-xs font-mono font-medium text-slate-800 focus:outline-none focus:border-blue-500"
                       />
+                      {damStockInForm.contractorPhone && damStockInForm.contractorPhone.length > 0 && damStockInForm.contractorPhone.length < 10 && (
+                        <p className="text-[10px] text-amber-600 mt-1 font-semibold">Enter 10-digit mobile number</p>
+                      )}
                     </div>
 
                     <div>
@@ -1504,12 +2704,40 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack }) {
 
                     <div>
                       <label className="block text-[11px] font-bold text-slate-700 mb-1">Vehicle Number</label>
-                      <input
-                        type="text"
+                      <SearchableDropdown
+                        mode="combobox"
                         placeholder="e.g. AP 04 TX 4821"
                         value={damStockInForm.vehicleNumber}
-                        onChange={(e) => setDamStockInForm({ ...damStockInForm, vehicleNumber: e.target.value.toUpperCase() })}
-                        className="w-full bg-white border border-[#E8DCCB] rounded-xl px-3 py-2 text-xs font-mono font-bold text-slate-800 focus:outline-none focus:border-blue-500 uppercase"
+                        onChange={(val) => {
+                          const upper = (val || '').toUpperCase();
+                          const matchOpt = damVehicleOptions.find(v => v.value.toUpperCase() === upper);
+                          if (matchOpt?.raw) {
+                            const r = matchOpt.raw;
+                            setDamStockInForm(prev => ({
+                              ...prev,
+                              vehicleNumber: upper,
+                              contractorName: r.contractorName || r.supplierName || prev.contractorName,
+                              contractorPhone: r.driverPhone || r.supplierPhone || prev.contractorPhone,
+                              companyName: r.companyName || r.vehicleName || prev.companyName,
+                              harbor: r.harbor || prev.harbor
+                            }));
+                          } else {
+                            setDamStockInForm(prev => ({ ...prev, vehicleNumber: upper }));
+                          }
+                        }}
+                        onSelect={(raw) => {
+                          if (!raw) return;
+                          setDamStockInForm(prev => ({
+                            ...prev,
+                            vehicleNumber: raw.vehicleNumber || prev.vehicleNumber,
+                            contractorName: raw.contractorName || raw.supplierName || prev.contractorName,
+                            contractorPhone: raw.driverPhone || raw.supplierPhone || prev.contractorPhone,
+                            companyName: raw.companyName || raw.vehicleName || prev.companyName,
+                            harbor: raw.harbor || prev.harbor
+                          }));
+                        }}
+                        options={damVehicleOptions}
+                        accentColor="blue"
                       />
                     </div>
 
@@ -1540,7 +2768,7 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack }) {
                           ...prev,
                           tallyItems: [
                             ...prev.tallyItems,
-                            { id: Date.now(), menuItemId: '', itemName: '', boxes: '', kgPerBox: 60, kg: '', grams: '', price: '' }
+                            { id: Date.now(), menuItemId: '', itemName: '', sizeGrade: 'medium', sizeBracket: 'Medium', weightOption: '1 - 4 Kg', boxes: '', kgPerBox: 60, kg: '', grams: '', price: '' }
                           ]
                         }));
                       }}
@@ -1555,13 +2783,14 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack }) {
                     <table className="w-full text-left text-xs sm:text-sm border-collapse">
                       <thead className="bg-[#FDFBF7] text-slate-700 font-black border-b border-[#fed7aa]/50 text-[11px] sm:text-xs uppercase tracking-wider">
                         <tr>
-                          <th className="py-2.5 px-3">#</th>
-                          <th className="py-2.5 px-3 min-w-[180px]">Fish Species Variety *</th>
-                          <th className="py-2.5 px-3 text-center min-w-[90px]">Boxes</th>
-                          <th className="py-2.5 px-3 text-center min-w-[90px]">Kg / Box</th>
-                          <th className="py-2.5 px-3 text-center min-w-[120px]">Scale Weight (Kg + Gm)</th>
-                          <th className="py-2.5 px-3 text-right min-w-[100px]">Rate (₹/Kg)</th>
-                          <th className="py-2.5 px-3 text-right min-w-[100px]">Total (₹)</th>
+                          <th className="py-2.5 px-2.5 text-center w-8">#</th>
+                          <th className="py-2.5 px-2.5 min-w-[200px]">Fish Species Variety *</th>
+                          <th className="py-2.5 px-2.5 min-w-[160px]">Grade & Weight Range</th>
+                          <th className="py-2.5 px-2.5 text-center min-w-[80px]">Boxes</th>
+                          <th className="py-2.5 px-2.5 text-center min-w-[80px]">Kg / Box</th>
+                          <th className="py-2.5 px-2.5 text-center min-w-[150px]">Scale Weight (Kg + Gm)</th>
+                          <th className="py-2.5 px-2.5 text-right min-w-[90px]">Rate (₹/Kg)</th>
+                          <th className="py-2.5 px-2.5 text-right min-w-[100px]">Total (₹)</th>
                           <th className="py-2.5 px-2 text-center w-10"></th>
                         </tr>
                       </thead>
@@ -1569,7 +2798,7 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack }) {
                         {damStockInForm.tallyItems.map((row, idx) => {
                           let rowKg = 0;
                           const b = Number(row.boxes || 0);
-                          const kpb = Number(row.kgPerBox || 0);
+                          const kpb = Number(row.kgPerBox || 60);
                           if (Number(row.kg || 0) > 0 || Number(row.grams || 0) > 0) {
                             rowKg = Number((Number(row.kg || 0) + Number(row.grams || 0) / 1000).toFixed(3));
                           } else if (b > 0 && kpb > 0) {
@@ -1579,47 +2808,125 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack }) {
 
                           return (
                             <tr key={row.id || idx} className="hover:bg-blue-50/20">
-                              <td className="py-2 px-3 font-mono text-slate-500 text-[11px]">{idx + 1}</td>
-                              <td className="py-2 px-3">
-                                <select
+                              <td className="py-2 px-2.5 align-middle text-center">
+                                <span className="h-9 flex items-center justify-center font-mono text-slate-500 text-xs font-bold">
+                                  {idx + 1}
+                                </span>
+                              </td>
+                              <td className="py-2 px-2.5 align-middle">
+                                <SearchableDropdown
+                                  mode="select"
                                   value={row.menuItemId}
-                                  onChange={(e) => {
-                                    const selId = e.target.value;
-                                    const sel = fishList.find(f => f._id === selId);
+                                  onChange={(selId, selOption) => {
+                                    const sel = selOption?.raw || fishList.find(f => f._id === selId);
+                                    const gradeOptions = getFishGradeOptions(sel);
+                                    const defaultGrade = gradeOptions.find(g => g.key === 'medium') || gradeOptions[0];
+                                    const itemKpb = Number(sel?.boxPackingKg || 60);
                                     const updated = [...damStockInForm.tallyItems];
+                                    const curBoxes = Number(updated[idx].boxes || 0);
+                                    let autoKg = updated[idx].kg;
+                                    let autoGm = updated[idx].grams;
+                                    if (curBoxes > 0) {
+                                      const tot = curBoxes * itemKpb;
+                                      const wKg = Math.floor(tot);
+                                      const remG = Math.round((tot - wKg) * 1000);
+                                      autoKg = String(wKg);
+                                      autoGm = remG > 0 ? String(remG) : '0';
+                                    }
                                     updated[idx] = {
                                       ...updated[idx],
                                       menuItemId: selId,
                                       itemName: sel?.name || '',
-                                      price: sel?.purchasePrice ? String(sel.purchasePrice) : updated[idx].price,
-                                      kgPerBox: sel?.boxPackingKg || 60
+                                      sizeGrade: defaultGrade?.key || 'medium',
+                                      sizeBracket: defaultGrade?.label || 'Medium',
+                                      weightOption: defaultGrade?.range || '1 - 4 Kg',
+                                      price: defaultGrade?.rate ? String(defaultGrade.rate) : (sel?.purchasePrice ? String(sel.purchasePrice) : updated[idx].price),
+                                      kgPerBox: itemKpb,
+                                      kg: autoKg,
+                                      grams: autoGm
                                     };
                                     setDamStockInForm({ ...damStockInForm, tallyItems: updated });
                                   }}
+                                  options={fishOptions}
+                                  placeholder="-- Choose Fish Variety --"
+                                  searchPlaceholder="Search fish species..."
+                                  className="w-full min-w-[200px]"
+                                  inputClassName="!h-9 !py-0 !rounded-lg !text-xs flex items-center"
+                                  minDropdownWidth={300}
+                                  accentColor="blue"
                                   required
-                                  className="w-full bg-white border border-[#E8DCCB] rounded-lg px-2.5 py-1.5 text-xs font-bold text-slate-800 focus:outline-none focus:border-blue-500"
-                                >
-                                  <option value="">-- Choose Fish Variety --</option>
-                                  {fishList.map(f => (
-                                    <option key={f._id} value={f._id}>{f.name} (Stock: {f.stock || 0}kg)</option>
-                                  ))}
-                                </select>
+                                />
                               </td>
-                              <td className="py-2 px-3">
+                              <td className="py-2 px-2.5 align-middle">
+                                {(() => {
+                                  const selFish = fishList.find(f => f._id === row.menuItemId);
+                                  const gradeOptions = getFishGradeOptions(selFish);
+                                  const activeGradeKey = row.sizeGrade || (row.sizeBracket ? row.sizeBracket.toLowerCase() : 'medium');
+                                  const currentGrade = gradeOptions.find(g => g.key === activeGradeKey) || gradeOptions[0];
+
+                                  if (!row.menuItemId) {
+                                    return (
+                                      <div className="h-9 flex items-center px-2 border border-dashed border-[#E8DCCB] rounded-lg bg-slate-50/60 text-[11px] text-slate-400 italic">
+                                        Select fish first
+                                      </div>
+                                    );
+                                  }
+
+                                  return (
+                                    <select
+                                      value={currentGrade?.key || 'medium'}
+                                      onChange={(e) => {
+                                        const chosenKey = e.target.value;
+                                        const chosenGrade = gradeOptions.find(g => g.key === chosenKey);
+                                        const updated = [...damStockInForm.tallyItems];
+                                        updated[idx] = {
+                                          ...updated[idx],
+                                          sizeGrade: chosenKey,
+                                          sizeBracket: chosenGrade?.label || 'Medium',
+                                          weightOption: chosenGrade?.range || '1 - 4 Kg',
+                                          price: chosenGrade?.rate ? String(chosenGrade.rate) : updated[idx].price
+                                        };
+                                        setDamStockInForm({ ...damStockInForm, tallyItems: updated });
+                                      }}
+                                      className="w-full h-9 bg-white border border-[#E8DCCB] rounded-lg px-2 text-xs font-bold text-slate-800 focus:outline-none focus:border-blue-500 cursor-pointer"
+                                    >
+                                      {gradeOptions.map(g => (
+                                        <option key={g.key} value={g.key}>
+                                          {g.label} ({g.range})
+                                        </option>
+                                      ))}
+                                    </select>
+                                  );
+                                })()}
+                              </td>
+                              <td className="py-2 px-2.5 align-middle">
                                 <input
                                   type="number"
                                   min="0"
+                                  step="any"
                                   placeholder="0"
                                   value={row.boxes}
                                   onChange={(e) => {
+                                    const val = e.target.value;
                                     const updated = [...damStockInForm.tallyItems];
-                                    updated[idx].boxes = e.target.value;
+                                    const curKpb = Number(updated[idx].kgPerBox || 60);
+                                    updated[idx].boxes = val;
+                                    if (val !== '' && !isNaN(Number(val)) && Number(val) > 0) {
+                                      const totalWeight = Number(val) * curKpb;
+                                      const wholeKg = Math.floor(totalWeight);
+                                      const remainderGrams = Math.round((totalWeight - wholeKg) * 1000);
+                                      updated[idx].kg = String(wholeKg);
+                                      updated[idx].grams = remainderGrams > 0 ? String(remainderGrams) : '0';
+                                    } else if (val === '') {
+                                      updated[idx].kg = '';
+                                      updated[idx].grams = '';
+                                    }
                                     setDamStockInForm({ ...damStockInForm, tallyItems: updated });
                                   }}
-                                  className="w-full bg-white border border-[#E8DCCB] rounded-lg px-2 py-1.5 text-xs text-center font-mono font-bold text-slate-800 focus:outline-none focus:border-blue-500"
+                                  className="w-full h-9 bg-white border border-[#E8DCCB] rounded-lg px-2 text-xs text-center font-mono font-bold text-slate-800 focus:outline-none focus:border-blue-500"
                                 />
                               </td>
-                              <td className="py-2 px-3">
+                              <td className="py-2 px-2.5 align-middle">
                                 <input
                                   type="number"
                                   min="1"
@@ -1627,15 +2934,24 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack }) {
                                   placeholder="60"
                                   value={row.kgPerBox}
                                   onChange={(e) => {
+                                    const val = e.target.value;
                                     const updated = [...damStockInForm.tallyItems];
-                                    updated[idx].kgPerBox = e.target.value;
+                                    updated[idx].kgPerBox = val;
+                                    const bCount = Number(updated[idx].boxes || 0);
+                                    if (bCount > 0 && val !== '' && !isNaN(Number(val)) && Number(val) > 0) {
+                                      const totalWeight = bCount * Number(val);
+                                      const wholeKg = Math.floor(totalWeight);
+                                      const remainderGrams = Math.round((totalWeight - wholeKg) * 1000);
+                                      updated[idx].kg = String(wholeKg);
+                                      updated[idx].grams = remainderGrams > 0 ? String(remainderGrams) : '0';
+                                    }
                                     setDamStockInForm({ ...damStockInForm, tallyItems: updated });
                                   }}
-                                  className="w-full bg-white border border-[#E8DCCB] rounded-lg px-2 py-1.5 text-xs text-center font-mono font-bold text-slate-800 focus:outline-none focus:border-blue-500"
+                                  className="w-full h-9 bg-white border border-[#E8DCCB] rounded-lg px-2 text-xs text-center font-mono font-bold text-slate-800 focus:outline-none focus:border-blue-500"
                                 />
                               </td>
-                              <td className="py-2 px-3">
-                                <div className="flex items-center gap-1">
+                              <td className="py-2 px-2.5 align-middle">
+                                <div className="flex items-center justify-center gap-1 h-9">
                                   <input
                                     type="number"
                                     min="0"
@@ -1643,13 +2959,26 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack }) {
                                     placeholder="Kg"
                                     value={row.kg}
                                     onChange={(e) => {
+                                      let val = e.target.value;
                                       const updated = [...damStockInForm.tallyItems];
-                                      updated[idx].kg = e.target.value;
+                                      if (val.includes('.')) {
+                                        const parts = val.split('.');
+                                        updated[idx].kg = parts[0] || '0';
+                                        const gStr = (parts[1] || '').padEnd(3, '0').slice(0, 3);
+                                        updated[idx].grams = String(parseInt(gStr, 10) || 0);
+                                      } else {
+                                        updated[idx].kg = val;
+                                      }
+                                      const curKpb = Number(updated[idx].kgPerBox || 60);
+                                      const totalWeight = Number(updated[idx].kg || 0) + (Number(updated[idx].grams || 0) / 1000);
+                                      if (totalWeight > 0 && (!updated[idx].boxes || updated[idx].boxes === '0')) {
+                                        updated[idx].boxes = String(Math.round(totalWeight / curKpb));
+                                      }
                                       setDamStockInForm({ ...damStockInForm, tallyItems: updated });
                                     }}
-                                    className="w-16 bg-white border border-[#E8DCCB] rounded-lg px-1.5 py-1.5 text-xs text-center font-mono font-bold text-slate-800"
+                                    className="w-16 h-9 bg-white border border-[#E8DCCB] rounded-lg px-1.5 text-xs text-center font-mono font-bold text-slate-800 focus:outline-none focus:border-blue-500"
                                   />
-                                  <span className="text-[10px] text-slate-400">+</span>
+                                  <span className="text-[11px] font-bold text-slate-400">+</span>
                                   <input
                                     type="number"
                                     min="0"
@@ -1657,15 +2986,18 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack }) {
                                     placeholder="Gm"
                                     value={row.grams}
                                     onChange={(e) => {
+                                      let val = e.target.value.replace(/[^0-9]/g, '');
+                                      if (val.length > 3) val = val.slice(0, 3);
+                                      if (Number(val) > 999) val = '999';
                                       const updated = [...damStockInForm.tallyItems];
-                                      updated[idx].grams = e.target.value;
+                                      updated[idx].grams = val;
                                       setDamStockInForm({ ...damStockInForm, tallyItems: updated });
                                     }}
-                                    className="w-14 bg-white border border-[#E8DCCB] rounded-lg px-1 py-1.5 text-xs text-center font-mono font-bold text-slate-800"
+                                    className="w-14 h-9 bg-white border border-[#E8DCCB] rounded-lg px-1 text-xs text-center font-mono font-bold text-slate-800 focus:outline-none focus:border-blue-500"
                                   />
                                 </div>
                               </td>
-                              <td className="py-2 px-3 text-right">
+                              <td className="py-2 px-2.5 align-middle text-right">
                                 <input
                                   type="number"
                                   min="0"
@@ -1677,13 +3009,15 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack }) {
                                     updated[idx].price = e.target.value;
                                     setDamStockInForm({ ...damStockInForm, tallyItems: updated });
                                   }}
-                                  className="w-20 bg-white border border-[#E8DCCB] rounded-lg px-2 py-1.5 text-xs text-right font-mono font-bold text-slate-800 focus:outline-none focus:border-blue-500"
+                                  className="w-20 h-9 bg-white border border-[#E8DCCB] rounded-lg px-2 text-xs text-right font-mono font-bold text-slate-800 focus:outline-none focus:border-blue-500"
                                 />
                               </td>
-                              <td className="py-2 px-3 text-right font-mono font-black text-blue-800">
-                                ₹{rowTotal.toLocaleString('en-IN')}
+                              <td className="py-2 px-2.5 align-middle text-right">
+                                <div className="h-9 flex items-center justify-end font-mono font-black text-xs sm:text-sm text-blue-800">
+                                  ₹{rowTotal.toLocaleString('en-IN')}
+                                </div>
                               </td>
-                              <td className="py-2 px-2 text-center">
+                              <td className="py-2 px-2 align-middle text-center">
                                 {damStockInForm.tallyItems.length > 1 && (
                                   <button
                                     type="button"
@@ -1693,9 +3027,10 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack }) {
                                         tallyItems: damStockInForm.tallyItems.filter((_, i) => i !== idx)
                                       });
                                     }}
-                                    className="text-slate-400 hover:text-rose-600 p-1 rounded-lg cursor-pointer transition-colors"
+                                    className="h-9 w-9 flex items-center justify-center text-slate-400 hover:text-rose-600 rounded-lg cursor-pointer transition-colors mx-auto"
+                                    title="Remove row"
                                   >
-                                    <Trash2 size={13} />
+                                    <Trash2 size={14} />
                                   </button>
                                 )}
                               </td>
@@ -1709,10 +3044,20 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack }) {
 
                 {/* 3. Deductions & Account Settlements */}
                 <div className="bg-[#FAF0E4]/60 p-4 rounded-xl border border-[#fed7aa]/80 space-y-3">
-                  <div className="text-xs font-black text-slate-800 uppercase tracking-wide">
-                    Settlement & Advance Deductions
+                  <div className="flex items-center justify-between flex-wrap gap-2">
+                    <div className="text-xs font-black text-slate-800 uppercase tracking-wide">
+                      Settlement & Advance Deductions
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleAddDamCustomCategory}
+                      className="px-2.5 py-1 bg-white hover:bg-slate-50 border border-slate-300 rounded-lg text-xs font-bold text-slate-700 flex items-center gap-1 shadow-2xs cursor-pointer transition-all hover:border-blue-400"
+                    >
+                      <Plus size={13} className="text-blue-600" />
+                      <span>Add Category</span>
+                    </button>
                   </div>
-                  <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+                  <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-5 gap-2.5">
                     {[
                       { key: 'advance', label: '1) Advance' },
                       { key: 'khata', label: '2) Khata' },
@@ -1720,7 +3065,7 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack }) {
                       { key: 'expense', label: '4) Depot Expense' },
                       { key: 'festivalExpense', label: '5) Other Expense' }
                     ].map(item => {
-                      const entry = damStockInForm.settlements[item.key] || { type: 'Dr', amount: '' };
+                      const entry = damStockInForm.settlements?.[item.key] || { type: 'Dr', amount: '' };
                       const isCr = entry.type === 'Cr';
 
                       return (
@@ -1774,27 +3119,78 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack }) {
                         </div>
                       );
                     })}
-                  </div>
 
-                  <div className="bg-gradient-to-r from-blue-500/10 to-indigo-500/10 p-4 rounded-xl border border-blue-200 flex items-center justify-between flex-wrap gap-3">
-                    <div>
-                      <div className="text-xs font-black text-slate-800 uppercase tracking-wide">
-                        Dam Consignment Net Settlement
-                      </div>
-                      <div className="text-[11px] text-slate-600 flex items-center gap-2 mt-0.5 flex-wrap">
-                        <span>Total Weight: <strong className="font-mono text-slate-800">{damTotals.totalKg} Kg</strong></span>
-                        <span>• Catch: <strong className="font-mono text-slate-800">₹{damTotals.catchTotal.toLocaleString('en-IN')}</strong></span>
-                        <span>• Deductions: <strong className="font-mono text-rose-700">-₹{damTotals.totalDr.toLocaleString('en-IN')}</strong></span>
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      <div className="text-xs font-bold text-slate-500">
-                        {damTotals.netSettlement >= 0 ? 'Payable to Contractor' : 'Contractor Balance Due'}
-                      </div>
-                      <div className={`text-2xl font-black font-mono ${damTotals.netSettlement >= 0 ? 'text-blue-700' : 'text-rose-700'}`}>
-                        ₹{Math.abs(damTotals.netSettlement).toLocaleString('en-IN')}
-                      </div>
-                    </div>
+                    {/* Custom Categories Added Dynamically */}
+                    {(damStockInForm.customSettlements || []).map((item, cIdx) => {
+                      const isCr = item.type === 'Cr';
+                      return (
+                        <div key={item.id || cIdx} className="bg-white p-2.5 rounded-xl border border-blue-300 bg-blue-50/20 space-y-1.5 shadow-2xs relative">
+                          <div className="flex items-center justify-between gap-1">
+                            <input
+                              type="text"
+                              value={item.label}
+                              placeholder="Category Name"
+                              onChange={(e) => {
+                                const updated = [...damStockInForm.customSettlements];
+                                updated[cIdx].label = e.target.value;
+                                setDamStockInForm({ ...damStockInForm, customSettlements: updated });
+                              }}
+                              className="w-full text-[11px] font-bold text-slate-800 bg-transparent border-b border-dashed border-slate-300 focus:outline-none focus:border-blue-500 py-0.5"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveDamCustomCategory(item.id)}
+                              className="text-slate-400 hover:text-rose-600 p-0.5 rounded cursor-pointer shrink-0"
+                              title="Remove category"
+                            >
+                              <Trash2 size={13} />
+                            </button>
+                          </div>
+                          <div className="grid grid-cols-2 gap-1 p-0.5 bg-slate-100 rounded-lg">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const updated = [...damStockInForm.customSettlements];
+                                updated[cIdx].type = 'Cr';
+                                setDamStockInForm({ ...damStockInForm, customSettlements: updated });
+                              }}
+                              className={`py-0.5 rounded text-[10px] font-black transition-all cursor-pointer ${
+                                isCr ? 'bg-emerald-600 text-white shadow-xs' : 'text-slate-500 hover:text-slate-900'
+                              }`}
+                            >
+                              + Cr
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const updated = [...damStockInForm.customSettlements];
+                                updated[cIdx].type = 'Dr';
+                                setDamStockInForm({ ...damStockInForm, customSettlements: updated });
+                              }}
+                              className={`py-0.5 rounded text-[10px] font-black transition-all cursor-pointer ${
+                                !isCr ? 'bg-rose-600 text-white shadow-xs' : 'text-slate-500 hover:text-slate-900'
+                              }`}
+                            >
+                              - Dr
+                            </button>
+                          </div>
+                          <input
+                            type="number"
+                            min="0"
+                            placeholder="0"
+                            value={item.amount}
+                            onChange={(e) => {
+                              const updated = [...damStockInForm.customSettlements];
+                              updated[cIdx].amount = e.target.value;
+                              setDamStockInForm({ ...damStockInForm, customSettlements: updated });
+                            }}
+                            className={`w-full p-1 bg-slate-50 border rounded-lg text-xs font-mono font-bold text-center ${
+                              isCr ? 'border-emerald-300 text-emerald-800' : 'border-rose-300 text-rose-800'
+                            }`}
+                          />
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
 
@@ -1805,48 +3201,56 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack }) {
                     placeholder="e.g. Srisailam reservoir lot #A, weighed at depot platform"
                     value={damStockInForm.notes}
                     onChange={(e) => setDamStockInForm({ ...damStockInForm, notes: e.target.value })}
-                    className="w-full bg-white border border-[#E8DCCB] rounded-xl px-3 py-2 text-xs text-slate-800 focus:outline-none focus:border-blue-500"
+                    className="w-full h-9 bg-white border border-[#E8DCCB] rounded-xl px-3 text-xs text-slate-800 focus:outline-none focus:border-blue-500"
                   />
                 </div>
 
-                <div className="flex items-center gap-3">
-                  <button
-                    type="submit"
-                    disabled={submitting}
-                    className="flex-1 py-3.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 disabled:opacity-50 text-white font-black text-xs sm:text-sm shadow-md transition-all cursor-pointer flex items-center justify-center gap-2"
-                  >
-                    <CheckCircle size={16} />
-                    <span>{submitting ? 'Recording Consignment...' : 'Confirm & Record Dam Stock-In'}</span>
-                  </button>
+                {/* Compact Dam Settlement Summary & Actions Strip */}
+                <div className="bg-gradient-to-r from-blue-50 via-indigo-50/60 to-blue-50 p-2.5 sm:px-4 sm:py-2 rounded-xl border border-blue-200 flex flex-col md:flex-row md:items-center justify-between gap-3 shadow-2xs">
+                  <div className="flex items-center flex-wrap gap-x-3 gap-y-1 text-xs">
+                    <span className="font-extrabold text-slate-800 uppercase tracking-wide text-[11px] mr-1">Dam Settlement:</span>
+                    <span className="text-slate-600">Weight: <strong className="font-mono text-slate-900 font-bold">{damTotals.totalKg} Kg</strong></span>
+                    <span className="text-slate-300">•</span>
+                    <span className="text-slate-600">Catch: <strong className="font-mono text-slate-900 font-bold">₹{damTotals.catchTotal.toLocaleString('en-IN')}</strong></span>
+                    {damTotals.totalCr > 0 && (
+                      <>
+                        <span className="text-slate-300">•</span>
+                        <span className="text-emerald-700">Cr: <strong className="font-mono font-bold">+₹{damTotals.totalCr.toLocaleString('en-IN')}</strong></span>
+                      </>
+                    )}
+                    <span className="text-slate-300">•</span>
+                    <span className="text-rose-700">Dr: <strong className="font-mono font-bold">-₹{damTotals.totalDr.toLocaleString('en-IN')}</strong></span>
+                  </div>
 
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const validRows = (damStockInForm.tallyItems || []).filter(
-                        r => (Number(r.kg || 0) + Number(r.grams || 0)) > 0 || (Number(r.boxes || 0) > 0 && Number(r.kgPerBox || 0) > 0)
-                      );
-                      setDamPrintVoucher({
-                        contractorName: damStockInForm.contractorName || 'DAM Contractor',
-                        contractorPhone: damStockInForm.contractorPhone,
-                        companyName: damStockInForm.companyName,
-                        vehicleNumber: damStockInForm.vehicleNumber,
-                        harbor: damStockInForm.harbor,
-                        totalGrossKg: damTotals.totalKg,
-                        catchTotalValue: damTotals.catchTotal,
-                        totalCredits: damTotals.totalCr,
-                        totalDebits: damTotals.totalDr,
-                        netConsignmentSettlement: damTotals.netSettlement,
-                        settlementDetails: damStockInForm.settlements,
-                        tallyItems: validRows,
-                        date: new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
-                      });
-                    }}
-                    className="px-4 py-3.5 rounded-xl bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 font-bold text-xs shadow-xs transition-all cursor-pointer flex items-center gap-1.5 shrink-0"
-                    title="Print Catch Receipt"
-                  >
-                    <Printer size={15} />
-                    <span className="hidden sm:inline">Print Voucher</span>
-                  </button>
+                  <div className="flex items-center justify-between md:justify-end gap-2.5 shrink-0 pt-1.5 md:pt-0 border-t md:border-t-0 border-blue-200/60">
+                    <div className="text-right">
+                      <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                        {damTotals.netSettlement >= 0 ? 'Payable' : 'Due'}
+                      </div>
+                      <div className={`text-base sm:text-lg font-black font-mono leading-none ${damTotals.netSettlement >= 0 ? 'text-blue-700' : 'text-rose-700'}`}>
+                        ₹{Math.abs(damTotals.netSettlement).toLocaleString('en-IN')}
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={handlePrintDamInvoice}
+                      className="h-9 px-3 rounded-xl bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 font-bold text-xs shadow-2xs transition-all cursor-pointer flex items-center gap-1.5 shrink-0"
+                      title="Print A4 Consignment Voucher"
+                    >
+                      <Printer size={13} />
+                      <span>Print A4 Voucher</span>
+                    </button>
+
+                    <button
+                      type="submit"
+                      disabled={submitting}
+                      className="h-9 px-4 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 disabled:opacity-50 text-white font-bold text-xs sm:text-sm shadow-xs hover:shadow-md transition-all cursor-pointer flex items-center gap-1.5 shrink-0"
+                    >
+                      <CheckCircle size={14} />
+                      <span>{submitting ? 'Recording...' : 'Confirm Consignment'}</span>
+                    </button>
+                  </div>
                 </div>
               </form>
             </div>
@@ -1856,8 +3260,8 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack }) {
           {/* SUB-TAB 3: SUPPLIES & PACKAGING INTAKE                   */}
           {/* ════════════════════════════════════════════════════════ */}
           {stockInSubTab === 'supplies' && (
-            <div className="bg-[#FDFBF7] border border-[#E8DCCB] rounded-2xl p-5 sm:p-6 shadow-2xs space-y-5 w-full">
-              <div className="flex items-center justify-between border-b border-[#fed7aa]/60 pb-3 flex-wrap gap-2">
+            <div className="bg-[#FDFBF7] border border-[#E8DCCB] rounded-2xl px-1.5 py-3.5 sm:p-6 shadow-2xs space-y-4 sm:space-y-5 w-full">
+              <div className="flex items-center justify-between border-b border-[#fed7aa]/60 pb-3 flex-wrap gap-2 px-1 sm:px-0">
                 <div>
                   <h2 className="text-base font-extrabold text-[#1e293b] flex items-center gap-2 m-0">
                     <span className="p-1.5 bg-emerald-100 text-emerald-700 rounded-lg">📦</span>
@@ -1908,29 +3312,25 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack }) {
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
-                      <select
+                      <SearchableDropdown
+                        mode="select"
                         value={suppliesForm.category}
-                        onChange={(e) => {
-                          const val = e.target.value;
+                        onChange={(val) => {
                           if (val === 'ADD_NEW') {
                             setShowAddCategoryInput(true);
                           } else {
                             setSuppliesForm({ ...suppliesForm, category: val });
                           }
                         }}
+                        options={[
+                          ...supplyCategories.map(cat => ({ value: cat.name, label: cat.name })),
+                          { value: 'ADD_NEW', label: '➕ + Add Custom Category...', isSpecial: true }
+                        ]}
+                        placeholder="-- Choose Category --"
+                        searchPlaceholder="Search category..."
+                        accentColor="emerald"
                         required
-                        className="w-full bg-white border border-[#E8DCCB] rounded-xl px-3 py-2 text-xs font-bold text-slate-800 focus:outline-none focus:border-emerald-500"
-                      >
-                        <option value="">-- Choose Category --</option>
-                        {supplyCategories.map(cat => (
-                          <option key={cat._id || cat.name} value={cat.name}>
-                            {cat.name}
-                          </option>
-                        ))}
-                        <option value="ADD_NEW" className="font-bold text-emerald-700">
-                          ➕ + Add Custom Category...
-                        </option>
-                      </select>
+                      />
                     </div>
 
                     <div>
@@ -1957,40 +3357,61 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack }) {
                       <label className="block text-[11px] font-bold text-slate-700 mb-1">
                         Supplier / Shop Name
                       </label>
-                      <input
-                        type="text"
-                        list="supplies-suppliers-list"
+                      <SearchableDropdown
+                        mode="combobox"
                         placeholder="e.g. Sri Balaji Ice Factory"
                         value={suppliesForm.supplierName}
-                        onChange={(e) => {
-                          const val = e.target.value;
+                        onChange={(val) => {
                           const regFound = registeredSuppliers.find(s =>
                             s.name?.toLowerCase() === val.toLowerCase() ||
                             s.companyName?.toLowerCase() === val.toLowerCase()
+                          );
+                          const assignedVeh = fleetVehicles.find(v =>
+                            (v.assignedSupplierId && String(v.assignedSupplierId) === String(regFound?._id)) ||
+                            (v.assignedSupplierName && v.assignedSupplierName.toLowerCase() === val.toLowerCase())
                           );
                           setSuppliesForm(prev => ({
                             ...prev,
                             supplierName: val,
                             supplierId: regFound?._id || '',
-                            supplierPhone: regFound?.phone || prev.supplierPhone,
+                            supplierPhone: regFound?.phone || assignedVeh?.driverPhone || prev.supplierPhone,
                             companyName: regFound?.companyName || prev.companyName,
-                            vehicleNumber: regFound?.vehicleNumber || prev.vehicleNumber,
+                            vehicleNumber: regFound?.vehicleNumber || assignedVeh?.vehicleNumber || prev.vehicleNumber,
                             harbor: regFound?.harbor || regFound?.city || prev.harbor
                           }));
                         }}
-                        className="w-full bg-white border border-[#E8DCCB] rounded-xl px-3 py-2 text-xs font-semibold text-slate-800 placeholder-slate-400 focus:outline-none focus:border-emerald-500"
+                        onSelect={(raw) => {
+                          if (!raw) return;
+                          const assignedVeh = fleetVehicles.find(v =>
+                            (v.assignedSupplierId && String(v.assignedSupplierId) === String(raw._id)) ||
+                            (v.assignedSupplierName && v.assignedSupplierName.toLowerCase() === raw.name?.toLowerCase())
+                          );
+                          setSuppliesForm(prev => ({
+                            ...prev,
+                            supplierName: raw.name || prev.supplierName,
+                            supplierId: raw._id || prev.supplierId,
+                            supplierPhone: raw.phone || assignedVeh?.driverPhone || prev.supplierPhone,
+                            companyName: raw.companyName || prev.companyName,
+                            vehicleNumber: raw.vehicleNumber || assignedVeh?.vehicleNumber || prev.vehicleNumber,
+                            harbor: raw.harbor || raw.city || prev.harbor
+                          }));
+                        }}
+                        options={suppliesSupplierOptions}
+                        accentColor="emerald"
                       />
-                      <datalist id="supplies-suppliers-list">
-                        {registeredSuppliers.filter(s => s.supplierType === 'Consumables' || s.supplierType === 'All' || !s.supplierType).map(s => (
-                          <option key={s._id} value={s.name}>
-                            {s.companyName ? `${s.companyName} | ` : ''}{s.phone ? `Ph: ${s.phone}` : ''}{s.vehicleNumber ? ` | Veh: ${s.vehicleNumber}` : ''}
-                          </option>
-                        ))}
-                      </datalist>
                     </div>
 
                     <div>
-                      <label className="block text-[11px] font-bold text-slate-700 mb-1">Phone Number</label>
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="block text-[11px] font-bold text-slate-700">Phone Number</label>
+                        {suppliesForm.supplierPhone && (
+                          <span className={`text-[10px] font-mono font-bold ${
+                            suppliesForm.supplierPhone.length === 10 ? 'text-emerald-600' : 'text-amber-600'
+                          }`}>
+                            {suppliesForm.supplierPhone.length}/10 digits
+                          </span>
+                        )}
+                      </div>
                       <input
                         type="tel"
                         maxLength={10}
@@ -1999,6 +3420,9 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack }) {
                         onChange={(e) => setSuppliesForm({ ...suppliesForm, supplierPhone: e.target.value.replace(/\D/g, '').slice(0, 10) })}
                         className="w-full bg-white border border-[#E8DCCB] rounded-xl px-3 py-2 text-xs font-mono font-medium text-slate-800 focus:outline-none focus:border-emerald-500"
                       />
+                      {suppliesForm.supplierPhone && suppliesForm.supplierPhone.length > 0 && suppliesForm.supplierPhone.length < 10 && (
+                        <p className="text-[10px] text-amber-600 mt-1 font-semibold">Enter 10-digit mobile number</p>
+                      )}
                     </div>
 
                     <div>
@@ -2014,12 +3438,40 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack }) {
 
                     <div>
                       <label className="block text-[11px] font-bold text-slate-700 mb-1">Vehicle Number</label>
-                      <input
-                        type="text"
+                      <SearchableDropdown
+                        mode="combobox"
                         placeholder="e.g. AP 04 TX 4821"
                         value={suppliesForm.vehicleNumber}
-                        onChange={(e) => setSuppliesForm({ ...suppliesForm, vehicleNumber: e.target.value.toUpperCase() })}
-                        className="w-full bg-white border border-[#E8DCCB] rounded-xl px-3 py-2 text-xs font-mono font-bold text-slate-800 uppercase focus:outline-none focus:border-emerald-500"
+                        onChange={(val) => {
+                          const upper = (val || '').toUpperCase();
+                          const matchOpt = suppliesVehicleOptions.find(v => v.value.toUpperCase() === upper);
+                          if (matchOpt?.raw) {
+                            const r = matchOpt.raw;
+                            setSuppliesForm(prev => ({
+                              ...prev,
+                              vehicleNumber: upper,
+                              supplierName: r.supplierName || prev.supplierName,
+                              supplierPhone: r.driverPhone || r.supplierPhone || prev.supplierPhone,
+                              companyName: r.companyName || r.vehicleName || prev.companyName,
+                              harbor: r.harbor || prev.harbor
+                            }));
+                          } else {
+                            setSuppliesForm(prev => ({ ...prev, vehicleNumber: upper }));
+                          }
+                        }}
+                        onSelect={(raw) => {
+                          if (!raw) return;
+                          setSuppliesForm(prev => ({
+                            ...prev,
+                            vehicleNumber: raw.vehicleNumber || prev.vehicleNumber,
+                            supplierName: raw.supplierName || prev.supplierName,
+                            supplierPhone: raw.driverPhone || raw.supplierPhone || prev.supplierPhone,
+                            companyName: raw.companyName || raw.vehicleName || prev.companyName,
+                            harbor: raw.harbor || prev.harbor
+                          }));
+                        }}
+                        options={suppliesVehicleOptions}
+                        accentColor="emerald"
                       />
                     </div>
 
@@ -2054,19 +3506,22 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack }) {
 
                   <div>
                     <label className="block text-[11px] font-bold text-slate-700 mb-1">Packaging Unit</label>
-                    <select
+                    <SearchableDropdown
+                      mode="select"
+                      searchable={false}
                       value={suppliesForm.unit}
-                      onChange={(e) => setSuppliesForm({ ...suppliesForm, unit: e.target.value })}
-                      className="w-full bg-white border border-[#E8DCCB] rounded-xl px-3 py-2 text-xs font-bold text-slate-800 focus:outline-none focus:border-emerald-500"
-                    >
-                      <option value="Pcs">Pcs (Pieces)</option>
-                      <option value="Boxes">Boxes</option>
-                      <option value="Rolls">Rolls (Tape / Straps)</option>
-                      <option value="Kg">Kg (Kilograms)</option>
-                      <option value="Blocks">Blocks (Ice)</option>
-                      <option value="Bags">Bags (Salt / Chemicals)</option>
-                      <option value="Bundles">Bundles</option>
-                    </select>
+                      onChange={(val) => setSuppliesForm({ ...suppliesForm, unit: val })}
+                      options={[
+                        { value: 'Pcs', label: 'Pcs (Pieces)' },
+                        { value: 'Boxes', label: 'Boxes' },
+                        { value: 'Rolls', label: 'Rolls (Tape / Straps)' },
+                        { value: 'Kg', label: 'Kg (Kilograms)' },
+                        { value: 'Blocks', label: 'Blocks (Ice)' },
+                        { value: 'Bags', label: 'Bags (Salt / Chemicals)' },
+                        { value: 'Bundles', label: 'Bundles' }
+                      ]}
+                      accentColor="emerald"
+                    />
                   </div>
 
                   <div>
@@ -2116,16 +3571,19 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack }) {
 
                     <div>
                       <label className="block text-[11px] font-bold text-slate-700 mb-1">Payment Mode</label>
-                      <select
+                      <SearchableDropdown
+                        mode="select"
+                        searchable={false}
                         value={suppliesForm.paymentMode}
-                        onChange={(e) => setSuppliesForm({ ...suppliesForm, paymentMode: e.target.value })}
-                        className="w-full bg-white border border-[#E8DCCB] rounded-xl px-3 py-2 text-xs font-bold text-slate-800 focus:outline-none focus:border-emerald-500"
-                      >
-                        <option value="Cash">Cash</option>
-                        <option value="UPI">UPI / GPay / PhonePe</option>
-                        <option value="Bank Transfer">Bank Transfer (NEFT/RTGS)</option>
-                        <option value="Credit">Credit (Pay Later)</option>
-                      </select>
+                        onChange={(val) => setSuppliesForm({ ...suppliesForm, paymentMode: val })}
+                        options={[
+                          { value: 'Cash', label: 'Cash' },
+                          { value: 'UPI', label: 'UPI / GPay / PhonePe' },
+                          { value: 'Bank Transfer', label: 'Bank Transfer (NEFT/RTGS)' },
+                          { value: 'Credit', label: 'Credit (Pay Later)' }
+                        ]}
+                        accentColor="emerald"
+                      />
                     </div>
 
                     <div>
@@ -2141,14 +3599,26 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack }) {
                   </div>
                 </div>
 
-                <button
-                  type="submit"
-                  disabled={isSubmittingSupply}
-                  className="w-full py-3.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-black text-xs sm:text-sm shadow-md transition-all cursor-pointer flex items-center justify-center gap-2 disabled:opacity-50"
-                >
-                  <CheckCircle size={16} />
-                  <span>{isSubmittingSupply ? 'Recording Supplies Intake...' : 'Confirm & Record Supplies Stock-In'}</span>
-                </button>
+                <div className="flex items-center justify-end gap-2.5 pt-1 flex-wrap">
+                  <button
+                    type="button"
+                    onClick={handlePrintSuppliesInvoice}
+                    className="h-9 px-3 rounded-xl bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 font-bold text-xs shadow-2xs transition-all cursor-pointer flex items-center gap-1.5 shrink-0"
+                    title="Print A4 Supplies Inward Invoice"
+                  >
+                    <Printer size={13} />
+                    <span>Print A4 Invoice</span>
+                  </button>
+
+                  <button
+                    type="submit"
+                    disabled={isSubmittingSupply}
+                    className="h-9 px-4 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-xs sm:text-sm shadow-xs hover:shadow-md transition-all cursor-pointer flex items-center gap-1.5 disabled:opacity-50"
+                  >
+                    <CheckCircle size={14} />
+                    <span>{isSubmittingSupply ? 'Recording...' : 'Confirm Supplies Stock-In'}</span>
+                  </button>
+                </div>
               </form>
 
               {/* 5. Recent Consumables Stock-In Logs Table (Full Width with Pagination) */}
@@ -2285,89 +3755,7 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack }) {
         </div>
       )}
 
-      {/* ── TAB 3: Log Shrinkage (Full Width) ── */}
-      {activeTab === 'shrinkage' && (
-        <div className="bg-[#FDFBF7] border border-[#E8DCCB] rounded-2xl p-6 shadow-2xs w-full space-y-5">
-          <div className="border-b border-[#fed7aa]/60 pb-3">
-            <h2 className="text-base font-extrabold text-[#1e293b] flex items-center gap-2 m-0">
-              <span className="p-1.5 bg-amber-100 text-amber-800 rounded-lg">📉</span>
-              <span>Record Weight Loss & Ice Shrinkage</span>
-            </h2>
-            <p className="text-xs text-slate-500 mt-0.5 font-medium m-0">
-              Record normal melting or cutting shrinkage to keep current inventory accurate.
-            </p>
-          </div>
-
-          <form onSubmit={handleShrinkageSubmit} className="space-y-4">
-            <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">Select Fish Variety *</label>
-              <select
-                value={shrinkageForm.menuItemId}
-                onChange={(e) => setShrinkageForm({ ...shrinkageForm, menuItemId: e.target.value })}
-                required
-                className="w-full bg-white border border-[#E8DCCB] rounded-xl px-3 py-2 text-xs font-bold text-slate-800 focus:outline-none focus:border-[#ea580c]"
-              >
-                <option value="">-- Choose Fish Variety --</option>
-                {fishList.map(f => (
-                  <option key={f._id} value={f._id}>{f.name} (Current Stock: {f.stock || 0} kg)</option>
-                ))}
-              </select>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">Shrinkage Weight (Kg) *</label>
-                <input
-                  type="number"
-                  step="any"
-                  min="0.01"
-                  required
-                  placeholder="e.g. 2.4"
-                  value={shrinkageForm.grossKgLost}
-                  onChange={(e) => setShrinkageForm({ ...shrinkageForm, grossKgLost: e.target.value })}
-                  className="w-full bg-white border border-[#E8DCCB] rounded-xl px-3 py-2 text-xs font-mono font-bold text-slate-800 focus:outline-none focus:border-[#ea580c]"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">Shrinkage Reason *</label>
-                <select
-                  value={shrinkageForm.reason}
-                  onChange={(e) => setShrinkageForm({ ...shrinkageForm, reason: e.target.value })}
-                  className="w-full bg-white border border-[#E8DCCB] rounded-xl px-3 py-2 text-xs font-bold text-slate-800 focus:outline-none focus:border-[#ea580c]"
-                >
-                  <option value="Ice Melt / Natural Drip Loss">Ice Melt / Natural Drip Loss</option>
-                  <option value="Cutting / Cleaning Wastage">Cutting / Cleaning Wastage</option>
-                  <option value="Spoilage / Quality Rejection">Spoilage / Quality Rejection</option>
-                  <option value="Stock Audit Adjustment">Stock Audit Adjustment</option>
-                </select>
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">Inspector Notes</label>
-              <input
-                type="text"
-                placeholder="e.g. End of day crate re-weighing variance"
-                value={shrinkageForm.notes}
-                onChange={(e) => setShrinkageForm({ ...shrinkageForm, notes: e.target.value })}
-                className="w-full bg-white border border-[#E8DCCB] rounded-xl px-3 py-2 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-[#ea580c]"
-              />
-            </div>
-
-            <button
-              type="submit"
-              disabled={submitting}
-              className="w-full py-3.5 rounded-xl bg-[#ea580c] hover:bg-[#c2410c] text-white font-black text-xs sm:text-sm shadow-md transition-all cursor-pointer flex items-center justify-center gap-2 disabled:opacity-50"
-            >
-              <CheckCircle size={16} />
-              <span>{submitting ? 'Recording Adjustment...' : 'Record Shrinkage Adjustment'}</span>
-            </button>
-          </form>
-        </div>
-      )}
-
-      {/* ── TAB 4: Stock Movement Audit Log (Full Width + Real Date/Time + Type Filters) ── */}
+      {/* ── TAB 3: Stock Movement Audit Log (Full Width + Real Date/Time + Type Filters) ── */}
       {activeTab === 'logs' && (
         <div className="bg-[#FDFBF7] border border-[#E8DCCB] rounded-2xl overflow-hidden shadow-2xs space-y-3.5 p-3 sm:p-4 w-full">
           {/* Header Row: Title, Inline Date Filter on Desktop, Compact Modal Toggle on Mobile/Tablet */}
@@ -2379,7 +3767,7 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack }) {
                   <span>Stock History & Audit Log</span>
                 </h2>
                 <p className="text-[10px] sm:text-[11px] text-slate-500 font-medium m-0 mt-0.5 truncate hidden sm:block">
-                  Permanent ledger of all seafood stock arrivals, POS sales, online deliveries, and shrinkage
+                  Permanent ledger of all seafood stock arrivals, POS sales, and online deliveries
                 </p>
               </div>
 
@@ -2534,7 +3922,6 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack }) {
                 { id: 'All', label: 'All Transactions' },
                 { id: 'Stock-In', label: 'Stock-In' },
                 { id: 'POS Sale', label: 'POS Sale' },
-                { id: 'Daily Shrinkage / Drip Loss', label: 'Shrinkage' },
                 { id: 'Online Sale', label: 'Online Sale' },
                 { id: 'Refund', label: 'Refunds' }
               ].map(f => (
@@ -2574,10 +3961,94 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack }) {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-[#E8DCCB] font-medium">
-                  {paginatedLogs.map((log) => {
+                  {paginatedLogs.map((entry) => {
+                    const isGroup = entry.isGroup;
+                    const log = entry.primaryLog;
                     const isPositive = (Number(log.quantityChange) || 0) > 0;
                     const dt = formatLogDateTime(log);
 
+                    if (isGroup) {
+                      // Unified Consignment Lot Row for Multi-Item Inward
+                      return (
+                        <tr key={log._id || entry.invoiceNo} className="hover:bg-orange-50/60 bg-amber-50/20 transition-colors border-l-4 border-l-orange-500">
+                          <td className="py-2.5 px-3 sm:py-3 sm:px-3.5 whitespace-nowrap">
+                            <div className="font-bold text-slate-900 text-xs sm:text-sm">{dt.dateStr}</div>
+                            <div className="text-[10px] sm:text-[11px] font-mono text-slate-500">{dt.timeStr}</div>
+                          </td>
+                          <td className="py-2.5 px-3 sm:py-3 sm:px-3.5 whitespace-normal break-words">
+                            <div className="space-y-1">
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <span className="font-black text-slate-950 text-xs sm:text-sm">
+                                  Consignment Lot ({entry.items.length} Varieties)
+                                </span>
+                                <span className="bg-orange-100 text-orange-900 text-[10px] font-black px-1.5 py-0.2 rounded border border-orange-300">
+                                  {entry.invoiceNo ? entry.invoiceNo : 'CONSIGNMENT'}
+                                </span>
+                              </div>
+                              <div className="flex flex-col gap-1 text-[11px] bg-white/80 p-1.5 rounded-lg border border-orange-200">
+                                {entry.items.map((it, idx) => (
+                                  <div key={idx} className="flex items-center justify-between gap-2">
+                                    <span className="font-bold text-slate-900 flex items-center gap-1">
+                                      <span className="w-1.5 h-1.5 rounded-full bg-orange-500" />
+                                      {it.itemName}
+                                    </span>
+                                    <span className="font-mono font-bold text-emerald-700 whitespace-nowrap">
+                                      +{Math.abs(Number(it.quantityChange || 0))} kg
+                                      {Number(it.boxes || 0) > 0 ? ` (${it.boxes} boxes)` : ''}
+                                    </span>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          </td>
+                          <td className="py-2.5 px-3 sm:py-3 sm:px-3.5 whitespace-nowrap">
+                            <span className="px-2 py-0.5 rounded-full text-[10px] sm:text-[11px] font-black border bg-emerald-100 border-emerald-300 text-emerald-800">
+                              {log.intakeMode === 'dam' || log.notes?.toLowerCase()?.includes('dam') ? 'DAM Consignment' : 'Procurement (Stock-In)'}
+                            </span>
+                          </td>
+                          <td className="py-2.5 px-3 sm:py-3 sm:px-3.5 font-mono font-black text-xs sm:text-sm text-emerald-700 whitespace-nowrap">
+                            +{entry.totalQuantityChange.toFixed(1)} kg
+                            {entry.totalBoxes > 0 && (
+                              <div className="text-[10px] text-slate-500 font-sans font-bold">
+                                {entry.totalBoxes} Boxes Total
+                              </div>
+                            )}
+                          </td>
+                          <td className="py-2.5 px-3 sm:py-3 sm:px-3.5 font-mono text-slate-700 font-bold text-xs sm:text-sm whitespace-nowrap">
+                            {log.finalStock !== undefined ? `${log.finalStock} kg` : '—'}
+                          </td>
+                          <td className="py-2.5 px-3 sm:py-3 sm:px-3.5 text-slate-700 text-xs sm:text-sm">
+                            <div className="flex flex-col gap-0.5">
+                              <span className="inline-flex items-center gap-1 font-black text-sky-900 bg-sky-100 border border-sky-300 px-2 py-0.5 rounded-md w-fit text-[11px]">
+                                <User size={11} />
+                                <span>{log.supplierName}</span>
+                              </span>
+                              {log.notes && (
+                                <span className="text-[10.5px] text-slate-500 italic max-w-xs truncate" title={log.notes}>
+                                  {log.notes}
+                                </span>
+                              )}
+                            </div>
+                          </td>
+                          <td className="py-2.5 px-3 sm:py-3 sm:px-3.5 text-[10.5px] sm:text-xs font-mono text-slate-600">
+                            <div className="flex items-center justify-between gap-1">
+                              <span>{log.performedBy || 'admin'}</span>
+                              <button
+                                type="button"
+                                onClick={() => handlePrintAuditLogInvoice(log)}
+                                className="px-2 py-1 rounded-lg text-white bg-orange-600 hover:bg-orange-700 transition-all cursor-pointer shrink-0 font-sans font-bold text-[10px] flex items-center gap-1 shadow-2xs"
+                                title="Print Full Consignment Voucher"
+                              >
+                                <Printer size={12} />
+                                <span>Print</span>
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    }
+
+                    // Standard Individual Row
                     return (
                       <tr key={log._id} className="hover:bg-[#FAF3E8] transition-colors">
                         <td className="py-2 px-3 sm:py-2.5 sm:px-3.5 whitespace-nowrap">
@@ -2593,7 +4064,7 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack }) {
                               ? 'bg-emerald-100 border-emerald-300 text-emerald-800'
                               : log.type?.includes('Reversal') || log.type?.includes('Refund')
                                 ? 'bg-blue-100 border-blue-300 text-blue-800'
-                                : log.type?.includes('Shrinkage') || log.type?.includes('Wastage')
+                                : log.type?.includes('Wastage')
                                   ? 'bg-amber-100 border-amber-300 text-amber-900'
                                   : 'bg-rose-100 border-rose-300 text-rose-800'
                           }`}>
@@ -2609,10 +4080,17 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack }) {
                         <td className="py-2 px-3 sm:py-2.5 sm:px-3.5 text-slate-700 text-xs sm:text-sm">
                           {log.supplierName ? (
                             <div className="flex flex-col gap-0.5">
-                              <span className="inline-flex items-center gap-1 font-bold text-sky-800 bg-sky-50 border border-sky-200 px-1.5 py-0.5 rounded-md w-fit text-[10px] sm:text-[11px]">
-                                <User size={10} />
-                                <span>{log.supplierName}</span>
-                              </span>
+                              <div className="flex items-center gap-1 flex-wrap">
+                                <span className="inline-flex items-center gap-1 font-bold text-sky-800 bg-sky-50 border border-sky-200 px-1.5 py-0.5 rounded-md w-fit text-[10px] sm:text-[11px]">
+                                  <User size={10} />
+                                  <span>{log.supplierName}</span>
+                                </span>
+                                {log.invoiceNo && (
+                                  <span className="font-mono text-[9px] font-bold text-orange-700 bg-orange-50 border border-orange-200 px-1 py-0.2 rounded" title={`Consignment Invoice: ${log.invoiceNo}`}>
+                                    {log.invoiceNo}
+                                  </span>
+                                )}
+                              </div>
                               {log.notes && (
                                 <span className="text-[10px] sm:text-[10.5px] text-slate-500 italic max-w-xs truncate" title={log.notes}>
                                   {log.notes}
@@ -2628,7 +4106,19 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack }) {
                           )}
                         </td>
                         <td className="py-2 px-3 sm:py-2.5 sm:px-3.5 text-[10.5px] sm:text-xs font-mono text-slate-600">
-                          {log.performedBy || 'admin'}
+                          <div className="flex items-center justify-between gap-1">
+                            <span>{log.performedBy || 'admin'}</span>
+                            {(log.supplierName || log.type?.includes('Stock-In') || log.type?.includes('Procurement') || log.type?.includes('Dam')) && (
+                              <button
+                                type="button"
+                                onClick={() => handlePrintAuditLogInvoice(log)}
+                                className="p-1 rounded-lg text-slate-400 hover:text-orange-600 hover:bg-orange-50 transition-all cursor-pointer shrink-0"
+                                title="Print A4 Inward Invoice"
+                              >
+                                <Printer size={13} />
+                              </button>
+                            )}
+                          </div>
                         </td>
                       </tr>
                     );
@@ -2641,7 +4131,7 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack }) {
           {/* Bottom Pagination for Audit Trail (Mobile Responsive) */}
           <div className="p-3 sm:p-4 border-t border-[#fed7aa]/60 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 text-xs sm:text-sm text-slate-600">
             <span className="font-medium">
-              Showing {(logsPage - 1) * LOGS_PER_PAGE + 1} to {Math.min(filteredStockLogs.length, logsPage * LOGS_PER_PAGE)} of {filteredStockLogs.length} logs
+              Showing {(logsPage - 1) * LOGS_PER_PAGE + 1} to {Math.min(groupedStockLogs.length, logsPage * LOGS_PER_PAGE)} of {groupedStockLogs.length} entries
             </span>
             <div className="flex items-center gap-1.5 self-end sm:self-auto">
               <button
@@ -2811,108 +4301,12 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack }) {
         </div>
       )}
 
-      {/* Printable Voucher Modal */}
-      {damPrintVoucher && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-2xl w-full border border-slate-200 shadow-2xl overflow-hidden max-h-[90vh] flex flex-col">
-            <div className="p-3 bg-slate-800 text-white flex items-center justify-between">
-              <div className="flex items-center gap-2 text-xs font-bold">
-                <Printer size={15} />
-                <span>Fish Catch Intake Voucher Preview</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => window.print()}
-                  className="px-3 py-1 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1"
-                >
-                  <Printer size={13} />
-                  <span>Print Receipt</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setDamPrintVoucher(null)}
-                  className="text-slate-400 hover:text-white p-1 rounded-lg cursor-pointer"
-                >
-                  <X size={16} />
-                </button>
-              </div>
-            </div>
-
-            <div className="p-6 overflow-y-auto space-y-4 text-slate-800 font-sans print:p-0">
-              <div className="text-center border-b pb-3">
-                <h1 className="text-lg font-black tracking-tight text-slate-900 m-0">YNR FISHES & SEAFOOD DEPOT</h1>
-                <p className="text-xs text-slate-500 m-0 mt-0.5">Kadapa City Depot • Catch Unloading & Weighment Slip</p>
-                <div className="text-[11px] text-slate-400 mt-1 font-mono">Date: {damPrintVoucher.date}</div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3 text-xs bg-slate-50 p-3 rounded-xl border border-slate-200">
-                <div>
-                  <span className="text-[10px] text-slate-500 uppercase font-bold block">Party / Contractor</span>
-                  <span className="font-bold text-slate-900">{damPrintVoucher.contractorName}</span>
-                  {damPrintVoucher.companyName && <div className="text-[11px] text-slate-600">{damPrintVoucher.companyName}</div>}
-                  {damPrintVoucher.contractorPhone && <div className="text-[11px] text-slate-600">Ph: {damPrintVoucher.contractorPhone}</div>}
-                </div>
-                <div className="text-right">
-                  <span className="text-[10px] text-slate-500 uppercase font-bold block">Logistics / Vehicle</span>
-                  <span className="font-mono font-bold text-slate-900">{damPrintVoucher.vehicleNumber || 'Direct Depot Delivery'}</span>
-                  {damPrintVoucher.harbor && <div className="text-[11px] text-slate-600">Location: {damPrintVoucher.harbor}</div>}
-                </div>
-              </div>
-
-              <div>
-                <table className="w-full text-left text-xs border border-slate-200 rounded-lg overflow-hidden">
-                  <thead className="bg-slate-100 text-slate-700 font-bold">
-                    <tr>
-                      <th className="p-2">#</th>
-                      <th className="p-2">Fish Variety</th>
-                      <th className="p-2 text-right">Boxes</th>
-                      <th className="p-2 text-right">Weight (Kg)</th>
-                      <th className="p-2 text-right">Rate</th>
-                      <th className="p-2 text-right">Total</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {damPrintVoucher.tallyItems.map((r, i) => {
-                      let itemKg = 0;
-                      const b = Number(r.boxes || 0);
-                      const kpb = Number(r.kgPerBox || 0);
-                      if (Number(r.kg || 0) > 0 || Number(r.grams || 0) > 0) {
-                        itemKg = Number((Number(r.kg || 0) + Number(r.grams || 0) / 1000).toFixed(3));
-                      } else if (b > 0 && kpb > 0) {
-                        itemKg = Number((b * kpb).toFixed(3));
-                      }
-                      const rate = Number(r.price || r.rate || r.ratePerKg || 0);
-                      const total = Number((itemKg * rate).toFixed(2));
-
-                      return (
-                        <tr key={i}>
-                          <td className="p-2 text-slate-400">{i + 1}</td>
-                          <td className="p-2 font-bold">{r.itemName}</td>
-                          <td className="p-2 text-right font-mono">{r.boxes || '—'}</td>
-                          <td className="p-2 text-right font-mono font-bold">{itemKg.toFixed(2)} kg</td>
-                          <td className="p-2 text-right font-mono">₹{rate.toFixed(2)}</td>
-                          <td className="p-2 text-right font-mono font-bold">₹{total.toLocaleString('en-IN')}</td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-
-              <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 flex justify-between items-center text-xs">
-                <div>
-                  <span className="text-[10px] text-slate-500 uppercase font-bold block">Gross Consignment</span>
-                  <span className="font-bold">{damPrintVoucher.totalGrossKg} Kg Total</span>
-                </div>
-                <div className="text-right">
-                  <span className="text-[10px] text-slate-500 uppercase font-bold block">Net Settlement Amount</span>
-                  <span className="text-base font-black font-mono text-blue-700">₹{Math.abs(damPrintVoucher.netConsignmentSettlement).toLocaleString('en-IN')}</span>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
+      {/* ── Professional A4 Commercial Inward Invoice & Weighment Slip (For All 3 Modes) ── */}
+      {inwardInvoiceModal && (
+        <FishInwardInvoice
+          data={inwardInvoiceModal}
+          onClose={() => setInwardInvoiceModal(null)}
+        />
       )}
     </div>
   );

@@ -15,6 +15,8 @@ const FloorSchema = new mongoose.Schema({ name: String }, { strict: false });
 const FloorDefault = { schema: FloorSchema };
 const StockLogSchema = new mongoose.Schema({ name: String }, { strict: false });
 const StockLogDefault = { schema: StockLogSchema };
+const DepotOperationSchema = new mongoose.Schema({ name: String }, { strict: false });
+const DepotOperationDefault = { schema: DepotOperationSchema };
 import StaffDefault from '../../models/operations/Staff.js';
 import CustomerDefault from '../../models/crm/Customer.js';
 import TaxDefault from '../../models/system/Tax.js';
@@ -328,6 +330,7 @@ export const getTenantModels = async (databaseName) => {
   const Campaign = conn.models.Campaign || conn.model('Campaign', CampaignDefault.schema);
 
   const CalculationHistory = conn.models.CalculationHistory || conn.model('CalculationHistory', CalculationHistoryDefault.schema);
+  const DepotOperation = conn.models.DepotOperation || conn.model('DepotOperation', DepotOperationDefault.schema);
 
   const models = {
     Menu,
@@ -338,6 +341,7 @@ export const getTenantModels = async (databaseName) => {
     Expense,
     CalculationHistory,
     StockLog,
+    DepotOperation,
     Floor,
     Staff,
     Customer,

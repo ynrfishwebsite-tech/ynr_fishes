@@ -666,7 +666,16 @@ const Invoice = ({ bill, onClose, onSave, onSettle, whatsappBillSentIds, onWhats
     const dateStr = new Date(billDateTime).toLocaleDateString('en-GB');
     const timeStr = formatTime12(billDateTime);
     const bType = bill?.billType || (bill?.tableNo?.startsWith('DEL') ? 'Delivery' : (bill?.tableNo?.startsWith('TAK') ? 'Takeaway' : 'Dine-In'));
-    const tableInfo = bType === 'Dine-In' ? `Counter: ${bill?.tableNo || 'Counter-1'}` : `${bType} ${bill?.tableNo ? `(${bill?.tableNo})` : ''}`;
+    const isExp = bill?.customerCategory === 'Export' || bill?.orderMode === 'export' || String(billNo).startsWith('EXP-') || String(bill?.tableNo || '').startsWith('EXP-');
+    const isWs = !isExp && (bill?.customerCategory === 'Wholesale' || bill?.orderMode === 'bulk' || String(billNo).startsWith('WS-') || String(bill?.tableNo || '').startsWith('WS-') || Number(bill?.totalBoxes || 0) > 0 || (Array.isArray(bill?.boxes) && bill.boxes.length > 0));
+    const catTitle = isExp ? 'EXPORT' : (isWs ? 'WHOLESALE' : 'RETAIL');
+    const prefix = isExp ? 'EXP-' : (isWs ? 'WS-' : 'RET-');
+    const cleanTable = (bill?.tableNo || '').replace(/^TAK-/i, prefix);
+
+    let tableInfo = cleanTable ? `${catTitle} (${cleanTable})` : catTitle;
+    if (bType === 'Delivery' || String(bill?.tableNo || '').startsWith('DEL')) {
+      tableInfo = `DELIVERY${cleanTable ? ` (${cleanTable})` : ''}`;
+    }
     const customerName = overrideName || whatsappCustomerName || bill?.customerName || '';
 
     const itemsList = (bill?.items || [])
@@ -745,13 +754,28 @@ const Invoice = ({ bill, onClose, onSave, onSettle, whatsappBillSentIds, onWhats
     const roundOffText = roundOff !== 0 ? `\n• *Round Off:* ${roundOff > 0 ? '+' : ''}₹${roundOff.toFixed(2)}` : '';
     const total = finalTotal.toFixed(2);
 
-    let paymentInfo = bill?.paymentMethod || 'Cash';
-    if (bill?.paymentBreakdown && (bill.paymentBreakdown.cash > 0 || bill.paymentBreakdown.upi > 0 || bill.paymentBreakdown.card > 0)) {
-      const parts = [];
-      if (bill.paymentBreakdown.cash > 0) parts.push(`Cash: ₹${bill.paymentBreakdown.cash}`);
-      if (bill.paymentBreakdown.upi > 0) parts.push(`UPI: ₹${bill.paymentBreakdown.upi}`);
-      if (bill.paymentBreakdown.card > 0) parts.push(`Card: ₹${bill.paymentBreakdown.card}`);
-      paymentInfo = parts.join(' | ');
+    let paymentInfo = 'Cash';
+    const payMode = bill?.paymentMode || bill?.paymentMethod || 'Cash';
+    if (payMode === 'UPI') {
+      const upiApp = bill?.upiApp || bill?.upiAppName || (bill?.paymentMethod !== 'UPI' ? bill?.paymentMethod : '') || '';
+      paymentInfo = upiApp && upiApp !== 'UPI' ? `UPI [${upiApp}]` : 'UPI';
+    } else if (payMode === 'Mixed') {
+      const split = bill?.splitPayments || bill?.paymentBreakdown;
+      if (split) {
+        const parts = [];
+        if (Number(split.cash || 0) > 0) parts.push(`Cash: ₹${Number(split.cash).toFixed(2)}`);
+        if (Number(split.upi || 0) > 0) parts.push(`UPI: ₹${Number(split.upi).toFixed(2)}`);
+        if (Number(split.card || 0) > 0) parts.push(`Card: ₹${Number(split.card).toFixed(2)}`);
+        paymentInfo = parts.length > 0 ? `Mixed (${parts.join(' | ')})` : 'Mixed';
+      } else {
+        paymentInfo = 'Mixed Payment';
+      }
+    } else if (payMode === 'Card') {
+      paymentInfo = 'Card';
+    } else if (payMode === 'Unpaid') {
+      paymentInfo = 'Unpaid (Khata)';
+    } else {
+      paymentInfo = 'Cash';
     }
 
     const READ_MORE = String.fromCharCode(8206).repeat(4001);
@@ -764,15 +788,13 @@ const Invoice = ({ bill, onClose, onSave, onSettle, whatsappBillSentIds, onWhats
         ? `🛵 Dear *${customerName}*, thank you for ordering delivery with us!\n🧾 *Delivery e-Bill #${billNo}* | *${restName.toUpperCase()}*`
       : `🛵 *HOME DELIVERY E-BILL* 🛵\n🏠 *${restName.toUpperCase()}* | Bill #${billNo}`;
       if (!footerMessage) footerMessage = '*** THANK YOU FOR YOUR DELIVERY ORDER! ENJOY YOUR MEAL ***';
-    } else if (bType === 'Takeaway') {
-      header = customerName
-      ? `🛍️ Dear *${customerName}*, thank you for your takeaway order!\n🧾 *Takeaway e-Bill #${billNo}* | *${restName.toUpperCase()}*`
-      : `🛍️ *TAKEAWAY E-BILL RECEIPT* 🛍️\n📦 *${restName.toUpperCase()}* | Bill #${billNo}`;
-      if (!footerMessage) footerMessage = '*** THANK YOU FOR ORDERING TAKEAWAY! VISIT AGAIN ***';
     } else {
+      const isExp = bill.customerCategory === 'Export' || bill.orderMode === 'export' || String(billNo).startsWith('EXP-');
+      const isWs = !isExp && (bill.customerCategory === 'Wholesale' || bill.orderMode === 'bulk' || String(billNo).startsWith('WS-') || Number(bill.totalBoxes || 0) > 0);
+      const catTitle = isExp ? 'EXPORT' : (isWs ? 'WHOLESALE' : 'RETAIL');
       header = customerName
-        ? `👋 Dear *${customerName}*, thank you for dining with us!\n🧾 *e-Bill #${billNo}* | *${restName.toUpperCase()}*`
-      : `🧾 *DIGITAL E-BILL RECEIPT* 🧾\n🍽️ *${restName.toUpperCase()}* | Bill #${billNo}`;
+        ? `🛍️ Dear *${customerName}*, thank you for your ${catTitle.toLowerCase()} order!\n🧾 *${catTitle} e-Bill #${billNo}* | *${restName.toUpperCase()}*`
+        : `🛍️ *${catTitle} E-BILL RECEIPT* 🛍️\n📦 *${restName.toUpperCase()}* | Bill #${billNo}`;
       if (!footerMessage) footerMessage = '*** THANK YOU! VISIT AGAIN ***';
     }
 
@@ -1573,19 +1595,18 @@ const Invoice = ({ bill, onClose, onSave, onSettle, whatsappBillSentIds, onWhats
 
             {/* Order Type & Table */}
             {(() => {
-              const bType = bill.billType || (bill.tableNo?.startsWith('DEL') ? 'Delivery' : (bill.tableNo?.startsWith('TAK') ? 'Takeaway' : 'Dine-In'));
+              const isExp = bill.customerCategory === 'Export' || bill.orderMode === 'export' || String(bill.billNumber || '').startsWith('EXP-') || String(bill.tableNo || '').startsWith('EXP-');
+              const isWs = !isExp && (bill.customerCategory === 'Wholesale' || bill.orderMode === 'bulk' || String(bill.billNumber || '').startsWith('WS-') || String(bill.tableNo || '').startsWith('WS-') || Number(bill.totalBoxes || 0) > 0 || (Array.isArray(bill.boxes) && bill.boxes.length > 0));
+              const prefix = isExp ? 'EXP-' : (isWs ? 'WS-' : 'RET-');
+              const cleanTable = (bill.tableNo || '').replace(/^TAK-/i, prefix);
+
               let label = '';
-              if (bType === 'Delivery') {
+              if (bill.billType === 'Delivery' || (bill.tableNo && String(bill.tableNo).startsWith('DEL'))) {
                 const channel = (bill.orderSource || '').trim() || 'DIRECT DELIVERY';
-                label = `DELIVERY: ${channel.toUpperCase()}${bill.tableNo ? ` (${bill.tableNo})` : ''}`;
-              } else if (bType === 'Takeaway') {
-                label = `TAKEAWAY${bill.tableNo ? ` (${bill.tableNo})` : ''}`;
+                label = `DELIVERY: ${channel.toUpperCase()}${cleanTable ? ` (${cleanTable})` : ''}`;
               } else {
-                let tNo = (bill.tableNo || '').trim();
-                if (tNo.toLowerCase().startsWith('table')) {
-                  tNo = tNo.substring(5).trim();
-                }
-                label = `Counter Sale: ${tNo ? (tNo.toLowerCase().startsWith('counter') ? tNo : `Counter ${tNo}`) : 'Counter-1'}`;
+                const catName = isExp ? 'EXPORT' : (isWs ? 'WHOLESALE' : 'RETAIL');
+                label = `${catName}${cleanTable ? ` (${cleanTable})` : ''}`;
               }
               return (
                 <div style={{ textAlign: 'center', fontWeight: 750, fontSize: fontMetrics.subHeadingSize, marginBottom: '2px' }}>
@@ -1974,15 +1995,18 @@ const Invoice = ({ bill, onClose, onSave, onSettle, whatsappBillSentIds, onWhats
             {/* Bill Info Grid - Table on own row, then Date+Time side-by-side, then Cashier+BillNo */}
             {/* Row 1: Order Type / Table Name - full width, centered */}
             {(() => {
-              const bType = bill.billType || (bill.tableNo?.startsWith('DEL') ? 'Delivery' : (bill.tableNo?.startsWith('TAK') ? 'Takeaway' : 'Dine-In'));
+              const isExp = bill.customerCategory === 'Export' || bill.orderMode === 'export' || String(bill.billNumber || '').startsWith('EXP-') || String(bill.tableNo || '').startsWith('EXP-');
+              const isWs = !isExp && (bill.customerCategory === 'Wholesale' || bill.orderMode === 'bulk' || String(bill.billNumber || '').startsWith('WS-') || String(bill.tableNo || '').startsWith('WS-') || Number(bill.totalBoxes || 0) > 0 || (Array.isArray(bill.boxes) && bill.boxes.length > 0));
+              const prefix = isExp ? 'EXP-' : (isWs ? 'WS-' : 'RET-');
+              const cleanTable = (bill.tableNo || '').replace(/^TAK-/i, prefix);
+
               let label = '';
-              if (bType === 'Delivery') {
+              if (bill.billType === 'Delivery' || (bill.tableNo && String(bill.tableNo).startsWith('DEL'))) {
                 const channel = (bill.orderSource || '').trim() || 'DIRECT DELIVERY';
-                label = `DELIVERY: ${channel.toUpperCase()}${bill.tableNo ? ` (${bill.tableNo})` : ''}`;
-              } else if (bType === 'Takeaway') {
-                label = `TAKEAWAY${bill.tableNo ? ` (${bill.tableNo})` : ''}`;
+                label = `DELIVERY: ${channel.toUpperCase()}${cleanTable ? ` (${cleanTable})` : ''}`;
               } else {
-                label = `Dine-In: ${bill.tableNo || 'Table'}`;
+                const catName = isExp ? 'EXPORT' : (isWs ? 'WHOLESALE' : 'RETAIL');
+                label = `${catName}${cleanTable ? ` (${cleanTable})` : ''}`;
               }
               return (
                 <div style={{ width: '100%', textAlign: 'center', fontWeight: 'bold', fontSize: fontMetrics.subHeadingSize, marginBottom: '2px' }}>

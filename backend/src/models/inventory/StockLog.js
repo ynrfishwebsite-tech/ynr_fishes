@@ -23,7 +23,6 @@ const stockLogSchema = new mongoose.Schema({
       'Procurement (Stock-In)',
       'Wastage/Adjustment',
       'Cutting Wastage',
-      'Daily Shrinkage / Drip Loss',
       'Sale Reversal (Refund)',
       'Audit',
       'Initial Stock',
@@ -79,6 +78,59 @@ const stockLogSchema = new mongoose.Schema({
   harbor: {
     type: String,
     default: ''
+  },
+  invoiceNo: {
+    type: String,
+    default: '',
+    index: true
+  },
+  supplierPhone: {
+    type: String,
+    default: ''
+  },
+  rate: {
+    type: Number,
+    default: 0
+  },
+  price: {
+    type: Number,
+    default: 0
+  },
+  intakeMode: {
+    type: String,
+    default: 'local'
+  },
+  grossValue: {
+    type: Number,
+    default: 0
+  },
+  netPayable: {
+    type: Number,
+    default: 0
+  },
+  totalCr: {
+    type: Number,
+    default: 0
+  },
+  totalDr: {
+    type: Number,
+    default: 0
+  },
+  totalBoxes: {
+    type: Number,
+    default: 0
+  },
+  settlements: {
+    type: mongoose.Schema.Types.Mixed,
+    default: {}
+  },
+  customSettlements: {
+    type: Array,
+    default: []
+  },
+  consignmentItems: {
+    type: Array,
+    default: []
   },
   boxes: {
     type: Number,

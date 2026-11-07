@@ -12,7 +12,14 @@ import BackButton from '../common/BackButton';
 import realtimeService from '../../../services/realtimeService';
 import { formatTime12 } from '../../../utils/formatters/timeFormat';
 
-const BillHistory = ({ onNavigate, onGoBack }) => {
+const BillHistory = ({
+  onNavigate,
+  onGoBack,
+  initialSalesType = 'All',
+  pageTitle = null,
+  pageSubtitle = null,
+  lockSalesType = false
+}) => {
   const { t } = useLanguage();
   const [bills, setBills] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -21,7 +28,14 @@ const BillHistory = ({ onNavigate, onGoBack }) => {
   const [billCache, setBillCache] = useState({});
   const [searchTerm, setSearchTerm] = useState('');
   const [paymentFilter, setPaymentFilter] = useState('All');
-  const [salesTypeFilter, setSalesTypeFilter] = useState('All'); // 'All' | 'Retail' | 'Wholesale' | 'Export'
+  const [salesTypeFilter, setSalesTypeFilter] = useState(initialSalesType || 'All'); // 'All' | 'Retail' | 'Wholesale' | 'Export'
+
+  useEffect(() => {
+    if (initialSalesType) {
+      setSalesTypeFilter(initialSalesType);
+      setCurrentPage(1);
+    }
+  }, [initialSalesType]);
   const [categoryCounts, setCategoryCounts] = useState({ all: 0, retail: 0, wholesale: 0, export: 0 });
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
@@ -86,21 +100,37 @@ const BillHistory = ({ onNavigate, onGoBack }) => {
 
   
   const getSalesTypeBadge = (bill, isMobile = false) => {
-    const isWholesale = bill.customerCategory === 'Wholesale' || bill.orderChannel === 'Wholesale-Box' || String(bill.billNumber || '').startsWith('WS-') || (Number(bill.totalBoxes || 0) > 0);
-    const isExport = bill.customerCategory === 'Export' || String(bill.orderChannel || '').includes('Export') || String(bill.billNumber || '').startsWith('EXP-');
+    const isExport = bill.customerCategory === 'Export' ||
+      bill.orderMode === 'export' ||
+      bill.billType === 'Export' ||
+      String(bill.orderChannel || '').includes('Export') ||
+      String(bill.billNumber || '').startsWith('EXP-') ||
+      Boolean(bill.exportSubCategory);
+
+    const isWholesale = !isExport && (
+      bill.customerCategory === 'Wholesale' ||
+      bill.orderMode === 'bulk' ||
+      bill.billType === 'Wholesale' ||
+      bill.orderChannel === 'Wholesale-Box' ||
+      String(bill.billNumber || '').startsWith('WS-') ||
+      Number(bill.totalBoxes || 0) > 0 ||
+      (Array.isArray(bill.boxes) && bill.boxes.length > 0) ||
+      (Array.isArray(bill.items) && bill.items.some(i => i.isWholesaleBox || Number(i.boxNumber || 0) > 0 || i.pricingTier === 'wholesale' || Number(i.weight || i.weightKg || i.enteredWeight || 0) >= 20))
+    );
+
     const sizeCls = isMobile ? "px-2 py-0.5 text-[10px]" : "px-2.5 py-0.5 text-xs";
-    
-    if (isWholesale) {
-      return (
-        <span className={`inline-block ${sizeCls} rounded-full font-bold border whitespace-nowrap bg-amber-50 text-amber-800 border-amber-300 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800`}>
-          {t("Wholesale")}
-        </span>
-      );
-    }
+
     if (isExport) {
       return (
         <span className={`inline-block ${sizeCls} rounded-full font-bold border whitespace-nowrap bg-blue-50 text-blue-800 border-blue-300 dark:bg-blue-950/40 dark:text-blue-300 dark:border-blue-800`}>
           {t("Export")}
+        </span>
+      );
+    }
+    if (isWholesale) {
+      return (
+        <span className={`inline-block ${sizeCls} rounded-full font-bold border whitespace-nowrap bg-amber-50 text-amber-800 border-amber-300 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800`}>
+          {t("Wholesale")}
         </span>
       );
     }
@@ -199,7 +229,7 @@ const BillHistory = ({ onNavigate, onGoBack }) => {
         page: currentPage,
         limit: itemsPerPage,
         search: searchForBackend,
-        salesType: salesTypeFilter !== 'All' ? salesTypeFilter : undefined,
+        salesType: (lockSalesType && initialSalesType && initialSalesType !== 'All') ? initialSalesType : (salesTypeFilter !== 'All' ? salesTypeFilter : undefined),
         paymentMode: paymentFilter !== 'All' ? paymentFilter : undefined,
         startDate: startDate || undefined,
         endDate: endDate || undefined
@@ -332,8 +362,16 @@ const BillHistory = ({ onNavigate, onGoBack }) => {
     setCurrentPage(1);
   };
 
-  // Bills are already strictly filtered and paginated by the backend API
-  const filteredBills = bills;
+  // Filter bills strictly according to the selected or locked category
+  const filteredBills = bills.filter(bill => {
+    if (!bill) return false;
+    const isExp = bill.customerCategory === 'Export' || bill.orderMode === 'export' || String(bill.billNumber || '').startsWith('EXP-') || String(bill.tableNo || '').startsWith('EXP-');
+    const isWs = !isExp && (bill.customerCategory === 'Wholesale' || bill.orderMode === 'bulk' || String(bill.billNumber || '').startsWith('WS-') || String(bill.tableNo || '').startsWith('WS-') || Number(bill.totalBoxes || 0) > 0);
+    if (salesTypeFilter === 'Retail' && (isExp || isWs)) return false;
+    if (salesTypeFilter === 'Wholesale' && !isWs) return false;
+    if (salesTypeFilter === 'Export' && !isExp) return false;
+    return true;
+  });
 
   useEffect(() => {
     if (currentPage !== 1) {
@@ -378,8 +416,8 @@ const BillHistory = ({ onNavigate, onGoBack }) => {
             <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
               <BackButton onClick={onGoBack} className="shrink-0" />
               <div>
-                <h1 className="text-sm sm:text-lg font-black text-text-main leading-tight whitespace-nowrap">{t("Bill History")}</h1>
-                <p className="text-[10px] sm:text-xs text-text-muted font-medium leading-tight hidden xs:block">{t("View and manage past transactions")}</p>
+                <h1 className="text-sm sm:text-lg font-black text-text-main leading-tight whitespace-nowrap">{pageTitle ? t(pageTitle) : t("Bill History")}</h1>
+                <p className="text-[10px] sm:text-xs text-text-muted font-medium leading-tight hidden xs:block">{pageSubtitle ? t(pageSubtitle) : t("View and manage past transactions")}</p>
               </div>
             </div>
 
@@ -545,7 +583,8 @@ const BillHistory = ({ onNavigate, onGoBack }) => {
 
       
       {/* Sales Channel Tabs: All Bills, Retail, Wholesale, Export */}
-      <div className="flex items-center gap-1.5 px-2 py-1.5 mb-2 bg-surface rounded-xl border border-border shrink-0 shadow-2xs overflow-x-auto no-scrollbar flex-nowrap">
+      {!lockSalesType && (
+        <div className="flex items-center gap-1.5 px-2 py-1.5 mb-2 bg-surface rounded-xl border border-border shrink-0 shadow-2xs overflow-x-auto no-scrollbar flex-nowrap">
         <span className="text-[10px] sm:text-xs font-bold text-text-muted uppercase tracking-wider shrink-0 hidden sm:inline mr-1">{t("Sales Type")}:</span>
 
         <button
@@ -608,6 +647,7 @@ const BillHistory = ({ onNavigate, onGoBack }) => {
           </span>
         </button>
       </div>
+      )}
 
       <div className="bg-surface border border-border rounded-2xl overflow-hidden flex-1 flex flex-col shadow-xs">
         {/* Desktop Wide Table (Visible on md and larger) */}
@@ -616,15 +656,9 @@ const BillHistory = ({ onNavigate, onGoBack }) => {
             <thead className="bg-background sticky top-0 z-10 shadow-xs">
               <tr>
                 <th className="px-3 py-2.5 font-bold text-xs uppercase text-text-muted tracking-wider border-b border-border">{t("Bill #")}</th>
-                <th className="px-3 py-2.5 font-bold text-xs uppercase text-text-muted tracking-wider border-b border-border">
-                  <div className="flex items-center gap-1.5">
-                    {t("Date & Time")}
-                    <span className="text-[10px] text-primary font-normal">{t("(Latest First)")}</span>
-                  </div>
-                </th>
+                <th className="px-3 py-2.5 font-bold text-xs uppercase text-text-muted tracking-wider border-b border-border">{t("Date & Time")}</th>
                 <th className="px-3 py-2.5 font-bold text-xs uppercase text-text-muted tracking-wider border-b border-border">{t("Customer")}</th>
                 <th className="px-3 py-2.5 font-bold text-xs uppercase text-text-muted tracking-wider border-b border-border">{t("Sales Type")}</th>
-                <th className="px-3 py-2.5 font-bold text-xs uppercase text-text-muted tracking-wider border-b border-border">{t("Order Type")}</th>
                 <th className="px-3 py-2.5 font-bold text-xs uppercase text-text-muted tracking-wider border-b border-border">{t("Status")}</th>
                 <th className="px-3 py-2.5 font-bold text-xs uppercase text-text-muted tracking-wider border-b border-border">{t("Payment")}</th>
                 <th className="px-3 py-2.5 font-bold text-xs uppercase text-text-muted tracking-wider border-b border-border text-right">{t("Total")}</th>
@@ -640,7 +674,6 @@ const BillHistory = ({ onNavigate, onGoBack }) => {
                     <td className="px-3 py-3"><div className="h-4 w-28 bg-surface-hover rounded-md"></div></td>
                     <td className="px-3 py-3"><div className="h-4 w-16 bg-surface-hover rounded-full"></div></td>
                     <td className="px-3 py-3"><div className="h-4 w-16 bg-surface-hover rounded-full"></div></td>
-                    <td className="px-3 py-3"><div className="h-4 w-16 bg-surface-hover rounded-full"></div></td>
                     <td className="px-3 py-3"><div className="h-4 w-16 bg-surface-hover rounded-md"></div></td>
                     <td className="px-3 py-3 text-right"><div className="h-4 w-16 bg-surface-hover rounded-md ml-auto"></div></td>
                     <td className="px-3 py-3"><div className="h-6 w-16 bg-surface-hover rounded-md mx-auto"></div></td>
@@ -648,7 +681,7 @@ const BillHistory = ({ onNavigate, onGoBack }) => {
                 ))
               ) : filteredBills.length === 0 ? (
                 <tr>
-                  <td colSpan="9" className="p-8 text-center text-text-muted font-medium">{t("No transactions found")}</td>
+                  <td colSpan="8" className="p-8 text-center text-text-muted font-medium">{t("No transactions found")}</td>
                 </tr>
               ) : (
                 filteredBills.map((bill) => (
@@ -679,11 +712,9 @@ const BillHistory = ({ onNavigate, onGoBack }) => {
                           {bill.customerPhone && <span className="font-mono text-text-muted text-[11px]">{bill.customerPhone}</span>}
                         </div>
                       </td>
+                                            {/* td 4: Sales Type */}
                       <td className="px-3 py-2.5 whitespace-nowrap">
-                        <span className={`inline-block px-2.5 py-0.5 rounded-full text-xs font-bold border whitespace-nowrap ${bill.billType === 'Dine-In' ? 'bg-primary/10 text-primary border-primary/20' : 'bg-amber-50 text-amber-700 border-amber-200'
-                          }`}>
-                          {t(bill.billType)}
-                        </span>
+                        {getSalesTypeBadge(bill)}
                       </td>
                       <td className="px-3 py-2.5 whitespace-nowrap">
                         <span className={`inline-block px-2.5 py-0.5 rounded-full text-xs font-bold border whitespace-nowrap ${bill.status === 'Paid' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-red-50 text-red-700 border-red-200'

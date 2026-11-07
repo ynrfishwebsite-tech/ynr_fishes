@@ -103,7 +103,9 @@ class RealtimeService {
       'spacesUpdated',
       'menuUpdated',
       'relayPrintKOT',
-      'relayPrintBill'
+      'relayPrintBill',
+      'vehicle:location_stream',
+      'vehicle:send_location'
     ];
 
     events.forEach(eventName => {
@@ -127,7 +129,9 @@ class RealtimeService {
       }
 
       // Handle print relay on local desktop station
-      if (eventName === 'relayPrintKOT' || eventName === 'relayPrintBill') {
+      if (eventName === 'relayPrintKOT' || eventName === 'relayPrintBill',
+      'vehicle:location_stream',
+      'vehicle:send_location') {
         this.handleLocalStationPrintRelay(eventName, data);
       }
 

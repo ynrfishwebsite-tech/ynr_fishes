@@ -36,6 +36,8 @@ export const getBills = async (req, res) => {
     if (salesCat && salesCat !== 'all' && salesCat !== 'All') {
       const catLower = salesCat.toLowerCase();
       if (catLower.includes('whole')) {
+        query.billNumber = { $not: /^RET-|^EXP-/i };
+        query.tableNo = { $not: /^RET-|^EXP-/i };
         query.$or = [
           { customerCategory: 'Wholesale' },
           { orderChannel: /Wholesale/i },
@@ -50,6 +52,8 @@ export const getBills = async (req, res) => {
           { billNumber: /^EXP-/i }
         ];
       } else if (catLower.includes('retail')) {
+        query.billNumber = { $not: /^WS-|^EXP-/i };
+        query.tableNo = { $not: /^WS-|^EXP-/i };
         query.$or = [
           { customerCategory: 'Retail' },
           { orderChannel: /Retail|Counter/i },
@@ -134,6 +138,8 @@ export const getBills = async (req, res) => {
       Bill.countDocuments(query),
       Bill.countDocuments({
         status: query.status,
+        billNumber: { $not: /^WS-|^EXP-/i },
+        tableNo: { $not: /^WS-|^EXP-/i },
         $or: [{ customerCategory: 'Retail' }, { orderChannel: /Retail|Counter/i }, { billType: 'Retail' }, { billNumber: /^RET-/i }]
       }).catch(() => 0),
       Bill.countDocuments({

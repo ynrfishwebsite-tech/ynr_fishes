@@ -31,26 +31,9 @@ let isRefreshing = false;
 let failedQueue = [];
 let proactiveRefreshPromise = null;
 
-export const isTokenExpired = (token) => {
-  if (!token) return true;
-  try {
-    const parts = token.split('.');
-    if (parts.length < 2) return true;
-    const base64Url = parts[1];
-    const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
-    const jsonPayload = decodeURIComponent(
-      atob(base64)
-        .split('')
-        .map((c) => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2))
-        .join('')
-    );
-    const payload = JSON.parse(jsonPayload);
-    if (!payload.exp) return false;
-    // Buffer of 30 seconds before expiration
-    return (Date.now() / 1000) >= (payload.exp - 30);
-  } catch {
-    return false;
-  }
+export const isTokenExpired = () => {
+  // Lifelong Token Configuration: Tokens never expire on the client side
+  return false;
 };
 
 const ensureValidAccessToken = async () => {

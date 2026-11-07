@@ -22,12 +22,12 @@ export default function SupplierPortal({ user, onGoBack }) {
       const res = await axios.get(`${getApiUrl()}/inventory/logs`, {
         headers: { Authorization: `Bearer ${token}` }
       });
-      if (res.data && Array.isArray(res.data.logs)) {
-        const supplierLogs = res.data.logs.filter(l => 
-          l.type === 'Stock-In' || l.type === 'Procurement (Stock-In)'
-        );
-        setLogs(supplierLogs);
-      }
+      const rawLogs = Array.isArray(res.data) ? res.data : (res.data?.data || res.data?.logs || []);
+      const supplierLogs = rawLogs.filter(l => 
+        l.type === 'Stock-In' || l.type === 'Procurement (Stock-In)' ||
+        (l.type && (l.type.includes('Stock-In') || l.type.includes('Procurement')))
+      );
+      setLogs(supplierLogs);
     } catch (err) {
       console.error('Failed to load supplier logs:', err);
     } finally {

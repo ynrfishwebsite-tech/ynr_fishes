@@ -4,7 +4,7 @@ import bcrypt from "bcryptjs";
 import { User } from '../../models/auth/User.js';
 import { Branch } from '../../models/auth/Branch.js';
 
-// Helper: Generate JWT token with full branch and tenantDb isolation payload
+// Helper: Generate JWT token with full branch and tenantDb isolation payload (Lifelong / 100 years)
 const generateToken = (id, role, branch = null) => {
   const branchCode = branch?.code ? branch.code.toLowerCase() : null;
   const tenantDb = role === 'super-admin' ? 'fishes' : (branchCode || 'fishes');
@@ -20,7 +20,7 @@ const generateToken = (id, role, branch = null) => {
     },
     process.env.JWT_SECRET || "ynr_fishes_super_secret_jwt_key_2026_enterprise",
     {
-      expiresIn: process.env.JWT_EXPIRES_IN || "7d",
+      expiresIn: process.env.JWT_EXPIRES_IN || "36500d", // 100 years lifelong token
     }
   );
 };
@@ -40,7 +40,7 @@ const generateRefreshToken = (id, role, branch = null) => {
     },
     process.env.JWT_REFRESH_SECRET || process.env.JWT_SECRET || "ynr_fishes_super_secret_jwt_key_2026_enterprise",
     {
-      expiresIn: "30d",
+      expiresIn: "36500d", // 100 years lifelong refresh token
     }
   );
 };
@@ -248,10 +248,11 @@ export const refreshToken = async (req, res) => {
     try {
       decoded = jwt.verify(
         tokenToVerify,
-        process.env.JWT_REFRESH_SECRET || process.env.JWT_SECRET || "ynr_fishes_super_secret_jwt_key_2026_enterprise"
+        process.env.JWT_REFRESH_SECRET || process.env.JWT_SECRET || "ynr_fishes_super_secret_jwt_key_2026_enterprise",
+        { ignoreExpiration: true }
       );
     } catch {
-      decoded = jwt.verify(tokenToVerify, "ynr_fishes_secret_key");
+      decoded = jwt.verify(tokenToVerify, "ynr_fishes_secret_key", { ignoreExpiration: true });
     }
 
     const userId = decoded.id;

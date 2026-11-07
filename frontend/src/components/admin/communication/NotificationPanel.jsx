@@ -10,7 +10,8 @@ import {
   Info, 
   Clock, 
   X,
-  Package
+  Package,
+  Truck
 } from 'lucide-react';
 
 export default function NotificationPanel({
@@ -48,6 +49,9 @@ export default function NotificationPanel({
     const type = (n?.data?.type || n?.type || '').toLowerCase();
     const title = (n?.title || '').toLowerCase();
 
+    if (title.includes('gps') || title.includes('vehicle') || title.includes('delivery') || type.includes('vehicle')) {
+      return { icon: Truck, bg: '#ffedd5', color: '#ea580c' };
+    }
     if (title.includes('order') || type.includes('order')) {
       return { icon: ShoppingCart, bg: '#e0f2fe', color: '#0284c7' };
     }
@@ -77,7 +81,9 @@ export default function NotificationPanel({
     const type = (n?.data?.type || n?.type || '').toLowerCase();
     const title = (n?.title || '').toLowerCase();
 
-    if (title.includes('order') || type.includes('order')) {
+    if (title.includes('gps') || title.includes('vehicle') || type.includes('vehicle')) {
+      if (onNavigate) onNavigate('vehicles');
+    } else if (title.includes('order') || type.includes('order')) {
       if (onNavigate) onNavigate('active-orders');
     } else if (title.includes('bill') || title.includes('settle') || type.includes('bill')) {
       if (onNavigate) onNavigate('bill-history');

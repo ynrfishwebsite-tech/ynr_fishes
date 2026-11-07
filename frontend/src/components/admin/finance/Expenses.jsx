@@ -3,6 +3,7 @@ import { getExpenses, addExpense, deleteExpense, updateExpense } from '../../../
 import { Wallet, Plus, Trash2, Calendar, IndianRupee, Tag, Clock, CreditCard, Pencil, Loader2 } from 'lucide-react';
 import Toast from '../system/Toast';
 import BackButton from '../common/BackButton';
+import SearchableDropdown from '../../common/SearchableDropdown';
 
 const CATEGORIES = ['Ingredients', 'Utility Bills', 'Staff Salary', 'Maintenance', 'Miscellaneous'];
 const PAYMENT_MODES = ['Cash', 'UPI', 'Card', 'Bank Transfer'];
@@ -578,21 +579,25 @@ const Expenses = ({ onNavigate, onGoBack }) => {const { t } = useLanguage();
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs sm:text-sm font-bold text-text-main mb-1">{t("Category")}</label>
-                  <select
-                  value={formData.category}
-                  onChange={(e) => setFormData({ ...formData, category: e.target.value })}
-                  className="w-full px-3 py-2 bg-background border border-border rounded-xl focus:outline-none focus:border-red-500 transition-all font-medium text-xs sm:text-sm">
-                    {CATEGORIES.map((cat) => <option key={cat} value={cat}>{t(cat)}</option>)}
-                  </select>
+                  <SearchableDropdown
+                    mode="select"
+                    value={formData.category}
+                    onChange={(val) => setFormData({ ...formData, category: val })}
+                    options={CATEGORIES.map((cat) => ({ value: cat, label: t(cat) }))}
+                    searchPlaceholder="Search category..."
+                    accentColor="orange"
+                  />
                 </div>
                 <div>
                   <label className="block text-xs sm:text-sm font-bold text-text-main mb-1">{t("Paid Via")}</label>
-                  <select
-                  value={formData.paymentMode}
-                  onChange={(e) => setFormData({ ...formData, paymentMode: e.target.value })}
-                  className="w-full px-3 py-2 bg-background border border-border rounded-xl focus:outline-none focus:border-red-500 transition-all font-medium text-xs sm:text-sm">
-                    {PAYMENT_MODES.map((mode) => <option key={mode} value={mode}>{t(mode)}</option>)}
-                  </select>
+                  <SearchableDropdown
+                    mode="select"
+                    searchable={false}
+                    value={formData.paymentMode}
+                    onChange={(val) => setFormData({ ...formData, paymentMode: val })}
+                    options={PAYMENT_MODES.map((mode) => ({ value: mode, label: t(mode) }))}
+                    accentColor="orange"
+                  />
                 </div>
               </div>
             </form>

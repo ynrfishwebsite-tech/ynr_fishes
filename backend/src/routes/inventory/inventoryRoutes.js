@@ -4,8 +4,7 @@ import {
   getFishInventory, 
   recordProcurement, 
   recordLocalStockIn,
-  recordDamStockIn,
-  recordShrinkage, 
+  recordDamStockIn, 
   getLogs, 
   getRestockPredictions
 } from '../../controllers/inventory/inventoryController.js';
@@ -19,7 +18,6 @@ router.post('/procurement', authenticateToken, recordProcurement);
 router.post('/restock', authenticateToken, recordProcurement);
 router.post('/local-stock-in', authenticateToken, recordLocalStockIn);
 router.post('/dam-stock-in', authenticateToken, recordDamStockIn);
-router.post('/shrinkage', authenticateToken, recordShrinkage);
 
 // Audit Ledger & AI Restock Predictions
 router.get('/logs', optionalAuthenticateToken, getLogs);

@@ -1880,7 +1880,7 @@ const BillSummary = ({
           </span>
         </div>
         <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-[#fff7ed] text-[#c2410c] border border-[#fed7aa] font-bold">
-          {activeTable ? `#${activeTable.replace(/^(TAK-|DEL-|ORD-)/i, '')}` : t("Active Cart")}
+          {activeTable ? `#${activeTable.replace(/^(TAK-|DEL-|ORD-)/i, '')}` : t("New Order")}
         </span>
       </div>
 

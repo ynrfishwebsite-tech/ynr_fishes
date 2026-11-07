@@ -36,12 +36,13 @@ import {
 } from 'lucide-react';
 import { useLanguage } from '../../../context/LanguageContext';
 
-const STORAGE_KEY = 'ynr_dashboard_cards_order_v2';
+const STORAGE_KEY = 'ynr_dashboard_cards_order_v3';
 
 export default function MainEntranceDashboard({
   user,
   onNavigate,
   activeOrdersCount = 0,
+  activeOrdersBreakdown = { total: 0, retail: 0, wholesale: 0, export: 0 },
   unreadNotificationsCount = 0,
   branchName,
   onOpenWhatsApp
@@ -171,6 +172,12 @@ export default function MainEntranceDashboard({
     if (id === 'billing-retail' || id === 'billing-wholesale' || id === 'billing-export') {
       return userPermitted.includes('billing');
     }
+    if (['retail-active-orders', 'wholesale-active-orders', 'export-active-orders'].includes(id)) {
+      return userPermitted.includes('active-orders');
+    }
+    if (['retail-bill-history', 'wholesale-bill-history', 'export-bill-history'].includes(id)) {
+      return userPermitted.includes('bill-history');
+    }
     if (id === 'whatsapp-bot') {
       return userPermitted.includes('operations') || userPermitted.includes('settings');
     }
@@ -192,7 +199,7 @@ export default function MainEntranceDashboard({
       iconBg: '#ecfdf5',
       borderColor: '#a7f3d0',
       navView: 'billing',
-      navOptions: { mode: 'individual' },
+      navOptions: { mode: 'individual', table: 'NEW_ORDER', action: 'new' },
       keywords: ['retail', 'individual', 'kg', 'walk in', 'retail mode', 'counter customer']
     },
     // 2. Wholesale (New Order Mode)
@@ -206,7 +213,7 @@ export default function MainEntranceDashboard({
       iconBg: '#fffbeb',
       borderColor: '#fde68a',
       navView: 'billing',
-      navOptions: { mode: 'bulk' },
+      navOptions: { mode: 'bulk', table: 'NEW_ORDER', action: 'new' },
       keywords: ['wholesale', 'bulk', 'crates', 'boxes', 'wholesale mode', 'dealer order']
     },
     // 3. Export (Bulk) (New Order Mode)
@@ -220,7 +227,7 @@ export default function MainEntranceDashboard({
       iconBg: '#eff6ff',
       borderColor: '#bfdbfe',
       navView: 'billing',
-      navOptions: { mode: 'export' },
+      navOptions: { mode: 'export', table: 'NEW_ORDER', action: 'new' },
       keywords: ['export', 'dam', 'local export', 'consignment', 'export mode', 'bulk export']
     },
     // 4. New Order
@@ -234,40 +241,100 @@ export default function MainEntranceDashboard({
       iconBg: '#ecfdf5',
       borderColor: '#d1fae5',
       navView: 'billing',
-      navOptions: {},
+      navOptions: { table: 'NEW_ORDER', action: 'new' },
       keywords: ['new order', 'pos', 'billing', 'cart', 'sell', 'counter', 'cashier']
     },
 
     // ═══ SECONDARY (prescribed order) ═══
-    // 5. Active Orders
+    // 5. Retail Active
     {
-      id: 'active-orders',
-      title: 'Active Orders',
-      subtitle: 'Live Queue',
+      id: 'retail-active-orders',
+      title: 'Retail Active',
+      subtitle: 'Live Orders',
       category: 'Billing',
       icon: Clock,
-      iconColor: '#ea580c',
-      iconBg: '#fff7ed',
-      borderColor: '#fed7aa',
-      badge: activeOrdersCount > 0 ? `${activeOrdersCount} Pending` : null,
-      badgeBg: '#ea580c',
-      navView: 'active-orders',
+      iconColor: '#059669',
+      iconBg: '#ecfdf5',
+      borderColor: '#a7f3d0',
+      badge: (activeOrdersBreakdown?.retail ?? 0) > 0 ? `${activeOrdersBreakdown.retail} Pending` : null,
+      badgeBg: '#059669',
+      navView: 'retail-active-orders',
       navOptions: {},
-      keywords: ['active orders', 'pending', 'open', 'billed', 'hold', 'queue', 'dispatch']
+      keywords: ['retail active', 'retail orders', 'counter queue', 'walk-in queue', 'active']
     },
-    // 6. Bill History
+    // 6. Wholesale Active
     {
-      id: 'bill-history',
-      title: 'Bill History',
+      id: 'wholesale-active-orders',
+      title: 'Wholesale Active',
+      subtitle: 'Box Queue',
+      category: 'Billing',
+      icon: Boxes,
+      iconColor: '#d97706',
+      iconBg: '#fffbeb',
+      borderColor: '#fde68a',
+      badge: (activeOrdersBreakdown?.wholesale ?? 0) > 0 ? `${activeOrdersBreakdown.wholesale} Pending` : null,
+      badgeBg: '#d97706',
+      navView: 'wholesale-active-orders',
+      navOptions: {},
+      keywords: ['wholesale active', 'wholesale orders', 'box queue', 'crates queue', 'active']
+    },
+    // 7. Export Active
+    {
+      id: 'export-active-orders',
+      title: 'Export Active',
+      subtitle: 'Cargo Queue',
+      category: 'Billing',
+      icon: Truck,
+      iconColor: '#2563eb',
+      iconBg: '#eff6ff',
+      borderColor: '#bfdbfe',
+      badge: (activeOrdersBreakdown?.export ?? 0) > 0 ? `${activeOrdersBreakdown.export} Pending` : null,
+      badgeBg: '#2563eb',
+      navView: 'export-active-orders',
+      navOptions: {},
+      keywords: ['export active', 'export orders', 'cargo queue', 'dam queue', 'active']
+    },
+    // 8. Retail Bills
+    {
+      id: 'retail-bill-history',
+      title: 'Retail Bills',
+      subtitle: 'Past Invoices',
+      category: 'Billing',
+      icon: FileText,
+      iconColor: '#059669',
+      iconBg: '#ecfdf5',
+      borderColor: '#a7f3d0',
+      navView: 'retail-bill-history',
+      navOptions: {},
+      keywords: ['retail bills', 'retail bill history', 'retail invoices', 'receipts', 'sales']
+    },
+    // 9. Wholesale Bills
+    {
+      id: 'wholesale-bill-history',
+      title: 'Wholesale Bills',
+      subtitle: 'Past Invoices',
+      category: 'Billing',
+      icon: FileText,
+      iconColor: '#d97706',
+      iconBg: '#fffbeb',
+      borderColor: '#fde68a',
+      navView: 'wholesale-bill-history',
+      navOptions: {},
+      keywords: ['wholesale bills', 'wholesale bill history', 'wholesale invoices', 'crates history']
+    },
+    // 10. Export Bills
+    {
+      id: 'export-bill-history',
+      title: 'Export Bills',
       subtitle: 'Past Invoices',
       category: 'Billing',
       icon: FileText,
       iconColor: '#2563eb',
       iconBg: '#eff6ff',
       borderColor: '#bfdbfe',
-      navView: 'bill-history',
+      navView: 'export-bill-history',
       navOptions: {},
-      keywords: ['bill history', 'invoices', 'receipts', 'sales history', 'past bills']
+      keywords: ['export bills', 'export bill history', 'export invoices', 'consignments history']
     },
     // 7. Second Dashboard
     {
@@ -525,37 +592,7 @@ export default function MainEntranceDashboard({
       keywords: ['whatsapp', 'bot', 'qr', 'whatsapp login', 'client alerts', 'messages']
     },
 
-    // 25. Driver Portal (Conditional)
-    ...(user?.role === 'driver' || isFullAdmin ? [{
-      id: 'driver-portal',
-      title: 'Driver Portal',
-      subtitle: 'Assigned Deliveries',
-      category: 'Operations',
-      icon: Route,
-      iconColor: '#0284c7',
-      iconBg: '#f0f9ff',
-      borderColor: '#bae6fd',
-      navView: 'driver-portal',
-      navOptions: {},
-      keywords: ['driver portal', 'driver', 'trips', 'delivery route', 'my trips']
-    }] : []),
-
-    // 26. Supplier Portal (Conditional)
-    ...(user?.role === 'supplier' || isFullAdmin ? [{
-      id: 'supplier-portal',
-      title: 'Supplier Portal',
-      subtitle: 'Catch & Ledger',
-      category: 'Finance',
-      icon: ClipboardList,
-      iconColor: '#059669',
-      iconBg: '#ecfdf5',
-      borderColor: '#a7f3d0',
-      navView: 'supplier-portal',
-      navOptions: {},
-      keywords: ['supplier portal', 'supplier', 'catch vouchers', 'passbook', 'ledger']
-    }] : []),
-
-    // 27. Dedicated Supplier Directory (Admin & Manager)
+    // 25. Dedicated Supplier Directory (Admin & Manager)
     ...(isFullAdmin || user?.role === 'manager' ? [{
       id: 'suppliers',
       title: 'Supplier Directory',
@@ -569,7 +606,7 @@ export default function MainEntranceDashboard({
       navOptions: {},
       keywords: ['supplier directory', 'suppliers', 'vendors', 'fishermen', 'harbor', 'dam contractors', 'supplies']
     }] : [])
-  ], [activeOrdersCount, unreadNotificationsCount, user?.role, isFullAdmin]);
+  ], [activeOrdersCount, activeOrdersBreakdown, unreadNotificationsCount, user?.role, isFullAdmin]);
 
   // Apply custom sticky order from localStorage
   const orderedCards = useMemo(() => {

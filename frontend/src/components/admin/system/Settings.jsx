@@ -1465,9 +1465,6 @@ const Settings = ({ user, setUser, onNavigate, onGoBack }) => {
                     </div>
                   </div>
 
-                  {/* Default Catalog Layout (Grid vs 3D Roller) */}
-                  {renderCatalogLayoutToggle()}
-
                   {/* Dynamic QR Payment Toggle */}
                   <div className="flex items-center justify-between p-4 bg-[#FDFBF7] rounded-xl border border-slate-200 shadow-md">
                     <div className="space-y-0.5">

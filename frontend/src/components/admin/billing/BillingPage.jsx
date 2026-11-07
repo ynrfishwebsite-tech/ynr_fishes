@@ -9,7 +9,7 @@ import { getActiveOrder, saveOrder, generateBill, settleBill, apiReopenOrder, ap
 import { sendWhatsAppBill, getWhatsAppStatus } from '../../../api/communication/whatsapp';
 import api from '../../../api/system/axios';
 import { getCachedOpenOrders, upsertCachedOpenOrder, removeCachedOpenOrder } from '../../../db/offlineDb';
-import { Search, UtensilsCrossed, Maximize, Minimize, TrendingUp, ShoppingBag, LayoutGrid, Menu, ChevronLeft, ChevronRight, ChevronDown, Lock, Unlock, X, User, UserPlus, Phone, Loader2, Plus } from 'lucide-react';
+import { Search, UtensilsCrossed, Maximize, Minimize, TrendingUp, ShoppingBag, LayoutGrid, Menu, ChevronLeft, ChevronRight, ChevronDown, Lock, Unlock, X, User, UserPlus, Phone, Loader2, Plus, Check } from 'lucide-react';
 import useDebounce from '../../../hooks/useDebounce';
 import Invoice from './Invoice';
 import CancelOrderModal from './CancelOrderModal';
@@ -159,9 +159,13 @@ const removeClearedTableRecord = (table) => {
   } catch (e) { }
 };
 
+// Global persistent set of newly generated tables across renders/re-mounts
+const GENERATED_NEW_TABLES = new Set();
+
 const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individual', onOrderUpdate, onNavigate, onGoBack, userRole = 'Admin' }) => {
   const { t } = useLanguage();
-  const effectiveInitialTable = initialTable || (typeof window !== 'undefined' ? sessionStorage.getItem('ms_initial_table') : '') || '';
+  const isExplicitNew = !initialTable || initialTable === 'NEW_ORDER' || initialAction === 'new' || (typeof window !== 'undefined' && sessionStorage.getItem('ms_initial_action') === 'new');
+  const effectiveInitialTable = isExplicitNew ? '' : (initialTable || '');
   const [activeTable, setActiveTable] = useState(effectiveInitialTable);
   const [floors, setFloors] = useState([]);
   const [openOrdersList, setOpenOrdersList] = useState([]);
@@ -438,7 +442,7 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
     try {
       sessionStorage.removeItem('ms_invoice_open');
       sessionStorage.removeItem('ms_completed_bill');
-    } catch (e) {}
+    } catch (e) { }
   }, []);
 
   const [toast, setToast] = useState(null);
@@ -474,6 +478,53 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
   const [showSuccessScreen, setShowSuccessScreen] = useState(false);
   const [successPaymentData, setSuccessPaymentData] = useState(null); // { paymentData, billData }
   const [offscreenBill, setOffscreenBill] = useState(null);
+
+  // Customized Responsive Order Dropdown State & Click-Outside
+  const [isOrderDropdownOpen, setIsOrderDropdownOpen] = useState(false);
+  const orderDropdownRef = useRef(null);
+
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (orderDropdownRef.current && !orderDropdownRef.current.contains(e.target)) {
+        setIsOrderDropdownOpen(false);
+      }
+    };
+    if (isOrderDropdownOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+      document.addEventListener('touchstart', handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('touchstart', handleClickOutside);
+    };
+  }, [isOrderDropdownOpen]);
+
+  // Mode-based active orders filter (Retail vs Wholesale vs Export)
+  const modeFilteredOrders = useMemo(() => {
+    return (openOrdersList || []).filter(o => {
+      if (!o) return false;
+      const tNo = String(o.tableNo || '');
+      const isExp = o.customerCategory === 'Export' || o.orderMode === 'export' || tNo.startsWith('EXP-');
+      const isWs = !isExp && (
+        o.customerCategory === 'Wholesale' ||
+        o.orderMode === 'bulk' ||
+        tNo.startsWith('WS-') ||
+        Number(o.totalBoxes || 0) > 0 ||
+        (Array.isArray(o.boxes) && o.boxes.length > 0)
+      );
+
+      if (fishOrderMode === 'export') return isExp;
+      if (fishOrderMode === 'bulk') return isWs;
+      // Default: Retail mode (only show Retail orders, strictly no WS or EXP)
+      return !isExp && !isWs;
+    });
+  }, [openOrdersList, fishOrderMode]);
+
+  const currentModeTitle = useMemo(() => {
+    if (fishOrderMode === 'export') return 'Export';
+    if (fishOrderMode === 'bulk') return 'Wholesale';
+    return 'Retail';
+  }, [fishOrderMode]);
 
   // ─── WhatsApp Auto-Send Toggle & Status ──────────────────────────────────────
   // Toggle persisted across sessions in localStorage so it stays active
@@ -538,8 +589,16 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
     const dateStr = settledAt.toLocaleDateString("en-IN", { day: "2-digit", month: "2-digit", year: "numeric" });
     const timeStr = settledAt.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true }).toUpperCase();
 
-    let tableInfo = bill.tableNo || bType;
-    if (bType === 'Dine-In') tableInfo = `Dine-In (${bill.tableNo || 'Table'})`;
+    const isExp = bill.customerCategory === 'Export' || bill.orderMode === 'export' || String(billNo).startsWith('EXP-') || String(bill.tableNo || '').startsWith('EXP-');
+    const isWs = !isExp && (bill.customerCategory === 'Wholesale' || bill.orderMode === 'bulk' || String(billNo).startsWith('WS-') || String(bill.tableNo || '').startsWith('WS-') || Number(bill.totalBoxes || 0) > 0 || (Array.isArray(bill.boxes) && bill.boxes.length > 0));
+    const catTitle = isExp ? 'EXPORT' : (isWs ? 'WHOLESALE' : 'RETAIL');
+    const prefix = isExp ? 'EXP-' : (isWs ? 'WS-' : 'RET-');
+    const cleanTable = (bill.tableNo || '').replace(/^TAK-/i, prefix);
+
+    let tableInfo = cleanTable ? `${catTitle} (${cleanTable})` : catTitle;
+    if (bType === 'Delivery' || String(bill.tableNo || '').startsWith('DEL')) {
+      tableInfo = `DELIVERY${cleanTable ? ` (${cleanTable})` : ''}`;
+    }
 
     let itemsList = '';
     let totalQty = 0;
@@ -556,13 +615,28 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
     const total = Number(bill.total || 0).toFixed(2);
     let discount = bill.discount > 0 ? `\n• *Discount:* -₹${Number(bill.discount).toFixed(2)}` : '';
 
-    let paymentInfo = bill.paymentMode || 'Cash';
-    if (bill.paymentMode === 'Mixed' && bill.splitPayments) {
-      const parts = [];
-      if (bill.splitPayments.cash > 0) parts.push(`Cash: ₹${bill.splitPayments.cash}`);
-      if (bill.splitPayments.upi > 0) parts.push(`UPI: ₹${bill.splitPayments.upi}`);
-      if (bill.splitPayments.card > 0) parts.push(`Card: ₹${bill.splitPayments.card}`);
-      if (parts.length > 0) paymentInfo = `Mixed (${parts.join(', ')})`;
+    let paymentInfo = 'Cash';
+    const payMode = bill.paymentMode || bill.paymentMethod || 'Cash';
+    if (payMode === 'UPI') {
+      const upiApp = bill.upiApp || bill.upiAppName || (bill.paymentMethod !== 'UPI' ? bill.paymentMethod : '') || '';
+      paymentInfo = upiApp && upiApp !== 'UPI' ? `UPI [${upiApp}]` : 'UPI';
+    } else if (payMode === 'Mixed') {
+      const split = bill.splitPayments || bill.paymentBreakdown;
+      if (split) {
+        const parts = [];
+        if (Number(split.cash || 0) > 0) parts.push(`Cash: ₹${Number(split.cash).toFixed(2)}`);
+        if (Number(split.upi || 0) > 0) parts.push(`UPI: ₹${Number(split.upi).toFixed(2)}`);
+        if (Number(split.card || 0) > 0) parts.push(`Card: ₹${Number(split.card).toFixed(2)}`);
+        paymentInfo = parts.length > 0 ? `Mixed (${parts.join(' | ')})` : 'Mixed';
+      } else {
+        paymentInfo = 'Mixed Payment';
+      }
+    } else if (payMode === 'Card') {
+      paymentInfo = 'Card';
+    } else if (payMode === 'Unpaid') {
+      paymentInfo = 'Unpaid (Khata)';
+    } else {
+      paymentInfo = 'Cash';
     }
 
     const READ_MORE = String.fromCharCode(8206).repeat(4001);
@@ -575,15 +649,13 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
         ? `🛵 Dear *${customerName}*, thank you for ordering delivery with us!\n🧾 *Delivery e-Bill #${billNo}* | *${restName.toUpperCase()}*`
         : `🛵 *HOME DELIVERY E-BILL* 🛵\n🏠 *${restName.toUpperCase()}* | Bill #${billNo}`;
       if (!footerMessage) footerMessage = '*** THANK YOU FOR YOUR DELIVERY ORDER! ENJOY YOUR MEAL ***';
-    } else if (bType === 'Takeaway') {
-      header = customerName
-        ? `🛍️ Dear *${customerName}*, thank you for your takeaway order!\n🧾 *Takeaway e-Bill #${billNo}* | *${restName.toUpperCase()}*`
-        : `🛍️ *TAKEAWAY E-BILL RECEIPT* 🛍️\n📦 *${restName.toUpperCase()}* | Bill #${billNo}`;
-      if (!footerMessage) footerMessage = '*** THANK YOU FOR ORDERING TAKEAWAY! VISIT AGAIN ***';
     } else {
+      const isExp = bill.customerCategory === 'Export' || bill.orderMode === 'export' || String(billNo).startsWith('EXP-');
+      const isWs = !isExp && (bill.customerCategory === 'Wholesale' || bill.orderMode === 'bulk' || String(billNo).startsWith('WS-') || Number(bill.totalBoxes || 0) > 0);
+      const catTitle = isExp ? 'EXPORT' : (isWs ? 'WHOLESALE' : 'RETAIL');
       header = customerName
-        ? `👋 Dear *${customerName}*, thank you for dining with us!\n🧾 *e-Bill #${billNo}* | *${restName.toUpperCase()}*`
-        : `🧾 *DIGITAL E-BILL RECEIPT* 🧾\n🏨 *${restName.toUpperCase()}* | Bill #${billNo}`;
+        ? `🛍️ Dear *${customerName}*, thank you for your ${catTitle.toLowerCase()} order!\n🧾 *${catTitle} e-Bill #${billNo}* | *${restName.toUpperCase()}*`
+        : `🛍️ *${catTitle} E-BILL RECEIPT* 🛍️\n📦 *${restName.toUpperCase()}* | Bill #${billNo}`;
       if (!footerMessage) footerMessage = '*** THANK YOU! VISIT AGAIN ***';
     }
 
@@ -766,50 +838,100 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
   const debouncedSearchTerm = useDebounce(searchTerm, 300);
 
   const generateSequentialOrderNo = (type) => {
-    const prefix = type === 'Delivery' || type === 'DEL-NEW' ? 'DEL-' : 'TAK-';
-    const todayStr = new Date().toDateString();
+    let prefix = 'RET-';
+    if (type === 'Delivery' || type === 'DEL-NEW') {
+      prefix = 'DEL-';
+    } else if (fishOrderMode === 'export' || type === 'Export') {
+      prefix = 'EXP-';
+    } else if (fishOrderMode === 'bulk' || type === 'Wholesale') {
+      prefix = 'WS-';
+    } else {
+      prefix = 'RET-';
+    }
 
-    // Reset newly generated table cache if a new day has started
-    if (newlyGeneratedTablesDate.current !== todayStr) {
-      newlyGeneratedTablesDate.current = todayStr;
+    // 1. Calculate current IST date key: 'YYYY-MM-DD'
+    const now = new Date();
+    const istTime = now.getTime() + (5.5 * 60 * 60 * 1000);
+    const istDate = new Date(istTime);
+    const todayIST = `${istDate.getUTCFullYear()}-${String(istDate.getUTCMonth() + 1).padStart(2, '0')}-${String(istDate.getUTCDate()).padStart(2, '0')}`;
+
+    // Reset newly generated table cache if a new calendar day has started in IST
+    if (newlyGeneratedTablesDate.current !== todayIST) {
+      newlyGeneratedTablesDate.current = todayIST;
       if (newlyGeneratedTables.current) {
         newlyGeneratedTables.current.clear();
       }
+      GENERATED_NEW_TABLES.clear();
     }
 
-    // Build the set of all known order numbers from active orders, settled orders, and active table
-    const countedNos = new Set();
+    // Helper: test if an ISO or Date string belongs to today in IST
+    const isOrderFromTodayIST = (dateStr) => {
+      if (!dateStr) return true; // Active open session orders without timestamp are counted
+      try {
+        const d = new Date(dateStr);
+        if (isNaN(d.getTime())) return true;
+        const dIst = new Date(d.getTime() + (5.5 * 60 * 60 * 1000));
+        const orderIST = `${dIst.getUTCFullYear()}-${String(dIst.getUTCMonth() + 1).padStart(2, '0')}-${String(dIst.getUTCDate()).padStart(2, '0')}`;
+        return orderIST === todayIST;
+      } catch (_) {
+        return true;
+      }
+    };
 
+    // Build the set of order numbers strictly for THIS prefix today in IST
+    const countedNos = new Set();
+    const prefixRegex = new RegExp(`^${prefix}(\\d+)`, 'i');
+
+    // 1. From openOrdersList (Active open/billed orders for today in IST matching this prefix)
     if (openOrdersList && Array.isArray(openOrdersList)) {
       openOrdersList.forEach((o) => {
-        if (o?.tableNo) countedNos.add(String(o.tableNo));
+        if (!o || !o.tableNo) return;
+        const tNo = String(o.tableNo).trim();
+        if (prefixRegex.test(tNo) && isOrderFromTodayIST(o.createdAt || o.orderedAt || o.date)) {
+          countedNos.add(tNo);
+        }
       });
     }
 
+    // 2. From dailyStats?.todayTableNos (Settled / billed tables queried strictly for today in IST by backend)
     if (dailyStats?.todayTableNos && Array.isArray(dailyStats.todayTableNos)) {
       dailyStats.todayTableNos.forEach((tNo) => {
-        if (tNo) countedNos.add(String(tNo));
+        if (!tNo) return;
+        const str = String(tNo).trim();
+        if (prefixRegex.test(str)) {
+          countedNos.add(str);
+        }
       });
     }
 
-    if (activeTable) {
-      countedNos.add(String(activeTable));
+    // 3. From activeTable (if current table matches this prefix)
+    if (activeTable && prefixRegex.test(String(activeTable).trim())) {
+      countedNos.add(String(activeTable).trim());
     }
 
+    // 4. From newlyGeneratedTables
     if (newlyGeneratedTables.current) {
       newlyGeneratedTables.current.forEach((tNo) => {
-        if (tNo) countedNos.add(String(tNo));
+        if (tNo && prefixRegex.test(String(tNo).trim())) {
+          countedNos.add(String(tNo).trim());
+        }
       });
     }
 
-    // Extract maximum numeric sequence used for this depot today
+    // 5. From GENERATED_NEW_TABLES
+    GENERATED_NEW_TABLES.forEach((tNo) => {
+      if (tNo && prefixRegex.test(String(tNo).trim())) {
+        countedNos.add(String(tNo).trim());
+      }
+    });
+
+    // Extract maximum numeric sequence used for THIS SPECIFIC PREFIX today in IST
     let maxNum = 0;
     countedNos.forEach((tNo) => {
-      if (!tNo || typeof tNo !== 'string') return;
-      const numMatch = tNo.match(/\d+/);
-      if (numMatch) {
-        const num = parseInt(numMatch[0], 10);
-        if (!isNaN(num) && num < 10000 && num > maxNum) {
+      const match = String(tNo).match(prefixRegex);
+      if (match && match[1]) {
+        const num = parseInt(match[1], 10);
+        if (!isNaN(num) && num > maxNum && num < 100000) {
           maxNum = num;
         }
       }
@@ -817,17 +939,33 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
 
     const nextNum = maxNum + 1;
     const formattedNum = String(nextNum).padStart(3, '0');
-    return `${prefix}${formattedNum}`;
+    const resultOrderNo = `${prefix}${formattedNum}`;
+
+    if (newlyGeneratedTables.current) {
+      newlyGeneratedTables.current.add(resultOrderNo);
+    }
+    GENERATED_NEW_TABLES.add(resultOrderNo);
+
+    return resultOrderNo;
   };
 
   useEffect(() => {
     if (initialTable) {
-      if (initialTable === 'DEL-NEW' || initialTable === 'TAK-NEW') {
+      if (initialTable === 'DEL-NEW' || initialTable === 'TAK-NEW' || initialTable === 'NEW_ORDER') {
         const type = initialTable === 'DEL-NEW' ? 'Delivery' : 'Takeaway';
         setBillType(type);
-        const generatedOrderNo = generateSequentialOrderNo(type);
-        newlyGeneratedTables.current.add(generatedOrderNo);
-        setActiveTable(generatedOrderNo);
+        // Clean New Order: no premature dummy order numbers like #002 or #004
+        setActiveTable('');
+        setCart([]);
+        cartRef.current = [];
+        setOrderId(null);
+        setOrderStatus('Open');
+        setBillNumber(null);
+        setCompletedBill(null);
+        try {
+          sessionStorage.removeItem('ms_initial_table');
+          sessionStorage.setItem('ms_initial_action', 'new');
+        } catch (e) { }
       } else {
         setActiveTable(initialTable);
         if (initialTable.startsWith('DEL-')) {
@@ -838,14 +976,32 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
           setBillType('Dine-In');
         }
       }
+    } else if (initialAction === 'new') {
+      setActiveTable('');
+      setCart([]);
+      cartRef.current = [];
+      setOrderId(null);
+      setOrderStatus('Open');
+      setBillNumber(null);
+      setCompletedBill(null);
+      try {
+        sessionStorage.removeItem('ms_initial_table');
+        sessionStorage.setItem('ms_initial_action', 'new');
+      } catch (e) { }
     }
-  }, [initialTable]);
+  }, [initialTable, initialAction]);
 
   useEffect(() => {
     // Only consider it a "local cart" if it's unsaved. If orderId exists, it's an occupied table from DB, so we should allow clearing it to switch tabs.
     const hasLocalCart = hasPendingLocalChanges.current || (cartRef.current && cartRef.current.length > 0 && !orderId);
-    if ((billType === 'Delivery' || billType === 'Takeaway') && (!activeTable || activeTable === 'DEL-NEW' || activeTable === 'TAK-NEW' || !activeTable.startsWith(billType === 'Delivery' ? 'DEL-' : 'TAK-'))) {
-      const prefix = billType === 'Delivery' ? 'DEL-' : 'TAK-';
+    if (isExplicitNew) return;
+    if (activeTable && (activeTable.startsWith('RET-') || activeTable.startsWith('WS-') || activeTable.startsWith('EXP-') || activeTable.startsWith('TAK-') || activeTable.startsWith('DEL-'))) return;
+
+    if ((billType === 'Delivery' || billType === 'Takeaway') && (!activeTable || activeTable === 'DEL-NEW' || activeTable === 'TAK-NEW' || !activeTable.match(/^(RET-|WS-|EXP-|DEL-|TAK-)/))) {
+      let prefix = 'RET-';
+      if (billType === 'Delivery') prefix = 'DEL-';
+      else if (fishOrderMode === 'export') prefix = 'EXP-';
+      else if (fishOrderMode === 'bulk') prefix = 'WS-';
       const isRecentOrder = (o) => {
         if (!o || !o.createdAt) return true;
         const diffHours = (Date.now() - new Date(o.createdAt).getTime()) / (1000 * 60 * 60);
@@ -856,16 +1012,14 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
         (o.status === 'Open' || o.status === 'Billed') &&
         isRecentOrder(o)
       );
-      if (existingOrder && !initialTable && !hasLocalCart) {
+      if (existingOrder && !initialTable && !hasLocalCart && !activeTable) {
         newlyGeneratedTables.current.delete(existingOrder.tableNo);
         setActiveTable(existingOrder.tableNo);
         if (existingOrder.orderSource) {
           setOrderSource(existingOrder.orderSource);
         }
         fetchActiveOrder(existingOrder.tableNo, true);
-      } else if (!hasLocalCart && !initialTable) {
-        const generatedOrderNo = generateSequentialOrderNo(billType);
-        newlyGeneratedTables.current.add(generatedOrderNo);
+      } else if (!hasLocalCart && !initialTable && !activeTable) {
         setCart([]);
         cartRef.current = [];
         setOrderId(null);
@@ -877,7 +1031,7 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
         setDiscount({ type: 'percentage', value: '' });
         setDeliveryCharge('');
         setContainerCharge('');
-        setActiveTable(generatedOrderNo);
+        setActiveTable('');
       }
     } else if (billType === 'Dine-In' && activeTable && (activeTable.startsWith('DEL-') || activeTable.startsWith('TAK-')) && !initialTable) {
       if (!hasLocalCart) {
@@ -907,8 +1061,14 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
     // This ensures that switching tables doesn't carry over the protection from the previous table,
     // while modal toggles (showInvoice, showPayment) will NOT reset active local cart state.
     const isTableChanged = prevActiveTableRef.current !== activeTable;
+    const isNewGenerated = newlyGeneratedTables.current?.has(activeTable) || GENERATED_NEW_TABLES.has(activeTable);
+    // If table was just auto-assigned when adding the first item to an empty cart, protect it from being wiped
+    const isAutoAssignedTable = !prevActiveTableRef.current && activeTable && (isNewGenerated || (cartRef.current && cartRef.current.length > 0));
+
     if (isTableChanged) {
-      hasPendingLocalChanges.current = false;
+      if (!isAutoAssignedTable) {
+        hasPendingLocalChanges.current = false;
+      }
       prevActiveTableRef.current = activeTable;
     }
 
@@ -919,7 +1079,7 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
 
     const isExplicitInitial = Boolean(initialTable && isTableMatching(activeTable, initialTable));
 
-    if (isTableChanged && !isExistingInOpenOrders && !isExplicitInitial) {
+    if (isTableChanged && !isExistingInOpenOrders && !isExplicitInitial && !isAutoAssignedTable && !isNewGenerated) {
       // ⚡ Immediate 0ms cart clear on switching to an empty table — no loading spinner
       setLoading(false);
       setCart([]);
@@ -936,14 +1096,14 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
       setContainerCharge('');
     }
 
-    if (activeTable && (isExistingInOpenOrders || isExplicitInitial || !newlyGeneratedTables.current.has(activeTable))) {
-      newlyGeneratedTables.current.delete(activeTable);
+    if (activeTable && !isAutoAssignedTable && !isNewGenerated && (isExistingInOpenOrders || (isExplicitInitial && !isExplicitNew) || !activeTable.includes('NEW'))) {
       fetchActiveOrder(activeTable, isTableChanged);
-    } else if (activeTable && newlyGeneratedTables.current.has(activeTable)) {
-      if (cart.length === 0) {
+    } else if (activeTable && (isNewGenerated || isAutoAssignedTable)) {
+      if (cart.length === 0 && (!cartRef.current || cartRef.current.length === 0)) {
         setOrderId(null);
         setOrderStatus('Open');
         setBillNumber(null);
+        setCompletedBill(null);
       }
     }
 
@@ -985,9 +1145,10 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
       if (showInvoiceRef.current || showPaymentRef.current || isViewingInvoiceRef.current) return;
 
       if (activeTable) {
-        // If user has unsaved cart items or pending local edits, NEVER fetch or overwrite activeTable!
+        const isNewUnsavedTable = (newlyGeneratedTables.current?.has(activeTable) || GENERATED_NEW_TABLES.has(activeTable)) && !openOrdersList.some(o => isTableMatching(o.tableNo, activeTable));
+        // If user has unsaved cart items or pending local edits, or this is a brand new order not in DB yet, NEVER fetch or overwrite activeTable!
         const hasLocalCart = hasPendingLocalChanges.current || (cartRef.current && cartRef.current.length > 0);
-        if (!hasLocalCart) {
+        if (!hasLocalCart && !isNewUnsavedTable) {
           fetchActiveOrder(activeTable, false, true);
         }
       }
@@ -1429,7 +1590,7 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
           setLoading(false);
           const currentAction = initialAction || (typeof window !== 'undefined' ? sessionStorage.getItem('ms_initial_action') : null);
           if (currentAction === 'settle') {
-            try { sessionStorage.removeItem('ms_initial_action'); } catch (e) {}
+            try { sessionStorage.removeItem('ms_initial_action'); } catch (e) { }
             setShowPayment(true);
           }
           return true;
@@ -1635,7 +1796,7 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
         }
         const currentAction = initialAction || (typeof window !== 'undefined' ? sessionStorage.getItem('ms_initial_action') : null);
         if (currentAction === 'settle') {
-          try { sessionStorage.removeItem('ms_initial_action'); } catch (e) {}
+          try { sessionStorage.removeItem('ms_initial_action'); } catch (e) { }
           setShowPayment(true);
         }
       } else {
@@ -1651,12 +1812,9 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
         }
 
         // If it's a delivery or takeaway table that has no active order (e.g. already settled/paid),
-        // transition away ONLY on direct navigation when cart is completely empty!
-        if (!isBackground && !hasLocalEdits() && tableToFetch && (tableToFetch.startsWith('DEL-') || tableToFetch.startsWith('TAK-')) && !newlyGeneratedTables.current.has(tableToFetch)) {
-          newlyGeneratedTables.current.add(tableToFetch); // Mark tableToFetch as used
-          const freshOrderNo = generateSequentialOrderNo(tableToFetch.startsWith('DEL-') ? 'Delivery' : 'Takeaway');
-          newlyGeneratedTables.current.add(freshOrderNo);
-          setActiveTable(freshOrderNo);
+        // transition cleanly to a blank New Order without inventing placeholder numbers
+        if (!isBackground && !hasLocalEdits() && tableToFetch && (tableToFetch.startsWith('DEL-') || tableToFetch.startsWith('TAK-'))) {
+          setActiveTable('');
           setCart([]);
           cartRef.current = [];
           setOrderId(null);
@@ -1850,6 +2008,7 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
       if (billType === 'Takeaway' || billType === 'Delivery') {
         currentTable = generateSequentialOrderNo(billType);
         newlyGeneratedTables.current.add(currentTable);
+        activeTableRef.current = currentTable;
         setActiveTable(currentTable);
       } else {
         showToast(t('pleaseSelectTable'), 'error');
@@ -1882,9 +2041,6 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
     // Mark that user has pending local changes — prevents any background poll
     // from clearing the cart until the user explicitly saves/KOTs/cancels.
     hasPendingLocalChanges.current = true;
-    if (currentTable) {
-      newlyGeneratedTables.current?.delete(currentTable);
-    }
     // Clear any stale loading state immediately so items appear without any spinner delay
     setLoading(false);
   };
@@ -1895,6 +2051,7 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
       if (billType === 'Takeaway' || billType === 'Delivery') {
         currentTable = generateSequentialOrderNo(billType);
         newlyGeneratedTables.current.add(currentTable);
+        activeTableRef.current = currentTable;
         setActiveTable(currentTable);
       } else {
         showToast(t('pleaseSelectTable'), 'error');
@@ -1928,9 +2085,6 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
     setCart(updatedCart);
     lastLocalEditTime.current = Date.now();
     hasPendingLocalChanges.current = true;
-    if (currentTable) {
-      newlyGeneratedTables.current?.delete(currentTable);
-    }
     setLoading(false);
     const boxLabel = boxItems[0]?.boxLabel || `Box #${boxItems[0]?.boxNumber || 1}`;
     showToast(`Added ${boxLabel} (${boxItems.length} items) to order!`, 'success');
@@ -1953,6 +2107,7 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
       if (billType === 'Takeaway' || billType === 'Delivery') {
         currentTable = generateSequentialOrderNo(billType);
         newlyGeneratedTables.current.add(currentTable);
+        activeTableRef.current = currentTable;
         setActiveTable(currentTable);
       } else {
         showToast(t('pleaseSelectTable'), 'error');
@@ -2004,9 +2159,6 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
     // Mark pending local changes if cart still has items
     if (newCart.length > 0) {
       hasPendingLocalChanges.current = true;
-      if (currentTable) {
-        newlyGeneratedTables.current?.delete(currentTable);
-      }
     } else {
       // Cart emptied — no longer pending
       hasPendingLocalChanges.current = false;
@@ -2080,9 +2232,16 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
       const dateStr = now.toLocaleDateString('en-GB');
       const timeStr = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
       const bType = billData?.billType || 'Dine-In';
-      const tableInfo = bType === 'Dine-In'
-        ? `Table: ${billData?.tableNo || 'N/A'}`
-        : `${bType} ${billData?.tableNo ? `(${billData?.tableNo})` : ''}`;
+      const isExp = billData?.customerCategory === 'Export' || billData?.orderMode === 'export' || String(billNo).startsWith('EXP-') || String(billData?.tableNo || '').startsWith('EXP-');
+      const isWs = !isExp && (billData?.customerCategory === 'Wholesale' || billData?.orderMode === 'bulk' || String(billNo).startsWith('WS-') || String(billData?.tableNo || '').startsWith('WS-') || Number(billData?.totalBoxes || 0) > 0);
+      const catTitle = isExp ? 'EXPORT' : (isWs ? 'WHOLESALE' : 'RETAIL');
+      const prefix = isExp ? 'EXP-' : (isWs ? 'WS-' : 'RET-');
+      const cleanTable = (billData?.tableNo || '').replace(/^TAK-/i, prefix);
+
+      let tableInfo = cleanTable ? `${catTitle} (${cleanTable})` : catTitle;
+      if (bType === 'Delivery' || String(billData?.tableNo || '').startsWith('DEL')) {
+        tableInfo = `DELIVERY${cleanTable ? ` (${cleanTable})` : ''}`;
+      }
       const custName = overrideName || billData?.customerName || '';
       const itemsList = (billData?.items || [])
         .filter(i => !i.isCancelled)
@@ -2103,7 +2262,29 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
       const dlvText = Number(billData?.deliveryCharge || 0) > 0 ? `\n• *Delivery:* +₹${Number(billData.deliveryCharge).toFixed(2)}` : '';
       const ctnText = Number(billData?.containerCharge || 0) > 0 ? `\n• *Container:* +₹${Number(billData.containerCharge).toFixed(2)}` : '';
       const cutText = Number(billData?.cuttingCharge || 0) > 0 ? `\n• *Cutting Charges:* +₹${Number(billData.cuttingCharge).toFixed(2)}` : '';
-      const payMode = billData?.paymentMode || 'Cash';
+      let payMode = 'Cash';
+      const rawMode = billData?.paymentMode || billData?.paymentMethod || 'Cash';
+      if (rawMode === 'UPI') {
+        const upiApp = billData?.upiApp || billData?.upiAppName || (billData?.paymentMethod !== 'UPI' ? billData?.paymentMethod : '') || '';
+        payMode = upiApp && upiApp !== 'UPI' ? `UPI [${upiApp}]` : 'UPI';
+      } else if (rawMode === 'Mixed') {
+        const split = billData?.splitPayments || billData?.paymentBreakdown;
+        if (split) {
+          const parts = [];
+          if (Number(split.cash || 0) > 0) parts.push(`Cash: ₹${Number(split.cash).toFixed(2)}`);
+          if (Number(split.upi || 0) > 0) parts.push(`UPI: ₹${Number(split.upi).toFixed(2)}`);
+          if (Number(split.card || 0) > 0) parts.push(`Card: ₹${Number(split.card).toFixed(2)}`);
+          payMode = parts.length > 0 ? `Mixed (${parts.join(' | ')})` : 'Mixed';
+        } else {
+          payMode = 'Mixed Payment';
+        }
+      } else if (rawMode === 'Card') {
+        payMode = 'Card';
+      } else if (rawMode === 'Unpaid') {
+        payMode = 'Unpaid (Khata)';
+      } else {
+        payMode = 'Cash';
+      }
       const footer = s.footerMessage || '*** Thank You! Visit Again ***';
       return `${header}\n` +
         (s.address ? `📍 ${s.address.split('\n')[0]}\n` : '') +
@@ -2376,15 +2557,10 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
     }
   }, [isCuttingChargeEnabled, totalCartFishWeight, activeCuttingRate]);
 
-  // Immediately generates a new sequential order with an empty cart and resets all state
+  // Immediately resets all state for a clean NEW ORDER (no premature placeholder numbers)
   const handleCreateNewOrder = useCallback(() => {
-    if (activeTable) {
-      newlyGeneratedTables.current.add(activeTable);
-    }
-    const newOrderNo = generateSequentialOrderNo(billType || 'Takeaway');
-    newlyGeneratedTables.current.add(newOrderNo);
-
     // ⚡ 0ms instant reset of cart and order states
+    setActiveTable('');
     setCart([]);
     cartRef.current = [];
     hasPendingLocalChanges.current = false;
@@ -2411,19 +2587,16 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
     setIsCuttingChargeEnabled(false);
     setIsPaid(false);
 
-    // Set new active table immediately
-    setActiveTable(newOrderNo);
-
-    // Sync with top header / AdminDashboard so active table doesn't get stuck on previous order
-    if (onNavigate) {
-      onNavigate('billing', { table: newOrderNo, action: 'open' });
-    }
+    try {
+      sessionStorage.removeItem('ms_initial_table');
+      sessionStorage.setItem('ms_initial_action', 'new');
+    } catch (e) { }
 
     // Switch to menu tab on mobile
     setMobileTab('menu');
 
-    showToast(`${t('newOrder')} #${newOrderNo.replace(/^(TAK-|DEL-|ORD-)/i, '')}`, 'success');
-  }, [billType, activeTable, showToast, t, generateSequentialOrderNo, fishOrderMode, onNavigate]);
+    showToast(t('newOrder'), 'success');
+  }, [showToast, t, fishOrderMode]);
 
   const handleGenerateBill = async () => {
     let tableToUse = activeTable;
@@ -3028,16 +3201,17 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
     setContainerCharge('0');
     setOrderSource('Direct');
 
-    if (billType === 'Dine-In') {
-      setActiveTable('');
-      fetchActiveOrder('');
-    } else {
-      if (activeTable) newlyGeneratedTables.current.add(activeTable);
-      const generatedOrderNo = generateSequentialOrderNo(billType);
-      newlyGeneratedTables.current.add(generatedOrderNo);
-      setActiveTable(generatedOrderNo);
-      fetchActiveOrder(generatedOrderNo);
-    }
+    setActiveTable('');
+    setCart([]);
+    cartRef.current = [];
+    setOrderId(null);
+    setOrderStatus('Open');
+    setBillNumber(null);
+    setCompletedBill(null);
+    try {
+      sessionStorage.removeItem('ms_initial_table');
+      sessionStorage.setItem('ms_initial_action', 'new');
+    } catch (e) { }
 
     fetchDailyStats();
 
@@ -3165,52 +3339,131 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
                 className="shrink-0 !px-2 sm:!px-3.5 !py-1 sm:!py-1.5 !text-xs !gap-1 sm:!gap-2"
               />
             )}
-            <div className="relative flex items-center gap-1.5 sm:gap-2 bg-white border border-slate-300 rounded-lg sm:rounded-xl px-2 sm:px-3 py-1 sm:py-1.5 hover:bg-[#fff7ed] transition-colors focus-within:ring-2 focus-within:ring-slate-300 cursor-pointer w-auto max-w-[150px] sm:max-w-[260px] md:max-w-[340px] shrink-0 shadow-xs">
-              <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" />
-              <div className="flex items-center pointer-events-none min-w-0 flex-1">
-                <span className="font-extrabold text-slate-800 text-xs sm:text-sm whitespace-nowrap truncate">
-                  {activeTable ? `#${activeTable.replace(/^(TAK-|DEL-|ORD-)/i, '')} Order` : `+ ${t('newOrder')}`}
-                </span>
-                <ChevronDown size={12} className="text-slate-500 ml-1 sm:ml-1.5 shrink-0" />
-              </div>
-
-              <select
-                value={activeTable || 'NEW_ORDER'}
-                onChange={(e) => {
-                  if (e.target.value === 'NEW_ORDER') {
-                    handleCreateNewOrder();
-                  } else {
-                    const chosenTable = e.target.value;
-                    setActiveTable(chosenTable);
-                  }
-                }}
-                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-20"
-                style={{ backgroundColor: '#ffffff', color: '#1e293b' }}
+            <div ref={orderDropdownRef} className="relative shrink-0 z-30">
+              {/* Customized Responsive Trigger Button */}
+              <button
+                type="button"
+                onClick={() => setIsOrderDropdownOpen(prev => !prev)}
+                className={`flex items-center gap-1.5 sm:gap-2 bg-white border rounded-lg sm:rounded-xl px-2 sm:px-3 py-1 sm:py-1.5 transition-all cursor-pointer shadow-xs max-w-[150px] sm:max-w-[240px] md:max-w-[300px] select-none ${
+                  isOrderDropdownOpen 
+                    ? 'border-primary ring-2 ring-orange-200 bg-[#fff7ed]' 
+                    : 'border-slate-300 hover:border-slate-400 hover:bg-slate-50'
+                }`}
               >
-                <option
-                  value="NEW_ORDER"
-                  style={{ backgroundColor: '#ffffff', color: '#c2410c', fontWeight: 'bold' }}
+                <span className={`w-2 h-2 rounded-full shrink-0 ${activeTable ? 'bg-emerald-500 ring-2 ring-emerald-100' : 'bg-primary animate-pulse ring-2 ring-orange-100'}`} />
+                <span className="font-extrabold text-slate-800 text-xs sm:text-sm whitespace-nowrap truncate">
+                  {activeTable ? `${activeTable.replace(/^#+/, '')} Order` : `${t('newOrder')}`}
+                </span>
+                <ChevronDown 
+                  size={13} 
+                  className={`text-slate-500 transition-transform duration-200 shrink-0 ${isOrderDropdownOpen ? 'rotate-180 text-primary' : ''}`} 
+                />
+              </button>
+
+              {/* Customized Animated Popup Menu */}
+              {isOrderDropdownOpen && (
+                <div 
+                  className="absolute top-full left-0 mt-1.5 w-64 sm:w-72 bg-white rounded-2xl shadow-2xl border border-slate-200/90 py-1.5 z-50 overflow-hidden animate-in fade-in zoom-in-95 duration-150"
+                  style={{ maxHeight: '340px' }}
                 >
-                  + {t('newOrder')}
-                </option>
-                {openOrdersList.map((o) => (
-                  <option
-                    key={o._id}
-                    value={o.tableNo}
-                    style={{ backgroundColor: '#ffffff', color: '#1e293b' }}
-                  >
-                    #{o.tableNo?.replace(/^(TAK-|DEL-|ORD-)/i, '')} ({o.status === 'Billed' ? t('Billed') : t('Open')} - ₹{o.total || 0})
-                  </option>
-                ))}
-                {activeTable && !openOrdersList.some((o) => isTableMatching(o.tableNo, activeTable)) && (
-                  <option
-                    value={activeTable}
-                    style={{ backgroundColor: '#ffffff', color: '#c2410c' }}
-                  >
-                    #{activeTable.replace(/^(TAK-|DEL-|ORD-)/i, '')} ({t('Current')})
-                  </option>
-                )}
-              </select>
+                  {/* Category Header */}
+                  <div className="px-3 py-1.5 border-b border-slate-100 flex items-center justify-between text-[11px] font-bold text-slate-500 bg-slate-50/80">
+                    <span className="uppercase tracking-wider text-[10px] font-extrabold text-slate-400">
+                      {currentModeTitle} {t("Orders")}
+                    </span>
+                    <span className="text-[10px] font-mono px-1.5 py-0.5 rounded-full bg-slate-200/70 text-slate-700">
+                      {modeFilteredOrders.length} {t("active")}
+                    </span>
+                  </div>
+
+                  {/* Option 1: + New Order Button */}
+                  <div className="p-1 border-b border-slate-100">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsOrderDropdownOpen(false);
+                        handleCreateNewOrder();
+                      }}
+                      className="w-full px-2.5 py-2 rounded-xl text-left flex items-center gap-2 text-xs sm:text-sm font-black text-primary hover:bg-orange-50 active:bg-orange-100 transition-colors cursor-pointer group"
+                    >
+                      <div className="w-6 h-6 rounded-lg bg-orange-100 text-primary flex items-center justify-center group-hover:bg-primary group-hover:text-white transition-colors">
+                        <Plus size={14} strokeWidth={3} />
+                      </div>
+                      <span className="flex-1">{t('newOrder')}</span>
+                    </button>
+                  </div>
+
+                  {/* Scrollable Order List (Filtered Strictly by Mode) */}
+                  <div className="overflow-y-auto max-h-[220px] p-1 space-y-0.5 no-scrollbar">
+                    {modeFilteredOrders.length === 0 ? (
+                      <div className="px-3 py-6 text-center text-xs text-slate-400 font-medium">
+                        {t(`No active ${currentModeTitle.toLowerCase()} orders`)}
+                      </div>
+                    ) : (
+                      modeFilteredOrders.map((o) => {
+                        const isSelected = activeTable && isTableMatching(o.tableNo, activeTable);
+                        const isBilled = o.status === 'Billed';
+                        return (
+                          <button
+                            key={o._id || o.tableNo}
+                            type="button"
+                            onClick={() => {
+                              setIsOrderDropdownOpen(false);
+                              setActiveTable(o.tableNo);
+                            }}
+                            className={`w-full px-2.5 py-2 rounded-xl text-left flex items-center justify-between gap-2 transition-all cursor-pointer ${
+                              isSelected
+                                ? 'bg-orange-50/90 border border-orange-200 text-slate-900 shadow-2xs'
+                                : 'hover:bg-slate-50 text-slate-700 hover:text-slate-900 border border-transparent'
+                            }`}
+                          >
+                            <div className="flex items-center gap-2 min-w-0">
+                              <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${isBilled ? 'bg-emerald-500' : 'bg-amber-500'}`} />
+                              <span className="font-mono font-bold text-xs sm:text-[13px] text-slate-900 truncate">
+                                {o.tableNo?.replace(/^#+/, '')}
+                              </span>
+                              <span className={`px-1.5 py-0.5 rounded text-[9px] font-extrabold uppercase border ${
+                                isBilled 
+                                  ? 'bg-emerald-50 text-emerald-700 border-emerald-200' 
+                                  : 'bg-amber-50 text-amber-700 border-amber-200'
+                              }`}>
+                                {isBilled ? t('Billed') : t('Open')}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-1.5 shrink-0">
+                              <span className="font-black text-xs sm:text-[13px] text-slate-900">
+                                ₹{Number(o.total || 0).toFixed(0)}
+                              </span>
+                              {isSelected && (
+                                <Check size={14} className="text-primary shrink-0" strokeWidth={3} />
+                              )}
+                            </div>
+                          </button>
+                        );
+                      })
+                    )}
+
+                    {/* Unsaved Current Order if not yet in modeFilteredOrders */}
+                    {activeTable && cart.length > 0 && !modeFilteredOrders.some((o) => isTableMatching(o.tableNo, activeTable)) && (
+                      <button
+                        type="button"
+                        onClick={() => setIsOrderDropdownOpen(false)}
+                        className="w-full px-2.5 py-2 rounded-xl text-left flex items-center justify-between gap-2 bg-orange-50 border border-orange-200 cursor-pointer"
+                      >
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse shrink-0" />
+                          <span className="font-mono font-bold text-xs sm:text-[13px] text-primary truncate">
+                            {activeTable.replace(/^#+/, '')}
+                          </span>
+                        </div>
+                        <span className="text-[10px] font-bold text-primary px-1.5 py-0.5 rounded bg-orange-100">
+                          {t('Current')}
+                        </span>
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 
@@ -3363,13 +3616,12 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
       <div className="flex flex-col md:hidden px-3 pt-2 gap-2 shrink-0 bg-background border-b border-border/50 pb-2.5">
         {/* Mobile Dealer / Customer Pill Bar for Wholesale / Export */}
         {(fishOrderMode === 'bulk' || fishOrderMode === 'export' || customerName) && (
-          <div 
+          <div
             onClick={() => setMobileTab('cart')}
-            className={`px-3 py-1.5 rounded-xl border flex items-center justify-between text-xs cursor-pointer active:scale-98 transition-all ${
-              isOrderLocked 
-                ? 'bg-amber-500/10 border-amber-500/30 text-amber-900 shadow-xs' 
+            className={`px-3 py-1.5 rounded-xl border flex items-center justify-between text-xs cursor-pointer active:scale-98 transition-all ${isOrderLocked
+                ? 'bg-amber-500/10 border-amber-500/30 text-amber-900 shadow-xs'
                 : 'bg-[#FAF0E4] border-[#E8DCCB] text-slate-700 hover:border-amber-400'
-            }`}
+              }`}
           >
             <div className="flex items-center gap-1.5 min-w-0">
               <span className="font-black text-[9.5px] uppercase px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-900 shrink-0">
@@ -3912,11 +4164,17 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
 
           {/* Type & Table */}
           <div style={{ textAlign: 'center', fontWeight: 'bold', fontSize: '12px', marginBottom: '4px' }}>
-            {offscreenBill.billType === 'Delivery'
-              ? `Delivery: ${offscreenBill.tableNo || 'DEL'}`
-              : offscreenBill.billType === 'Takeaway'
-                ? `Takeaway: ${offscreenBill.tableNo || 'TAK'}`
-                : `Counter Sale: ${offscreenBill.tableNo || 'Counter-1'}`}
+            {(() => {
+              const isExp = offscreenBill.customerCategory === 'Export' || offscreenBill.orderMode === 'export' || String(offscreenBill.billNumber || '').startsWith('EXP-') || String(offscreenBill.tableNo || '').startsWith('EXP-');
+              const isWs = !isExp && (offscreenBill.customerCategory === 'Wholesale' || offscreenBill.orderMode === 'bulk' || String(offscreenBill.billNumber || '').startsWith('WS-') || String(offscreenBill.tableNo || '').startsWith('WS-') || Number(offscreenBill.totalBoxes || 0) > 0);
+              const pfx = isExp ? 'EXP-' : (isWs ? 'WS-' : 'RET-');
+              const cleanT = (offscreenBill.tableNo || '').replace(/^TAK-/i, pfx);
+              if (offscreenBill.billType === 'Delivery' || (cleanT && cleanT.startsWith('DEL'))) {
+                return `DELIVERY: ${cleanT || 'DEL'}`;
+              }
+              const catLbl = isExp ? 'EXPORT' : (isWs ? 'WHOLESALE' : 'RETAIL');
+              return `${catLbl}${cleanT ? ` (${cleanT})` : ''}`;
+            })()}
           </div>
 
           <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', marginBottom: '4px' }}>
@@ -3973,7 +4231,7 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
           <div style={{ borderTop: '1px dashed #000', margin: '8px 0' }}></div>
 
           <div style={{ textAlign: 'center', fontSize: '11px', fontWeight: 'bold' }}>
-            Paid via {offscreenBill.paymentMode || 'Cash'}
+            Paid via {offscreenBill.paymentMode || 'Cash'}{offscreenBill.paymentMode === 'UPI' && (offscreenBill.upiApp || offscreenBill.paymentMethod) ? ` [${offscreenBill.upiApp || offscreenBill.paymentMethod}]` : ''}
           </div>
 
           {/* QR Code */}

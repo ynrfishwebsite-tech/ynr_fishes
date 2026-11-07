@@ -4,6 +4,7 @@ import VehicleFuel from '../../models/operations/VehicleFuel.js';
 import VehicleMaintenance from '../../models/operations/VehicleMaintenance.js';
 import Expense from '../../models/finance/Expense.js';
 import Setting from '../../models/system/Setting.js';
+import Supplier from '../../models/operations/Supplier.js';
 
 // ==========================================
 // VEHICLE CRUD
@@ -70,6 +71,7 @@ export const createVehicle = async (req, res) => {
       vehicleType,
       driverName,
       driverPhone,
+      driverPhoto,
       currentKm,
       fuelType,
       status,
@@ -78,7 +80,10 @@ export const createVehicle = async (req, res) => {
       fitnessExpiry,
       pollutionExpiry,
       nextServiceDueKm,
-      notes
+      notes,
+      assignedSupplierId,
+      assignedSupplierName,
+      operationalMode
     } = req.body;
 
     if (!vehicleNumber || !modelName) {
@@ -97,6 +102,7 @@ export const createVehicle = async (req, res) => {
       vehicleType: vehicleType || 'Pickup Truck',
       driverName: (driverName || '').trim(),
       driverPhone: (driverPhone || '').trim(),
+      driverPhoto: (driverPhoto || '').trim(),
       currentKm: Number(currentKm) || 0,
       fuelType: fuelType || 'Diesel',
       status: status || 'Available',
@@ -105,10 +111,38 @@ export const createVehicle = async (req, res) => {
       fitnessExpiry: fitnessExpiry ? new Date(fitnessExpiry) : undefined,
       pollutionExpiry: pollutionExpiry ? new Date(pollutionExpiry) : undefined,
       nextServiceDueKm: Number(nextServiceDueKm) || 0,
+      assignedSupplierId: assignedSupplierId || null,
+      assignedSupplierName: (assignedSupplierName || '').trim(),
+      operationalMode: operationalMode || 'All',
       notes: notes || ''
     });
 
     await newVehicle.save();
+
+    // Auto-sync supplier's vehicleNumber if assigned
+    if (assignedSupplierId || assignedSupplierName) {
+      // Free any other vehicle previously assigned to this supplier
+      await Vehicle.updateMany(
+        {
+          _id: { $ne: newVehicle._id },
+          $or: [
+            ...(assignedSupplierId ? [{ assignedSupplierId }] : []),
+            ...(assignedSupplierName ? [{ assignedSupplierName: (assignedSupplierName || '').trim() }] : [])
+          ]
+        },
+        { $set: { assignedSupplierId: null, assignedSupplierName: '' } }
+      );
+
+      if (assignedSupplierId) {
+        await Supplier.findByIdAndUpdate(assignedSupplierId, { vehicleNumber: cleanNumber });
+      } else if (assignedSupplierName) {
+        await Supplier.findOneAndUpdate(
+          { name: { $regex: new RegExp(`^${assignedSupplierName.trim()}$`, 'i') } },
+          { vehicleNumber: cleanNumber }
+        );
+      }
+    }
+
     res.status(201).json({ success: true, data: newVehicle, message: 'Vehicle registered successfully' });
   } catch (err) {
     console.error('[Vehicle Controller] Error in createVehicle:', err);
@@ -124,9 +158,44 @@ export const updateVehicle = async (req, res) => {
       updateData.vehicleNumber = updateData.vehicleNumber.trim().toUpperCase();
     }
 
-    const updated = await Vehicle.findByIdAndUpdate(id, updateData, { new: true });
-    if (!updated) {
+    const prevVehicle = await Vehicle.findById(id);
+    if (!prevVehicle) {
       return res.status(404).json({ success: false, message: 'Vehicle not found' });
+    }
+
+    const updated = await Vehicle.findByIdAndUpdate(id, updateData, { new: true });
+
+    // Sync supplier linkage if changed or updated
+    const newAssignedId = updated.assignedSupplierId;
+    const newAssignedName = updated.assignedSupplierName;
+    const targetVehNumber = updated.vehicleNumber;
+
+    if (newAssignedId || newAssignedName) {
+      // Free any other vehicle previously assigned to this supplier
+      await Vehicle.updateMany(
+        {
+          _id: { $ne: id },
+          $or: [
+            ...(newAssignedId ? [{ assignedSupplierId: newAssignedId }] : []),
+            ...(newAssignedName ? [{ assignedSupplierName: (newAssignedName || '').trim() }] : [])
+          ]
+        },
+        { $set: { assignedSupplierId: null, assignedSupplierName: '' } }
+      );
+
+      if (newAssignedId) {
+        await Supplier.findByIdAndUpdate(newAssignedId, { vehicleNumber: targetVehNumber });
+      } else if (newAssignedName) {
+        await Supplier.findOneAndUpdate(
+          { name: { $regex: new RegExp(`^${newAssignedName.trim()}$`, 'i') } },
+          { vehicleNumber: targetVehNumber }
+        );
+      }
+    }
+
+    // If previous supplier had this vehicle and was unassigned or reassigned, clear old supplier
+    if (prevVehicle.assignedSupplierId && String(prevVehicle.assignedSupplierId) !== String(newAssignedId)) {
+      await Supplier.findByIdAndUpdate(prevVehicle.assignedSupplierId, { vehicleNumber: '' });
     }
 
     res.json({ success: true, data: updated, message: 'Vehicle updated successfully' });
@@ -274,6 +343,50 @@ export const createTrip = async (req, res) => {
   } catch (err) {
     console.error('[Vehicle Controller] Error in createTrip:', err);
     res.status(500).json({ success: false, message: 'Failed to log trip', error: err.message });
+  }
+};
+
+export const updateTripStatus = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status, endKm, distanceKm, notes, endTime } = req.body;
+    const trip = await VehicleTrip.findById(id);
+    if (!trip) {
+      return res.status(404).json({ success: false, message: 'Trip not found' });
+    }
+
+    if (status) trip.status = status;
+    if (endTime) trip.endTime = endTime;
+    if (notes !== undefined) trip.notes = notes;
+
+    if (endKm !== undefined && endKm !== '') {
+      const endNum = Number(endKm);
+      if (!isNaN(endNum) && endNum >= trip.startKm) {
+        trip.endKm = endNum;
+        trip.distanceKm = Math.max(0, endNum - trip.startKm);
+        // update vehicle currentKm as well
+        const veh = await Vehicle.findById(trip.vehicleId);
+        if (veh && endNum > veh.currentKm) {
+          veh.currentKm = endNum;
+          if (status === 'Delivered' || status === 'Completed') {
+            veh.status = 'Available';
+          }
+          await veh.save();
+        }
+      }
+    } else if (status === 'Delivered' || status === 'Completed') {
+      const veh = await Vehicle.findById(trip.vehicleId);
+      if (veh) {
+        veh.status = 'Available';
+        await veh.save();
+      }
+    }
+
+    await trip.save();
+    res.json({ success: true, data: trip, message: `Trip status updated to ${trip.status}` });
+  } catch (err) {
+    console.error('[Vehicle Controller] Error in updateTripStatus:', err);
+    res.status(500).json({ success: false, message: 'Failed to update trip status', error: err.message });
   }
 };
 
@@ -592,8 +705,11 @@ export const getVehicleStats = async (req, res) => {
 
 export const updateLiveLocation = async (req, res) => {
   try {
-    const { vehicleNumber, lat, lng, speed, heading, accuracy, isTrackingActive } = req.body;
-    if (!vehicleNumber || lat === undefined || lng === undefined) {
+    const { vehicleNumber, lat, lng, latitude, longitude, speed, heading, accuracy, isTrackingActive } = req.body;
+    const finalLat = lat !== undefined ? lat : latitude;
+    const finalLng = lng !== undefined ? lng : longitude;
+
+    if (!vehicleNumber || finalLat === undefined || finalLng === undefined) {
       return res.status(400).json({ success: false, message: 'Vehicle number, lat and lng are required' });
     }
 
@@ -603,17 +719,20 @@ export const updateLiveLocation = async (req, res) => {
       return res.status(404).json({ success: false, message: `Vehicle ${cleanNumber} not found` });
     }
 
+    const previousStatus = vehicle.status;
+    const isNowActive = isTrackingActive !== undefined ? Boolean(isTrackingActive) : true;
+
     vehicle.lastKnownLocation = {
-      lat: Number(lat),
-      lng: Number(lng),
+      lat: Number(finalLat),
+      lng: Number(finalLng),
       speed: Number(speed) || 0,
       heading: Number(heading) || 0,
       accuracy: Number(accuracy) || 0,
-      isTrackingActive: isTrackingActive !== undefined ? Boolean(isTrackingActive) : true,
+      isTrackingActive: isNowActive,
       updatedAt: new Date()
     };
 
-    if (isTrackingActive) {
+    if (isNowActive) {
       vehicle.status = 'On Trip';
     } else if (vehicle.status === 'On Trip') {
       vehicle.status = 'Available';
@@ -633,6 +752,39 @@ export const updateLiveLocation = async (req, res) => {
         status: vehicle.status,
         ...vehicle.lastKnownLocation.toObject()
       });
+
+      // Emit instant notification to Admin header notification bell
+      if (isNowActive && previousStatus !== 'On Trip') {
+        io.emit('new_notification', {
+          id: `gps_start_${cleanNumber}_${Date.now()}`,
+          title: '🚚 Live GPS Broadcast Started',
+          message: `Driver ${vehicle.driverName || 'Venkatesh Naidu'} started live delivery broadcast for ${cleanNumber} (${vehicle.modelName})`,
+          type: 'info',
+          category: 'system',
+          timestamp: new Date().toISOString(),
+          data: {
+            type: 'vehicle_gps',
+            vehicleNumber: cleanNumber,
+            driverName: vehicle.driverName,
+            status: 'On Trip'
+          }
+        });
+      } else if (!isNowActive && previousStatus === 'On Trip') {
+        io.emit('new_notification', {
+          id: `gps_stop_${cleanNumber}_${Date.now()}`,
+          title: '🏁 Live Delivery Broadcast Ended',
+          message: `Driver ${vehicle.driverName || 'Venkatesh Naidu'} completed GPS broadcast for ${cleanNumber}`,
+          type: 'info',
+          category: 'system',
+          timestamp: new Date().toISOString(),
+          data: {
+            type: 'vehicle_gps',
+            vehicleNumber: cleanNumber,
+            driverName: vehicle.driverName,
+            status: 'Available'
+          }
+        });
+      }
     }
 
     res.json({ success: true, message: 'Live GPS location received', data: vehicle.lastKnownLocation });
@@ -644,7 +796,7 @@ export const updateLiveLocation = async (req, res) => {
 
 export const getLiveLocations = async (req, res) => {
   try {
-    const vehicles = await Vehicle.find({ isActive: true }).select('vehicleNumber modelName vehicleType driverName driverPhone status currentKm lastKnownLocation');
+    const vehicles = await Vehicle.find({ isActive: true }).select('vehicleNumber modelName vehicleType driverName driverPhone driverPhoto status currentKm lastKnownLocation');
     res.json({ success: true, data: vehicles });
   } catch (err) {
     console.error('[Vehicle Controller] Error in getLiveLocations:', err);

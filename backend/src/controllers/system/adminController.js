@@ -53,7 +53,7 @@ export const getRolesAndPages = async (req, res) => {
       { id: 'driver-portal', label: 'Driver Trips (View Only)', group: 'Logistics', description: 'Assigned deliveries, dealer address & phone, boxes count' },
       { id: 'supplier-portal', label: 'Supplier Passbook (View Only)', group: 'Supply', description: 'Catch supplies history, weights, rates & khata ledger' },
       { id: 'vehicles', label: 'Vehicle Fleet & Trips', group: 'Logistics', description: 'Fleet vehicles, delivery trips, fuel & maintenance' },
-      { id: 'inventory', label: 'Fish Inventory & Stock', group: 'Catalog', description: 'Catch stock-in, cold storage & shrinkage' },
+      { id: 'inventory', label: 'Fish Inventory & Stock', group: 'Catalog', description: 'Catch stock-in & cold storage' },
       { id: 'menu', label: 'Fish Registry', group: 'Catalog', description: 'Fish species, rates, stock status' },
       { id: 'day-book', label: 'Day Book', group: 'Finance', description: 'Daily cash in/out and till reconcile' },
       { id: 'khata', label: 'Khata Book', group: 'Finance', description: 'Customer credit ledger & balance' },
@@ -93,7 +93,7 @@ export const getUsers = async (req, res) => {
 export const createUser = async (req, res) => {
   try {
     const User = getTenantModel(req, 'User', UserDefault);
-    let { username, password, role, permittedPages, name, phone } = req.body;
+    let { username, password, role, permittedPages, name, phone, profileImage } = req.body;
     
     // Strict Sanitization & Validation
     const cleanUsername = (username || '').trim();
@@ -104,7 +104,7 @@ export const createUser = async (req, res) => {
       return res.status(400).json({ message: 'Username cannot exceed 30 characters' });
     }
 
-    const validRoles = ['admin', 'manager', 'cashier', 'worker'];
+    const validRoles = ['admin', 'manager', 'cashier', 'worker', 'driver', 'supplier'];
     const normalizedRole = (role || '').trim().toLowerCase();
     const assignedRole = validRoles.includes(normalizedRole) ? normalizedRole : 'cashier';
 
@@ -123,7 +123,11 @@ export const createUser = async (req, res) => {
       : (assignedRole === 'admin' 
           ? ['dashboard', 'billing', 'active-orders', 'bill-history', 'edited-bills', 'menu', 'day-book', 'khata', 'expenses', 'analytics', 'crm', 'staff', 'printer', 'operations', 'discount', 'security', 'settings', 'notifications']
           : assignedRole === 'manager'
-          ? ['dashboard', 'billing', 'active-orders', 'bill-history', 'menu', 'day-book', 'khata', 'expenses', 'analytics', 'operations']
+          ? ['dashboard', 'billing', 'active-orders', 'bill-history', 'menu', 'day-book', 'khata', 'expenses', 'analytics', 'operations', 'vehicles']
+          : assignedRole === 'driver'
+          ? ['driver-portal']
+          : assignedRole === 'supplier'
+          ? ['supplier-portal']
           : ['billing', 'active-orders', 'bill-history']);
 
     const cleanEmail = (req.body.email && req.body.email.trim()) 
@@ -143,6 +147,7 @@ export const createUser = async (req, res) => {
       role: assignedRole,
       permittedPages: pagesToAssign,
       phone: phone || '',
+      profileImage: profileImage || '',
       branch: req.user?.branch?._id || req.user?.branch || null
     });
 
@@ -165,14 +170,14 @@ export const createUser = async (req, res) => {
 export const updateUser = async (req, res) => {
   try {
     const User = getTenantModel(req, 'User', UserDefault);
-    let { username, role, password, permittedPages, name, phone, isActive } = req.body;
+    let { username, role, password, permittedPages, name, phone, isActive, profileImage } = req.body;
     const user = await User.findById(req.params.id);
     
     if (!user) {
       return res.status(404).json({ message: 'User not found' });
     }
     
-    const validRoles = ['admin', 'manager', 'cashier', 'worker'];
+    const validRoles = ['admin', 'manager', 'cashier', 'worker', 'driver', 'supplier'];
     let assignedRole = user.role;
     if (role) {
       const normalizedRole = role.trim().toLowerCase();
@@ -221,6 +226,7 @@ export const updateUser = async (req, res) => {
     if (name) user.name = name.trim();
     if (phone !== undefined) user.phone = phone;
     if (isActive !== undefined) user.isActive = isActive;
+    if (profileImage !== undefined) user.profileImage = profileImage;
     if (Array.isArray(permittedPages)) {
       user.permittedPages = permittedPages;
     }

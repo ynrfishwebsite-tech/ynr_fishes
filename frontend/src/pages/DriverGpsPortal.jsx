@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
+import L from 'leaflet';
+import 'leaflet/dist/leaflet.css';
 import {
   Navigation,
   Truck,
@@ -12,10 +14,27 @@ import {
   Power,
   RotateCcw,
   ShieldCheck,
-  ChevronRight
+  ChevronRight,
+  Crosshair,
+  Building
 } from 'lucide-react';
 import { getVehicles, sendLiveLocation, logTrip } from '../api/operations/vehicle';
 import io from 'socket.io-client';
+import { getSocketUrl } from '../config';
+
+// Fix Vite Leaflet marker icon asset paths
+delete L.Icon.Default.prototype._getIconUrl;
+L.Icon.Default.mergeOptions({
+  iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
+  iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
+  shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png'
+});
+
+const KADAPA_DEPOT = {
+  name: 'YNR Fishes — Kadapa Central Depot',
+  lat: 14.4628,
+  lng: 78.8119
+};
 
 export default function DriverGpsPortal() {
   const [searchParams] = useSearchParams();
@@ -35,11 +54,16 @@ export default function DriverGpsPortal() {
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [statusMessage, setStatusMessage] = useState('Ready to start delivery tracking');
   const [errorMsg, setErrorMsg] = useState('');
+  const [routeTrail, setRouteTrail] = useState([]);
 
   const watchIdRef = useRef(null);
   const socketRef = useRef(null);
   const prevPositionRef = useRef(null);
   const timerRef = useRef(null);
+  const mapContainerRef = useRef(null);
+  const mapInstanceRef = useRef(null);
+  const vehicleMarkerRef = useRef(null);
+  const routePolylineRef = useRef(null);
 
   // Haversine formula to compute distance in KM between 2 lat/lng points
   const calculateDistance = (lat1, lon1, lat2, lon2) => {
@@ -81,8 +105,8 @@ export default function DriverGpsPortal() {
     fetchFleet();
 
     // Connect socket for low-latency updates
-    const backendHost = window.location.hostname;
-    socketRef.current = io(`http://${backendHost}:5000`, { transports: ['websocket', 'polling'] });
+    const socketUrl = getSocketUrl();
+    socketRef.current = io(socketUrl, { transports: ['websocket', 'polling'] });
 
     return () => {
       if (socketRef.current) socketRef.current.disconnect();
@@ -119,6 +143,100 @@ export default function DriverGpsPortal() {
     return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
   };
 
+  // 1. Initialize Map
+  useEffect(() => {
+    if (!mapContainerRef.current) return;
+    if (mapInstanceRef.current) return;
+
+    const initialLat = lastCoords?.lat || KADAPA_DEPOT.lat;
+    const initialLng = lastCoords?.lng || KADAPA_DEPOT.lng;
+
+    const map = L.map(mapContainerRef.current, {
+      center: [initialLat, initialLng],
+      zoom: 15,
+      zoomControl: false,
+      attributionControl: false
+    });
+
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19
+    }).addTo(map);
+
+    L.control.zoom({ position: 'bottomright' }).addTo(map);
+
+    const depotIcon = L.divIcon({
+      className: 'depot-pin',
+      html: `
+        <div style="width:34px; height:34px; border-radius:50%; background:#ea580c; border:2px solid #fff; display:flex; align-items:center; justify-content:center; color:white; font-size:16px; box-shadow:0 3px 8px rgba(0,0,0,0.4);">
+          🏢
+        </div>
+      `,
+      iconSize: [34, 34],
+      iconAnchor: [17, 17]
+    });
+    L.marker([KADAPA_DEPOT.lat, KADAPA_DEPOT.lng], { icon: depotIcon })
+      .bindPopup('<b>Kadapa Central Depot HQ</b>')
+      .addTo(map);
+
+    const vIcon = L.divIcon({
+      className: 'driver-truck-pin',
+      html: `
+        <div style="position:relative; display:flex; flex-direction:column; align-items:center;">
+          <div style="width:36px; height:36px; border-radius:50%; background:#10b981; border:2px solid #fff; display:flex; align-items:center; justify-content:center; color:white; font-size:16px; box-shadow:0 3px 10px rgba(0,0,0,0.4);">
+            🚚
+          </div>
+          <div style="margin-top:2px; background:#0f172a; color:#fbbf24; padding:1px 5px; border-radius:4px; font-size:9px; font-weight:800; font-family:monospace; white-space:nowrap;">
+            ${selectedPlate || 'My Vehicle'}
+          </div>
+        </div>
+      `,
+      iconSize: [40, 50],
+      iconAnchor: [20, 18]
+    });
+
+    const vMarker = L.marker([initialLat, initialLng], { icon: vIcon }).addTo(map);
+    vehicleMarkerRef.current = vMarker;
+
+    const polyline = L.polyline([], { color: '#ea580c', weight: 4, opacity: 0.85 }).addTo(map);
+    routePolylineRef.current = polyline;
+
+    mapInstanceRef.current = map;
+
+    setTimeout(() => {
+      map.invalidateSize();
+    }, 300);
+
+    return () => {
+      map.remove();
+      mapInstanceRef.current = null;
+    };
+  }, []);
+
+  // 2. Sync GPS coords to Map
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    const marker = vehicleMarkerRef.current;
+    if (!map || !marker || !lastCoords) return;
+
+    marker.setLatLng([lastCoords.lat, lastCoords.lng]);
+
+    if (routePolylineRef.current && routeTrail.length > 0) {
+      routePolylineRef.current.setLatLngs(routeTrail.map((p) => [p.lat, p.lng]));
+    }
+
+    if (isTracking) {
+      map.panTo([lastCoords.lat, lastCoords.lng], { animate: true, duration: 0.8 });
+    }
+  }, [lastCoords, isTracking, routeTrail]);
+
+  // Recenter helper
+  const handleRecenter = () => {
+    if (!mapInstanceRef.current) return;
+    const targetLat = lastCoords?.lat || KADAPA_DEPOT.lat;
+    const targetLng = lastCoords?.lng || KADAPA_DEPOT.lng;
+    mapInstanceRef.current.flyTo([targetLat, targetLng], 16, { duration: 1 });
+  };
+
   // Start GPS Tracking
   const startTracking = () => {
     if (!selectedPlate) {
@@ -151,7 +269,9 @@ export default function DriverGpsPortal() {
         const speedKmh = speed && speed > 0 ? Math.round(speed * 3.6) : 0;
         setCurrentSpeed(speedKmh);
 
-        // Accumulate distance
+        // Accumulate distance & route trail
+        setRouteTrail((prev) => [...prev.slice(-300), currentCoord]);
+
         if (prevPositionRef.current) {
           const deltaKm = calculateDistance(
             prevPositionRef.current.lat,
@@ -334,6 +454,25 @@ export default function DriverGpsPortal() {
               <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
               <span>{statusMessage}</span>
             </div>
+          </div>
+
+          {/* Interactive Live Map Card */}
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden mb-4 shadow-lg relative">
+            <div className="p-3 bg-slate-800/80 border-b border-slate-700/80 flex items-center justify-between text-xs">
+              <span className="font-bold text-white flex items-center gap-1.5">
+                <Navigation size={14} className="text-orange-500" />
+                <span>Live Route Navigator</span>
+              </span>
+              <button
+                type="button"
+                onClick={handleRecenter}
+                className="px-2.5 py-1 bg-slate-700 hover:bg-slate-600 rounded-lg text-[11px] font-bold text-emerald-400 flex items-center gap-1 shadow-xs cursor-pointer"
+              >
+                <Crosshair size={12} />
+                <span>Center Me</span>
+              </button>
+            </div>
+            <div ref={mapContainerRef} className="w-full h-56 bg-slate-950 relative z-0" />
           </div>
         </div>
 

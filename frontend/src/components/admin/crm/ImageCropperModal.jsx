@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { X, ZoomIn, ZoomOut, RotateCw, Check, Move } from 'lucide-react';
+import { X, ZoomIn, ZoomOut, RotateCw, Check, Move, Maximize2, Minimize2, Circle, Square } from 'lucide-react';
 import { useLanguage } from '../../../context/LanguageContext';
 
 export default function ImageCropperModal({ imageSrc, onCropComplete, onClose, title }) {
@@ -8,18 +8,63 @@ export default function ImageCropperModal({ imageSrc, onCropComplete, onClose, t
   const [rotation, setRotation] = useState(0);
   const [offset, setOffset] = useState({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState(false);
+  const [cropShape, setCropShape] = useState('circle'); // 'circle' | 'square'
+  const [baseDimensions, setBaseDimensions] = useState({ width: 260, height: 260 });
+  const [naturalDimensions, setNaturalDimensions] = useState({ width: 0, height: 0 });
+
   const dragStartRef = useRef({ x: 0, y: 0 });
   const imageRef = useRef(null);
   const containerRef = useRef(null);
 
   const CROP_SIZE = 260; // preview crop circle/square size in px
 
-  // Reset transform when new image loads
+  // Calculate base dimensions when image loads to fit within CROP_SIZE at 100%
+  const handleImageLoaded = (e) => {
+    const nw = e.target.naturalWidth || 260;
+    const nh = e.target.naturalHeight || 260;
+    setNaturalDimensions({ width: nw, height: nh });
+
+    // Fit entire image inside CROP_SIZE
+    const scale = Math.min(CROP_SIZE / nw, CROP_SIZE / nh);
+    const bw = nw * scale;
+    const bh = nh * scale;
+    setBaseDimensions({ width: bw, height: bh });
+    setZoom(1);
+    setOffset({ x: 0, y: 0 });
+    setRotation(0);
+  };
+
+  // Reset transform when new imageSrc changes
   useEffect(() => {
     setZoom(1);
     setRotation(0);
     setOffset({ x: 0, y: 0 });
   }, [imageSrc]);
+
+  // Fit Whole Image action
+  const handleFitWholeImage = () => {
+    setZoom(1);
+    setOffset({ x: 0, y: 0 });
+    setRotation(0);
+  };
+
+  // Fill Frame action (zooms in so no white space is visible)
+  const handleFillFrame = () => {
+    if (!naturalDimensions.width || !naturalDimensions.height) return;
+    const nw = naturalDimensions.width;
+    const nh = naturalDimensions.height;
+    const fitScale = Math.min(CROP_SIZE / nw, CROP_SIZE / nh);
+    const fillScale = Math.max(CROP_SIZE / nw, CROP_SIZE / nh);
+    const ratio = fitScale > 0 ? fillScale / fitScale : 1.2;
+    setZoom(Math.max(1, parseFloat(ratio.toFixed(2))));
+    setOffset({ x: 0, y: 0 });
+  };
+
+  const handleWheel = (e) => {
+    e.preventDefault();
+    const delta = e.deltaY < 0 ? 0.08 : -0.08;
+    setZoom((prev) => Math.min(3.5, Math.max(0.2, parseFloat((prev + delta).toFixed(2)))));
+  };
 
   const handleMouseDown = (e) => {
     e.preventDefault();
@@ -81,14 +126,17 @@ export default function ImageCropperModal({ imageSrc, onCropComplete, onClose, t
     const img = imageRef.current;
 
     const outputCanvas = document.createElement('canvas');
-    const OUTPUT_SIZE = 360; // Clean 360x360 square
+    const OUTPUT_SIZE = 400; // Clean 400x400 output
     outputCanvas.width = OUTPUT_SIZE;
     outputCanvas.height = OUTPUT_SIZE;
     const ctx = outputCanvas.getContext('2d');
 
-    // Ratio between rendered container scale and natural image dimensions
-    const renderedWidth = img.width * zoom;
-    const renderedHeight = img.height * zoom;
+    // Fill clean white background
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, OUTPUT_SIZE, OUTPUT_SIZE);
+
+    const renderedWidth = baseDimensions.width * zoom;
+    const renderedHeight = baseDimensions.height * zoom;
 
     ctx.save();
     // Center canvas context
@@ -106,23 +154,23 @@ export default function ImageCropperModal({ imageSrc, onCropComplete, onClose, t
     ctx.restore();
 
     // Export compressed JPEG
-    const croppedDataUrl = outputCanvas.toDataURL('image/jpeg', 0.85);
+    const croppedDataUrl = outputCanvas.toDataURL('image/jpeg', 0.88);
     onCropComplete(croppedDataUrl);
   };
 
   return (
-    <div className="fixed inset-0 bg-black/75 backdrop-blur-sm z-[999999] flex items-center justify-center p-3 animate-fade-in">
+    <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[999999] flex items-center justify-center p-3 animate-fade-in" style={{ zIndex: 999999 }}>
       <div className="bg-white rounded-3xl max-w-sm w-full overflow-hidden shadow-2xl border border-slate-200 flex flex-col animate-slide-up">
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 bg-[#FDFBF7] border-b border-[#E8DCCB]">
           <div>
             <h3 className="font-extrabold text-sm text-slate-800">{title || t('Crop Photo')}</h3>
-            <p className="text-[11px] text-slate-500">{t('Drag to position & zoom to fit')}</p>
+            <p className="text-[11px] text-slate-500">{t('Drag to position & zoom to fit whole image')}</p>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="p-1.5 text-slate-400 hover:text-slate-700 rounded-lg hover:bg-slate-100 transition-colors"
+            className="p-1.5 text-slate-400 hover:text-slate-700 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
           >
             <X size={18} />
           </button>
@@ -133,17 +181,20 @@ export default function ImageCropperModal({ imageSrc, onCropComplete, onClose, t
           ref={containerRef}
           onMouseDown={handleMouseDown}
           onTouchStart={handleTouchStart}
-          className="relative w-full h-[300px] bg-slate-900 flex items-center justify-center overflow-hidden cursor-grab active:cursor-grabbing select-none"
+          onWheel={handleWheel}
+          className="relative w-full h-[310px] bg-slate-900 flex items-center justify-center overflow-hidden cursor-grab active:cursor-grabbing select-none"
         >
-          {/* Circular Crop Guide Mask */}
+          {/* Crop Guide Mask (Circle or Rounded Square) */}
           <div className="absolute inset-0 pointer-events-none flex items-center justify-center z-10">
             <div
               style={{ width: `${CROP_SIZE}px`, height: `${CROP_SIZE}px` }}
-              className="rounded-full border-2 border-white/90 shadow-[0_0_0_9999px_rgba(0,0,0,0.65)] relative"
+              className={`${
+                cropShape === 'circle' ? 'rounded-full' : 'rounded-2xl'
+              } border-2 border-white/95 shadow-[0_0_0_9999px_rgba(0,0,0,0.65)] relative transition-all duration-200`}
             >
               {/* Center crosshair */}
-              <div className="absolute inset-0 flex items-center justify-center opacity-30">
-                <Move size={20} className="text-white" />
+              <div className="absolute inset-0 flex items-center justify-center opacity-25">
+                <Move size={22} className="text-white" />
               </div>
             </div>
           </div>
@@ -153,60 +204,91 @@ export default function ImageCropperModal({ imageSrc, onCropComplete, onClose, t
             ref={imageRef}
             src={imageSrc}
             alt="Crop source"
+            onLoad={handleImageLoaded}
             draggable={false}
             style={{
+              width: `${baseDimensions.width}px`,
+              height: `${baseDimensions.height}px`,
               transform: `translate(${offset.x}px, ${offset.y}px) scale(${zoom}) rotate(${rotation}deg)`,
               transformOrigin: 'center center',
-              transition: isDragging ? 'none' : 'transform 0.1s ease-out',
-              maxWidth: 'none',
-              maxHeight: 'none'
+              transition: isDragging ? 'none' : 'transform 0.1s ease-out'
             }}
-            className="pointer-events-none select-none max-w-[280px]"
+            className="pointer-events-none select-none max-w-none max-h-none object-contain"
           />
         </div>
 
         {/* Controls */}
         <div className="p-4 space-y-3 bg-[#FDFBF7]">
-          {/* Zoom Slider */}
+          {/* Zoom Slider (0.2x to 3.5x for full flexibility) */}
           <div className="flex items-center gap-3">
             <ZoomOut size={16} className="text-slate-500 shrink-0" />
             <input
               type="range"
-              min="0.6"
-              max="3"
+              min="0.2"
+              max="3.5"
               step="0.05"
               value={zoom}
               onChange={(e) => setZoom(parseFloat(e.target.value))}
               className="w-full h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-[#ea580c]"
             />
             <ZoomIn size={16} className="text-slate-500 shrink-0" />
-            <span className="text-[11px] font-bold text-slate-600 font-mono w-9 text-right shrink-0">
+            <span className="text-[11px] font-bold text-slate-700 font-mono w-10 text-right shrink-0">
               {Math.round(zoom * 100)}%
             </span>
           </div>
 
-          {/* Quick Actions Bar */}
-          <div className="flex items-center justify-between gap-2 pt-1">
-            <button
-              type="button"
-              onClick={() => setRotation((prev) => (prev + 90) % 360)}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 bg-white text-slate-700 text-xs font-bold hover:bg-slate-50 transition-all cursor-pointer shadow-xs active:scale-95"
-            >
-              <RotateCw size={13} />
-              <span>{t('Rotate')}</span>
-            </button>
+          {/* Quick Fit, Fill, Shape Toggle & Rotation Bar */}
+          <div className="flex items-center justify-between gap-1.5 pt-1 flex-wrap">
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={handleFitWholeImage}
+                title="Fit entire image in frame"
+                className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-700 text-[11px] font-bold hover:bg-slate-50 transition-all cursor-pointer shadow-2xs active:scale-95"
+              >
+                <Minimize2 size={12} className="text-[#ea580c]" />
+                <span>Fit Image</span>
+              </button>
 
-            <button
-              type="button"
-              onClick={() => {
-                setZoom(1);
-                setOffset({ x: 0, y: 0 });
-                setRotation(0);
-              }}
-              className="text-xs font-semibold text-slate-500 hover:text-slate-800 transition-colors cursor-pointer"
-            >
-              {t('Reset')}
-            </button>
+              <button
+                type="button"
+                onClick={handleFillFrame}
+                title="Fill frame"
+                className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-700 text-[11px] font-bold hover:bg-slate-50 transition-all cursor-pointer shadow-2xs active:scale-95"
+              >
+                <Maximize2 size={12} className="text-emerald-600" />
+                <span>Fill</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setCropShape(prev => prev === 'circle' ? 'square' : 'circle')}
+                title="Toggle Crop Shape (Circle / Square)"
+                className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-700 text-[11px] font-bold hover:bg-slate-50 transition-all cursor-pointer shadow-2xs active:scale-95"
+              >
+                {cropShape === 'circle' ? <Circle size={12} className="text-blue-600" /> : <Square size={12} className="text-blue-600" />}
+                <span className="capitalize">{cropShape}</span>
+              </button>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setRotation((prev) => (prev + 90) % 360)}
+                className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-700 text-[11px] font-bold hover:bg-slate-50 transition-all cursor-pointer shadow-2xs active:scale-95"
+              >
+                <RotateCw size={12} />
+                <span>{t('Rotate')}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleFitWholeImage}
+                className="text-[11px] font-semibold text-slate-500 hover:text-slate-800 transition-colors cursor-pointer"
+              >
+                {t('Reset')}
+              </button>
+            </div>
           </div>
 
           {/* Action Buttons */}

@@ -3,17 +3,20 @@ import {
   Users, Search, Plus, Phone, Truck, Anchor, MapPin, Building,
   CreditCard, FileText, Edit2, Trash2, X, Check, Loader2, MessageSquare,
   RefreshCw, ChevronLeft, ChevronRight, Upload, Image as ImageIcon,
-  Crop
+  Crop, User
 } from 'lucide-react';
 import BackButton from '../common/BackButton';
+import SearchableDropdown from '../../common/SearchableDropdown';
 import { useLanguage } from '../../../context/LanguageContext';
 import { getSuppliers, createSupplier, updateSupplier, deleteSupplier } from '../../../api/operations/operations';
+import { getVehicles, updateVehicle } from '../../../api/operations/vehicle';
 import Toast from '../system/Toast';
 import ImageCropperModal from '../crm/ImageCropperModal';
 
 export default function SupplierManagement({ onGoBack }) {
   const { t } = useLanguage();
   const [suppliers, setSuppliers] = useState([]);
+  const [fleetVehicles, setFleetVehicles] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedTypeFilter, setSelectedTypeFilter] = useState('All'); // 'All' | 'Local' | 'DAM' | 'Consumables'
@@ -59,10 +62,14 @@ export default function SupplierManagement({ onGoBack }) {
   const fetchSuppliersList = useCallback(async () => {
     try {
       setLoading(true);
-      const data = await getSuppliers();
+      const [data, vehData] = await Promise.all([
+        getSuppliers(),
+        getVehicles().catch(() => [])
+      ]);
       setSuppliers(data || []);
+      setFleetVehicles(vehData || []);
     } catch (err) {
-      console.error('Failed to load suppliers:', err);
+      console.error('Failed to load suppliers or vehicles:', err);
       setToast({ message: 'Failed to fetch suppliers directory', type: 'error' });
     } finally {
       setLoading(false);
@@ -87,13 +94,22 @@ export default function SupplierManagement({ onGoBack }) {
 
   const handleOpenEditModal = (supplier) => {
     setEditingSupplier(supplier);
+
+    // Auto-fetch and pre-select assigned vehicle from fleetVehicles if not already on supplier
+    const linkedVeh = (fleetVehicles || []).find(v => 
+      (v.assignedSupplierId && String(v.assignedSupplierId) === String(supplier._id)) ||
+      (v.assignedSupplierName && v.assignedSupplierName.toLowerCase() === supplier.name?.toLowerCase()) ||
+      (supplier.vehicleNumber && v.vehicleNumber?.toUpperCase() === supplier.vehicleNumber.toUpperCase())
+    );
+    const resolvedVehicle = supplier.vehicleNumber || linkedVeh?.vehicleNumber || '';
+
     setFormData({
       profileImage: supplier.profileImage || '',
       name: supplier.name || '',
       companyName: supplier.companyName || '',
       phone: supplier.phone || '',
       supplierType: supplier.supplierType || 'Local',
-      vehicleNumber: supplier.vehicleNumber || '',
+      vehicleNumber: resolvedVehicle,
       harbor: supplier.harbor || '',
       city: supplier.city || '',
       address: supplier.address || '',
@@ -154,13 +170,29 @@ export default function SupplierManagement({ onGoBack }) {
         phone: cleanPhone
       };
 
+      let savedSupplier = null;
       if (editingSupplier) {
-        await updateSupplier(editingSupplier._id, payload);
+        const res = await updateSupplier(editingSupplier._id, payload);
+        savedSupplier = res?.data || { _id: editingSupplier._id };
         setToast({ message: `Supplier "${formData.name}" updated successfully!`, type: 'success' });
       } else {
-        await createSupplier(payload);
+        const res = await createSupplier(payload);
+        savedSupplier = res?.data || null;
         setToast({ message: `Supplier "${formData.name}" added successfully!`, type: 'success' });
       }
+
+      // Sync vehicle assignment in fleet if a vehicleNumber was chosen
+      const upperVeh = (formData.vehicleNumber || '').trim().toUpperCase();
+      if (upperVeh && fleetVehicles.length > 0) {
+        const matchedVeh = fleetVehicles.find(v => (v.vehicleNumber || '').toUpperCase() === upperVeh);
+        if (matchedVeh) {
+          await updateVehicle(matchedVeh._id, {
+            assignedSupplierId: savedSupplier?._id || editingSupplier?._id || null,
+            assignedSupplierName: formData.name.trim()
+          }).catch(e => console.warn('Vehicle sync warning:', e.message));
+        }
+      }
+
       setIsModalOpen(false);
       fetchSuppliersList();
     } catch (err) {
@@ -205,6 +237,51 @@ export default function SupplierManagement({ onGoBack }) {
     const start = (currentPage - 1) * PER_PAGE;
     return filteredSuppliers.slice(start, start + PER_PAGE);
   }, [filteredSuppliers, currentPage]);
+
+  const vehicleOptions = useMemo(() => {
+    return (fleetVehicles || []).map(v => {
+      const vNum = (v.vehicleNumber || '').toUpperCase().trim();
+      const isAssigned = Boolean(v.assignedSupplierName || v.assignedSupplierId);
+      const isCurrentSupplier = editingSupplier && (
+        (v.assignedSupplierId && String(v.assignedSupplierId) === String(editingSupplier._id)) ||
+        (v.assignedSupplierName && v.assignedSupplierName.toLowerCase() === editingSupplier.name?.toLowerCase())
+      );
+
+      let badgeText = 'Available';
+      let badgeColor = 'emerald';
+
+      if (isAssigned) {
+        if (isCurrentSupplier) {
+          badgeText = 'Assigned (This Supplier)';
+          badgeColor = 'blue';
+        } else {
+          badgeText = `Taken: ${v.assignedSupplierName || 'Supplier'}`;
+          badgeColor = 'amber';
+        }
+      } else if (v.status && v.status !== 'Available') {
+        badgeText = v.status;
+        badgeColor = 'slate';
+      }
+
+      const sub = [
+        isAssigned ? `Assigned to: ${v.assignedSupplierName}` : 'Status: Free / Unassigned',
+        v.driverName ? `Driver: ${v.driverName}` : '',
+        v.driverPhone ? `Ph: ${v.driverPhone}` : '',
+        v.operationalMode ? `Channel: ${v.operationalMode}` : ''
+      ].filter(Boolean).join(' | ');
+
+      return {
+        value: vNum,
+        label: `${vNum} (${v.vehicleName || v.vehicleType || 'Fleet'})`,
+        subtitle: sub,
+        badge: badgeText,
+        badgeColor: badgeColor,
+        raw: v,
+        isAssigned,
+        assignedSupplierName: v.assignedSupplierName
+      };
+    });
+  }, [fleetVehicles, editingSupplier]);
 
   const typePills = [
     { id: 'All', label: 'All Suppliers', count: suppliers.length },
@@ -259,7 +336,7 @@ export default function SupplierManagement({ onGoBack }) {
       </div>
 
       {/* Main Content Area - Full Width */}
-      <div className="p-3 sm:p-5 w-full space-y-4">
+      <div className="px-1.5 py-3 sm:p-5 w-full space-y-4">
         {/* Search, Filter & Top-Right Pagination Row */}
         <div className="bg-[#FDFBF7] p-3 rounded-2xl border border-[#E8DCCB] shadow-2xs flex flex-col lg:flex-row lg:items-center justify-between gap-3">
           {/* Search Box */}
@@ -343,7 +420,7 @@ export default function SupplierManagement({ onGoBack }) {
             </button>
           </div>
         ) : (
-          <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2.5 sm:gap-3.5 md:gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4">
             {paginatedSuppliers.map((supp) => {
               const typeColor =
                 supp.supplierType === 'DAM' ? 'bg-blue-100 text-blue-900 border-blue-200' :
@@ -353,20 +430,20 @@ export default function SupplierManagement({ onGoBack }) {
               return (
                 <div
                   key={supp._id}
-                  className="bg-[#FDFBF7] border border-[#E8DCCB] rounded-2xl p-2.5 sm:p-3.5 md:p-4 shadow-2xs hover:shadow-md transition-all flex flex-col justify-between group"
+                  className="bg-[#FDFBF7] border border-[#E8DCCB] rounded-2xl p-3 sm:p-4 shadow-2xs hover:shadow-md transition-all flex flex-col justify-between group w-full"
                 >
-                  <div className="space-y-2 sm:space-y-3">
+                  <div className="space-y-2.5 sm:space-y-3">
                     {/* Header: Avatar, Name & Type Badge */}
-                    <div className="flex items-start justify-between gap-1.5 sm:gap-2.5">
-                      <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
                         {supp.profileImage ? (
                           <img
                             src={supp.profileImage}
                             alt={supp.name}
-                            className="w-8 h-8 sm:w-10 sm:h-10 md:w-11 md:h-11 rounded-xl object-cover border border-[#E8DCCB] shrink-0"
+                            className="w-9 h-9 sm:w-11 sm:h-11 rounded-xl object-cover border border-[#E8DCCB] shrink-0"
                           />
                         ) : (
-                          <div className="w-8 h-8 sm:w-10 sm:h-10 md:w-11 md:h-11 rounded-xl bg-orange-100 text-[#ea580c] font-black text-xs sm:text-sm flex items-center justify-center shrink-0 border border-orange-200">
+                          <div className="w-9 h-9 sm:w-11 sm:h-11 rounded-xl bg-orange-100 text-[#ea580c] font-black text-xs sm:text-sm flex items-center justify-center shrink-0 border border-orange-200">
                             {supp.name.charAt(0).toUpperCase()}
                           </div>
                         )}
@@ -389,32 +466,76 @@ export default function SupplierManagement({ onGoBack }) {
                       </span>
                     </div>
 
-                    {/* Quick Badges: Phone, Vehicle, Harbor, Address */}
-                    <div className="grid grid-cols-1 gap-1.5 text-[10px] sm:text-[11px] font-semibold text-slate-600 bg-[#FAF0E4]/60 p-2 sm:p-2.5 rounded-xl border border-[#fed7aa]/50">
+                    {/* Quick Badges: Phone, Vehicle, Driver, Harbor, Address */}
+                    <div className="grid grid-cols-1 gap-2 text-[10.5px] sm:text-[11px] font-semibold text-slate-600 bg-[#FAF0E4]/60 p-2.5 sm:p-3 rounded-xl border border-[#fed7aa]/50">
                       <div className="flex items-center gap-1.5 truncate">
-                        <Phone size={11} className="text-[#ea580c] shrink-0" />
+                        <Phone size={12} className="text-[#ea580c] shrink-0" />
+                        <span className="text-slate-400 font-normal">Phone:</span>
                         <a href={`tel:${supp.phone}`} className="hover:underline font-mono font-bold text-slate-800 truncate">
                           {supp.phone || 'No phone'}
                         </a>
                       </div>
 
-                      <div className="flex items-center gap-1.5 truncate">
-                        <Truck size={11} className="text-blue-600 shrink-0" />
-                        <span className="font-mono text-slate-700 truncate">
-                          {supp.vehicleNumber || 'No vehicle'}
-                        </span>
-                      </div>
+                      {(() => {
+                        const linkedVeh = (fleetVehicles || []).find(v => 
+                          (v.assignedSupplierId && String(v.assignedSupplierId) === String(supp._id)) ||
+                          (v.assignedSupplierName && v.assignedSupplierName.toLowerCase() === supp.name?.toLowerCase()) ||
+                          (supp.vehicleNumber && v.vehicleNumber?.toUpperCase() === supp.vehicleNumber.toUpperCase())
+                        );
+                        const effectiveVeh = supp.vehicleNumber || linkedVeh?.vehicleNumber;
+                        const vehDesc = linkedVeh?.modelName || linkedVeh?.vehicleName || linkedVeh?.vehicleType;
+                        const driverName = linkedVeh?.driverName;
+                        const driverPhone = linkedVeh?.driverPhone;
+
+                        return (
+                          <>
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <Truck size={12} className={`shrink-0 ${effectiveVeh ? 'text-blue-600' : 'text-slate-400'}`} />
+                              <span className="text-slate-400 font-normal">Vehicle:</span>
+                              <span className={`font-mono ${effectiveVeh ? 'text-slate-800 font-bold' : 'text-slate-400'}`}>
+                                {effectiveVeh || 'No vehicle'}
+                              </span>
+                              {vehDesc && (
+                                <span className="text-[10px] text-slate-500 font-medium">
+                                  ({vehDesc})
+                                </span>
+                              )}
+                              {linkedVeh && (
+                                <span className="text-[8.5px] bg-blue-50 text-blue-700 font-bold px-1.5 py-0.5 rounded border border-blue-200">
+                                  Fleet Linked
+                                </span>
+                              )}
+                            </div>
+
+                            {(driverName || driverPhone) && (
+                              <div className="flex items-center gap-1.5 text-slate-700 flex-wrap">
+                                <User size={12} className="text-emerald-600 shrink-0" />
+                                <span className="text-slate-400 font-normal">Driver:</span>
+                                <span className="font-bold text-slate-800">
+                                  {driverName || 'Assigned Driver'}
+                                </span>
+                                {driverPhone && (
+                                  <a href={`tel:${driverPhone}`} className="text-[10px] font-mono text-emerald-700 font-bold hover:underline bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">
+                                    {driverPhone}
+                                  </a>
+                                )}
+                              </div>
+                            )}
+                          </>
+                        );
+                      })()}
 
                       <div className="flex items-center gap-1.5 truncate">
-                        <Anchor size={11} className="text-sky-600 shrink-0" />
-                        <span className="truncate">
+                        <Anchor size={12} className="text-sky-600 shrink-0" />
+                        <span className="text-slate-400 font-normal">Port/Dam:</span>
+                        <span className="truncate text-slate-800 font-medium">
                           {supp.harbor || supp.city || 'Depot Direct'}
                         </span>
                       </div>
 
                       {supp.address && (
-                        <div className="flex items-center gap-1.5 truncate text-slate-500 text-[9.5px] sm:text-[10.5px]">
-                          <MapPin size={10} className="text-slate-400 shrink-0" />
+                        <div className="flex items-center gap-1.5 truncate text-slate-500 text-[10px] sm:text-[10.5px]">
+                          <MapPin size={11} className="text-slate-400 shrink-0" />
                           <span className="truncate">{supp.address}</span>
                         </div>
                       )}
@@ -553,16 +674,20 @@ export default function SupplierManagement({ onGoBack }) {
                   <label className="text-xs font-bold text-slate-800 block">
                     Supplier Type *
                   </label>
-                  <select
+                  <SearchableDropdown
+                    mode="select"
+                    searchable={false}
                     value={formData.supplierType}
-                    onChange={(e) => setFormData({ ...formData, supplierType: e.target.value })}
-                    className="w-full bg-white border border-[#E8DCCB] rounded-xl px-3 py-2 text-xs font-bold text-slate-800 focus:outline-none focus:border-orange-500"
-                  >
-                    <option value="Local">Local Supplier (Harbor Catch)</option>
-                    <option value="DAM">Dam Supplier (Reservoir Catch)</option>
-                    <option value="Consumables">Packaging & Supplies (Boxes / Ice / Tape)</option>
-                    <option value="All">All Operations</option>
-                  </select>
+                    onChange={(val) => setFormData({ ...formData, supplierType: val })}
+                    options={[
+                      { value: 'Local', label: 'Local Supplier (Harbor Catch)' },
+                      { value: 'DAM', label: 'Dam Supplier (Reservoir Catch)' },
+                      { value: 'Consumables', label: 'Packaging & Supplies (Boxes / Ice / Tape)' },
+                      { value: 'All', label: 'All Operations' }
+                    ]}
+                    accentColor="orange"
+                    required
+                  />
                 </div>
               </div>
 
@@ -600,13 +725,39 @@ export default function SupplierManagement({ onGoBack }) {
                   <label className="text-xs font-bold text-slate-800 block">
                     Vehicle Number (Optional)
                   </label>
-                  <input
-                    type="text"
+                  <SearchableDropdown
+                    mode="combobox"
                     value={formData.vehicleNumber}
-                    onChange={(e) => setFormData({ ...formData, vehicleNumber: e.target.value.toUpperCase() })}
+                    onChange={(val) => setFormData({ ...formData, vehicleNumber: (val || '').toUpperCase() })}
+                    onSelect={(raw) => {
+                      if (!raw) return;
+                      setFormData(prev => ({
+                        ...prev,
+                        vehicleNumber: (raw.vehicleNumber || '').toUpperCase()
+                      }));
+                    }}
+                    options={vehicleOptions}
                     placeholder="e.g. AP 04 TX 4821"
-                    className="w-full bg-white border border-[#E8DCCB] rounded-xl px-3 py-2 text-xs font-mono font-bold text-slate-900 focus:outline-none focus:border-orange-500 uppercase"
+                    accentColor="orange"
                   />
+                  {(() => {
+                    const matchedVeh = (fleetVehicles || []).find(v => v.vehicleNumber?.toUpperCase() === (formData.vehicleNumber || '').trim().toUpperCase());
+                    if (matchedVeh && (matchedVeh.assignedSupplierName || matchedVeh.assignedSupplierId)) {
+                      const isCurrent = editingSupplier && (
+                        (matchedVeh.assignedSupplierId && String(matchedVeh.assignedSupplierId) === String(editingSupplier._id)) ||
+                        (matchedVeh.assignedSupplierName && matchedVeh.assignedSupplierName.toLowerCase() === editingSupplier.name?.toLowerCase())
+                      );
+                      if (!isCurrent) {
+                        return (
+                          <div className="mt-1 flex items-start gap-1.5 p-1.5 bg-amber-50 border border-amber-200 rounded-lg text-amber-800 text-[10px] font-semibold leading-tight">
+                            <span className="shrink-0 text-amber-600 font-bold">⚠️</span>
+                            <span>Currently assigned to <strong>{matchedVeh.assignedSupplierName}</strong>. Saving will reassign this vehicle to this supplier.</span>
+                          </div>
+                        );
+                      }
+                    }
+                    return null;
+                  })()}
                 </div>
 
                 <div className="space-y-1">
@@ -669,21 +820,7 @@ export default function SupplierManagement({ onGoBack }) {
                         </div>
                       </div>
                       <div className="flex items-center gap-1 shrink-0">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setCropperRawSrc(formData.profileImage);
-                            setCropScale(1);
-                            setCropRotate(0);
-                            setCropOffset({ x: 0, y: 0 });
-                            setIsCropperOpen(true);
-                          }}
-                          className="px-2 py-1 bg-orange-100 hover:bg-orange-200 text-[#ea580c] border border-orange-300 rounded-lg text-[10.5px] font-bold cursor-pointer transition-colors flex items-center gap-1"
-                          title="Crop image"
-                        >
-                          <Crop size={11} />
-                          <span>Crop</span>
-                        </button>
+                       
                         <label className="px-2 py-1 bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 rounded-lg text-[10.5px] font-bold cursor-pointer transition-colors">
                           <span>Change</span>
                           <input

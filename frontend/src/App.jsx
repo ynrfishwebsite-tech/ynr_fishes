@@ -44,6 +44,8 @@ import SuperAdminDashboard from './pages/dashboards/SuperAdminDashboard';
 import AdminDashboard from './pages/dashboards/AdminDashboard';
 import ManagerDashboard from './pages/dashboards/ManagerDashboard';
 import WorkerDashboard from './pages/dashboards/WorkerDashboard';
+import DriverDashboard from './pages/dashboards/driver/DriverDashboard';
+import SupplierDashboard from './pages/dashboards/supplier/SupplierDashboard';
 
 const HomePage = () => (
   <>
@@ -141,6 +143,22 @@ function AppLayout() {
             element={
               <ProtectedRoute allowedRoles={['super-admin', 'admin', 'manager', 'worker']}>
                 <WorkerDashboard />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/dashboard/driver"
+            element={
+              <ProtectedRoute allowedRoles={['driver', 'admin', 'super-admin']}>
+                <DriverDashboard />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/dashboard/supplier"
+            element={
+              <ProtectedRoute allowedRoles={['supplier', 'admin', 'super-admin']}>
+                <SupplierDashboard />
               </ProtectedRoute>
             }
           />

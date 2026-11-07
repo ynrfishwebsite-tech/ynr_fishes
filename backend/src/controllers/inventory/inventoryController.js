@@ -15,7 +15,7 @@ const getModels = (req) => ({
 export const getLogs = async (req, res) => {
   try {
     const { StockLog } = getModels(req);
-    const { page = 1, limit = 15, type = 'All', search = '', startDate, endDate } = req.query;
+    const { page = 1, limit = 15, type = 'All', search = '', startDate, endDate, supplierName } = req.query;
 
     const query = {};
 
@@ -23,8 +23,6 @@ export const getLogs = async (req, res) => {
     if (type && type !== 'All') {
       if (type.includes('Procurement') || type.includes('Stock-In')) {
         query.type = { $regex: 'Procurement|Stock-In', $options: 'i' };
-      } else if (type.includes('Shrinkage') || type.includes('Wastage')) {
-        query.type = { $regex: 'Shrinkage|Wastage', $options: 'i' };
       } else if (type.includes('POS')) {
         query.type = { $regex: 'POS Sale', $options: 'i' };
       } else if (type.includes('Online')) {
@@ -34,6 +32,19 @@ export const getLogs = async (req, res) => {
       } else {
         query.type = type;
       }
+    }
+
+    // Filter by supplier if logged in supplier or query parameter supplied
+    const targetSupplier = (req.user?.role === 'supplier' ? (req.user.name || req.user.username) : null) || supplierName;
+    if (targetSupplier && targetSupplier.trim() && targetSupplier !== 'All') {
+      const suppRegex = new RegExp(targetSupplier.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+      query.$and = query.$and || [];
+      query.$and.push({
+        $or: [
+          { supplierName: suppRegex },
+          { companyName: suppRegex }
+        ]
+      });
     }
 
     // Search by itemName, billNumber, supplierName, performedBy
@@ -78,6 +89,7 @@ export const getLogs = async (req, res) => {
     res.status(200).json({
       success: true,
       data: logs,
+      logs: logs,
       total,
       page: pageNum,
       limit: limitNum,
@@ -463,55 +475,6 @@ export const recordProcurement = async (req, res) => {
   }
 };
 
-// 14. Daily Drip-Loss, Ice Melt & Spoilage Shrinkage Entry
-export const recordShrinkage = async (req, res) => {
-  try {
-    const { Menu, StockLog } = getModels(req);
-    const { menuItemId, grossKgLost, reason = 'Ice Melt / Drip Loss', notes } = req.body;
-
-    const lost = parseFloat(grossKgLost);
-    if (!menuItemId || isNaN(lost) || lost <= 0) {
-      return res.status(400).json({ message: 'Valid menuItemId and grossKgLost are required' });
-    }
-
-    const fishDoc = await Menu.findById(menuItemId);
-    if (!fishDoc) {
-      return res.status(404).json({ message: 'Fish item not found' });
-    }
-
-    const prevStock = Number(fishDoc.stock ?? fishDoc.openingStock ?? 0);
-    const newStock = Math.max(0, Number((prevStock - lost).toFixed(3)));
-    fishDoc.stock = newStock;
-    await fishDoc.save();
-
-    const log = await StockLog.create({
-      fishItem: fishDoc._id,
-      itemName: fishDoc.name,
-      type: 'Daily Shrinkage / Drip Loss',
-      quantityChange: -lost,
-      grossKgChange: -lost,
-      finalStock: newStock,
-      balanceGrossKg: newStock,
-      unit: 'kg',
-      notes: `Seafood Shrinkage: -${lost}kg (${reason})${notes ? ` - ${notes}` : ''}`,
-      performedBy: req.user?.username || 'Quality Inspector'
-    });
-
-    emitSocketEvent(req, 'fishStockUpdated', {
-      menuItemId: fishDoc._id,
-      name: fishDoc.name,
-      previousStock: prevStock,
-      newStock,
-      grossLost: lost
-    });
-
-    res.status(200).json({ success: true, message: `Recorded ${lost}kg shrinkage for ${fishDoc.name}`, stock: newStock, log });
-  } catch (error) {
-    console.error('[InventoryController] Shrinkage error:', error);
-    res.status(500).json({ message: error.message || 'Error recording shrinkage' });
-  }
-};
-
 // 15. Real-time Fish Stock Overview
 export const getFishInventory = async (req, res) => {
   try {
@@ -551,6 +514,8 @@ export const recordLocalStockIn = async (req, res) => {
       iceCharges = 0,
       boxTapeCharges = 0,
       advanceAmount = 0,
+      settlements = null,
+      customSettlements = [],
       notes = ''
     } = req.body;
 
@@ -568,14 +533,44 @@ export const recordLocalStockIn = async (req, res) => {
       }
     ];
 
+    const generatedInvoiceNo = req.body.invoiceNo || `GIN-LOC-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-${Date.now().toString().slice(-4)}`;
+
+    let totalCredits = 0;
+    let totalDebits = 0;
+    const settlementSummary = [];
+
+    if (settlements && typeof settlements === 'object') {
+      Object.entries(settlements).forEach(([key, s]) => {
+        const amt = Number(s?.amount || 0);
+        if (amt > 0) {
+          settlementSummary.push({ key, label: s.label || key, type: s.type || 'Dr', amount: amt });
+          if (s.type === 'Cr') totalCredits += amt;
+          else totalDebits += amt;
+        }
+      });
+    }
+
+    if (Array.isArray(customSettlements)) {
+      customSettlements.forEach((s, idx) => {
+        const amt = Number(s?.amount || 0);
+        if (amt > 0) {
+          settlementSummary.push({ key: `custom_${idx}`, label: s.label || 'Custom', type: s.type || 'Dr', amount: amt });
+          if (s.type === 'Cr') totalCredits += amt;
+          else totalDebits += amt;
+        }
+      });
+    }
+
     let totalGrossKg = 0;
     let totalBaseAmount = 0;
+    let totalConsignmentBoxes = 0;
     const updatedFishes = [];
 
     for (const item of intakeItems) {
       let itemWeightKg = 0;
       const numBoxes = Number(item.boxes || 0);
       const perBoxKg = Number(item.kgPerBox || 0);
+      totalConsignmentBoxes += numBoxes;
 
       if (Number(item.kg || 0) > 0 || Number(item.grams || 0) > 0) {
         itemWeightKg = Number((Number(item.kg || 0) + Number(item.grams || 0) / 1000).toFixed(3));
@@ -612,12 +607,21 @@ export const recordLocalStockIn = async (req, res) => {
         finalStock: newStock,
         balanceGrossKg: newStock,
         unit: 'kg',
+        invoiceNo: generatedInvoiceNo,
         supplierName: supplierName ? supplierName.trim() : 'Local Fisherman',
+        supplierPhone: supplierPhone ? supplierPhone.trim() : '',
         companyName: companyName ? companyName.trim() : '',
         vehicleNumber: vehicleNumber ? vehicleNumber.trim() : '',
         harbor: harbor ? harbor.trim() : '',
         boxes: numBoxes,
         kgPerBox: perBoxKg,
+        rate: rate,
+        price: rate,
+        intakeMode: 'local',
+        totalBoxes: totalConsignmentBoxes,
+        settlements: settlements || {},
+        customSettlements: customSettlements || [],
+        consignmentItems: intakeItems,
         notes: logNotes,
         performedBy: req.user?.username || req.user?.name || 'Local Incharge',
         createdAt: new Date()
@@ -638,8 +642,27 @@ export const recordLocalStockIn = async (req, res) => {
       return res.status(400).json({ message: 'Please select a fish variety and enter valid weight or boxes' });
     }
 
-    const subtotal = Number((totalBaseAmount - Number(iceCharges || 0) + Number(boxTapeCharges || 0)).toFixed(2));
-    const netPayable = Number((subtotal - Number(advanceAmount || 0)).toFixed(2));
+    let netPayable;
+    let subtotal;
+    if (settlementSummary.length > 0 || settlements) {
+      subtotal = totalBaseAmount;
+      netPayable = Number((totalBaseAmount + totalCredits - totalDebits).toFixed(2));
+    } else {
+      subtotal = Number((totalBaseAmount - Number(iceCharges || 0) + Number(boxTapeCharges || 0)).toFixed(2));
+      netPayable = Number((subtotal - Number(advanceAmount || 0)).toFixed(2));
+    }
+
+    // Update netPayable & grossValue on created logs
+    await StockLog.updateMany(
+      { invoiceNo: generatedInvoiceNo },
+      {
+        grossValue: totalBaseAmount,
+        netPayable: netPayable,
+        totalCr: totalCredits,
+        totalDr: totalDebits,
+        totalBoxes: totalConsignmentBoxes
+      }
+    );
 
     res.status(200).json({
       success: true,
@@ -648,6 +671,8 @@ export const recordLocalStockIn = async (req, res) => {
       calculation: {
         totalGrossKg: Number(totalGrossKg.toFixed(3)),
         totalBaseAmount: Number(totalBaseAmount.toFixed(2)),
+        totalCredits: Number(totalCredits.toFixed(2)),
+        totalDebits: Number(totalDebits.toFixed(2)),
         subtotal,
         netPayable
       }
@@ -684,14 +709,50 @@ export const recordDamStockIn = async (req, res) => {
       return res.status(400).json({ message: 'At least one fish variety is required for DAM Stock-In' });
     }
 
+    const generatedInvoiceNo = req.body.invoiceNo || `GIN-DAM-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-${Date.now().toString().slice(-4)}`;
+
     let totalGrossKg = 0;
     let catchTotalValue = 0;
+    let totalConsignmentBoxes = 0;
     const updatedFishes = [];
+
+    // Pre-calculate settlement totals
+    let totalCredits = 0;
+    let totalDebits = 0;
+    const settlementDetails = {};
+
+    if (settlements && typeof settlements === 'object') {
+      Object.entries(settlements).forEach(([key, entry]) => {
+        const amt = Number(entry?.amount || 0);
+        const type = entry?.type || 'Dr';
+        settlementDetails[key] = { label: entry?.label || key, type, amount: amt };
+        if (type === 'Cr') {
+          totalCredits += amt;
+        } else {
+          totalDebits += amt;
+        }
+      });
+    }
+
+    if (Array.isArray(req.body.customSettlements)) {
+      req.body.customSettlements.forEach((entry, idx) => {
+        const amt = Number(entry?.amount || 0);
+        const type = entry?.type || 'Dr';
+        const key = `custom_${idx}_${(entry?.label || 'item').toLowerCase().replace(/[^a-z0-9]/g, '_')}`;
+        settlementDetails[key] = { label: entry?.label || 'Custom', type, amount: amt };
+        if (type === 'Cr') {
+          totalCredits += amt;
+        } else {
+          totalDebits += amt;
+        }
+      });
+    }
 
     for (const item of tallyItems) {
       let itemKg = 0;
       const numBoxes = Number(item.boxes || 0);
       const perBoxKg = Number(item.kgPerBox || 0);
+      totalConsignmentBoxes += numBoxes;
 
       if (Number(item.kg || 0) > 0 || Number(item.grams || 0) > 0) {
         itemKg = Number((Number(item.kg || 0) + Number(item.grams || 0) / 1000).toFixed(3));
@@ -731,12 +792,21 @@ export const recordDamStockIn = async (req, res) => {
           finalStock: newStock,
           balanceGrossKg: newStock,
           unit: 'kg',
+          invoiceNo: generatedInvoiceNo,
           supplierName: contractorName ? contractorName.trim() : 'DAM Contractor',
+          supplierPhone: contractorPhone ? contractorPhone.trim() : '',
           companyName: companyName ? companyName.trim() : '',
           vehicleNumber: vehicleNumber ? vehicleNumber.trim() : '',
           harbor: harbor ? harbor.trim() : '',
           boxes: numBoxes,
           kgPerBox: perBoxKg,
+          rate: rate,
+          price: rate,
+          intakeMode: 'dam',
+          totalBoxes: totalConsignmentBoxes,
+          settlements: settlements,
+          customSettlements: req.body.customSettlements || [],
+          consignmentItems: tallyItems,
           notes: `DAM Catch: +${itemKg}kg${numBoxes > 0 ? ` (${numBoxes} boxes @ ${perBoxKg}kg/box)` : ''} @ ₹${rate}/kg. Total: ₹${rowTotal} (Contractor: ${contractorName || 'DAM Syndicate'})`,
           performedBy: req.user?.username || req.user?.name || 'Dam Incharge',
           createdAt: new Date()
@@ -758,22 +828,19 @@ export const recordDamStockIn = async (req, res) => {
       return res.status(400).json({ message: 'Please enter valid weight or box details for at least one fish variety' });
     }
 
-    let totalCredits = 0;
-    let totalDebits = 0;
-    const settlementDetails = {};
-
-    ['advance', 'khata', 'od', 'expense', 'festivalExpense'].forEach(key => {
-      const entry = settlements[key] || { type: 'Dr', amount: 0 };
-      const amt = Number(entry.amount || 0);
-      settlementDetails[key] = { type: entry.type || 'Dr', amount: amt };
-      if (entry.type === 'Cr') {
-        totalCredits += amt;
-      } else {
-        totalDebits += amt;
-      }
-    });
-
     const netConsignmentSettlement = Number((catchTotalValue + totalCredits - totalDebits).toFixed(2));
+
+    // Update netPayable & grossValue on created logs
+    await StockLog.updateMany(
+      { invoiceNo: generatedInvoiceNo },
+      {
+        grossValue: catchTotalValue,
+        netPayable: netConsignmentSettlement,
+        totalCr: totalCredits,
+        totalDr: totalDebits,
+        totalBoxes: totalConsignmentBoxes
+      }
+    );
 
     res.status(200).json({
       success: true,

@@ -173,6 +173,10 @@ export const AuthProvider = ({ children }) => {
       case 'cashier':
       case 'worker':
         return '/dashboard/admin';
+      case 'driver':
+        return '/dashboard/driver';
+      case 'supplier':
+        return '/dashboard/supplier';
       default:
         return '/';
     }

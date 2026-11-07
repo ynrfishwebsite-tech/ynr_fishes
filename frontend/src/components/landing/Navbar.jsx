@@ -36,6 +36,10 @@ export default function Navbar({ style }) {
         return { bg: 'rgba(78, 225, 160, 0.15)', border: '#4EE1A0', text: '#4EE1A0' };
       case 'worker':
         return { bg: 'rgba(255, 138, 72, 0.15)', border: '#FF8A48', text: '#FF8A48' };
+      case 'driver':
+        return { bg: 'rgba(234, 88, 12, 0.18)', border: '#ea580c', text: '#ea580c' };
+      case 'supplier':
+        return { bg: 'rgba(14, 165, 233, 0.18)', border: '#0ea5e9', text: '#38bdf8' };
       default:
         return { bg: 'rgba(255, 255, 255, 0.1)', border: '#fff', text: '#fff' };
     }

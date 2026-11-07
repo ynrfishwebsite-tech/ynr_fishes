@@ -2,7 +2,7 @@ import express from 'express';
 const router = express.Router();
 
 import { 
-  getActiveOrder, saveOrder, generateBill, settleBill, getOpenOrders, reopenOrder, cancelOrder, refundOrder, updateBillCustomer, clearUnpaidBill
+  getActiveOrder, saveOrder, generateBill, settleBill, getOpenOrders, reopenOrder, cancelOrder, refundOrder, updateBillCustomer, clearUnpaidBill, getNextDailyOrderNo
 } from '../../controllers/billing/orderController.js';
 import { 
   getBills, getBillById, deleteBill, getEditedBills 
@@ -24,6 +24,7 @@ router.get('/open', authenticateToken, getOpenOrders);
 router.get('/edited', authenticateToken, getEditedBills);
 router.get('/stats', authenticateToken, getDailyStats);
 router.get('/', authenticateToken, getBills);
+router.get('/next-order-no', authenticateToken, getNextDailyOrderNo);
 router.get('/:id', authenticateToken, getBillById);
 
 // POST routes - authenticated users only
