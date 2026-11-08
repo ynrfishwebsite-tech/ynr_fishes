@@ -191,14 +191,32 @@ function createMenu() {
         {
           label: '📖 User Manual / Guide',
           click: () => {
-            if (mainWindow) mainWindow.webContents.send('show-user-manual');
+            dialog.showMessageBox(mainWindow || null, {
+              type: 'info',
+              title: 'YNR Fishes POS - User Manual & Guide',
+              message: 'Quick POS Counter Guide',
+              detail: '• Retail Sale: Tap fish photo, select size & kg/grams, then tap SAVE & PRINT.\n• Wholesale Sale: Pack boxes with multiple fishes and print dealer tax invoices.\n• Export Sale: Create export bulk orders with destination client documentation.\n• WhatsApp e-Bill: Auto-delivery enabled upon bill settlement (toggle in Settings).',
+              buttons: ['OK']
+            });
+            if (mainWindow && !mainWindow.isDestroyed()) {
+              mainWindow.webContents.send('show-user-manual');
+            }
           }
         },
         { type: 'separator' },
         {
           label: '📞 Contact Support',
           click: () => {
-            if (mainWindow) mainWindow.webContents.send('show-contact-support');
+            dialog.showMessageBox(mainWindow || null, {
+              type: 'info',
+              title: 'Contact Support - YNR Fishes',
+              message: 'YNR Fishes Technical & Operations Support',
+              detail: 'Phone / WhatsApp: +91 98493 13889\nLocation: Kadapa City Depot, Andhra Pradesh\nEmail: ynrfishes@gmail.com\n\nOperating Hours: 6:00 AM - 10:00 PM IST',
+              buttons: ['OK']
+            });
+            if (mainWindow && !mainWindow.isDestroyed()) {
+              mainWindow.webContents.send('show-contact-support');
+            }
           }
         },
         { type: 'separator' },
@@ -227,9 +245,18 @@ function createMenu() {
         },
         { type: 'separator' },
         {
-          label: 'ℹ️ About MS Billing',
+          label: 'ℹ️ About YNR Fishes POS',
           click: () => {
-            if (mainWindow) mainWindow.webContents.send('show-about', app.getVersion());
+            dialog.showMessageBox(mainWindow || null, {
+              type: 'info',
+              title: 'About YNR Fishes POS',
+              message: `YNR Fishes POS (v${app.getVersion()})`,
+              detail: `High-Performance Omnichannel Depot & Counter POS System.\n\nApplication Version: v${app.getVersion()}\nNode: ${process.versions.node}\nElectron: ${process.versions.electron}\nPlatform: Windows (${process.arch})\n\n© ${new Date().getFullYear()} YNR Fishes. All rights reserved.`,
+              buttons: ['OK']
+            });
+            if (mainWindow && !mainWindow.isDestroyed()) {
+              mainWindow.webContents.send('show-about', app.getVersion());
+            }
           }
         }
       ]
@@ -992,9 +1019,19 @@ function setupAutoUpdater() {
   });
 
   autoUpdater.on('update-available', (info) => {
-    console.log('[AutoUpdater] Update available:', info ? info.version : 'new version');
+    const ver = info ? info.version : 'new version';
+    console.log('[AutoUpdater] Update available:', ver);
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send('update-available', info);
+    }
+    if (isManualUpdateCheck) {
+      dialog.showMessageBox(mainWindow || null, {
+        type: 'info',
+        title: 'Update Available!',
+        message: `A new version (v${ver}) of YNR Fishes POS is available!`,
+        detail: 'Downloading the update silently in the background... You will be prompted to restart when it is ready to install.',
+        buttons: ['OK']
+      });
     }
   });
 
@@ -1023,11 +1060,24 @@ function setupAutoUpdater() {
   });
 
   autoUpdater.on('update-downloaded', (info) => {
-    console.log('[AutoUpdater] Update downloaded silently:', info ? info.version : 'ready');
+    console.log('[AutoUpdater] Update downloaded:', info ? info.version : 'ready');
     isManualUpdateCheck = false;
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send('update-ready', info);
     }
+    dialog.showMessageBox(mainWindow || null, {
+      type: 'question',
+      title: 'Update Ready to Install',
+      message: `Version v${info ? info.version : 'new'} has been downloaded!`,
+      detail: 'Would you like to restart YNR Fishes POS now to apply the update?',
+      buttons: ['Restart & Install Now', 'Later'],
+      defaultId: 0,
+      cancelId: 1
+    }).then((result) => {
+      if (result.response === 0) {
+        autoUpdater.quitAndInstall(true, true);
+      }
+    });
   });
 
   ipcMain.on('install-update', () => {
