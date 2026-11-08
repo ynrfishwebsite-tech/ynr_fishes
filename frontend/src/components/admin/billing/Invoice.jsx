@@ -11,8 +11,10 @@ import { formatTime12 } from '../../../utils/formatters/timeFormat';
 import { getReceiptFontMetrics, findReceiptFont } from '../../../utils/formatters/receiptFonts';
 import { renderElementToESCPOSRaster, renderElementToPNGBase64, autoTrimCanvasBottom } from '../../../utils/formatters/escposRaster';
 import ClothUnrollReceipt from './ClothUnrollReceipt';
+import { getBillTotalWeightKg } from './BillHistory';
 
-const Invoice = ({ bill, onClose, onSave, onSettle, whatsappBillSentIds, onWhatsAppSent, autoSendWhatsApp = false, isHistoryView = false, isDirectPrint = false, onGlobalToast }) => {
+const Invoice = ({ bill: incomingBill, billData, onClose, onSave, onSettle, whatsappBillSentIds, onWhatsAppSent, autoSendWhatsApp = false, isHistoryView = false, isDirectPrint = false, onGlobalToast }) => {
+  const bill = incomingBill || billData || {};
   const { t } = useLanguage();
   const currencySymbol = localStorage.getItem('primaryCurrency') === 'USD' ? '$' : '₹';
   const primaryCurrency = localStorage.getItem('primaryCurrency') || 'INR';
@@ -33,31 +35,10 @@ const Invoice = ({ bill, onClose, onSave, onSettle, whatsappBillSentIds, onWhats
       if (saved) {
         const parsed = JSON.parse(saved);
         if (parsed.logo === '[logo_stored]') parsed.logo = '';
-        return {
-          restaurantName: 'YNR FISHES',
-          restaurantType: 'Fish & Seafood Store',
-          address: 'Chemmumiahpet, Ravindra Nagar, Utukuru, Kadapa, Andhra Pradesh 516004',
-          phone: '+91 9849313889',
-          email: 'contact@fishmarketynr.com',
-          gstin: '',
-          upiId: '',
-          footerMessage: '*** Thank You! Fresh Quality Fish Always ***',
-          logo: '',
-          ...parsed
-        };
+        return parsed;
       }
     } catch (e) { }
-    return {
-      restaurantName: 'YNR FISHES',
-      restaurantType: 'Fish & Seafood Store',
-      address: 'Chemmumiahpet, Ravindra Nagar, Utukuru, Kadapa, Andhra Pradesh 516004',
-      phone: '+91 9849313889',
-      email: 'contact@fishmarketynr.com',
-      gstin: '',
-      upiId: '',
-      footerMessage: '*** Thank You! Fresh Quality Fish Always ***',
-      logo: ''
-    };
+    return {};
   });
 
   const [showWhatsAppModal, setShowWhatsAppModal] = useState(false);
@@ -678,20 +659,51 @@ const Invoice = ({ bill, onClose, onSave, onSettle, whatsappBillSentIds, onWhats
     }
     const customerName = overrideName || whatsappCustomerName || bill?.customerName || '';
 
-    const itemsList = (bill?.items || [])
-      .filter(item => !item.isCancelled)
-      .map(item => {
-        const qty = (item.quantity || 0) - (item.cancelledQuantity || 0);
-        if (qty <= 0) return null;
-        const price = (item.price || 0).toFixed(2);
-        const itemTot = ((item.price || 0) * qty).toFixed(2);
-        const { displayName, cutType, weightInfo } = getItemCuttingDetails(item);
-        const weightPart = weightInfo ? ` (${weightInfo})` : '';
-        const cutLine = cutType ? `\n   *Cut: ${cutType}*` : '';
-        return `• ${displayName}${weightPart} x ${qty} @ ₹${price} = ₹${itemTot}${cutLine}`;
-      })
-      .filter(Boolean)
-      .join('\n');
+    let itemsList = '';
+    const totalWeightKg = getBillTotalWeightKg(bill);
+
+    if (Object.keys(invoiceGroupedBoxes).length > 0) {
+      const boxLines = [];
+      Object.values(invoiceGroupedBoxes).forEach(box => {
+        const wtStr = box.totalWeightKg > 0 ? ` • ${box.totalWeightKg.toFixed(1).replace(/\.0$/, '')} Kg` : '';
+        boxLines.push(`📦 *${box.boxLabel} (${box.items.length} items${wtStr}) - ₹${box.totalPrice.toFixed(2)}*`);
+        box.items.forEach(item => {
+          const qty = (item.quantity || 0) - (item.cancelledQuantity || 0);
+          if (qty <= 0) return;
+          const { displayName, cutType, weightInfo } = getItemCuttingDetails(item);
+          const wtPart = item.weightKg ? ` (${item.weightKg}Kg @ ₹${item.pricePerKg || Math.round(item.price / (item.weightKg || 1))}/kg)` : (weightInfo ? ` (${weightInfo})` : '');
+          const cutPart = cutType ? ` [Cut: ${cutType}]` : '';
+          boxLines.push(`  • ${displayName}${wtPart} x ${qty} @ ₹${(item.price || 0).toFixed(2)} = ₹${((item.price || 0) * qty).toFixed(2)}${cutPart}`);
+        });
+      });
+      if (invoiceIndividualItems.length > 0) {
+        boxLines.push(`🐟 *Individual Items:*`);
+        invoiceIndividualItems.forEach(item => {
+          const qty = (item.quantity || 0) - (item.cancelledQuantity || 0);
+          if (qty <= 0) return;
+          const { displayName, cutType, weightInfo } = getItemCuttingDetails(item);
+          const wtPart = weightInfo ? ` (${weightInfo})` : (item.weightKg ? ` (${item.weightKg} Kg)` : '');
+          const cutPart = cutType ? ` [Cut: ${cutType}]` : '';
+          boxLines.push(`  • ${displayName}${wtPart} x ${qty} @ ₹${(item.price || 0).toFixed(2)} = ₹${((item.price || 0) * qty).toFixed(2)}${cutPart}`);
+        });
+      }
+      itemsList = boxLines.join('\n');
+    } else {
+      itemsList = (bill?.items || [])
+        .filter(item => !item.isCancelled)
+        .map(item => {
+          const qty = (item.quantity || 0) - (item.cancelledQuantity || 0);
+          if (qty <= 0) return null;
+          const price = (item.price || 0).toFixed(2);
+          const itemTot = ((item.price || 0) * qty).toFixed(2);
+          const { displayName, cutType, weightInfo } = getItemCuttingDetails(item);
+          const weightPart = weightInfo ? ` (${weightInfo})` : (item.weightKg ? ` (${item.weightKg} Kg)` : '');
+          const cutLine = cutType ? `\n   *Cut: ${cutType}*` : '';
+          return `• ${displayName}${weightPart} x ${qty} @ ₹${price} = ₹${itemTot}${cutLine}`;
+        })
+        .filter(Boolean)
+        .join('\n');
+    }
 
     const totalQty = (bill?.items || []).filter(i => !i.isCancelled).reduce((acc, curr) => acc + ((curr.quantity || 1) - (curr.cancelledQuantity || 0)), 0);
     const sub = Number(bill?.subtotal || bill?.items?.filter(i => !i.isCancelled).reduce((acc, curr) => acc + ((curr.price || 0) * ((curr.quantity || 1) - (curr.cancelledQuantity || 0))), 0) || 0);
@@ -756,7 +768,12 @@ const Invoice = ({ bill, onClose, onSave, onSettle, whatsappBillSentIds, onWhats
 
     let paymentInfo = 'Cash';
     const payMode = bill?.paymentMode || bill?.paymentMethod || 'Cash';
-    if (payMode === 'UPI') {
+    if (bill?.status === 'Partial' || payMode === 'Partial') {
+      const paid = bill?.paidAmount ?? bill?.amountPaid ?? bill?.partialPayment?.paidAmount ?? 0;
+      const due = bill?.dueAmount ?? bill?.partialPayment?.dueAmount ?? Math.max(0, (bill?.total || 0) - paid);
+      const method = bill?.partialPayment?.method || 'Cash';
+      paymentInfo = `Partially Paid (Paid ${method}: ₹${paid} | Khata Due: ₹${due})`;
+    } else if (payMode === 'UPI') {
       const upiApp = bill?.upiApp || bill?.upiAppName || (bill?.paymentMethod !== 'UPI' ? bill?.paymentMethod : '') || '';
       paymentInfo = upiApp && upiApp !== 'UPI' ? `UPI [${upiApp}]` : 'UPI';
     } else if (payMode === 'Mixed') {
@@ -785,21 +802,21 @@ const Invoice = ({ bill, onClose, onSave, onSettle, whatsappBillSentIds, onWhats
 
     if (bType === 'Delivery') {
       header = customerName
-        ? `🛵 Dear *${customerName}*, thank you for ordering delivery with us!\n🧾 *Delivery e-Bill #${billNo}* | *${restName.toUpperCase()}*`
-      : `🛵 *HOME DELIVERY E-BILL* 🛵\n🏠 *${restName.toUpperCase()}* | Bill #${billNo}`;
+        ? `Dear *${customerName}*, thank you for ordering delivery with us!\n*Delivery e-Bill #${billNo}* | *${restName.toUpperCase()}*`
+        : `*HOME DELIVERY E-BILL*\n*${restName.toUpperCase()}* | Bill #${billNo}`;
       if (!footerMessage) footerMessage = '*** THANK YOU FOR YOUR DELIVERY ORDER! ENJOY YOUR MEAL ***';
     } else {
       const isExp = bill.customerCategory === 'Export' || bill.orderMode === 'export' || String(billNo).startsWith('EXP-');
       const isWs = !isExp && (bill.customerCategory === 'Wholesale' || bill.orderMode === 'bulk' || String(billNo).startsWith('WS-') || Number(bill.totalBoxes || 0) > 0);
       const catTitle = isExp ? 'EXPORT' : (isWs ? 'WHOLESALE' : 'RETAIL');
       header = customerName
-        ? `🛍️ Dear *${customerName}*, thank you for your ${catTitle.toLowerCase()} order!\n🧾 *${catTitle} e-Bill #${billNo}* | *${restName.toUpperCase()}*`
-        : `🛍️ *${catTitle} E-BILL RECEIPT* 🛍️\n📦 *${restName.toUpperCase()}* | Bill #${billNo}`;
+        ? `Dear *${customerName}*, thank you for your ${catTitle.toLowerCase()} order!\n*${catTitle} e-Bill #${billNo}* | *${restName.toUpperCase()}*`
+        : `*${catTitle} E-BILL RECEIPT*\n*${restName.toUpperCase()}* | Bill #${billNo}`;
       if (!footerMessage) footerMessage = '*** THANK YOU! VISIT AGAIN ***';
     }
 
     return `${header}\n${READ_MORE}\n` +
-      (s.address ? `📍 ${s.address.split('\n')[0]}\n` : '') +
+      (s.address ? `Address: ${s.address.split('\n')[0]}\n` : '') +
       `----------------------------------------\n` +
       `*Bill No:* #${billNo}\n` +
       `*Date & Time:* ${dateStr}, ${timeStr}\n` +
@@ -808,7 +825,7 @@ const Invoice = ({ bill, onClose, onSave, onSettle, whatsappBillSentIds, onWhats
       (bill?.customerPhone || whatsappPhone ? `*Phone:* ${bill?.customerPhone || whatsappPhone}\n` : '') +
       (bill?.tokenNumber ? `*Token No:* ${bill.tokenNumber}\n` : '') +
       `----------------------------------------\n` +
-      `🛒 *ITEMS ORDERED (${totalQty} Qty):*\n` +
+      `*ITEMS ORDERED (${totalQty} Qty${totalWeightKg > 0 ? ` • ${totalWeightKg.toFixed(1).replace(/\.0$/, '')} Kg` : ''}):*\n` +
       `${itemsList}\n` +
       `----------------------------------------\n` +
       `• *Subtotal:* ₹${subtotal}` +
@@ -818,6 +835,7 @@ const Invoice = ({ bill, onClose, onSave, onSettle, whatsappBillSentIds, onWhats
       containerCharge +
       cuttingCharge +
       roundOffText +
+      (totalWeightKg > 0 ? `\n• *Total Weight:* *${totalWeightKg.toFixed(1).replace(/\.0$/, '')} Kg*` : '') +
       `\n• *GRAND TOTAL:* *₹${total}*\n` +
       `• *Payment Mode:* ${paymentInfo}\n` +
       (s.whatsappShowQr !== false && s.upiId ? `• *Pay via UPI:* ${s.upiId.trim()}\n` : '') +
@@ -825,7 +843,7 @@ const Invoice = ({ bill, onClose, onSave, onSettle, whatsappBillSentIds, onWhats
       `_${footerMessage}_`;
   };
 
-  const handleSendWhatsAppBill = async (targetPhone = null, overrideName = null, forceResend = false) => {
+  const handleSendWhatsAppBill = async (targetPhone = null, overrideName = null, forceResend = true) => {
     // Note: isAlreadySent guard removed - user can click Resend (↻) button which
     // resets isAlreadySent to false before calling this function.
 
@@ -1024,8 +1042,37 @@ const Invoice = ({ bill, onClose, onSave, onSettle, whatsappBillSentIds, onWhats
       }
     } catch (err) {
       if (err?.response?.status === 409 || err?.response?.data?.alreadySent) {
-        // 409 means DB says it was sent before - but user says customer didn't receive it.
-        // DO NOT silently mark as sent. Show a warning and let user resend.
+        console.log('[eBill] 409 Conflict encountered, retrying with forceResend=true...');
+        try {
+          const retryRes = await sendWhatsAppBill(
+            cleanPhone,
+            msg,
+            imageBase64,
+            null,
+            `Bill_${bill?.billNumber || 'Receipt'}.jpg`,
+            null,
+            null,
+            bill?._id || null,
+            bill?.billNumber || null,
+            true
+          );
+          if (retryRes && retryRes.success && !retryRes.queued) {
+            setToast({ message: `${t("e-Bill sent to")} +${cleanPhone} ${t("via WhatsApp! ✓")}`, type: 'success' });
+            setIsAlreadySent(true);
+            if (bill?.billNumber) {
+              try { sessionStorage.setItem(`ms_wa_sent_${bill.billNumber}`, 'true'); } catch (e) { }
+            }
+            if (bill?._id) {
+              try { sessionStorage.setItem(`ms_wa_sent_${bill._id}`, 'true'); } catch (e) { }
+            }
+            if (onWhatsAppSent) onWhatsAppSent(bill?.billNumber || bill?._id);
+            setShowWhatsAppModal(false);
+            setSendingAutomated(false);
+            return;
+          }
+        } catch (retryErr) {
+          console.warn('[eBill] Retry with forceResend failed:', retryErr);
+        }
         setToast({
           message: t("System shows bill was sent before, but customer may not have received it. Click WhatsApp e-Bill again to resend."),
           type: 'warning'
@@ -1077,7 +1124,7 @@ const Invoice = ({ bill, onClose, onSave, onSettle, whatsappBillSentIds, onWhats
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
           setTimeout(() => {
-            handleSendWhatsAppBill(targetPhone, custName || undefined);
+            handleSendWhatsAppBill(targetPhone, custName || undefined, false);
           }, 300);
         });
       });
@@ -1198,7 +1245,7 @@ const Invoice = ({ bill, onClose, onSave, onSettle, whatsappBillSentIds, onWhats
                   setShowWhatsAppModal(true);
                   setToast({ message: t("Please enter customer WhatsApp number to send bill"), type: 'warning' });
                 } else {
-                  handleSendWhatsAppBill();
+                  handleSendWhatsAppBill(null, null, true);
                 }
               }}
               disabled={sendingAutomated}
@@ -1426,7 +1473,7 @@ const Invoice = ({ bill, onClose, onSave, onSettle, whatsappBillSentIds, onWhats
               <button
                 type="button"
                 disabled={sendingAutomated || isAlreadySent}
-                onClick={() => handleSendWhatsAppBill(whatsappPhone, whatsappCustomerName)}
+                onClick={() => handleSendWhatsAppBill(whatsappPhone, whatsappCustomerName, true)}
                 className={`flex-1 py-2.5 rounded-xl font-bold text-xs sm:text-sm transition-all shadow-md flex items-center justify-center gap-1.5 cursor-pointer active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed ${isAlreadySent
                   ? 'bg-slate-300 text-slate-600 shadow-none'
                   : 'bg-[#25D366] hover:bg-[#20bd5a] text-white shadow-emerald-500/20'
@@ -1633,6 +1680,59 @@ const Invoice = ({ bill, onClose, onSave, onSettle, whatsappBillSentIds, onWhats
             {bill.tokenNumber && (
               <div style={{ fontWeight: 750, fontSize: fontMetrics.bodySize }}>{t('Token: ')}{bill.tokenNumber}</div>
             )}
+
+            {/* Customer Details Section (Controlled by Admin Settings for Retail, Wholesale, Export) */}
+            {(() => {
+              const custConfig = activeSettings?.receiptCustomerDisplay || {
+                retail: { enabled: true, showName: true, showPhone: true, showAddress: false, showShopName: false },
+                wholesale: { enabled: true, showName: true, showPhone: true, showAddress: true, showShopName: true },
+                export: { enabled: true, showName: true, showPhone: true, showAddress: true, showShopName: true }
+              };
+              const isExp = bill.customerCategory === 'Export' || bill.orderMode === 'export' || String(bill.billNumber || '').startsWith('EXP-') || String(bill.tableNo || '').startsWith('EXP-');
+              const isWs = !isExp && (bill.customerCategory === 'Wholesale' || bill.orderMode === 'bulk' || String(bill.billNumber || '').startsWith('WS-') || String(bill.tableNo || '').startsWith('WS-') || Number(bill.totalBoxes || 0) > 0 || (Array.isArray(bill.boxes) && bill.boxes.length > 0));
+              const modeKey = isExp ? 'export' : (isWs ? 'wholesale' : 'retail');
+              const cfg = custConfig[modeKey] || { enabled: true, showName: true, showPhone: true };
+              if (!cfg.enabled) return null;
+
+              const cName = cfg.showName ? (bill.customerName || whatsappCustomerName) : null;
+              const cPhone = cfg.showPhone ? (bill.customerPhone || whatsappPhone) : null;
+              const cShop = cfg.showShopName ? (bill.shopName || bill.customerShopName) : null;
+              const cAddress = cfg.showAddress ? (bill.customerAddress || bill.deliveryAddress) : null;
+
+              if (!cName && !cPhone && !cShop && !cAddress) return null;
+
+              return (
+                <div style={{ borderTop: '1px dashed #666', borderBottom: '1px dashed #666', padding: '3px 0', margin: '4px 0', fontSize: fontMetrics.detailSize }}>
+                  <div style={{ fontWeight: 800, fontSize: fontMetrics.detailSize, textTransform: 'uppercase', marginBottom: '1px' }}>
+                    {t('Customer Details:')}
+                  </div>
+                  {cName && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span>{t('Name:')}</span>
+                      <span style={{ fontWeight: 750 }}>{cName}</span>
+                    </div>
+                  )}
+                  {cShop && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span>{t('Shop:')}</span>
+                      <span style={{ fontWeight: 750 }}>{cShop}</span>
+                    </div>
+                  )}
+                  {cPhone && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span>{t('Phone:')}</span>
+                      <span style={{ fontWeight: 750 }}>{cPhone}</span>
+                    </div>
+                  )}
+                  {cAddress && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                      <span>{t('Address:')}</span>
+                      <span style={{ textAlign: 'right', maxWidth: '65%', wordBreak: 'break-word', fontWeight: 600 }}>{cAddress}</span>
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
 
             {/* Dashed Separator */}
             <div style={{ borderTop: '1px dashed #444', margin: '7px 0', width: '100%', height: '1px', clear: 'both' }}></div>
@@ -1895,6 +1995,19 @@ const Invoice = ({ bill, onClose, onSave, onSettle, whatsappBillSentIds, onWhats
                     {Number(bill.splitPayments?.card || 0) > 0 && <div>Card: {currencySymbol}{Number(bill.splitPayments.card).toFixed(2)}</div>}
                   </div>
                 );
+              } else if (bill.status === 'Partial' || bill.paymentMode === 'Partial') {
+                const paid = bill.paidAmount ?? bill.amountPaid ?? bill.partialPayment?.paidAmount ?? 0;
+                const due = bill.dueAmount ?? bill.partialPayment?.dueAmount ?? Math.max(0, (bill.total || 0) - paid);
+                const method = bill.partialPayment?.method || 'Cash';
+                return (
+                  <div style={{ textAlign: 'center', margin: '3px 0', borderTop: '1px dashed #666', borderBottom: '1px dashed #666', padding: '3px 0' }}>
+                    <div style={{ fontWeight: 'bold', fontSize: fontMetrics.bodySize }}>{t("PARTIALLY PAID (KHATA)")}</div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: fontMetrics.detailSize, marginTop: '2px' }}>
+                      <span>{t("Paid")} ({method}): {currencySymbol}{Number(paid).toFixed(2)}</span>
+                      <span style={{ fontWeight: 'bold' }}>{t("Due")}: {currencySymbol}{Number(due).toFixed(2)}</span>
+                    </div>
+                  </div>
+                );
               } else if (bill.status === 'Unpaid') {
                 return <div style={{ textAlign: 'center', fontWeight: 'bold', fontSize: fontMetrics.bodySize, margin: '2px 0' }}>{t("UNPAID (KHATA BILL)")}</div>;
               } else {
@@ -1987,7 +2100,7 @@ const Invoice = ({ bill, onClose, onSave, onSettle, whatsappBillSentIds, onWhats
             <div style={{ height: '1.5px', backgroundColor: '#000000', margin: '5px 0', width: '100%', minHeight: '1.5px', flexShrink: 0 }}></div>
 
             <div style={{ fontSize: fontMetrics.subHeadingSize, textAlign: 'center', margin: '4px 0', fontWeight: 'bold' }}>
-              {bill.status === 'Unpaid' ? 'Unpaid (Khata)' : bill.discountType === 'complimentary' ? 'Complimentary Bill' : 'Tax Invoice'}
+              {bill?.status === 'Unpaid' ? 'Unpaid (Khata)' : bill?.discountType === 'complimentary' ? 'Complimentary Bill' : 'Tax Invoice'}
             </div>
 
             <div style={{ height: '1.5px', backgroundColor: '#000000', margin: '5px 0', width: '100%', minHeight: '1.5px', flexShrink: 0 }}></div>
@@ -2032,6 +2145,59 @@ const Invoice = ({ bill, onClose, onSave, onSettle, whatsappBillSentIds, onWhats
             {bill.tokenNumber && (
               <div style={{ fontWeight: 'bold', fontSize: fontMetrics.detailSize }}>{t('Token No.:')}{bill.tokenNumber}</div>
             )}
+
+            {/* Customer Details Section (Controlled by Admin Settings for Retail, Wholesale, Export) */}
+            {(() => {
+              const custConfig = activeSettings?.receiptCustomerDisplay || {
+                retail: { enabled: true, showName: true, showPhone: true, showAddress: false, showShopName: false },
+                wholesale: { enabled: true, showName: true, showPhone: true, showAddress: true, showShopName: true },
+                export: { enabled: true, showName: true, showPhone: true, showAddress: true, showShopName: true }
+              };
+              const isExp = bill.customerCategory === 'Export' || bill.orderMode === 'export' || String(bill.billNumber || '').startsWith('EXP-') || String(bill.tableNo || '').startsWith('EXP-');
+              const isWs = !isExp && (bill.customerCategory === 'Wholesale' || bill.orderMode === 'bulk' || String(bill.billNumber || '').startsWith('WS-') || String(bill.tableNo || '').startsWith('WS-') || Number(bill.totalBoxes || 0) > 0 || (Array.isArray(bill.boxes) && bill.boxes.length > 0));
+              const modeKey = isExp ? 'export' : (isWs ? 'wholesale' : 'retail');
+              const cfg = custConfig[modeKey] || { enabled: true, showName: true, showPhone: true };
+              if (!cfg.enabled) return null;
+
+              const cName = cfg.showName ? (bill.customerName || whatsappCustomerName) : null;
+              const cPhone = cfg.showPhone ? (bill.customerPhone || whatsappPhone) : null;
+              const cShop = cfg.showShopName ? (bill.shopName || bill.customerShopName) : null;
+              const cAddress = cfg.showAddress ? (bill.customerAddress || bill.deliveryAddress) : null;
+
+              if (!cName && !cPhone && !cShop && !cAddress) return null;
+
+              return (
+                <div style={{ borderTop: '1px dashed #444', borderBottom: '1px dashed #444', padding: '3px 0', margin: '4px 0', fontSize: fontMetrics.detailSize }}>
+                  <div style={{ fontWeight: 800, fontSize: fontMetrics.detailSize, textTransform: 'uppercase', marginBottom: '1px' }}>
+                    {t('Customer Details:')}
+                  </div>
+                  {cName && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span>{t('Name:')}</span>
+                      <span style={{ fontWeight: 'bold' }}>{cName}</span>
+                    </div>
+                  )}
+                  {cShop && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span>{t('Shop:')}</span>
+                      <span style={{ fontWeight: 'bold' }}>{cShop}</span>
+                    </div>
+                  )}
+                  {cPhone && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span>{t('Phone:')}</span>
+                      <span style={{ fontWeight: 'bold' }}>{cPhone}</span>
+                    </div>
+                  )}
+                  {cAddress && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                      <span>{t('Address:')}</span>
+                      <span style={{ textAlign: 'right', maxWidth: '65%', wordBreak: 'break-word', fontWeight: 600 }}>{cAddress}</span>
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
 
             <div style={{ height: '1.5px', backgroundColor: '#000000', margin: '5px 0', width: '100%', minHeight: '1.5px', flexShrink: 0 }}></div>
 
@@ -2324,6 +2490,19 @@ const Invoice = ({ bill, onClose, onSave, onSettle, whatsappBillSentIds, onWhats
                       </div>
                     )}
                     <div style={{ borderTop: '1.5px dashed #000000', margin: '3px 0', height: '1px', width: '100%' }}></div>
+                  </div>
+                );
+              } else if (bill.status === 'Partial' || bill.paymentMode === 'Partial') {
+                const paid = bill.paidAmount ?? bill.amountPaid ?? bill.partialPayment?.paidAmount ?? 0;
+                const due = bill.dueAmount ?? bill.partialPayment?.dueAmount ?? Math.max(0, (bill.total || 0) - paid);
+                const method = bill.partialPayment?.method || 'Cash';
+                return (
+                  <div style={{ textAlign: 'center', margin: '3px 0', borderTop: '1px dashed #666', borderBottom: '1px dashed #666', padding: '3px 0' }}>
+                    <div style={{ fontWeight: 'bold', fontSize: fontMetrics.bodySize }}>{t("PARTIALLY PAID (KHATA)")}</div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: fontMetrics.detailSize, marginTop: '2px' }}>
+                      <span>{t("Paid")} ({method}): {currencySymbol}{Number(paid).toFixed(2)}</span>
+                      <span style={{ fontWeight: 'bold' }}>{t("Due")}: {currencySymbol}{Number(due).toFixed(2)}</span>
+                    </div>
                   </div>
                 );
               } else if (bill.status === 'Unpaid') {

@@ -17,14 +17,13 @@ import Dashboard from '../../components/admin/analytics/Dashboard';
 import BillingPage from '../../components/admin/billing/BillingPage';
 import ActiveOrders, { getOrderCategory } from '../../components/admin/billing/ActiveOrders';
 import BillHistory from '../../components/admin/billing/BillHistory';
+import ChannelHub from '../../components/admin/channel/ChannelHub';
 import MenuManagement from '../../components/admin/catalog/MenuManagement';
 import FishInventoryManager from '../../components/admin/inventory/FishInventoryManager';
 import DayBook from '../../components/admin/finance/DayBook';
-import KhataDashboard from '../../components/admin/finance/KhataDashboard';
 import Expenses from '../../components/admin/finance/Expenses';
 import VehicleManagement from '../../components/admin/operations/VehicleManagement';
 import Analytics from '../../components/admin/analytics/Analytics';
-import CRM from '../../components/admin/crm/CRM';
 import PrinterConfig from '../../components/admin/system/PrinterConfig';
 import Settings from '../../components/admin/system/Settings';
 import WhatsAppConnectModal from '../../components/admin/communication/WhatsAppConnectModal';
@@ -776,42 +775,33 @@ export default function AdminDashboard() {
             />
           )}
 
-          {/* Retail Bill History */}
+          {/* Retail Bill + CRM + Khata Hub */}
           {currentView === 'retail-bill-history' && (
-            <BillHistory
+            <ChannelHub
+              channel="Retail"
               user={user}
               onNavigate={navigateTo}
               onGoBack={goBack}
-              initialSalesType="Retail"
-              pageTitle="Retail Bill History"
-              pageSubtitle="Past Retail Invoices & Receipts"
-              lockSalesType={true}
             />
           )}
 
-          {/* Wholesale Bill History */}
+          {/* Wholesale Bill + CRM + Khata Hub */}
           {currentView === 'wholesale-bill-history' && (
-            <BillHistory
+            <ChannelHub
+              channel="Wholesale"
               user={user}
               onNavigate={navigateTo}
               onGoBack={goBack}
-              initialSalesType="Wholesale"
-              pageTitle="Wholesale Bill History"
-              pageSubtitle="Past Wholesale Box Invoices & Consignments"
-              lockSalesType={true}
             />
           )}
 
-          {/* Export Bill History */}
+          {/* Export Bill + CRM + Khata Hub */}
           {currentView === 'export-bill-history' && (
-            <BillHistory
+            <ChannelHub
+              channel="Export"
               user={user}
               onNavigate={navigateTo}
               onGoBack={goBack}
-              initialSalesType="Export"
-              pageTitle="Export Bill History"
-              pageSubtitle="Past Local & DAM Export Consignments"
-              lockSalesType={true}
             />
           )}
 
@@ -851,9 +841,11 @@ export default function AdminDashboard() {
             />
           )}
 
-          {/* Khata Book */}
+          {/* Khata Book -> Direct to Wholesale Hub Khata Tab */}
           {currentView === 'khata' && (
-            <KhataDashboard
+            <ChannelHub
+              channel="Wholesale"
+              initialTab="khata"
               user={user}
               onNavigate={navigateTo}
               onGoBack={goBack}
@@ -887,9 +879,11 @@ export default function AdminDashboard() {
             />
           )}
 
-          {/* CRM */}
+          {/* CRM -> Direct to Wholesale Hub CRM Tab */}
           {currentView === 'crm' && (
-            <CRM
+            <ChannelHub
+              channel="Wholesale"
+              initialTab="crm"
               user={user}
               onNavigate={navigateTo}
               onGoBack={goBack}

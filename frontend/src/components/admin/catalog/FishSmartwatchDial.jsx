@@ -36,6 +36,7 @@ export default function FishSmartwatchDial({
   showToast,
   setShowBoxPacker,
   openBoxPackerModal,
+  getGradeAverageKg,
   showImages = true,
   showAnimation = true,
   cart = [],
@@ -113,15 +114,19 @@ export default function FishSmartwatchDial({
 
   // Sync state when active item changes
   useEffect(() => {
-    setGradeOverride('small');
-    setWeightKg('1.000');
+    const initialGrade = currentItem?.sizeGrades?.medium?.enabled !== false ? 'medium'
+      : currentItem?.sizeGrades?.small?.enabled !== false ? 'small'
+      : currentItem?.sizeGrades?.big?.enabled !== false ? 'big' : 'medium';
+    const avgKg = getGradeAverageKg ? getGradeAverageKg(currentItem, initialGrade) : (initialGrade === 'medium' ? 3 : initialGrade === 'big' ? 6 : 1);
+    setGradeOverride(initialGrade);
+    setWeightKg((avgKg).toFixed(3));
     setTareGrams(0);
     if (currentItem?.boxPackingKg) {
       setBoxWeightKg(String(currentItem.boxPackingKg));
     } else {
-      setBoxWeightKg('1');
+      setBoxWeightKg(String(avgKg));
     }
-  }, [currentItem?._id]);
+  }, [currentItem?._id, getGradeAverageKg]);
 
   const isBoxBasedMode = fishOrderMode === 'bulk' || fishOrderMode === 'export';
 
@@ -448,6 +453,10 @@ export default function FishSmartwatchDial({
     }
 
     if (isBoxBasedMode) {
+      if (openBoxPackerModal) {
+        openBoxPackerModal(currentItem, activeGrade);
+        return true;
+      }
       if (boxFishMode === 'mixed') {
         if (netKg <= 0) {
           if (showToast) showToast(`Please enter valid weight in Kg for Box #${activeBoxNumber}`, 'error');
@@ -1074,6 +1083,8 @@ export default function FishSmartwatchDial({
                     type="button"
                     onClick={() => {
                       setGradeOverride(g.key);
+                      const avgKg = getGradeAverageKg ? getGradeAverageKg(currentItem, g.key) : (g.key === 'medium' ? 3 : g.key === 'big' ? 6 : 1);
+                      setWeightKg((avgKg).toFixed(3));
                       setShowGradeMenu(false);
                     }}
                     className={`w-full py-1.5 px-2 rounded-xl text-left flex items-center justify-between text-xs transition-colors cursor-pointer ${

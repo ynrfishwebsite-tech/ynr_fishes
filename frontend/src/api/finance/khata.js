@@ -1,9 +1,11 @@
 import api from '../system/axios';
 
-// GET paginated Khata accounts with stats
-export const getKhataAccounts = async ({ page = 1, limit = 20, search = '' }) => {
+// GET paginated Khata accounts with stats (supports channel category filter: Retail | Wholesale | Export)
+export const getKhataAccounts = async ({ page = 1, limit = 20, search = '', category = 'All' }) => {
+  const params = { page, limit, search };
+  if (category && category !== 'All') params.category = category;
   const response = await api.get('/credit-accounts/khata', {
-    params: { page, limit, search }
+    params
   });
   return response.data;
 };
@@ -24,6 +26,20 @@ export const settleKhata = async ({ phoneNumber, amount, paymentMode, splitPayme
     upiApp,
     note,
     targetBillId
+  });
+  return response.data;
+};
+
+// POST send WhatsApp payment reminder for a Khata balance
+export const sendKhataReminder = async ({ phoneNumber, customerName, balance, billNumber, category, imageBase64, customMessage }) => {
+  const response = await api.post('/credit-accounts/khata/send-reminder', {
+    phoneNumber,
+    customerName,
+    balance,
+    billNumber,
+    category,
+    imageBase64,
+    customMessage
   });
   return response.data;
 };

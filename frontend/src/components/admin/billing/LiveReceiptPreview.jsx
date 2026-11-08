@@ -132,6 +132,50 @@ const LiveReceiptPreview = ({ settings, previewTab, t, user, menuPreviewItems, o
               <span style={{ fontWeight: 'bold' }}>{t("Bill No.:")} MS0575</span>
             </div>
 
+            {/* Customer Details Live Preview (Sample) */}
+            {(() => {
+              const custConfig = settings?.receiptCustomerDisplay || {
+                retail: { enabled: true, showName: true, showPhone: true, showAddress: false, showShopName: false }
+              };
+              const cfg = custConfig.retail || custConfig.wholesale || { enabled: true, showName: true, showPhone: true };
+              if (!cfg.enabled) return null;
+
+              const hasAny = cfg.showName || cfg.showPhone || cfg.showShopName || cfg.showAddress;
+              if (!hasAny) return null;
+
+              return (
+                <div style={{ borderTop: '1px dashed #444', borderBottom: '1px dashed #444', padding: '3px 0', margin: '3px 0', fontSize: previewMetrics.detailSize }}>
+                  <div style={{ fontWeight: 'bold', fontSize: previewMetrics.detailSize, textTransform: 'uppercase', marginBottom: '1px' }}>
+                    {t("Customer Details:")}
+                  </div>
+                  {cfg.showName && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span>Name:</span>
+                      <span style={{ fontWeight: 'bold' }}>Preethi</span>
+                    </div>
+                  )}
+                  {cfg.showShopName && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span>Shop:</span>
+                      <span style={{ fontWeight: 'bold' }}>Haritha Fish Mart</span>
+                    </div>
+                  )}
+                  {cfg.showPhone && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span>Phone:</span>
+                      <span style={{ fontWeight: 'bold' }}>9392376374</span>
+                    </div>
+                  )}
+                  {cfg.showAddress && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                      <span>Address:</span>
+                      <span style={{ textAlign: 'right', maxWidth: '65%', fontWeight: 'normal' }}>Harbor Road, Kadapa</span>
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
+
             <div style={{ height: '1.5px', backgroundColor: '#000000', margin: '5px 0', width: '100%' }}></div>
 
             {fmt === '58mm' ? (

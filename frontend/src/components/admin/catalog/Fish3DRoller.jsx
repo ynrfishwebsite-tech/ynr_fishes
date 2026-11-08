@@ -21,6 +21,7 @@ export default function Fish3DRoller({
   showToast,
   setShowBoxPacker,
   openBoxPackerModal,
+  getGradeAverageKg,
   showImages = true,
   showAnimation = true
 }) {
@@ -80,15 +81,19 @@ export default function Fish3DRoller({
     };
   }, []);
 
-  // Sync state when active item changes - Default to 1.000 Kg & Small grade
+  // Sync state when active item changes - Default to Medium grade & Average Kg (3 Kg)
   useEffect(() => {
-    setGradeOverride('small');
-    setWeightKg('1.000');
+    const initialGrade = currentItem?.sizeGrades?.medium?.enabled !== false ? 'medium'
+      : currentItem?.sizeGrades?.small?.enabled !== false ? 'small'
+      : currentItem?.sizeGrades?.big?.enabled !== false ? 'big' : 'medium';
+    const avgKg = getGradeAverageKg ? getGradeAverageKg(currentItem, initialGrade) : (initialGrade === 'medium' ? 3 : initialGrade === 'big' ? 6 : 1);
+    setGradeOverride(initialGrade);
+    setWeightKg((avgKg).toFixed(3));
     setTareGrams(0);
     if (currentItem?.boxPackingKg) {
       setBoxWeightKg(String(currentItem.boxPackingKg));
     }
-  }, [currentItem?._id]);
+  }, [currentItem?._id, getGradeAverageKg]);
 
   const isBoxBasedMode = fishOrderMode === 'bulk' || fishOrderMode === 'export';
 
@@ -196,41 +201,11 @@ export default function Fish3DRoller({
     }
 
     if (isBoxBasedMode) {
-      if (totalBoxWeightKg <= 0) {
-        if (showToast) showToast('Please enter valid box count and weight', 'error');
-        return;
+      if (openBoxPackerModal) {
+        openBoxPackerModal(currentItem, activeGrade);
+      } else if (setShowBoxPacker) {
+        setShowBoxPacker(true);
       }
-      const itemToAdd = {
-        ...currentItem,
-        itemKey: `${currentItem._id}_box_${boxCount}boxes_${fishOrderMode}_${Date.now()}`,
-        menuItem: currentItem._id,
-        originalId: currentItem._id,
-        originalFishName: currentItem.name,
-        name: `${currentItem.name} (${boxCount} Box${boxCount > 1 ? 'es' : ''} - ${totalBoxWeightKg} Kg)`,
-        price: totalBoxPrice,
-        total: totalBoxPrice,
-        quantity: boxCount,
-        sellingUnit: 'Box',
-        boxCount: boxCount,
-        enteredWeight: totalBoxWeightKg,
-        netWeightKg: totalBoxWeightKg,
-        grossWeightKg: totalBoxWeightKg,
-        pricePerKg: boxRate,
-        orderMode: fishOrderMode
-      };
-
-      if (triggerFlyAnimation && cardRef.current) {
-        const rect = cardRef.current.getBoundingClientRect();
-        triggerFlyAnimation(
-          rect.left + rect.width / 2,
-          rect.top + 100,
-          currentItem.name,
-          formatImageUrl(currentItem.image)
-        );
-      }
-
-      onSelectItem(itemToAdd);
-      if (showToast) showToast(`Added ${boxCount} Box of ${currentItem.name}`, 'success');
       return;
     }
 
@@ -376,7 +351,15 @@ export default function Fish3DRoller({
             {/* Left Column: Big Hero Fish Photo or Clean Specs Box */}
             {showImages ? (
               <div className={`w-full ${viewportWidth < 880 ? 'md:w-52' : viewportWidth < 1050 ? 'md:w-60' : 'md:w-72'} flex flex-col justify-between shrink-0`}>
-                <div className={`relative w-full ${viewportWidth < 880 ? 'h-24 sm:h-32 md:h-52' : 'h-24 sm:h-36 md:h-64'} rounded-xl md:rounded-2xl overflow-hidden bg-slate-100 border border-slate-100 shadow-inner group`}>
+                <div
+                  onClick={() => {
+                    if (isBoxBasedMode) {
+                      if (openBoxPackerModal) openBoxPackerModal(currentItem, activeGrade);
+                      else if (setShowBoxPacker) setShowBoxPacker(true);
+                    }
+                  }}
+                  className={`relative w-full ${viewportWidth < 880 ? 'h-24 sm:h-32 md:h-52' : 'h-24 sm:h-36 md:h-64'} rounded-xl md:rounded-2xl overflow-hidden bg-slate-100 border border-slate-100 shadow-inner group ${isBoxBasedMode ? 'cursor-pointer hover:ring-2 hover:ring-amber-500/50 transition-all' : ''}`}
+                >
                   <span className="absolute top-1.5 left-1.5 md:top-3 md:left-3 text-[9px] md:text-xs font-black uppercase px-1.5 py-0.5 md:px-2.5 md:py-1 rounded md:rounded-lg bg-white/95 text-amber-900 shadow-sm border border-amber-200 z-10">
                     {isBoxBasedMode ? 'Box' : 'KG'}
                   </span>
@@ -483,7 +466,11 @@ export default function Fish3DRoller({
                               <button
                                 key={grade.key}
                                 type="button"
-                                onClick={() => setGradeOverride(grade.key)}
+                                onClick={() => {
+                                  setGradeOverride(grade.key);
+                                  const avgKg = getGradeAverageKg ? getGradeAverageKg(currentItem, grade.key) : (grade.key === 'medium' ? 3 : grade.key === 'big' ? 6 : 1);
+                                  setWeightKg((avgKg).toFixed(3));
+                                }}
                                 className={`py-0.5 md:py-1 px-1 md:px-1.5 rounded-md md:rounded-lg text-center transition-all cursor-pointer flex items-center justify-center gap-0.5 md:gap-1 ${
                                   isSelected
                                     ? 'bg-amber-600 text-white shadow-xs font-black'
@@ -664,7 +651,7 @@ export default function Fish3DRoller({
                       type="button"
                       onClick={() => {
                         if (openBoxPackerModal) {
-                          openBoxPackerModal(currentItem);
+                          openBoxPackerModal(currentItem, activeGrade);
                         } else if (setShowBoxPacker) {
                           setShowBoxPacker(true);
                         }

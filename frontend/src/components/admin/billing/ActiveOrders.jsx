@@ -4,6 +4,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import BackButton from '../common/BackButton';
 import { getOpenOrders } from '../../../api/billing/billing';
 import { getCachedOpenOrders } from '../../../db/offlineDb';
+import { getCachedCustomers, fetchPredefinedCustomers } from '../../../api/crm/customerApi';
 import { 
   Clock, ChevronRight, FileText, CheckCircle, ShoppingBag, 
   Fish, RefreshCw, AlertCircle, User, Lock, MapPin, Package, Building, ArrowUpRight,
@@ -112,6 +113,46 @@ const ActiveOrders = ({
   const [isPersonDropdownOpen, setIsPersonDropdownOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const personDropdownRef = useRef(null);
+
+  // CRM Customer Directory for instant profile avatars & details
+  const [customerProfiles, setCustomerProfiles] = useState(() => {
+    try {
+      const cached = getCachedCustomers('All');
+      return Array.isArray(cached) ? cached : [];
+    } catch {
+      return [];
+    }
+  });
+
+  useEffect(() => {
+    fetchPredefinedCustomers('All', 'All', true).then((data) => {
+      if (Array.isArray(data)) setCustomerProfiles(data);
+    }).catch(() => {});
+
+    const handleCustUpdate = () => {
+      const cached = getCachedCustomers('All');
+      if (Array.isArray(cached)) setCustomerProfiles(cached);
+    };
+    window.addEventListener('customersUpdated', handleCustUpdate);
+    return () => window.removeEventListener('customersUpdated', handleCustUpdate);
+  }, []);
+
+  const customerMap = useMemo(() => {
+    const map = {};
+    customerProfiles.forEach(c => {
+      if (c && c.phone) {
+        const clean = String(c.phone).replace(/\D/g, '').slice(-10);
+        if (clean) {
+          map[clean] = c;
+          map[c.phone] = c;
+        }
+      }
+      if (c && c.name) {
+        map[c.name.trim().toLowerCase()] = c;
+      }
+    });
+    return map;
+  }, [customerProfiles]);
 
   // Close person dropdown on outside click
   useEffect(() => {
@@ -224,24 +265,31 @@ const ActiveOrders = ({
     channelScopedOrders.forEach((o) => {
       const name = (o.customerName || '').trim() || 'Counter Walk-in';
       const phone = (o.customerPhone || '').trim();
+      const cleanPhone = phone.replace(/\D/g, '').slice(-10);
+      const matchedCust = customerMap[cleanPhone] || (name ? customerMap[name.toLowerCase()] : null);
+      const photo = o.customerPhoto || matchedCust?.photo || '';
       const key = `${name}__${phone}`;
       if (!map.has(key)) {
         map.set(key, {
           key,
           name,
           phone,
+          photo,
           label: phone ? `${name} (${phone})` : name,
           orderCount: 0,
           totalAmount: 0
         });
       }
       const entry = map.get(key);
+      if (!entry.photo && photo) {
+        entry.photo = photo;
+      }
       entry.orderCount += 1;
       entry.totalAmount += Number(o.total || 0);
     });
 
     return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name));
-  }, [channelScopedOrders]);
+  }, [channelScopedOrders, customerMap]);
 
   // Keep selectedPerson valid when availablePersons changes
   useEffect(() => {
@@ -592,7 +640,11 @@ const ActiveOrders = ({
                 title={selectedPersonObj ? selectedPersonObj.label : `Filter by ${personRoleLabel}`}
               >
                 <div className="flex items-center gap-1.5 min-w-0">
-                  <User size={12} className={selectedPerson !== 'All' ? 'text-[#ea580c]' : 'text-slate-500'} />
+                  {selectedPersonObj?.photo ? (
+                    <img src={selectedPersonObj.photo} alt={selectedPersonObj.name} className="w-4 h-4 rounded-full object-cover border border-amber-400 shrink-0" />
+                  ) : (
+                    <User size={12} className={selectedPerson !== 'All' ? 'text-[#ea580c]' : 'text-slate-500'} />
+                  )}
                   <span className="truncate max-w-[130px] sm:max-w-[180px]">
                     {selectedPersonObj ? selectedPersonObj.label : `${t("All")} ${personPluralLabel} (${availablePersons.length})`}
                   </span>
@@ -644,9 +696,18 @@ const ActiveOrders = ({
                           selectedPerson === p.key ? 'bg-orange-50 font-black text-[#ea580c]' : 'font-medium text-slate-700'
                         }`}
                       >
-                        <div className="min-w-0 pr-2">
-                          <div className="truncate font-bold text-slate-800">{p.name}</div>
-                          {p.phone && <div className="text-[10px] font-mono text-slate-400">{p.phone}</div>}
+                        <div className="flex items-center gap-2 min-w-0 pr-2">
+                          {p.photo ? (
+                            <img src={p.photo} alt={p.name} className="w-6 h-6 rounded-full object-cover border border-amber-300 shrink-0" />
+                          ) : (
+                            <div className="w-6 h-6 rounded-full bg-slate-200 text-slate-700 text-[10px] font-bold flex items-center justify-center shrink-0">
+                              {(p.name || 'C').charAt(0).toUpperCase()}
+                            </div>
+                          )}
+                          <div className="min-w-0">
+                            <div className="truncate font-bold text-slate-800">{p.name}</div>
+                            {p.phone && <div className="text-[10px] font-mono text-slate-400">{p.phone}</div>}
+                          </div>
                         </div>
                         <div className="text-right shrink-0">
                           <span className="text-[10px] bg-slate-100 text-slate-700 px-1.5 py-0.5 rounded-full font-mono font-bold block">
@@ -789,30 +850,71 @@ const ActiveOrders = ({
                       </span>
                     </div>
 
-                    {/* Sub-Header: Customer & Timestamp in compact normal para text + Weight Badge */}
-                    <div className="flex items-center justify-between text-[9.5px] text-slate-500 py-1 font-mono gap-1 flex-wrap">
-                      <div className="flex items-center gap-1 truncate text-slate-600 min-w-0">
-                        <User size={10} className="shrink-0 text-slate-400" />
-                        <span className="truncate font-semibold">{order.customerName || 'Counter Walk-in'}</span>
-                        {order.customerPhone && <span className="text-slate-400 font-mono text-[9px] truncate">({order.customerPhone})</span>}
-                      </div>
-                      <div className="flex items-center gap-1.5 text-slate-500 shrink-0">
-                        {orderWeight > 0 && (
-                          <span className="inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded bg-amber-100 text-amber-900 font-bold text-[9px] border border-amber-200/80">
-                            <Scale size={9} className="text-amber-800" />
-                            <span>{orderWeight} Kg</span>
-                          </span>
-                        )}
-                        <div className="flex items-center gap-0.5 text-slate-400">
-                          <Clock size={9} className="shrink-0" />
-                          <span>
-                            {order.orderDateFormatted || order.orderTimeFormatted
-                              ? `${order.orderDateFormatted || ''} ${order.orderTimeFormatted || ''}`.trim()
-                              : formatOrderDateTime(order.orderLockedAt || order.createdAt)}
-                          </span>
+                    {/* Customer Identity Row: Photo Avatar + Bigger Name & Mobile Number + Weight & Time */}
+                    {(() => {
+                      const cleanPhone = String(order.customerPhone || '').replace(/\D/g, '').slice(-10);
+                      const matchedCust = customerMap[cleanPhone] || (order.customerName ? customerMap[order.customerName.trim().toLowerCase()] : null);
+                      const photoUrl = order.customerPhoto || matchedCust?.photo || '';
+                      const initialLetter = ((order.customerName || 'C').trim().charAt(0) || 'C').toUpperCase();
+                      const shopOrBusiness = order.businessName || matchedCust?.businessName || '';
+
+                      return (
+                        <div className="flex items-center justify-between gap-2.5 py-2 my-1 border-b border-slate-100">
+                          <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                            {photoUrl ? (
+                              <img
+                                src={photoUrl}
+                                alt={order.customerName || 'Customer'}
+                                className="w-11 h-11 sm:w-12 sm:h-12 rounded-full object-cover border-2 border-amber-400/90 shadow-xs shrink-0"
+                              />
+                            ) : (
+                              <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-full bg-gradient-to-br from-[#ea580c] to-[#c2410c] text-white font-black text-base flex items-center justify-center shadow-xs shrink-0">
+                                {initialLetter}
+                              </div>
+                            )}
+
+                            <div className="min-w-0 flex-1">
+                              <div className="text-sm sm:text-[15px] font-black text-slate-900 leading-tight truncate">
+                                {order.customerName || t('Counter Walk-in')}
+                              </div>
+                              <div className="flex items-center gap-1.5 text-xs sm:text-[13px] font-bold text-slate-700 font-mono mt-0.5">
+                                {order.customerPhone ? (
+                                  <span className="text-slate-800 font-black tracking-tight flex items-center gap-1">
+                                    <Phone size={11} className="text-[#ea580c] shrink-0" />
+                                    {order.customerPhone}
+                                  </span>
+                                ) : (
+                                  <span className="text-slate-400 font-normal italic text-[11px]">{t('No Phone')}</span>
+                                )}
+                                {shopOrBusiness && (
+                                  <span className="text-slate-500 font-sans text-xs truncate max-w-[120px]">
+                                    &bull; {shopOrBusiness}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Right: Total Weight & Timestamp */}
+                          <div className="flex flex-col items-end gap-1 shrink-0 text-right">
+                            {orderWeight > 0 && (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-100 text-amber-950 font-black text-xs border border-amber-300 shadow-2xs font-mono">
+                                <Scale size={11} className="text-amber-800" />
+                                <span>{orderWeight} Kg</span>
+                              </span>
+                            )}
+                            <div className="flex items-center gap-1 text-[10px] text-slate-400 font-mono">
+                              <Clock size={10} className="shrink-0" />
+                              <span>
+                                {order.orderDateFormatted || order.orderTimeFormatted
+                                  ? `${order.orderDateFormatted || ''} ${order.orderTimeFormatted || ''}`.trim()
+                                  : formatOrderDateTime(order.orderLockedAt || order.createdAt)}
+                              </span>
+                            </div>
+                          </div>
                         </div>
-                      </div>
-                    </div>
+                      );
+                    })()}
 
                     {/* Ordered Fish Items Breakdown (Compact Structured Format) */}
                     {activeItems.length > 0 && (
@@ -880,21 +982,7 @@ const ActiveOrders = ({
                     </div>
 
                     <div className="flex items-center gap-1.5 shrink-0 ml-auto flex-wrap">
-                      {/* Consignment Vehicle Dispatch button (if export or boxes) */}
-                      {(order.orderMode === 'export' || order.exportSubCategory || order.customerCategory === 'Export' || (Number(order.totalBoxes) > 0)) && (
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleOpenDispatch(order);
-                          }}
-                          className="py-1 px-2 rounded-lg font-bold text-[10px] bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200 flex items-center gap-1 transition-colors cursor-pointer active:scale-95 shrink-0"
-                          title={t("Dispatch Consignment")}
-                        >
-                          <Truck size={10} className="text-slate-600 shrink-0" />
-                          <span>{t("Dispatch")}</span>
-                        </button>
-                      )}
+                      {/* Consignment Vehicle Dispatch button hidden per user request */}
 
                       {/* Main Action Button */}
                       <button
@@ -963,24 +1051,41 @@ const ActiveOrders = ({
             </div>
 
             {/* Consignment Info */}
-            <div className="p-4 bg-[#FAF0E4]/60 border-b border-[#fed7aa]/60 flex items-center justify-between text-xs">
-              <div>
-                <div className="font-black text-slate-800 text-sm">
-                  {dispatchOrder.customerName || 'Registered Dealer'}
+            {(() => {
+              const dPhone = String(dispatchOrder.customerPhone || '').replace(/\D/g, '').slice(-10);
+              const dCust = customerMap[dPhone] || (dispatchOrder.customerName ? customerMap[dispatchOrder.customerName.trim().toLowerCase()] : null);
+              const dPhoto = dispatchOrder.customerPhoto || dCust?.photo || '';
+              return (
+                <div className="p-4 bg-[#FAF0E4]/60 border-b border-[#fed7aa]/60 flex items-center justify-between text-xs gap-3">
+                  <div className="flex items-center gap-3 min-w-0">
+                    {dPhoto ? (
+                      <img src={dPhoto} alt={dispatchOrder.customerName} className="w-11 h-11 rounded-full object-cover border-2 border-amber-400 shrink-0" />
+                    ) : (
+                      <div className="w-11 h-11 rounded-full bg-amber-600 text-white font-black text-base flex items-center justify-center shrink-0">
+                        {((dispatchOrder.customerName || 'D').trim().charAt(0) || 'D').toUpperCase()}
+                      </div>
+                    )}
+                    <div className="min-w-0">
+                      <div className="font-black text-slate-900 text-sm sm:text-base leading-tight truncate">
+                        {dispatchOrder.customerName || 'Registered Dealer'}
+                      </div>
+                      <div className="font-mono text-slate-700 font-bold text-xs flex items-center gap-1 mt-0.5">
+                        <Phone size={11} className="text-[#ea580c] shrink-0" />
+                        {dispatchOrder.customerPhone || 'No Phone Registered'}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <span className="px-2 py-1 bg-amber-100 text-amber-900 border border-amber-300 font-extrabold rounded-lg text-xs">
+                      {dispatchOrder.totalBoxes > 0 ? `${dispatchOrder.totalBoxes} Boxes` : `${dispatchOrder.items?.length || 1} Lots`}
+                    </span>
+                    <div className="font-mono font-black text-emerald-700 text-sm mt-1">
+                      ₹{(dispatchOrder.total || 0).toLocaleString()}
+                    </div>
+                  </div>
                 </div>
-                <div className="font-mono text-slate-500 text-[11px]">
-                  {dispatchOrder.customerPhone || 'No Phone Registered'}
-                </div>
-              </div>
-              <div className="text-right">
-                <span className="px-2 py-1 bg-amber-100 text-amber-900 border border-amber-300 font-extrabold rounded-lg text-xs">
-                  {dispatchOrder.totalBoxes > 0 ? `${dispatchOrder.totalBoxes} Boxes` : `${dispatchOrder.items?.length || 1} Lots`}
-                </span>
-                <div className="font-mono font-bold text-emerald-700 text-xs mt-1">
-                  ₹{(dispatchOrder.total || 0).toLocaleString()}
-                </div>
-              </div>
-            </div>
+              );
+            })()}
 
             {/* Form */}
             <div className="p-4 space-y-3.5">

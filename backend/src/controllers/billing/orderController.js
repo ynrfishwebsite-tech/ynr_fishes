@@ -62,7 +62,7 @@ export function computeBoxesSummary(items) {
       const b = boxMap.get(bNum);
       const wt = Number(item.weightKg || item.netWeightKg || item.enteredWeight || 0);
       const pr = Number(item.total !== undefined ? item.total : (Number(item.price || 0) * (item.quantity || 1)));
-      b.totalWeightKg = Number((b.totalWeightKg + wt).toFixed(2));
+      b.totalWeightKg = Number((b.totalWeightKg + wt).toFixed(3));
       b.totalPrice = Number((b.totalPrice + pr).toFixed(2));
       b.itemCount += 1;
       b.items.push({
@@ -1390,8 +1390,8 @@ export const settleBill = async (req, res) => {
     if (total !== undefined && Number(total) > 0) order.total = Number(total);
     if (subtotal !== undefined && Number(subtotal) > 0) order.subtotal = Number(subtotal);
 
-    if (paymentMode === 'Unpaid' && !customerPhone && !order.customerPhone) {
-      return res.status(400).json({ message: 'Customer Phone Number is mandatory for Unpaid (Khata) bills.' });
+    if ((paymentMode === 'Unpaid' || paymentMode === 'Partial') && !customerPhone && !order.customerPhone) {
+      return res.status(400).json({ message: 'Customer Phone Number is mandatory for Unpaid and Partial (Khata) bills.' });
     }
 
     // Safeguard against zero total/subtotal
@@ -1405,16 +1405,35 @@ export const settleBill = async (req, res) => {
       order.total = Math.round(taxable + taxAmt + (Number(order.deliveryCharge) || 0) + (Number(order.containerCharge) || 0) + (Number(order.cuttingCharge) || 0));
     }
 
-    // Set status to 'Paid' or 'Unpaid' - this makes it appear in billing history
-    order.status = paymentMode === 'Unpaid' ? 'Unpaid' : 'Paid';
-    order.paymentMode = paymentMode === 'Unpaid' ? undefined : paymentMode;
-    if (upiApp) {
-      order.upiApp = upiApp;
-    }
-
-    if (amountPaid !== undefined) {
-      order.amountPaid = Number(amountPaid) || 0;
-      order.changeAmount = changeAmount !== undefined ? Number(changeAmount) || 0 : Math.max(0, (Number(amountPaid) || 0) - (order.total || 0));
+    // Set status to 'Paid', 'Unpaid', or 'Partial' - this makes it appear in billing history
+    if (paymentMode === 'Partial') {
+      order.status = 'Partial';
+      order.paymentMode = 'Partial';
+      const paidPortion = Number(req.body.partialPayment?.paidAmount ?? amountPaid ?? 0);
+      order.paidAmount = paidPortion;
+      order.amountPaid = paidPortion;
+      order.dueAmount = Math.max(0, (Number(order.total) || 0) - paidPortion);
+      order.partialPayment = {
+        paidAmount: order.paidAmount,
+        dueAmount: order.dueAmount,
+        method: req.body.partialPayment?.method || 'Cash',
+        upiApp: req.body.partialPayment?.upiApp || upiApp
+      };
+      if (req.body.partialPayment?.upiApp || upiApp) {
+        order.upiApp = req.body.partialPayment?.upiApp || upiApp;
+      }
+    } else {
+      order.status = paymentMode === 'Unpaid' ? 'Unpaid' : 'Paid';
+      order.paymentMode = paymentMode === 'Unpaid' ? undefined : paymentMode;
+      order.paidAmount = paymentMode === 'Unpaid' ? 0 : (order.total || 0);
+      order.dueAmount = paymentMode === 'Unpaid' ? (order.total || 0) : 0;
+      if (upiApp) {
+        order.upiApp = upiApp;
+      }
+      if (amountPaid !== undefined) {
+        order.amountPaid = Number(amountPaid) || 0;
+        order.changeAmount = changeAmount !== undefined ? Number(changeAmount) || 0 : Math.max(0, (Number(amountPaid) || 0) - (order.total || 0));
+      }
     }
 
     if (paymentMode === 'Mixed' && splitPayments) {
@@ -1453,13 +1472,16 @@ export const settleBill = async (req, res) => {
           console.warn('[settleBill] VersionError caught, retrying on fresh document...');
           const freshOrder = await Bill.findById(order._id);
           if (freshOrder) {
-            freshOrder.status = paymentMode === 'Unpaid' ? 'Unpaid' : 'Paid';
-            freshOrder.paymentMode = paymentMode === 'Unpaid' ? undefined : paymentMode;
+            freshOrder.status = order.status;
+            freshOrder.paymentMode = order.paymentMode;
             if (upiApp) freshOrder.upiApp = upiApp;
             if (amountPaid !== undefined) {
               freshOrder.amountPaid = Number(amountPaid) || 0;
               freshOrder.changeAmount = changeAmount !== undefined ? Number(changeAmount) || 0 : Math.max(0, (Number(amountPaid) || 0) - (freshOrder.total || 0));
             }
+            if (order.paidAmount !== undefined) freshOrder.paidAmount = order.paidAmount;
+            if (order.dueAmount !== undefined) freshOrder.dueAmount = order.dueAmount;
+            if (order.partialPayment) freshOrder.partialPayment = order.partialPayment;
             if (paymentMode === 'Mixed' && splitPayments) {
               freshOrder.splitPayments = {
                 cash: Number(splitPayments.cash) || 0,
@@ -1508,7 +1530,7 @@ export const settleBill = async (req, res) => {
     }
 
     // ---- KHATA (CREDIT) LOGIC ----
-    if (paymentMode === 'Unpaid' && saveSuccess) {
+    if ((paymentMode === 'Unpaid' || paymentMode === 'Partial') && saveSuccess) {
       try {
         const CreditAccount = getTenantModel(req, 'CreditAccount', CreditAccountDefault);
         const finalPhone = order.customerPhone || customerPhone;
@@ -1524,17 +1546,25 @@ export const settleBill = async (req, res) => {
             transactions: []
           });
         }
+
+        const khataAmount = paymentMode === 'Partial'
+          ? (Number(order.dueAmount) || Math.max(0, (order.total || 0) - (order.paidAmount || 0)))
+          : (order.total || 0);
+
+        const noteText = paymentMode === 'Partial'
+          ? `Partial Bill #${order.billNumber || ''} (Paid ₹${order.paidAmount || 0}, Due ₹${khataAmount})`
+          : `Unpaid Bill #${order.billNumber || ''}`;
         
         account.transactions.push({
           type: 'credit',
-          amount: order.total || 0,
+          amount: khataAmount,
           billId: order._id,
-          note: `Unpaid Bill #${order.billNumber || ''}`
+          note: noteText
         });
         
-        account.balance += (order.total || 0);
+        account.balance += khataAmount;
         await account.save();
-        console.log(`[Khata] Added ${order.total} to ${finalPhone}'s account.`);
+        console.log(`[Khata] Added ₹${khataAmount} due to ${finalPhone}'s account for ${paymentMode} bill.`);
       } catch (err) {
         console.error('[Khata] Error updating Credit Account:', err);
       }
@@ -1610,7 +1640,7 @@ export const getOpenOrders = async (req, res) => {
     const orders = await Bill.find({
       status: { $in: ['Open', 'Billed'] }
     })
-      .select('tableNo orderNo items total subtotal tax discount discountType discountValue discountName applicableTo targetCategory customerCategory orderMode orderChannel exportSubCategory totalBoxes boxes deliveryCharge containerCharge cuttingCharge customerName customerPhone status billNumber billType orderSource queueNumber tokenNo createdAt')
+      .select('tableNo orderNo items total subtotal tax discount discountType discountValue discountName applicableTo targetCategory customerCategory orderMode orderChannel exportSubCategory totalBoxes boxes deliveryCharge containerCharge cuttingCharge customerName customerPhone customerPhoto customerAddress isOrderLocked orderLockedAt orderDateFormatted orderTimeFormatted status billNumber billType orderSource queueNumber tokenNo createdAt')
       .sort({ createdAt: -1 })
       .limit(100)
       .lean();
@@ -1868,21 +1898,49 @@ export const clearUnpaidBill = async (req, res) => {
     if (!order) {
       return res.status(404).json({ message: 'Order not found' });
     }
-    if (order.status !== 'Unpaid') {
-      return res.status(400).json({ message: 'Only Unpaid bills can be cleared.' });
+    if (order.status !== 'Unpaid' && order.status !== 'Partial') {
+      return res.status(400).json({ message: 'Only Unpaid or Partial bills can be cleared.' });
     }
+
+    const previousDue = order.status === 'Partial'
+      ? (Number(order.dueAmount) || Math.max(0, (order.total || 0) - (order.paidAmount || 0)))
+      : (order.total || 0);
 
     order.status = 'Paid';
     order.paymentMode = paymentMode;
     if (splitPayments) order.splitPayments = splitPayments;
     if (upiApp) order.upiApp = upiApp;
-    if (amountPaid !== undefined) order.amountPaid = amountPaid;
+    order.paidAmount = order.total || 0;
+    order.dueAmount = 0;
+    order.amountPaid = order.total || 0;
     if (changeAmount !== undefined) order.changeAmount = changeAmount;
     
     order.clearedAt = new Date();
     order.updatedAt = new Date();
 
     await order.save();
+
+    // Khata sync: deduct the cleared due amount from customer's CreditAccount
+    try {
+      const CreditAccount = getTenantModel(req, 'CreditAccount', CreditAccountDefault);
+      const finalPhone = order.customerPhone;
+      if (finalPhone) {
+        let account = await CreditAccount.findOne({ phoneNumber: finalPhone });
+        if (account) {
+          account.transactions.push({
+            type: 'payment',
+            amount: previousDue,
+            billId: order._id,
+            note: `Cleared due for Bill #${order.billNumber || ''} via ${paymentMode}`
+          });
+          account.balance = Math.max(0, account.balance - previousDue);
+          await account.save();
+          console.log(`[Khata] Cleared ₹${previousDue} due from ${finalPhone}'s account.`);
+        }
+      }
+    } catch (kErr) {
+      console.warn('[clearUnpaidBill] Khata balance adjustment failed:', kErr);
+    }
 
     // Bypass Mongoose timestamps immutability to force update createdAt
     // This ensures the bill counts towards TODAY's DayBook and analytics!

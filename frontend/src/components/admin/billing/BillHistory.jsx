@@ -2,7 +2,7 @@ import { useLanguage } from "../../../context/LanguageContext";
 import React, { useState, useEffect } from 'react';
 import Invoice from './Invoice';
 import PaymentModal from './PaymentModal';
-import { Search, Eye, EyeOff, CreditCard, Filter, Trash2, ChevronLeft, ChevronRight, RefreshCcw, ArrowLeft, Loader2, ChevronDown, ReceiptIndianRupee, Info, CheckCircle, BookOpen } from 'lucide-react';
+import { Search, Eye, EyeOff, CreditCard, Filter, Trash2, ChevronLeft, ChevronRight, RefreshCcw, ArrowLeft, Loader2, ChevronDown, ReceiptIndianRupee, Info, CheckCircle, BookOpen, Clock } from 'lucide-react';
 import { getBills, deleteBill, getBillById, apiRefundOrder, clearUnpaidBill } from '../../../api/billing/billing';
 import { getCachedBillHistory, cacheBillHistory } from '../../../db/offlineDb';
 import useDebounce from '../../../hooks/useDebounce';
@@ -12,13 +12,38 @@ import BackButton from '../common/BackButton';
 import realtimeService from '../../../services/realtimeService';
 import { formatTime12 } from '../../../utils/formatters/timeFormat';
 
+// Helper: Dynamically compute total weight in Kgs for any bill from items/boxes
+export const getBillTotalWeightKg = (bill) => {
+  if (!bill) return 0;
+  if (Array.isArray(bill.boxes) && bill.boxes.length > 0) {
+    const boxWeight = bill.boxes.reduce((sum, b) => {
+      const bw = Number(b.totalWeight || 0);
+      if (bw > 0) return sum + bw;
+      if (Array.isArray(b.items)) {
+        return sum + b.items.reduce((s, i) => s + Number(i.weightKg || i.netWeightKg || i.enteredWeight || i.quantity || 0), 0);
+      }
+      return sum;
+    }, 0);
+    if (boxWeight > 0) return Math.round(boxWeight * 10) / 10;
+  }
+  if (Array.isArray(bill.items)) {
+    const w = bill.items.reduce((sum, i) => {
+      if (i.isCancelled) return sum;
+      return sum + Number(i.netWeightKg || i.enteredWeight || i.weightKg || (i.sellingUnit === 'Kg' ? i.quantity : 0) || 0);
+    }, 0);
+    return Math.round(w * 10) / 10;
+  }
+  return 0;
+};
+
 const BillHistory = ({
   onNavigate,
   onGoBack,
   initialSalesType = 'All',
   pageTitle = null,
   pageSubtitle = null,
-  lockSalesType = false
+  lockSalesType = false,
+  hideHeader = false
 }) => {
   const { t } = useLanguage();
   const [bills, setBills] = useState([]);
@@ -141,7 +166,26 @@ const BillHistory = ({
     );
   };
 
+  const currencySymbol = localStorage.getItem('primaryCurrency') === 'USD' ? '$' : '₹';
+
   const renderPaymentCell = (bill) => {
+    if (bill.status === 'Partial' || bill.paymentMode === 'Partial') {
+      const paid = bill.paidAmount ?? bill.amountPaid ?? bill.partialPayment?.paidAmount ?? 0;
+      const due = bill.dueAmount ?? bill.partialPayment?.dueAmount ?? Math.max(0, (bill.total || 0) - paid);
+      return (
+        <div className="flex flex-col gap-0.5 text-xs">
+          <div className="inline-flex items-center gap-1 text-amber-600 font-bold">
+            <Clock size={13} className="text-amber-500 shrink-0" />
+            <span>{t("Partially Paid")}</span>
+          </div>
+          <div className="text-[10px] sm:text-[11px] font-semibold text-text-muted flex items-center gap-1.5 whitespace-nowrap">
+            <span className="text-emerald-600 font-bold">{t("Paid:")} {currencySymbol}{Number(paid).toLocaleString('en-IN')}</span>
+            <span>•</span>
+            <span className="text-rose-600 font-bold">{t("Due:")} {currencySymbol}{Number(due).toLocaleString('en-IN')}</span>
+          </div>
+        </div>
+      );
+    }
     if (bill.status === 'Unpaid') {
       return (
         <div className="flex items-center gap-1.5 text-xs text-red-600 font-medium">
@@ -308,7 +352,21 @@ const BillHistory = ({
   };
 
   const handleClearDueClick = (bill) => {
-    setClearModal({ isOpen: true, billId: bill._id, total: bill.total || 0, billNumber: bill.billNumber, tableNo: bill.tableNo, customerPhone: bill.customerPhone, customerName: bill.customerName || 'Customer', paymentMode: 'Cash', loading: false, error: '' });
+    const dueAmount = bill.status === 'Partial'
+      ? (bill.dueAmount ?? Math.max(0, (bill.total || 0) - (bill.paidAmount || bill.amountPaid || 0)))
+      : (bill.total || 0);
+    setClearModal({
+      isOpen: true,
+      billId: bill._id,
+      total: dueAmount,
+      billNumber: bill.billNumber,
+      tableNo: bill.tableNo,
+      customerPhone: bill.customerPhone,
+      customerName: bill.customerName || 'Customer',
+      paymentMode: 'Cash',
+      loading: false,
+      error: ''
+    });
   };
 
   const confirmClearDue = async (paymentData) => {
@@ -326,7 +384,18 @@ const BillHistory = ({
       const updatedBill = response?.order || null;
       setBills((prev) => prev.map((bill) =>
         bill._id === clearModal.billId
-          ? { ...bill, status: 'Paid', paymentMode: paymentData.mode, splitPayments: paymentData.splitPayments, upiApp: paymentData.upiApp, amountPaid: paymentData.amountPaid, updatedAt: new Date().toISOString(), clearedAt: new Date().toISOString() }
+          ? {
+              ...bill,
+              status: 'Paid',
+              paymentMode: paymentData.mode,
+              splitPayments: paymentData.splitPayments,
+              upiApp: paymentData.upiApp,
+              paidAmount: bill.total,
+              dueAmount: 0,
+              amountPaid: bill.total,
+              updatedAt: new Date().toISOString(),
+              clearedAt: new Date().toISOString()
+            }
           : bill
       ));
       setClearModal({ isOpen: false, billId: null, total: 0, customerName: '', paymentMode: 'Cash', loading: false, error: '' });
@@ -413,13 +482,15 @@ const BillHistory = ({
         <div className="flex flex-col sm:flex-row flex-wrap xl:flex-nowrap items-stretch sm:items-center justify-between gap-2 w-full xl:w-auto shrink-0">
           {/* Row 1 on Mobile: Back + Title + Filter Toggle */}
           <div className="flex items-center justify-between gap-1.5 sm:gap-3 shrink-0">
-            <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
-              <BackButton onClick={onGoBack} className="shrink-0" />
-              <div>
-                <h1 className="text-sm sm:text-lg font-black text-text-main leading-tight whitespace-nowrap">{pageTitle ? t(pageTitle) : t("Bill History")}</h1>
-                <p className="text-[10px] sm:text-xs text-text-muted font-medium leading-tight hidden xs:block">{pageSubtitle ? t(pageSubtitle) : t("View and manage past transactions")}</p>
+            {!hideHeader && (
+              <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
+                <BackButton onClick={onGoBack} className="shrink-0" />
+                <div>
+                  <h1 className="text-sm sm:text-lg font-black text-text-main leading-tight whitespace-nowrap">{pageTitle ? t(pageTitle) : t("Bill History")}</h1>
+                  <p className="text-[10px] sm:text-xs text-text-muted font-medium leading-tight hidden xs:block">{pageSubtitle ? t(pageSubtitle) : t("View and manage past transactions")}</p>
+                </div>
               </div>
-            </div>
+            )}
 
             {/* Filter On/Off Toggle Button */}
             <button
@@ -494,6 +565,7 @@ const BillHistory = ({
                     <option value="UPI">{t("UPI")}</option>
                     <option value="Card">{t("Card")}</option>
                     <option value="Mixed">{t("Mixed")}</option>
+                    <option value="Partial">{t("Partially Paid")}</option>
                     <option value="Unpaid">{t("Unpaid")}</option>
                   </select>
                   <ChevronDown className="absolute right-1.5 top-1/2 -translate-y-1/2 text-text-muted pointer-events-none" size={12} />
@@ -725,10 +797,20 @@ const BillHistory = ({
                       <td className="px-3 py-2.5 whitespace-nowrap">
                         {renderPaymentCell(bill)}
                       </td>
-                      <td className="px-3 py-2.5 font-black text-text-main text-right text-xs sm:text-sm whitespace-nowrap">
-                        <span className={bill.status === 'Cancelled' ? 'line-through text-text-muted' : ''}>
-                          ₹{(bill.total || 0).toFixed(2)}
-                        </span>
+                      <td className="px-3 py-2.5 text-right whitespace-nowrap">
+                        <div className="font-black text-text-main text-xs sm:text-sm">
+                          <span className={bill.status === 'Cancelled' ? 'line-through text-text-muted' : ''}>
+                            ₹{(bill.total || 0).toFixed(2)}
+                          </span>
+                        </div>
+                        {(() => {
+                          const w = getBillTotalWeightKg(bill);
+                          return w > 0 ? (
+                            <div className="text-[10px] font-bold text-amber-700 bg-amber-50 dark:bg-amber-950/40 px-1.5 py-0.2 rounded border border-amber-200 dark:border-amber-800 inline-block mt-0.5">
+                              ⚖️ {Number(w).toFixed(1)} Kg
+                            </div>
+                          ) : null;
+                        })()}
                       </td>
                       <td className="px-3 py-2.5 text-center whitespace-nowrap">
                         <div className="flex justify-center items-center gap-1">
@@ -751,7 +833,7 @@ const BillHistory = ({
                               <RefreshCcw size={18} />
                             </button>
                           )}
-                          {bill.status === 'Unpaid' && (
+                          {(bill.status === 'Unpaid' || bill.status === 'Partial') && (
                             <button
                               onClick={() => handleClearDueClick(bill)}
                               className="p-1 px-2 hover:bg-emerald-100 rounded-lg text-emerald-700 font-bold bg-emerald-50 border border-emerald-200 transition-colors inline-flex items-center justify-center gap-1 touch-target cursor-pointer text-xs shadow-sm"
@@ -842,10 +924,6 @@ const BillHistory = ({
                     </button>
                     <span className="font-bold font-mono text-sm text-text-main shrink-0">#{bill.billNumber || 'CANCELLED'}</span>
                     {getSalesTypeBadge(bill, true)}
-                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border whitespace-nowrap ${bill.billType === 'Dine-In' ? 'bg-primary/10 text-primary border-primary/20' : 'bg-slate-100 text-slate-700 border-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700'
-                      }`}>
-                      {t(bill.billType || 'Takeaway')}
-                    </span>
                   </div>
                   <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${bill.status === 'Paid' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-red-50 text-red-700 border-red-200'
                     }`}>
@@ -900,9 +978,19 @@ const BillHistory = ({
                 )}
 
                 <div className="flex items-center justify-between pt-2 border-t border-border/50">
-                  <span className={`text-base font-black text-text-main ${bill.status === 'Cancelled' ? 'line-through text-text-muted' : ''}`}>
-                    ₹{(bill.total || 0).toFixed(2)}
-                  </span>
+                  <div>
+                    <span className={`text-base font-black text-text-main block ${bill.status === 'Cancelled' ? 'line-through text-text-muted' : ''}`}>
+                      ₹{(bill.total || 0).toFixed(2)}
+                    </span>
+                    {(() => {
+                      const w = getBillTotalWeightKg(bill);
+                      return w > 0 ? (
+                        <span className="text-[10px] font-bold text-amber-700 bg-amber-50 dark:bg-amber-950/40 px-1.5 py-0.2 rounded border border-amber-200 dark:border-amber-800 inline-block mt-0.5">
+                          ⚖️ {Number(w).toFixed(1)} Kg
+                        </span>
+                      ) : null;
+                    })()}
+                  </div>
                   <div className="flex items-center gap-2">
                     <button
                       onClick={() => handleViewBill(bill._id)}
@@ -924,7 +1012,7 @@ const BillHistory = ({
                         <RefreshCcw size={15} />
                       </button>
                     )}
-                    {bill.status === 'Unpaid' && (
+                    {(bill.status === 'Unpaid' || bill.status === 'Partial') && (
                       <button
                         onClick={() => handleClearDueClick(bill)}
                         className="px-2 py-1.5 flex items-center justify-center bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-lg text-xs font-bold touch-target cursor-pointer shrink-0"

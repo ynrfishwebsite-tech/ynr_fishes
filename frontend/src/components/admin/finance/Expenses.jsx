@@ -568,7 +568,7 @@ const Expenses = ({ onNavigate, onGoBack }) => {const { t } = useLanguage();
 
                     <p className="text-[10px] text-text-muted mt-2 flex items-center justify-center gap-1">
                       <span className="w-1.5 h-1.5 rounded-full bg-green-500 inline-block"></span>
-                      IST — {formData.timeHour}:{formData.timeMinute} {formData.timeAmpm}
+                      {formData.timeHour}:{formData.timeMinute} {formData.timeAmpm}
                       <span className="ml-1 text-text-muted/60">· tap hour or minute to switch dial</span>
                     </p>
                   </div>

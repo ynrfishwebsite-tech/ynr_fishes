@@ -283,7 +283,6 @@ const BillSummary = ({
   const [isPaid, setIsPaid] = useState(false);
   const [editingPriceId, setEditingPriceId] = useState(null);
   const [editingPriceValue, setEditingPriceValue] = useState('');
-  const [useLoyalty, setUseLoyalty] = useState(true);
   const [sendSms, setSendSms] = useState(true);
   const [showDiscountDropdown, setShowDiscountDropdown] = useState(false);
   const [showChargesDropdown, setShowChargesDropdown] = useState(false);
@@ -308,10 +307,6 @@ const BillSummary = ({
     }
   });
   const [showPlatformModal, setShowPlatformModal] = useState(false);
-  const [loyaltyConfig, setLoyaltyConfig] = useState(null);
-  const [showLoyaltyModal, setShowLoyaltyModal] = useState(false);
-  const [loyaltyDiscount, setLoyaltyDiscount] = useState(0);
-  const [loyaltyPointsDeducted, setLoyaltyPointsDeducted] = useState(0);
   const [newPlatformName, setNewPlatformName] = useState('');
 
   const handleAddPlatform = (e) => {
@@ -1651,19 +1646,8 @@ const BillSummary = ({
               <span>{t("It's Paid")}</span>
             </label>
 
-            {/* Right Side Controls: Loyalty, WhatsApp Status/Toggle, CRM */}
+            {/* Right Side Controls: WhatsApp Status/Toggle, CRM */}
             <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
-              {customerPhone && (
-                <button
-                  type="button"
-                  onClick={() => setShowLoyaltyModal(true)}
-                  className="flex items-center gap-1 px-1.5 py-0.5 bg-gradient-to-r from-amber-500 to-orange-500 text-white rounded-full text-[9px] sm:text-[10px] font-bold shadow-2xs active:scale-95 cursor-pointer"
-                  title="Redeem Loyalty"
-                >
-                  <Sparkles size={10} className="shrink-0" />
-                  <span className="hidden sm:inline">Loyalty</span>
-                </button>
-              )}
 
               {/* WhatsApp Online / Offline Dot */}
               <div

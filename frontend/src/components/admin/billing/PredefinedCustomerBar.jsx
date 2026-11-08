@@ -4,7 +4,7 @@ import {
   MapPin, X, ChevronDown, Building, ArrowUpRight, Camera, Loader2 
 } from 'lucide-react';
 import { useLanguage } from '../../../context/LanguageContext';
-import { getCachedCustomers, fetchPredefinedCustomers } from '../../../api/crm/customerApi';
+import { getCachedCustomers, fetchPredefinedCustomers, saveCustomerToCache } from '../../../api/crm/customerApi';
 import ImageCropperModal from '../crm/ImageCropperModal';
 import api from '../../../api/system/axios';
 
@@ -28,6 +28,11 @@ export default function PredefinedCustomerBar({
   const [isOpen, setIsOpen] = useState(false);
   const [exportFilter, setExportFilter] = useState('All'); // 'All' | 'Local' | 'DAM'
   const [selectedCustomerObj, setSelectedCustomerObj] = useState(null);
+
+  const isRetail = orderMode === 'individual' || orderMode === 'retail' || (!orderMode);
+  const isWholesale = orderMode === 'bulk' || orderMode === 'wholesale';
+  const isExport = orderMode === 'export';
+  const currentCategory = isWholesale ? 'Wholesale' : (isExport ? 'Export' : 'Retail');
   
   // Quick Add Modal State
   const [showQuickAdd, setShowQuickAdd] = useState(false);
@@ -36,7 +41,7 @@ export default function PredefinedCustomerBar({
     name: '',
     phone: '',
     businessName: '',
-    category: 'Wholesale',
+    category: currentCategory,
     exportSubCategory: 'Local',
     address: '',
     photo: ''
@@ -48,55 +53,74 @@ export default function PredefinedCustomerBar({
 
   // Sync category mode with quick add default
   useEffect(() => {
-    if (orderMode === 'bulk') {
+    if (isWholesale) {
       setQuickAddData(prev => ({ ...prev, category: 'Wholesale' }));
-    } else if (orderMode === 'export') {
+    } else if (isExport) {
       setQuickAddData(prev => ({ ...prev, category: 'Export', exportSubCategory: 'Local' }));
     } else {
       setQuickAddData(prev => ({ ...prev, category: 'Retail' }));
     }
-  }, [orderMode]);
+  }, [orderMode, isWholesale, isExport]);
 
   // Load predefined customers on mount and when orderMode changes
   const loadCustomers = () => {
-    const targetCategory = orderMode === 'bulk' ? 'Wholesale' : (orderMode === 'export' ? 'Export' : 'All');
+    const targetCategory = currentCategory;
     const cached = getCachedCustomers(targetCategory);
     if (cached && cached.length > 0) {
       setCustomers(cached);
     }
-    // Fetch fresh from backend
-    fetchPredefinedCustomers(targetCategory).then(data => {
+    // Fetch fresh from backend and keep cache and state in sync
+    fetchPredefinedCustomers(targetCategory, 'All', true).then(data => {
       if (Array.isArray(data)) {
         setCustomers(data);
       }
-    });
+    }).catch(() => {});
   };
 
   useEffect(() => {
     loadCustomers();
-    // Listen for customer directory updates
+    // Listen for customer directory updates across the app
     const handleUpdate = () => loadCustomers();
     window.addEventListener('customersUpdated', handleUpdate);
     return () => window.removeEventListener('customersUpdated', handleUpdate);
-  }, [orderMode]);
+  }, [orderMode, currentCategory]);
 
   // Find currently selected customer object
   useEffect(() => {
     if (customerPhone) {
-      const match = customers.find(c => c.phone === customerPhone);
+      const cleanPhone = String(customerPhone).replace(/\D/g, '').slice(-10);
+      const match = customers.find(c => {
+        const p = String(c.phone || '').replace(/\D/g, '').slice(-10);
+        return p === cleanPhone;
+      });
       if (match) {
         setSelectedCustomerObj(match);
       } else {
         setSelectedCustomerObj({
-          name: customerName || 'Selected Dealer',
+          name: customerName || (isWholesale ? 'Wholesale Dealer' : (isExport ? 'Export Client' : 'Customer')),
           phone: customerPhone,
-          category: orderMode === 'bulk' ? 'Wholesale' : (orderMode === 'export' ? 'Export' : 'Retail')
+          category: currentCategory
         });
       }
     } else {
       setSelectedCustomerObj(null);
     }
-  }, [customerPhone, customerName, customers, orderMode]);
+  }, [customerPhone, customerName, customers, orderMode, currentCategory]);
+
+  // If order is unlocked and switching modes to a different category, reset selection
+  useEffect(() => {
+    if (selectedCustomerObj && selectedCustomerObj.category && !isLocked) {
+      const isExpected = 
+        (isWholesale && selectedCustomerObj.category === 'Wholesale') ||
+        (isExport && selectedCustomerObj.category === 'Export') ||
+        (isRetail && selectedCustomerObj.category === 'Retail');
+      if (!isExpected) {
+        setCustomerName('');
+        setCustomerPhone('');
+        setSelectedCustomerObj(null);
+      }
+    }
+  }, [orderMode]);
 
   // Close dropdown on outside click
   useEffect(() => {
@@ -111,19 +135,21 @@ export default function PredefinedCustomerBar({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [isOpen]);
 
-  // Filter list by channel and search
+  // Filter list strictly by channel and search
   const filteredList = useMemo(() => {
     const s = search.toLowerCase().trim();
     return customers.filter(c => {
+      if (!c) return false;
       const cat = c.category || (c.lastOrderType === 'Wholesale' ? 'Wholesale' : (c.lastOrderType === 'Export' ? 'Export' : 'Retail'));
       const sub = c.exportSubCategory || 'Local';
 
-      // Match channel
-      if (orderMode === 'bulk' && cat !== 'Wholesale') return false;
-      if (orderMode === 'export') {
+      // Match channel strictly
+      if (isWholesale && cat !== 'Wholesale') return false;
+      if (isExport) {
         if (cat !== 'Export') return false;
         if (exportFilter !== 'All' && sub !== exportFilter) return false;
       }
+      if (isRetail && cat !== 'Retail') return false;
 
       // Match search
       if (!s) return true;
@@ -135,7 +161,7 @@ export default function PredefinedCustomerBar({
         addrStr.toLowerCase().includes(s)
       );
     });
-  }, [customers, orderMode, exportFilter, search]);
+  }, [customers, isWholesale, isExport, isRetail, exportFilter, search]);
 
   const handleSelect = (cust) => {
     setCustomerPhone(cust.phone);
@@ -193,24 +219,28 @@ export default function PredefinedCustomerBar({
         name: (quickAddData.name || 'Guest').trim(),
         businessName: (quickAddData.businessName || '').trim(),
         phone: clean,
-        category: quickAddData.category,
-        exportSubCategory: quickAddData.category === 'Export' ? quickAddData.exportSubCategory : null,
+        category: currentCategory,
+        exportSubCategory: isExport ? quickAddData.exportSubCategory : null,
         address: quickAddData.address,
         photo: quickAddData.photo,
-        orderType: quickAddData.category
+        orderType: currentCategory
       };
 
       const res = await api.post('/customers', payload);
       if (res.data?.success && res.data.customer) {
         const newCust = res.data.customer;
-        setCustomers(prev => [newCust, ...prev]);
+        // 1. Immediately persist to localStorage CRM cache
+        saveCustomerToCache(newCust);
+
+        // 2. Add to active component list & select
+        setCustomers(prev => [newCust, ...prev.filter(c => c.phone !== newCust.phone)]);
         handleSelect(newCust);
         setShowQuickAdd(false);
         setQuickAddData({
           name: '',
           phone: '',
           businessName: '',
-          category: orderMode === 'bulk' ? 'Wholesale' : (orderMode === 'export' ? 'Export' : 'Retail'),
+          category: currentCategory,
           exportSubCategory: 'Local',
           address: '',
           photo: ''
@@ -218,15 +248,11 @@ export default function PredefinedCustomerBar({
       }
     } catch (err) {
       console.error(err);
-      alert(err.response?.data?.message || t('Failed to register dealer'));
+      alert(err.response?.data?.message || t('Failed to register customer'));
     } finally {
       setQuickAddLoading(false);
     }
   };
-
-  const currentChannelTitle = orderMode === 'bulk' 
-    ? t('Wholesale Dealers') 
-    : (orderMode === 'export' ? t('Export Consignment Dealers') : t('Select Customer'));
 
   return (
     <div ref={containerRef} className="relative w-full select-none mb-1.5">
@@ -265,31 +291,36 @@ export default function PredefinedCustomerBar({
               <img
                 src={selectedCustomerObj.photo}
                 alt={selectedCustomerObj.name}
-                className="w-8 h-8 rounded-full object-cover border border-amber-500/40 shadow-xs shrink-0"
+                className="w-9 h-9 rounded-full object-cover border-2 border-amber-500/40 shadow-xs shrink-0"
               />
             ) : (
-              <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs shrink-0 ${
+              <div className={`w-9 h-9 rounded-full flex items-center justify-center font-black text-sm shrink-0 ${
                 selectedCustomerObj 
                   ? 'bg-amber-600 text-white shadow-xs' 
                   : 'bg-slate-200 text-slate-600'
               }`}>
-                {selectedCustomerObj ? (selectedCustomerObj.name || 'D').charAt(0).toUpperCase() : <User size={15} />}
+                {selectedCustomerObj ? (selectedCustomerObj.name || 'C').charAt(0).toUpperCase() : <User size={16} />}
               </div>
             )}
 
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-1.5">
-                <span className="text-xs font-black text-slate-800 truncate">
-                  {selectedCustomerObj?.name || (orderMode === 'bulk' ? t('Select Wholesale Dealer') : (orderMode === 'export' ? t('Select Export Dealer') : t('Select Customer')))}
+                <span className="text-xs sm:text-[13px] font-black text-slate-900 truncate">
+                  {selectedCustomerObj?.name || (isWholesale ? t('Select Wholesale Dealer') : (isExport ? t('Select Export Dealer') : t('Select Retail Customer')))}
                 </span>
-                {orderMode === 'bulk' && (
+                {isWholesale && (
                   <span className="text-[9.5px] font-extrabold bg-amber-500/20 text-amber-800 px-1.5 py-0.2 rounded shrink-0">
                     {t('Wholesale')}
                   </span>
                 )}
-                {orderMode === 'export' && (
+                {isExport && (
                   <span className="text-[9.5px] font-extrabold bg-sky-500/20 text-sky-800 px-1.5 py-0.2 rounded shrink-0">
                     {selectedCustomerObj?.exportSubCategory === 'DAM' ? t('Export DAM') : t('Export Local')}
+                  </span>
+                )}
+                {isRetail && (
+                  <span className="text-[9.5px] font-extrabold bg-emerald-500/20 text-emerald-800 px-1.5 py-0.2 rounded shrink-0">
+                    {t('Retail')}
                   </span>
                 )}
               </div>
@@ -303,7 +334,11 @@ export default function PredefinedCustomerBar({
                     )}
                   </>
                 ) : (
-                  <span>{t('Click to search or pick predefined customer')}</span>
+                  <span>
+                    {isWholesale 
+                      ? t('Click to search or pick wholesale dealer') 
+                      : (isExport ? t('Click to search or pick export client') : t('Click to search or pick retail customer'))}
+                  </span>
                 )}
               </div>
             </div>
@@ -333,10 +368,12 @@ export default function PredefinedCustomerBar({
               type="button"
               onClick={() => setShowQuickAdd(true)}
               className="p-1.5 bg-gradient-to-r from-[#ea580c] to-[#c2410c] text-white rounded-xl text-xs font-bold shadow-xs hover:shadow-md transition-all cursor-pointer flex items-center gap-1 active:scale-95"
-              title={t('Register a new dealer on the fly')}
+              title={isWholesale ? t('Register a new dealer on the fly') : (isExport ? t('Register a new export client') : t('Register a new customer'))}
             >
               <Plus size={14} strokeWidth={2.5} />
-              <span className="text-[10px] hidden sm:inline">{t('New Dealer')}</span>
+              <span className="text-[10px] hidden sm:inline">
+                {isWholesale ? t('New Dealer') : (isExport ? t('New Client') : t('New Customer'))}
+              </span>
             </button>
           </div>
         </div>
@@ -361,7 +398,7 @@ export default function PredefinedCustomerBar({
               <input
                 type="text"
                 autoFocus
-                placeholder={t('Search by Name, Phone (4 digits), Shop...')}
+                placeholder={isWholesale ? t('Search dealer by Name, Phone, Shop...') : (isExport ? t('Search client by Name, Phone, Place...') : t('Search customer by Name, Phone...'))}
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 className="w-full pl-9 pr-3 py-1.5 bg-white border border-[#E8DCCB] rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:border-[#ea580c]"
@@ -378,7 +415,7 @@ export default function PredefinedCustomerBar({
             </div>
 
             {/* Sub-channel pills for Export */}
-            {orderMode === 'export' && (
+            {isExport && (
               <div className="flex gap-1">
                 {[
                   { id: 'All', label: t('All Export') },
@@ -407,7 +444,9 @@ export default function PredefinedCustomerBar({
             {filteredList.length === 0 ? (
               <div className="p-6 text-center text-slate-400">
                 <Users size={22} className="mx-auto text-slate-300 mb-1" />
-                <p className="text-xs font-bold">{t('No matching dealers found')}</p>
+                <p className="text-xs font-bold">
+                  {isWholesale ? t('No matching wholesale dealers found') : (isExport ? t('No matching export clients found') : t('No matching retail customers found'))}
+                </p>
                 <button
                   type="button"
                   onClick={() => {
@@ -416,12 +455,14 @@ export default function PredefinedCustomerBar({
                   }}
                   className="mt-2 text-xs font-bold text-[#ea580c] hover:underline cursor-pointer"
                 >
-                  {t('+ Quick Register This Dealer')}
+                  {isWholesale ? t('+ Quick Register This Dealer') : (isExport ? t('+ Quick Register This Client') : t('+ Quick Register This Customer'))}
                 </button>
               </div>
             ) : (
               filteredList.map((cust) => {
-                const isSelected = cust.phone === customerPhone;
+                const cleanPhone = String(cust.phone || '').replace(/\D/g, '').slice(-10);
+                const selectedClean = String(customerPhone || '').replace(/\D/g, '').slice(-10);
+                const isSelected = cleanPhone && selectedClean && cleanPhone === selectedClean;
                 return (
                   <div
                     key={cust._id || cust.phone}
@@ -435,19 +476,26 @@ export default function PredefinedCustomerBar({
                         <img
                           src={cust.photo}
                           alt={cust.name}
-                          className="w-8 h-8 rounded-full object-cover border border-[#E8DCCB] shrink-0"
+                          className="w-9 h-9 rounded-full object-cover border border-[#E8DCCB] shrink-0"
                         />
                       ) : (
-                        <div className="w-8 h-8 rounded-full bg-slate-200 text-slate-700 font-black text-xs flex items-center justify-center shrink-0">
-                          {(cust.name || 'D').charAt(0).toUpperCase()}
+                        <div className="w-9 h-9 rounded-full bg-slate-200 text-slate-700 font-black text-xs flex items-center justify-center shrink-0">
+                          {(cust.name || 'C').charAt(0).toUpperCase()}
                         </div>
                       )}
                       <div className="min-w-0">
                         <div className="flex items-center gap-1.5">
-                          <span className="text-xs font-bold text-slate-800 truncate">{cust.name}</span>
+                          <span className="text-xs sm:text-[13px] font-bold text-slate-800 truncate">{cust.name}</span>
                           {cust.exportSubCategory && (
                             <span className="text-[9px] font-bold bg-sky-100 text-sky-800 px-1 rounded">
                               {cust.exportSubCategory}
+                            </span>
+                          )}
+                          {cust.category && (
+                            <span className={`text-[8.5px] font-bold px-1 rounded ${
+                              cust.category === 'Wholesale' ? 'bg-amber-100 text-amber-800' : (cust.category === 'Export' ? 'bg-sky-100 text-sky-800' : 'bg-emerald-100 text-emerald-800')
+                            }`}>
+                              {cust.category}
                             </span>
                           )}
                         </div>
@@ -469,7 +517,7 @@ export default function PredefinedCustomerBar({
         </div>
       )}
 
-      {/* QUICK ADD DEALER MODAL */}
+      {/* QUICK ADD DEALER / CUSTOMER MODAL */}
       {showQuickAdd && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-xs z-[999999] flex items-center justify-center p-3 animate-fade-in">
           <div className="bg-white border border-[#E8DCCB] rounded-3xl w-full max-w-sm overflow-hidden shadow-2xl animate-slide-up flex flex-col">
@@ -479,14 +527,16 @@ export default function PredefinedCustomerBar({
                   <Plus size={16} />
                 </div>
                 <div>
-                  <h3 className="font-black text-sm text-slate-800">{t('Quick Register Dealer')}</h3>
+                  <h3 className="font-black text-sm text-slate-800">
+                    {isWholesale ? t('Quick Register Dealer') : (isExport ? t('Quick Register Export Client') : t('Quick Register Retail Customer'))}
+                  </h3>
                   <p className="text-[10px] text-slate-500">{t('Available instantly for billing lock')}</p>
                 </div>
               </div>
               <button
                 type="button"
                 onClick={() => setShowQuickAdd(false)}
-                className="p-1 text-slate-400 hover:text-slate-700 rounded-lg hover:bg-slate-100"
+                className="p-1 text-slate-400 hover:text-slate-700 rounded-lg hover:bg-slate-100 cursor-pointer"
               >
                 <X size={16} />
               </button>
@@ -498,8 +548,8 @@ export default function PredefinedCustomerBar({
                 {quickAddData.photo ? (
                   <img
                     src={quickAddData.photo}
-                    alt="Dealer"
-                    className="w-12 h-12 rounded-full object-cover border border-[#ea580c] shrink-0"
+                    alt="Customer / Dealer"
+                    className="w-12 h-12 rounded-full object-cover border-2 border-[#ea580c] shrink-0"
                   />
                 ) : (
                   <div className="w-12 h-12 rounded-full bg-slate-100 border border-dashed border-slate-300 flex items-center justify-center text-slate-400 shrink-0">
@@ -537,12 +587,12 @@ export default function PredefinedCustomerBar({
               {/* Name */}
               <div>
                 <label className="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-1">
-                  {t('Dealer / Customer Name *')}
+                  {isWholesale ? t('Dealer Name *') : (isExport ? t('Client Name *') : t('Customer Name *'))}
                 </label>
                 <input
                   type="text"
                   required
-                  placeholder="e.g. Anand Reddy"
+                  placeholder={isWholesale ? 'e.g. Saif Traders' : (isExport ? 'e.g. Hyderabad Coastal Traders' : 'e.g. Anand Reddy')}
                   value={quickAddData.name}
                   onChange={(e) => setQuickAddData(prev => ({ ...prev, name: e.target.value }))}
                   className="w-full px-3 py-2 bg-[#F7EFE2] border border-[#E8DCCB] rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:border-[#ea580c]"
@@ -552,11 +602,11 @@ export default function PredefinedCustomerBar({
               {/* Shop / Business Name */}
               <div>
                 <label className="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-1">
-                  {t('Shop Name (Optional)')}
+                  {isWholesale || isExport ? t('Shop / Business Name (Optional)') : t('Address / Landmark (Optional)')}
                 </label>
                 <input
                   type="text"
-                  placeholder="e.g. Royal Fish Traders"
+                  placeholder={isWholesale ? 'e.g. Royal Fish Traders' : (isExport ? 'e.g. Cold Storage Facility' : 'e.g. Market Road, Kadapa')}
                   value={quickAddData.businessName}
                   onChange={(e) => setQuickAddData(prev => ({ ...prev, businessName: e.target.value }))}
                   className="w-full px-3 py-2 bg-[#F7EFE2] border border-[#E8DCCB] rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:border-[#ea580c]"
@@ -568,14 +618,14 @@ export default function PredefinedCustomerBar({
                 <button
                   type="button"
                   onClick={() => setShowQuickAdd(false)}
-                  className="flex-1 py-2 border border-[#E8DCCB] bg-[#F7EFE2] text-slate-700 rounded-xl font-bold text-xs hover:bg-[#F5E8D8]"
+                  className="flex-1 py-2 border border-[#E8DCCB] bg-[#F7EFE2] text-slate-700 rounded-xl font-bold text-xs hover:bg-[#F5E8D8] cursor-pointer"
                 >
                   {t('Cancel')}
                 </button>
                 <button
                   type="submit"
                   disabled={quickAddLoading}
-                  className="flex-1 py-2 bg-gradient-to-r from-[#ea580c] to-[#c2410c] hover:from-[#c2410c] hover:to-[#9a3412] text-white rounded-xl font-black text-xs shadow-md flex items-center justify-center gap-1.5"
+                  className="flex-1 py-2 bg-gradient-to-r from-[#ea580c] to-[#c2410c] hover:from-[#c2410c] hover:to-[#9a3412] text-white rounded-xl font-black text-xs shadow-md flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
                 >
                   {quickAddLoading ? <Loader2 size={14} className="animate-spin" /> : <span>{t('Save & Select')}</span>}
                 </button>
@@ -599,4 +649,3 @@ export default function PredefinedCustomerBar({
     </div>
   );
 }
-

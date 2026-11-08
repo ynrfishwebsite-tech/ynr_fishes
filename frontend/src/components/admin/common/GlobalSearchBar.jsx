@@ -159,39 +159,39 @@ export default function GlobalSearchBar({
     },
     {
       id: 'retail-bill-history',
-      title: 'Retail Bill History',
-      subtitle: 'Past Counter Retail Invoices',
+      title: 'Retail Management Hub',
+      subtitle: 'Retail Bills • CRM • Khata Book',
       category: 'Billing',
       icon: FileText,
       iconColor: '#059669',
       iconBg: '#ecfdf5',
       navView: 'retail-bill-history',
       navOptions: {},
-      keywords: ['retail bills', 'retail bill history', 'retail invoices', 'receipts']
+      keywords: ['retail bills', 'retail bill history', 'retail crm', 'retail khata', 'retail customers', 'walkin', 'receipts']
     },
     {
       id: 'wholesale-bill-history',
-      title: 'Wholesale Bill History',
-      subtitle: 'Past Wholesale Box Bills & Dealers',
+      title: 'Wholesale Management Hub',
+      subtitle: 'Wholesale Bills • Dealers CRM • Khata Ledger',
       category: 'Billing',
       icon: FileText,
       iconColor: '#d97706',
       iconBg: '#fffbeb',
       navView: 'wholesale-bill-history',
       navOptions: {},
-      keywords: ['wholesale bills', 'wholesale bill history', 'wholesale invoices', 'crates history']
+      keywords: ['wholesale bills', 'wholesale bill history', 'wholesale dealers', 'wholesale crm', 'wholesale khata', 'dealers', 'khata', 'credit', 'crates history']
     },
     {
       id: 'export-bill-history',
-      title: 'Export Bill History',
-      subtitle: 'Past Local & DAM Export Consignments',
+      title: 'Export Management Hub',
+      subtitle: 'Export Consignments • Clients CRM • Freight Khata',
       category: 'Billing',
       icon: FileText,
       iconColor: '#2563eb',
       iconBg: '#eff6ff',
       navView: 'export-bill-history',
       navOptions: {},
-      keywords: ['export bills', 'export bill history', 'export invoices', 'consignments history']
+      keywords: ['export bills', 'export bill history', 'export clients', 'export crm', 'export khata', 'export credit', 'consignments history']
     },
     {
       id: 'active-orders',
@@ -290,18 +290,6 @@ export default function GlobalSearchBar({
       keywords: ['day book', 'ledger', 'cash in', 'cash out', 'daily accounts', 'transactions']
     },
     {
-      id: 'khata',
-      title: 'Khata Book',
-      subtitle: 'Credit Accounts & Customer Due',
-      category: 'Finance',
-      icon: BookMarked,
-      iconColor: '#e11d48',
-      iconBg: '#fff1f2',
-      navView: 'khata',
-      navOptions: {},
-      keywords: ['khata', 'credit', 'customer balance', 'khata book', 'due', 'udhar', 'ledger']
-    },
-    {
       id: 'expenses',
       title: 'Daily Expenses',
       subtitle: 'Petty Cash & Overhead',
@@ -324,18 +312,6 @@ export default function GlobalSearchBar({
       navView: 'vehicles',
       navOptions: {},
       keywords: ['vehicles', 'transport', 'fleet', 'trips', 'drivers', 'dispatch', 'fuel', 'logistics']
-    },
-    {
-      id: 'crm',
-      title: 'Customers & CRM',
-      subtitle: 'Dealers, Wholesalers & Retail',
-      category: 'Billing',
-      icon: Users,
-      iconColor: '#0891b2',
-      iconBg: '#ecfeff',
-      navView: 'crm',
-      navOptions: {},
-      keywords: ['customers', 'crm', 'dealers', 'wholesale buyers', 'contacts', 'address', 'phone']
     },
     {
       id: 'staff',

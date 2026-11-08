@@ -19,135 +19,175 @@ export const getBills = async (req, res) => {
     const page = Math.max(1, parseInt(req.query.page) || 1);
     const limit = Math.min(Math.max(1, parseInt(req.query.limit) || 20), 500);
     const skip = (page - 1) * limit;
-    const { search, billType, excludeBillType, orderSource, paymentMode, status, startDate, endDate, salesCategory, salesType, customerCategory } = req.query;
+    const { 
+      search, 
+      billType, 
+      excludeBillType, 
+      orderSource, 
+      paymentMode, 
+      status, 
+      startDate, 
+      endDate, 
+      salesCategory, 
+      salesType, 
+      customerCategory,
+      customerPhone,
+      phone,
+      customerName
+    } = req.query;
 
-    // Build query
-    const query = {};
+    const andConditions = [];
 
     // Status filter
-    if (status) {
-      query.status = status.includes(',') ? { $in: status.split(',').map(s => s.trim()) } : status;
-    } else {
-      query.status = { $in: ['Paid', 'Unpaid', 'Cancelled', 'Deleted'] };
-    }
+    const statusCondition = status
+      ? (status.includes(',') ? { $in: status.split(',').map(s => s.trim()) } : status)
+      : { $in: ['Paid', 'Unpaid', 'Partial', 'Billed', 'Cancelled', 'Deleted', 'Refunded'] };
+    andConditions.push({ status: statusCondition });
 
     // Sales Category / Type filter (Retail, Wholesale, Export)
     const salesCat = (salesCategory || salesType || customerCategory || '').trim();
     if (salesCat && salesCat !== 'all' && salesCat !== 'All') {
       const catLower = salesCat.toLowerCase();
       if (catLower.includes('whole')) {
-        query.billNumber = { $not: /^RET-|^EXP-/i };
-        query.tableNo = { $not: /^RET-|^EXP-/i };
-        query.$or = [
-          { customerCategory: 'Wholesale' },
-          { orderChannel: /Wholesale/i },
-          { billType: 'Wholesale' },
-          { billNumber: /^WS-/i }
-        ];
+        andConditions.push({
+          billNumber: { $not: /^RET-|^EXP-/i },
+          tableNo: { $not: /^RET-|^EXP-/i },
+          $or: [
+            { customerCategory: 'Wholesale' },
+            { orderChannel: /Wholesale/i },
+            { billType: 'Wholesale' },
+            { billNumber: /^WS-/i }
+          ]
+        });
       } else if (catLower.includes('export')) {
-        query.$or = [
-          { customerCategory: 'Export' },
-          { orderChannel: /Export/i },
-          { billType: 'Export' },
-          { billNumber: /^EXP-/i }
-        ];
+        andConditions.push({
+          $or: [
+            { customerCategory: 'Export' },
+            { orderChannel: /Export/i },
+            { billType: 'Export' },
+            { billNumber: /^EXP-/i }
+          ]
+        });
       } else if (catLower.includes('retail')) {
-        query.billNumber = { $not: /^WS-|^EXP-/i };
-        query.tableNo = { $not: /^WS-|^EXP-/i };
-        query.$or = [
-          { customerCategory: 'Retail' },
-          { orderChannel: /Retail|Counter/i },
-          { billType: 'Retail' },
-          { billNumber: /^RET-/i }
-        ];
+        andConditions.push({
+          billNumber: { $not: /^WS-|^EXP-/i },
+          tableNo: { $not: /^WS-|^EXP-/i },
+          $or: [
+            { customerCategory: 'Retail' },
+            { orderChannel: /Retail|Counter/i },
+            { billType: 'Retail' },
+            { billNumber: /^RET-/i }
+          ]
+        });
+      }
+    }
+
+    // Customer phone / name filter (Customer Statement / Ledger view)
+    const targetPhone = (customerPhone || phone || '').trim();
+    const cleanPhone = targetPhone.replace(/\D/g, '').slice(-10);
+    const targetName = (customerName || '').trim();
+    if (cleanPhone || targetName) {
+      const custOr = [];
+      if (cleanPhone) {
+        custOr.push({ customerPhone: { $regex: cleanPhone } });
+      }
+      if (targetName && targetName.toLowerCase() !== 'guest' && targetName !== '-') {
+        custOr.push({ customerName: { $regex: new RegExp(`^${targetName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') } });
+      }
+      if (custOr.length > 0) {
+        andConditions.push(custOr.length === 1 ? custOr[0] : { $or: custOr });
       }
     }
 
     // Bill type filter (e.g. Delivery, Takeaway, or Dine-In,Takeaway)
     if (billType) {
       if (billType.includes(',')) {
-        query.billType = { $in: billType.split(',').map(s => s.trim()) };
+        andConditions.push({ billType: { $in: billType.split(',').map(s => s.trim()) } });
       } else {
-        query.billType = billType.trim();
+        andConditions.push({ billType: billType.trim() });
       }
     } else if (excludeBillType) {
-      query.billType = { $ne: excludeBillType.trim() };
+      andConditions.push({ billType: { $ne: excludeBillType.trim() } });
     }
 
     // Order source filter (e.g. Swiggy, Zomato, Direct)
     if (orderSource && orderSource !== 'all' && orderSource !== 'All') {
       if (orderSource === 'Other') {
-        query.orderSource = { $nin: ['Swiggy', 'Zomato', 'Direct'] };
+        andConditions.push({ orderSource: { $nin: ['Swiggy', 'Zomato', 'Direct'] } });
       } else {
-        query.orderSource = orderSource.trim();
+        andConditions.push({ orderSource: orderSource.trim() });
       }
     }
 
     // Payment mode filter
     if (paymentMode && paymentMode !== 'all' && paymentMode !== 'All') {
       const pMode = paymentMode.trim();
-      if (pMode === 'Unpaid' || pMode === 'Due / Credit' || pMode === 'Due' || pMode === 'Credit') {
-        query.status = 'Unpaid';
+      if (pMode === 'Partial') {
+        andConditions.push({ $or: [{ status: 'Partial' }, { paymentMode: 'Partial' }] });
+      } else if (pMode === 'Unpaid' || pMode === 'Due / Credit' || pMode === 'Due' || pMode === 'Credit') {
+        andConditions.push({ status: { $in: ['Unpaid', 'Partial'] } });
       } else {
-        query.paymentMode = pMode;
+        andConditions.push({ paymentMode: pMode });
       }
     }
 
     // Date range filter (inclusive of full days in IST)
     if (startDate || endDate) {
-      query.createdAt = {};
+      const dateRange = {};
       if (startDate) {
         const { startDate: s } = getISTDayRange(startDate);
         if (!isNaN(s.getTime())) {
-          query.createdAt.$gte = s;
+          dateRange.$gte = s;
         }
       }
       if (endDate) {
         const { endDate: e } = getISTDayRange(endDate);
         if (!isNaN(e.getTime())) {
-          query.createdAt.$lte = e;
+          dateRange.$lte = e;
         }
+      }
+      if (Object.keys(dateRange).length > 0) {
+        andConditions.push({ createdAt: dateRange });
       }
     }
 
     // Search filter
     if (search && search.trim()) {
       const searchClean = search.trim().replace(/^#/, '');
-      const searchOr = [
-        { billNumber: { $regex: searchClean, $options: 'i' } },
-        { tableNo: { $regex: searchClean, $options: 'i' } },
-        { customerName: { $regex: searchClean, $options: 'i' } },
-        { customerPhone: { $regex: searchClean, $options: 'i' } }
-      ];
-      if (query.$or) {
-        query.$and = [{ $or: query.$or }, { $or: searchOr }];
-        delete query.$or;
-      } else {
-        query.$or = searchOr;
-      }
+      andConditions.push({
+        $or: [
+          { billNumber: { $regex: searchClean, $options: 'i' } },
+          { tableNo: { $regex: searchClean, $options: 'i' } },
+          { customerName: { $regex: searchClean, $options: 'i' } },
+          { customerPhone: { $regex: searchClean, $options: 'i' } }
+        ]
+      });
     }
+
+    // Combine all andConditions
+    const query = andConditions.length > 0 ? { $and: andConditions } : {};
 
     // Run query and count concurrently in parallel for 2x faster execution
     const [bills, total, retailCount, wholesaleCount, exportCount] = await Promise.all([
       Bill.find(query)
-        .select('billNumber tableNo billType customerCategory orderChannel exportSubCategory totalBoxes boxes legacyBillNumber paymentMode splitPayments upiApp amountPaid changeAmount subtotal tax taxBreakdown discount discountType discountValue deliveryCharge containerCharge cuttingCharge total orderSource status customerName customerPhone items billedAt settledAt createdAt updatedAt whatsappSent whatsappSentAt')
+        .select('billNumber tableNo billType customerCategory orderChannel exportSubCategory totalBoxes boxes legacyBillNumber paymentMode splitPayments upiApp amountPaid paidAmount dueAmount partialPayment shopName customerAddress customerPhoto changeAmount subtotal tax taxBreakdown discount discountType discountValue deliveryCharge containerCharge cuttingCharge total orderSource status customerName customerPhone items billedAt settledAt createdAt updatedAt whatsappSent whatsappSentAt')
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(limit)
         .lean(),
       Bill.countDocuments(query),
       Bill.countDocuments({
-        status: query.status,
+        status: statusCondition,
         billNumber: { $not: /^WS-|^EXP-/i },
         tableNo: { $not: /^WS-|^EXP-/i },
         $or: [{ customerCategory: 'Retail' }, { orderChannel: /Retail|Counter/i }, { billType: 'Retail' }, { billNumber: /^RET-/i }]
       }).catch(() => 0),
       Bill.countDocuments({
-        status: query.status,
+        status: statusCondition,
         $or: [{ customerCategory: 'Wholesale' }, { orderChannel: /Wholesale/i }, { billType: 'Wholesale' }, { billNumber: /^WS-/i }]
       }).catch(() => 0),
       Bill.countDocuments({
-        status: query.status,
+        status: statusCondition,
         $or: [{ customerCategory: 'Export' }, { orderChannel: /Export/i }, { billType: 'Export' }, { billNumber: /^EXP-/i }]
       }).catch(() => 0)
     ]);

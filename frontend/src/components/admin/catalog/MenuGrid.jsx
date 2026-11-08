@@ -4,12 +4,13 @@ import {
   Search, ChevronLeft, ChevronRight, Star, X, ChevronDown, Image as ImageIcon,
   Fish, Waves, Anchor, Droplets, Box, Package, Flame, Gift, Menu as MenuIcon,
   Plus, Minus, Loader2, RefreshCw, Sparkles, Scale, UtensilsCrossed, Filter, Check,
-  LayoutGrid, CircleDot
+  LayoutGrid, CircleDot, User, Users, Phone, Building, Save, Printer, Lock, Unlock, ArrowRight
 } from 'lucide-react';
 import api from '../../../api/system/axios';
 import { getMenuItems, updateMenuItem } from '../../../api/catalog/menu';
 import { getCategories } from '../../../api/catalog/category';
 import { getCachedMenuItems, getCachedCategories } from '../../../db/offlineDb';
+import { getCachedCustomers, fetchPredefinedCustomers } from '../../../api/crm/customerApi';
 import realtimeService from '../../../services/realtimeService';
 import Fish3DRoller from './Fish3DRoller';
 import FishSmartwatchDial from './FishSmartwatchDial';
@@ -196,6 +197,83 @@ export const getItemPricePerKg = (item, mode = 'individual', sizeGrade = null) =
   return parseFloat(item.price) || 0;
 };
 
+export const getGradeAverageKg = (item, gradeKey = 'medium') => {
+  if (!item) return 1;
+  const grades = item.sizeGrades;
+  const gradeObj = grades?.[gradeKey];
+
+  let min = 0;
+  let max = 1;
+  if (gradeKey === 'small') {
+    min = parseFloat(gradeObj?.minKg) || 0;
+    max = parseFloat(gradeObj?.maxKg) || 1;
+  } else if (gradeKey === 'medium') {
+    min = parseFloat(gradeObj?.minKg) || 1;
+    max = parseFloat(gradeObj?.maxKg) || 4;
+  } else if (gradeKey === 'big') {
+    min = parseFloat(gradeObj?.minKg) || 4;
+    max = parseFloat(gradeObj?.maxKg) || 99;
+  }
+
+  // Handle open-ended big grade (e.g. 4 to 99)
+  if (max >= 50) {
+    max = min + 4; // 4 to 8 Kg => average is 6 Kg
+  }
+
+  const avg = (min + max) / 2;
+  const rounded = Math.round(avg);
+  return Math.max(1, rounded);
+};
+
+export const getItemSizeGrades = (item, mode = 'individual') => {
+  if (!item) return [];
+  const grades = item.sizeGrades;
+  const isSmallOn = grades?.small?.enabled !== false;
+  const isMediumOn = grades?.medium?.enabled !== false;
+  const isBigOn = grades?.big?.enabled !== false;
+
+  const smallMin = parseFloat(grades?.small?.minKg) || 0;
+  const smallMax = parseFloat(grades?.small?.maxKg) || 1;
+
+  const mediumMin = parseFloat(grades?.medium?.minKg) || smallMax;
+  const mediumMax = parseFloat(grades?.medium?.maxKg) || 4;
+
+  const bigMin = parseFloat(grades?.big?.minKg) || mediumMax;
+  const bigMax = parseFloat(grades?.big?.maxKg) || 99;
+
+  const list = [
+    {
+      key: 'small',
+      label: 'Small',
+      minKg: smallMin,
+      maxKg: smallMax,
+      range: `${smallMin} to ${smallMax} Kg`,
+      enabled: isSmallOn,
+      price: getItemPricePerKg(item, mode, 'small')
+    },
+    {
+      key: 'medium',
+      label: 'Medium',
+      minKg: mediumMin,
+      maxKg: mediumMax,
+      range: `${mediumMin} to ${mediumMax} Kg`,
+      enabled: isMediumOn,
+      price: getItemPricePerKg(item, mode, 'medium')
+    },
+    {
+      key: 'big',
+      label: 'Big',
+      minKg: bigMin,
+      maxKg: bigMax,
+      range: bigMax >= 50 ? `${bigMin}+ Kg` : `${bigMin} to ${bigMax} Kg`,
+      enabled: isBigOn,
+      price: getItemPricePerKg(item, mode, 'big')
+    }
+  ];
+
+  return list.filter(g => g.enabled);
+};
+
 
 const getFoodCategoryVisual = (name = '', cat = '') => {
   const lower = (name + ' ' + cat).toLowerCase();
@@ -307,7 +385,22 @@ const MenuGrid = ({
   cart = [],
   cartTotal,
   onViewOrder,
-  onAddBox
+  onAddBox,
+  customerName = '',
+  setCustomerName,
+  customerPhone = '',
+  setCustomerPhone,
+  customerPhoto = '',
+  customerCategory = '',
+  exportSubCategory = null,
+  isOrderLocked = false,
+  setIsOrderLocked,
+  lockedTimestamp = '',
+  setLockedTimestamp,
+  onCustomerSelect,
+  onSaveOrder,
+  onGenerateBill,
+  actionLoading = null
 }) => {
   const { t, language } = useLanguage();
   const [items, setItems] = useState([]);
@@ -378,8 +471,115 @@ const MenuGrid = ({
 
   // Wholesale Multi-Item Box Builder State
   const [showBoxPacker, setShowBoxPacker] = useState(false);
+  const [activeBoxFish, setActiveBoxFish] = useState(null);
   const [boxSlotCount, setBoxSlotCount] = useState(1);
   const [boxSlots, setBoxSlots] = useState([]);
+  const [showWholesaleFishPicker, setShowWholesaleFishPicker] = useState(false);
+  const [wholesaleFishSearch, setWholesaleFishSearch] = useState('');
+  const [slotIndexToChange, setSlotIndexToChange] = useState(null);
+
+  // Retail Multi-Item Order State
+  const [retailSlots, setRetailSlots] = useState([]);
+  const [activeRetailSlotIndex, setActiveRetailSlotIndex] = useState(0);
+  const [showAddFishPicker, setShowAddFishPicker] = useState(false);
+  const [addFishSearch, setAddFishSearch] = useState('');
+
+  // Predefined Customer State & Cache Integration for Wholesale & Export
+  const [predefinedCustomers, setPredefinedCustomers] = useState([]);
+  const [customerSearch, setCustomerSearch] = useState('');
+  const [isCustomerDropdownOpen, setIsCustomerDropdownOpen] = useState(false);
+  const [selectedCustomerObj, setSelectedCustomerObj] = useState(null);
+
+  const targetCategory = fishOrderMode === 'bulk' ? 'Wholesale' : (fishOrderMode === 'export' ? 'Export' : 'Retail');
+
+  const loadPredefinedCustomers = useCallback(() => {
+    const cached = getCachedCustomers(targetCategory);
+    if (cached && cached.length > 0) {
+      setPredefinedCustomers(cached);
+    }
+    fetchPredefinedCustomers(targetCategory, 'All', true).then(data => {
+      if (Array.isArray(data)) {
+        setPredefinedCustomers(data);
+      }
+    }).catch(() => {});
+  }, [targetCategory]);
+
+  useEffect(() => {
+    loadPredefinedCustomers();
+    const handleUpdate = () => loadPredefinedCustomers();
+    window.addEventListener('customersUpdated', handleUpdate);
+    return () => window.removeEventListener('customersUpdated', handleUpdate);
+  }, [loadPredefinedCustomers]);
+
+  // Sync selected customer object with props
+  useEffect(() => {
+    if (customerPhone) {
+      const cleanPhone = String(customerPhone).replace(/\D/g, '').slice(-10);
+      const match = predefinedCustomers.find(c => {
+        const p = String(c.phone || '').replace(/\D/g, '').slice(-10);
+        return p === cleanPhone;
+      });
+      if (match) {
+        setSelectedCustomerObj(match);
+      } else {
+        setSelectedCustomerObj({
+          name: customerName || (fishOrderMode === 'bulk' ? 'Wholesale Dealer' : 'Export Client'),
+          phone: customerPhone,
+          category: targetCategory,
+          photo: customerPhoto,
+          exportSubCategory: exportSubCategory
+        });
+      }
+    } else {
+      setSelectedCustomerObj(null);
+    }
+  }, [customerPhone, customerName, customerPhoto, exportSubCategory, predefinedCustomers, fishOrderMode, targetCategory]);
+
+  const filteredPredefinedCustomers = useMemo(() => {
+    const s = customerSearch.toLowerCase().trim();
+    return predefinedCustomers.filter(c => {
+      if (!c) return false;
+      const cat = c.category || (c.lastOrderType === 'Wholesale' ? 'Wholesale' : (c.lastOrderType === 'Export' ? 'Export' : 'Retail'));
+      if (fishOrderMode === 'bulk' && cat !== 'Wholesale') return false;
+      if (fishOrderMode === 'export' && cat !== 'Export') return false;
+      if (fishOrderMode !== 'bulk' && fishOrderMode !== 'export' && (cat === 'Wholesale' || cat === 'Export')) return false;
+      if (!s) return true;
+      const addrStr = typeof c.address === 'string' ? c.address : `${c.address?.line1 || ''} ${c.address?.city || ''}`;
+      return (
+        (c.name && c.name.toLowerCase().includes(s)) ||
+        (c.phone && c.phone.includes(s)) ||
+        (c.businessName && c.businessName.toLowerCase().includes(s)) ||
+        addrStr.toLowerCase().includes(s)
+      );
+    });
+  }, [predefinedCustomers, fishOrderMode, customerSearch]);
+
+  const handleSelectCustomer = (cust) => {
+    if (!cust) return;
+    setSelectedCustomerObj(cust);
+    if (onCustomerSelect) {
+      onCustomerSelect(cust);
+    } else {
+      if (setCustomerName) setCustomerName(cust.name || 'Guest');
+      if (setCustomerPhone) setCustomerPhone(cust.phone || '');
+      if (setIsOrderLocked) setIsOrderLocked(true);
+      const now = new Date();
+      const dateFormatted = now.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+      const timeFormatted = now.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
+      if (setLockedTimestamp) setLockedTimestamp(`${dateFormatted}, ${timeFormatted}`);
+    }
+    setIsCustomerDropdownOpen(false);
+    if (showToast) showToast(`Selected ${cust.name || cust.phone}`, 'success');
+  };
+
+  const handleClearCustomer = () => {
+    setSelectedCustomerObj(null);
+    if (setCustomerName) setCustomerName('');
+    if (setCustomerPhone) setCustomerPhone('');
+    if (setIsOrderLocked) setIsOrderLocked(false);
+    if (setLockedTimestamp) setLockedTimestamp('');
+    if (showToast) showToast('Customer selection cleared', 'info');
+  };
 
   // Calculate current box number (Box #1, Box #2, etc.) based on existing boxes in cart
   const currentBoxNumber = useMemo(() => {
@@ -407,20 +607,27 @@ const MenuGrid = ({
   }, [items, fishOrderMode]);
 
   // Open the Wholesale Box Builder
-  const openBoxPackerModal = useCallback((initialFish = null) => {
-    const defaultCount = 1;
+  const openBoxPackerModal = useCallback((initialFish = null, initialGradeOverride = null) => {
     setBoxSlotCount(1);
     const availableFishes = items.filter(it => it.isAvailable !== false);
     const chosenFish = initialFish || availableFishes[0] || items[0] || null;
-    const defaultRate = fishOrderMode === 'export'
-      ? (chosenFish?.exportPricePerKg ? String(chosenFish.exportPricePerKg) : (chosenFish?.wholesalePricePerKg ? String(chosenFish.wholesalePricePerKg) : (chosenFish?.price ? String(chosenFish.price) : '200')))
-      : (chosenFish?.wholesalePricePerKg ? String(chosenFish.wholesalePricePerKg) : (chosenFish?.price ? String(chosenFish.price) : '200'));
+    setActiveBoxFish(chosenFish);
+
+    const initialEnabledGrade = chosenFish?.sizeGrades?.medium?.enabled !== false ? 'medium'
+      : chosenFish?.sizeGrades?.small?.enabled !== false ? 'small'
+      : chosenFish?.sizeGrades?.big?.enabled !== false ? 'big' : 'medium';
+    const chosenGrade = initialGradeOverride || chosenFish?.defaultSizeGrade || initialEnabledGrade;
+    const avgKg = getGradeAverageKg(chosenFish, chosenGrade);
+    const defaultRate = getItemPricePerKg(chosenFish, fishOrderMode, chosenGrade);
+
     const initialSlots = [{
       id: `slot_0_${Date.now()}_${Math.random()}`,
       fishId: chosenFish?._id || '',
       fish: chosenFish,
-      weightKg: chosenFish?.boxPackingKg ? String(chosenFish.boxPackingKg) : '10',
-      pricePerKg: defaultRate
+      sizeGrade: chosenGrade,
+      weightKg: String(avgKg),
+      weightGrams: '0',
+      pricePerKg: String(defaultRate)
     }];
     setBoxSlots(initialSlots);
     setShowBoxPacker(true);
@@ -436,15 +643,20 @@ const MenuGrid = ({
       if (clamped > updated.length) {
         for (let i = updated.length; i < clamped; i++) {
           const chosen = availableFishes[i] || items[i % (items.length || 1)] || null;
-          const defaultRate = fishOrderMode === 'export'
-            ? (chosen?.exportPricePerKg ? String(chosen.exportPricePerKg) : (chosen?.wholesalePricePerKg ? String(chosen.wholesalePricePerKg) : (chosen?.price ? String(chosen.price) : '200')))
-            : (chosen?.wholesalePricePerKg ? String(chosen.wholesalePricePerKg) : (chosen?.price ? String(chosen.price) : '200'));
+          const initialEnabledGrade = chosen?.sizeGrades?.medium?.enabled !== false ? 'medium'
+            : chosen?.sizeGrades?.small?.enabled !== false ? 'small'
+            : chosen?.sizeGrades?.big?.enabled !== false ? 'big' : 'medium';
+          const chosenGrade = chosen?.defaultSizeGrade || initialEnabledGrade;
+          const avgKg = getGradeAverageKg(chosen, chosenGrade);
+          const defaultRate = getItemPricePerKg(chosen, fishOrderMode, chosenGrade);
           updated.push({
             id: `slot_${i}_${Date.now()}_${Math.random()}`,
             fishId: chosen?._id || '',
             fish: chosen,
-            weightKg: chosen?.boxPackingKg ? String(chosen.boxPackingKg) : '10',
-            pricePerKg: defaultRate
+            sizeGrade: chosenGrade,
+            weightKg: String(avgKg),
+            weightGrams: '0',
+            pricePerKg: String(defaultRate)
           });
         }
       } else if (clamped < updated.length) {
@@ -456,25 +668,57 @@ const MenuGrid = ({
 
   const handleSlotFishChange = (index, selectedFishId) => {
     const chosen = items.find(it => String(it._id) === String(selectedFishId));
-    const chosenRate = fishOrderMode === 'export'
-      ? (chosen?.exportPricePerKg ? String(chosen.exportPricePerKg) : (chosen?.wholesalePricePerKg ? String(chosen.wholesalePricePerKg) : (chosen?.price ? String(chosen.price) : '200')))
-      : (chosen?.wholesalePricePerKg ? String(chosen.wholesalePricePerKg) : (chosen?.price ? String(chosen.price) : '200'));
+    if (index === 0 && chosen) {
+      setActiveBoxFish(chosen);
+    }
+    const initialEnabledGrade = chosen?.sizeGrades?.medium?.enabled !== false ? 'medium'
+      : chosen?.sizeGrades?.small?.enabled !== false ? 'small'
+      : chosen?.sizeGrades?.big?.enabled !== false ? 'big' : 'medium';
+    const chosenGrade = chosen?.defaultSizeGrade || initialEnabledGrade;
+    const avgKg = getGradeAverageKg(chosen, chosenGrade);
+    const chosenRate = getItemPricePerKg(chosen, fishOrderMode, chosenGrade);
+
     setBoxSlots(prev => prev.map((slot, idx) => {
       if (idx !== index) return slot;
       return {
         ...slot,
         fishId: selectedFishId,
         fish: chosen || null,
-        weightKg: chosen?.boxPackingKg ? String(chosen.boxPackingKg) : slot.weightKg,
-        pricePerKg: chosenRate
+        sizeGrade: chosenGrade,
+        weightKg: String(avgKg),
+        weightGrams: '0',
+        pricePerKg: String(chosenRate)
       };
     }));
   };
 
-  const handleSlotWeightChange = (index, weightVal) => {
+  const handleSlotGradeChange = (index, newGradeKey) => {
+    setBoxSlots(prev => prev.map((slot, idx) => {
+      if (idx !== index) return slot;
+      const targetFish = slot.fish;
+      const avgKg = getGradeAverageKg(targetFish, newGradeKey);
+      const newRate = getItemPricePerKg(targetFish, fishOrderMode, newGradeKey);
+      return {
+        ...slot,
+        sizeGrade: newGradeKey,
+        weightKg: String(avgKg),
+        weightGrams: '0',
+        pricePerKg: String(newRate)
+      };
+    }));
+  };
+
+  const handleSlotWeightKgChange = (index, weightVal) => {
     setBoxSlots(prev => prev.map((slot, idx) => {
       if (idx !== index) return slot;
       return { ...slot, weightKg: weightVal };
+    }));
+  };
+
+  const handleSlotWeightGramsChange = (index, gramsVal) => {
+    setBoxSlots(prev => prev.map((slot, idx) => {
+      if (idx !== index) return slot;
+      return { ...slot, weightGrams: gramsVal };
     }));
   };
 
@@ -496,30 +740,67 @@ const MenuGrid = ({
     const nextIdx = boxSlots.length;
     const availableFishes = items.filter(it => it.isAvailable !== false);
     const chosen = availableFishes[nextIdx] || items[nextIdx % (items.length || 1)] || null;
-    const chosenRate = fishOrderMode === 'export'
-      ? (chosen?.exportPricePerKg ? String(chosen.exportPricePerKg) : (chosen?.wholesalePricePerKg ? String(chosen.wholesalePricePerKg) : (chosen?.price ? String(chosen.price) : '200')))
-      : (chosen?.wholesalePricePerKg ? String(chosen.wholesalePricePerKg) : (chosen?.price ? String(chosen.price) : '200'));
+    const initialEnabledGrade = chosen?.sizeGrades?.medium?.enabled !== false ? 'medium'
+      : chosen?.sizeGrades?.small?.enabled !== false ? 'small'
+      : chosen?.sizeGrades?.big?.enabled !== false ? 'big' : 'medium';
+    const chosenGrade = chosen?.defaultSizeGrade || initialEnabledGrade;
+    const avgKg = getGradeAverageKg(chosen, chosenGrade);
+    const chosenRate = getItemPricePerKg(chosen, fishOrderMode, chosenGrade);
+
     setBoxSlots(prev => [
       ...prev,
       {
         id: `slot_${nextIdx}_${Date.now()}_${Math.random()}`,
         fishId: chosen?._id || '',
         fish: chosen,
-        weightKg: chosen?.boxPackingKg ? String(chosen.boxPackingKg) : '10',
-        pricePerKg: chosenRate
+        sizeGrade: chosenGrade,
+        weightKg: String(avgKg),
+        weightGrams: '0',
+        pricePerKg: String(chosenRate)
       }
     ]);
     setBoxSlotCount(prev => prev + 1);
   };
 
-  const handleAddBoxToOrder = () => {
-    const validSlots = boxSlots.filter(s => s.fish && (parseFloat(s.weightKg) || 0) > 0);
+  const handlePickWholesaleFishToAdd = (chosen) => {
+    if (!chosen || boxSlots.length >= 10) return;
+    const nextIdx = boxSlots.length;
+    const initialEnabledGrade = chosen?.sizeGrades?.medium?.enabled !== false ? 'medium'
+      : chosen?.sizeGrades?.small?.enabled !== false ? 'small'
+      : chosen?.sizeGrades?.big?.enabled !== false ? 'big' : 'medium';
+    const chosenGrade = chosen?.defaultSizeGrade || initialEnabledGrade;
+    const avgKg = getGradeAverageKg(chosen, chosenGrade);
+    const chosenRate = getItemPricePerKg(chosen, fishOrderMode, chosenGrade);
+
+    setBoxSlots(prev => [
+      ...prev,
+      {
+        id: `slot_${nextIdx}_${Date.now()}_${Math.random()}`,
+        fishId: chosen?._id || '',
+        fish: chosen,
+        sizeGrade: chosenGrade,
+        weightKg: String(avgKg),
+        weightGrams: '0',
+        pricePerKg: String(chosenRate)
+      }
+    ]);
+    setBoxSlotCount(prev => prev + 1);
+    setShowWholesaleFishPicker(false);
+    setWholesaleFishSearch('');
+    setSlotIndexToChange(null);
+  };
+
+  const handleAddBoxToOrder = (callbackAfterAdd) => {
+    const validSlots = boxSlots.filter(s => {
+      const wt = (parseFloat(s.weightKg) || 0) + ((parseFloat(s.weightGrams) || 0) / 1000);
+      return s.fish && wt > 0;
+    });
     if (validSlots.length === 0) {
       if (showToast) showToast('Please select at least one fish with valid weight', 'error');
-      return;
+      return false;
     }
     const boxItems = validSlots.map((slot, idx) => {
-      const wt = parseFloat(slot.weightKg) || 0;
+      const wt = Number(((parseFloat(slot.weightKg) || 0) + ((parseFloat(slot.weightGrams) || 0) / 1000)).toFixed(3));
       const rate = parseFloat(slot.pricePerKg) || 0;
       const totalAmount = parseFloat((wt * rate).toFixed(2));
       return {
@@ -533,6 +814,7 @@ const MenuGrid = ({
         boxLabel: `Box #${currentBoxNumber}`,
         isWholesaleBox: true,
         orderMode: fishOrderMode,
+        sizeGrade: slot.sizeGrade || 'medium',
         sellingUnit: 'Kg',
         quantity: 1,
         weightKg: wt,
@@ -551,7 +833,258 @@ const MenuGrid = ({
     } else {
       boxItems.forEach(it => onSelectItem(it));
     }
-    setShowBoxPacker(false);
+    if (callbackAfterAdd) {
+      callbackAfterAdd(boxItems);
+    } else {
+      setShowBoxPacker(false);
+      if (showToast) showToast(`Added Box #${currentBoxNumber} to order`, 'success');
+    }
+    return true;
+  };
+
+  const handleModalSave = (isPrint = false) => {
+    if (!customerPhone && !selectedCustomerObj?.phone) {
+      if (showToast) showToast(`Please select a ${fishOrderMode === 'export' ? 'Export Client' : 'Wholesale Dealer'} first`, 'warning');
+      setIsCustomerDropdownOpen(true);
+      return;
+    }
+
+    const validSlots = boxSlots.filter(s => {
+      const wt = (parseFloat(s.weightKg) || 0) + ((parseFloat(s.weightGrams) || 0) / 1000);
+      return s.fish && wt > 0;
+    });
+
+    if (validSlots.length > 0) {
+      handleAddBoxToOrder((newBoxItems) => {
+        setShowBoxPacker(false);
+        const fullCart = [...(cart || []), ...(newBoxItems || [])];
+        if (isPrint) {
+          if (onGenerateBill) onGenerateBill(fullCart);
+          else if (onSaveOrder) onSaveOrder(fullCart);
+        } else {
+          if (onSaveOrder) onSaveOrder(fullCart);
+        }
+      });
+    } else if (cart && cart.length > 0) {
+      setShowBoxPacker(false);
+      if (isPrint) {
+        if (onGenerateBill) onGenerateBill(cart);
+        else if (onSaveOrder) onSaveOrder(cart);
+      } else {
+        if (onSaveOrder) onSaveOrder(cart);
+      }
+    } else {
+      if (showToast) showToast('Please enter weight for this box before saving', 'warning');
+    }
+  };
+
+  // Retail Multi-Fish Slot Management
+  const handlePickFishToAdd = (chosen) => {
+    if (!chosen || retailSlots.length >= 10) return;
+    const nextIdx = retailSlots.length;
+    const initialEnabledGrade = chosen?.sizeGrades?.medium?.enabled !== false ? 'medium'
+      : chosen?.sizeGrades?.small?.enabled !== false ? 'small'
+      : chosen?.sizeGrades?.big?.enabled !== false ? 'big' : 'medium';
+    const chosenGrade = chosen?.defaultSizeGrade || initialEnabledGrade;
+    const avgKg = getGradeAverageKg(chosen, chosenGrade);
+    const chosenRate = getItemPricePerKg(chosen, 'retail', chosenGrade);
+
+    setRetailSlots(prev => [
+      ...prev,
+      {
+        id: `retail_${nextIdx}_${Date.now()}_${Math.random()}`,
+        fishId: chosen._id,
+        fish: chosen,
+        cutType: 'Whole',
+        sizeGrade: chosenGrade,
+        inputKg: String(avgKg),
+        inputGrams: '0',
+        fishWeightGrams: String(avgKg * 1000),
+        tareGrams: 0,
+        pricePerKg: chosenRate
+      }
+    ]);
+    setActiveRetailSlotIndex(nextIdx);
+    setShowAddFishPicker(false);
+    setAddFishSearch('');
+  };
+
+  const handleAddRetailSlot = () => {
+    setShowAddFishPicker(true);
+  };
+
+  const handleRemoveRetailSlot = (index) => {
+    if (retailSlots.length <= 1) return;
+    setRetailSlots(prev => prev.filter((_, idx) => idx !== index));
+    setActiveRetailSlotIndex(prev => Math.max(0, prev >= index ? prev - 1 : prev));
+  };
+
+  const handleRetailSlotFishChange = (index, selectedFishId) => {
+    const chosen = items.find(it => String(it._id) === String(selectedFishId));
+    if (!chosen) return;
+    const initialEnabledGrade = chosen?.sizeGrades?.medium?.enabled !== false ? 'medium'
+      : chosen?.sizeGrades?.small?.enabled !== false ? 'small'
+      : chosen?.sizeGrades?.big?.enabled !== false ? 'big' : 'medium';
+    const chosenGrade = chosen?.defaultSizeGrade || initialEnabledGrade;
+    const avgKg = getGradeAverageKg(chosen, chosenGrade);
+    const chosenRate = getItemPricePerKg(chosen, 'retail', chosenGrade);
+
+    setRetailSlots(prev => prev.map((slot, idx) => {
+      if (idx !== index) return slot;
+      return {
+        ...slot,
+        fishId: selectedFishId,
+        fish: chosen,
+        sizeGrade: chosenGrade,
+        inputKg: String(avgKg),
+        inputGrams: '0',
+        fishWeightGrams: String(avgKg * 1000),
+        pricePerKg: chosenRate
+      };
+    }));
+  };
+
+  const handleRetailSlotCutChange = (index, cut) => {
+    setRetailSlots(prev => prev.map((slot, idx) => (idx === index ? { ...slot, cutType: cut } : slot)));
+  };
+
+  const handleRetailSlotGradeChange = (index, gradeKey) => {
+    setRetailSlots(prev => prev.map((slot, idx) => {
+      if (idx !== index) return slot;
+      const targetFish = slot.fish;
+      const avgKg = getGradeAverageKg(targetFish, gradeKey);
+      const newRate = getItemPricePerKg(targetFish, 'retail', gradeKey);
+      return {
+        ...slot,
+        sizeGrade: gradeKey,
+        inputKg: String(avgKg),
+        inputGrams: '0',
+        fishWeightGrams: String(avgKg * 1000),
+        pricePerKg: newRate
+      };
+    }));
+  };
+
+  const handleRetailSlotKgChange = (index, kgPreset) => {
+    setRetailSlots(prev => prev.map((slot, idx) => {
+      if (idx !== index) return slot;
+      const sanitized = String(kgPreset).replace(/[^0-9]/g, '');
+      const kgVal = parseInt(sanitized, 10) || 0;
+      const gVal = parseInt(slot.inputGrams, 10) || 0;
+      const currentNet = (kgVal * 1000 + gVal) / 1000;
+      const detected = detectItemSizeGrade(slot.fish, currentNet);
+      const newRate = getItemPricePerKg(slot.fish, 'retail', detected);
+      return {
+        ...slot,
+        inputKg: sanitized,
+        sizeGrade: detected,
+        pricePerKg: newRate,
+        fishWeightGrams: String(kgVal * 1000 + gVal)
+      };
+    }));
+  };
+
+  const handleRetailSlotGramsChange = (index, gPreset) => {
+    setRetailSlots(prev => prev.map((slot, idx) => {
+      if (idx !== index) return slot;
+      const kgVal = parseInt(slot.inputKg, 10) || 0;
+      const gVal = parseInt(gPreset, 10) || 0;
+      const currentNet = (kgVal * 1000 + gVal) / 1000;
+      const detected = detectItemSizeGrade(slot.fish, currentNet);
+      const newRate = getItemPricePerKg(slot.fish, 'retail', detected);
+      return {
+        ...slot,
+        inputGrams: String(gPreset),
+        sizeGrade: detected,
+        pricePerKg: newRate,
+        fishWeightGrams: String(kgVal * 1000 + gVal)
+      };
+    }));
+  };
+
+  const handleRetailSlotTareChange = (index, tVal) => {
+    setRetailSlots(prev => prev.map((slot, idx) => (idx === index ? { ...slot, tareGrams: tVal } : slot)));
+  };
+
+  const handleRetailSlotScaleGramsChange = (index, sanitized) => {
+    setRetailSlots(prev => prev.map((slot, idx) => {
+      if (idx !== index) return slot;
+      const total = parseFloat(sanitized) || 0;
+      const k = Math.floor(total / 1000);
+      const g = total % 1000;
+      const currentNet = Math.max(0, total - (slot.tareGrams || 0)) / 1000;
+      const detected = detectItemSizeGrade(slot.fish, currentNet);
+      const newRate = getItemPricePerKg(slot.fish, 'retail', detected);
+      return {
+        ...slot,
+        fishWeightGrams: sanitized,
+        inputKg: String(k),
+        inputGrams: String(g),
+        sizeGrade: detected,
+        pricePerKg: newRate
+      };
+    }));
+  };
+
+  const handleRetailSave = (isPrint = false) => {
+    const validSlots = retailSlots.filter(s => {
+      const g = parseFloat(s.fishWeightGrams) || 0;
+      return s.fish && g > 0;
+    });
+
+    if (validSlots.length === 0) {
+      if (showToast) showToast('Please enter weight for at least one fish before saving', 'warning');
+      return;
+    }
+
+    const itemsToAdd = validSlots.map(slot => {
+      const scaleGrams = parseFloat(slot.fishWeightGrams) || 1000;
+      const netGrams = Math.max(0, scaleGrams - (slot.tareGrams || 0));
+      const netKg = netGrams / 1000;
+      const activeGrade = slot.sizeGrade || slot.fish?.defaultSizeGrade || 'small';
+      const activeRate = getItemPricePerKg(slot.fish, 'retail', activeGrade);
+      const calculatedPrice = parseFloat((netKg * activeRate).toFixed(2));
+      const fractionLabel = formatKgFraction(netKg);
+
+      return {
+        ...slot.fish,
+        itemKey: `${slot.fish._id}_${slot.cutType}_${netGrams}g_${activeGrade}_retail`,
+        menuItem: slot.fish._id,
+        originalId: slot.fish._id,
+        originalFishName: slot.fish.name,
+        name: `${slot.fish.name} (${slot.cutType} - ${fractionLabel})`,
+        price: calculatedPrice,
+        quantity: 1,
+        sellingUnit: 'Kg',
+        enteredWeight: netKg,
+        netWeightKg: netKg,
+        grossWeightKg: netKg, // 1:1 exact raw catch deduction
+        pricePerKg: activeRate,
+        sizeGrade: activeGrade,
+        orderMode: 'retail',
+        cutType: slot.cutType,
+        yieldFactor: 1.0,
+        tareWeightKg: ((slot.tareGrams || 0) / 1000)
+      };
+    });
+
+    itemsToAdd.forEach(it => onSelectItem(it));
+
+    const fullCart = [...(cart || []), ...itemsToAdd];
+    setSelectedFishItem(null);
+
+    // Immediately open Invoice Receipt Preview on the spot!
+    if (isPrint) {
+      if (onGenerateBill) {
+        onGenerateBill(fullCart);
+      } else if (onSaveOrder) {
+        onSaveOrder(fullCart);
+      }
+    } else {
+      if (onSaveOrder) {
+        onSaveOrder(fullCart);
+      }
+    }
   };
   const [displayMode, setDisplayMode] = useState(() => {
     try {
@@ -1520,6 +2053,7 @@ const MenuGrid = ({
                   showToast={showToast}
                   setShowBoxPacker={setShowBoxPacker}
                   openBoxPackerModal={openBoxPackerModal}
+                  getGradeAverageKg={getGradeAverageKg}
                   showImages={showImages}
                   showAnimation={showAnimation}
                   cart={cart}
@@ -1537,6 +2071,7 @@ const MenuGrid = ({
                   fishOrderMode={fishOrderMode}
                   getItemPricePerKg={getItemPricePerKg}
                   detectItemSizeGrade={detectItemSizeGrade}
+                  getGradeAverageKg={getGradeAverageKg}
                   formatKgFraction={formatKgFraction}
                   formatImageUrl={formatImageUrl}
                   onSelectItem={onSelectItem}
@@ -1593,6 +2128,7 @@ const MenuGrid = ({
               {(isMobile ? filteredItems.slice(0, mobileLoadedCount) : paginatedItems).map((item, idx) => {
                 const isAvailable = item.isAvailable !== false; // default to true if undefined
                 const dotColor = item.type === 'veg' ? 'bg-green-500 shadow-sm border border-green-200' : item.type === 'non-veg' ? 'bg-red-500 shadow-sm border border-red-200' : 'bg-gray-300';
+                const stockKg = Number(item.stock ?? item.inventoryStock ?? item.currentStock ?? 0);
 
                 return (
                   <div
@@ -1622,17 +2158,31 @@ const MenuGrid = ({
                       }
 
                       // Retail Mode: Open Fish Weight selection modal with active sale mode pricing
+                      const initialEnabledGrade = item.sizeGrades?.medium?.enabled !== false ? 'medium'
+                        : item.sizeGrades?.small?.enabled !== false ? 'small'
+                        : item.sizeGrades?.big?.enabled !== false ? 'big' : 'medium';
+                      const initialGrade = item.defaultSizeGrade || initialEnabledGrade;
+                      const initialAvgKg = getGradeAverageKg(item, initialGrade);
+                      const initialRate = getItemPricePerKg(item, 'retail', initialGrade);
+
+                      setRetailSlots([
+                        {
+                          id: `retail_0_${Date.now()}_${Math.random()}`,
+                          fishId: item._id,
+                          fish: item,
+                          cutType: 'Whole',
+                          sizeGrade: initialGrade,
+                          inputKg: String(initialAvgKg),
+                          inputGrams: '0',
+                          fishWeightGrams: String(initialAvgKg * 1000),
+                          tareGrams: 0,
+                          pricePerKg: initialRate
+                        }
+                      ]);
+                      setActiveRetailSlotIndex(0);
+                      setShowAddFishPicker(false);
+                      setAddFishSearch('');
                       setSelectedFishItem(item);
-                      setFishWeightGrams('1000');
-                      setInputKg('1');
-                      setInputGrams('0');
-                      const initialEnabledGrade = item.sizeGrades?.small?.enabled !== false ? 'small'
-                        : item.sizeGrades?.medium?.enabled !== false ? 'medium'
-                        : item.sizeGrades?.big?.enabled !== false ? 'big' : 'small';
-                      setSelectedGradeOverride(item.defaultSizeGrade || initialEnabledGrade);
-                      setSelectedCutType('Whole');
-                      setTareGrams(0);
-                      setBoxCountInput('1');
                     }}>
 
                     {/* When Images are ON: Floating badge over image banner */}
@@ -1676,12 +2226,12 @@ const MenuGrid = ({
                             )}
                           </div>
 
-                          <div className="flex justify-center w-full mt-1.5">
+                          <div className="flex flex-col items-center gap-1 w-full mt-1.5">
                             {(() => {
                               const ratePerKg = getItemPricePerKg(item, fishOrderMode);
                               if (fishOrderMode === 'export') {
                                 return (
-                                  <span className="text-[12px] sm:text-[13px] font-black px-2.5 py-1 rounded-full shadow-xs border bg-indigo-50 text-indigo-900 border-indigo-300 font-mono">
+                                  <span className="text-[12px] sm:text-[13px] font-black px-2.5 py-0.5 rounded-full shadow-xs border bg-indigo-50 text-indigo-900 border-indigo-300 font-mono">
                                     ₹{ratePerKg.toFixed(2)}
                                     <span className="text-[10px] text-indigo-700 font-bold ml-0.5">/Kg (Export)</span>
                                   </span>
@@ -1689,19 +2239,28 @@ const MenuGrid = ({
                               }
                               if (fishOrderMode === 'bulk') {
                                 return (
-                                  <span className="text-[12px] sm:text-[13px] font-black px-2.5 py-1 rounded-full shadow-xs border bg-amber-50 text-amber-900 border-amber-300 font-mono">
+                                  <span className="text-[12px] sm:text-[13px] font-black px-2.5 py-0.5 rounded-full shadow-xs border bg-amber-50 text-amber-900 border-amber-300 font-mono">
                                     ₹{ratePerKg.toFixed(2)}
                                     <span className="text-[10px] text-amber-700 font-bold ml-0.5">/Kg (Wholesale)</span>
                                   </span>
                                 );
                               }
                               return (
-                                <span className="text-[12px] sm:text-[13px] font-black px-2.5 py-1 rounded-full shadow-xs border bg-emerald-50 text-emerald-800 border-emerald-300 font-mono font-black">
+                                <span className="text-[12px] sm:text-[13px] font-black px-2.5 py-0.5 rounded-full shadow-xs border bg-emerald-50 text-emerald-800 border-emerald-300 font-mono font-black">
                                   ₹{ratePerKg.toFixed(2)}
                                   <span className="text-[10px] text-emerald-700 font-semibold ml-0.5">/Kg (Retail)</span>
                                 </span>
                               );
                             })()}
+
+                            {/* Stock below the image section */}
+                            <span className={`text-[9.5px] sm:text-[10px] font-bold px-2 py-0.5 rounded-md border ${
+                              stockKg > 0
+                                ? 'bg-slate-100 text-slate-700 border-slate-300'
+                                : 'bg-red-50 text-red-600 border-red-200'
+                            }`}>
+                              Stock: <strong className="font-mono text-slate-900">{stockKg} Kg</strong>
+                            </span>
                           </div>
                         </div>
                       </>
@@ -1710,15 +2269,24 @@ const MenuGrid = ({
                       <div className="flex-1 flex flex-col justify-between w-full h-full">
                         {/* Top Inline Header Row: Unit Badge + Stock / Water Info */}
                         <div className="flex items-center justify-between w-full pb-1 border-b border-orange-100/70 mb-1 shrink-0">
-                          <span className={`text-[9.5px] font-black uppercase px-2 py-0.5 rounded-md border tracking-wider ${
-                            fishOrderMode === 'export'
-                              ? 'bg-blue-50 text-blue-800 border-blue-200'
-                              : fishOrderMode === 'bulk'
-                                ? 'bg-amber-50 text-amber-800 border-amber-200'
-                                : 'bg-emerald-50 text-emerald-800 border-emerald-200'
-                          }`}>
-                            {(fishOrderMode === 'bulk' || fishOrderMode === 'export') ? 'BOX' : 'KG'}
-                          </span>
+                          <div className="flex items-center gap-1">
+                            <span className={`text-[9.5px] font-black uppercase px-2 py-0.5 rounded-md border tracking-wider ${
+                              fishOrderMode === 'export'
+                                ? 'bg-blue-50 text-blue-800 border-blue-200'
+                                : fishOrderMode === 'bulk'
+                                  ? 'bg-amber-50 text-amber-800 border-amber-200'
+                                  : 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                            }`}>
+                              {(fishOrderMode === 'bulk' || fishOrderMode === 'export') ? 'BOX' : 'KG'}
+                            </span>
+                            <span className={`text-[9px] font-extrabold px-1.5 py-0.5 rounded-md border ${
+                              stockKg > 0
+                                ? 'bg-slate-100 text-slate-800 border-slate-300'
+                                : 'bg-red-50 text-red-700 border-red-200'
+                            }`}>
+                              Stock: {stockKg} Kg
+                            </span>
+                          </div>
 
                           <div className="flex items-center gap-1">
                             {(() => {
@@ -2015,17 +2583,11 @@ const MenuGrid = ({
         >
           <div
             data-fish-modal="true"
-            className="bg-white w-full max-w-[460px] max-h-[96vh] sm:max-h-[92vh] rounded-xl sm:rounded-2xl shadow-2xl border border-slate-200 flex flex-col overflow-hidden text-slate-800 my-auto"
+            className="bg-[#FDFBF7] w-full max-w-[560px] max-h-[96vh] sm:max-h-[92vh] rounded-2xl md:rounded-3xl shadow-2xl border-2 border-[#E8DCCB] flex flex-col overflow-hidden text-slate-800 my-auto animate-in zoom-in-95 duration-200"
             onClick={(e) => e.stopPropagation()}
           >
-            {/* Header with Mode-Aware Badges */}
+            {/* Header with Mode Badge and Close Button */}
             {(() => {
-              const currentScaleGrams = parseFloat(fishWeightGrams) || 0;
-              const currentNetGrams = Math.max(0, currentScaleGrams - tareGrams);
-              const currentNetKg = currentNetGrams / 1000;
-              const activeGrade = selectedGradeOverride || selectedFishItem.defaultSizeGrade || 'small';
-              const activeRate = getItemPricePerKg(selectedFishItem, fishOrderMode, activeGrade);
-
               let modeBadge = { label: 'Retail Sale (Kg & Grams)', bg: 'bg-[#FFF3E0] text-[#c2410c] border-[#ffcc80]' };
               if (fishOrderMode === 'export') {
                 modeBadge = { label: 'Export (Bulk) Sale (Kg & Grams)', bg: 'bg-indigo-50 text-indigo-900 border-indigo-200' };
@@ -2034,21 +2596,10 @@ const MenuGrid = ({
               }
 
               return (
-                <div className="flex justify-between items-center px-3 sm:px-4 py-2 sm:py-2.5 border-b border-[#E8DCCB] bg-[#FAF0E4] shrink-0">
-                  <div>
-                    <span className={`text-[9px] sm:text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full border ${modeBadge.bg}`}>
-                      {modeBadge.label}
-                    </span>
-                    <h2 className="text-sm sm:text-base font-black text-slate-900 mt-0.5 leading-tight">{selectedFishItem.name}</h2>
-                    <p className="text-[11px] sm:text-xs text-[#7c3f1d] font-bold mt-0.5 flex items-center gap-1.5 sm:gap-2">
-                      <span>Rate: <strong className="text-xs sm:text-sm font-black text-emerald-800">₹{activeRate.toFixed(2)}</strong> / Kg</span>
-                      {selectedFishItem.sizeGrades && (
-                        <span className="text-[10px] text-amber-800 bg-amber-100 px-1.5 py-0.2 rounded font-semibold capitalize">
-                          Grade: {activeGrade}
-                        </span>
-                      )}
-                    </p>
-                  </div>
+                <div className="flex justify-between items-center px-3 sm:px-4 py-2 border-b border-[#E8DCCB] bg-[#FAF0E4] shrink-0">
+                  <span className={`text-[9.5px] sm:text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full border ${modeBadge.bg}`}>
+                    {modeBadge.label}
+                  </span>
                   <button
                     type="button"
                     onClick={() => setSelectedFishItem(null)}
@@ -2060,386 +2611,704 @@ const MenuGrid = ({
               );
             })()}
 
-            <div className="p-2 sm:p-2.5 md:p-3 space-y-1.5 sm:space-y-2 overflow-y-auto flex-1">
-              {/* 🐟 Individual Retail Order (Kg / Grams / Cuts) */}
-              <div className="space-y-2 sm:space-y-2.5 md:space-y-3">
-                  {/* Cut Type Selection (Balanced 5-Button Row) */}
-                  <div className="bg-[#F7EFE2] border border-sky-500/30 rounded-lg sm:rounded-xl p-1.5 sm:p-2 space-y-1">
-                    <div className="flex justify-between items-center">
-                      <span className="text-[11px] sm:text-xs font-bold text-slate-800">Cutting Style / Preparation</span>
-                      <span className="text-[9px] sm:text-[10px] text-slate-400">Butcher slip instruction</span>
+            <div className="p-2 sm:p-2.5 md:p-3 space-y-2 sm:space-y-2.5 overflow-y-auto flex-1">
+              {/* 1. RETAIL CUSTOMER SELECTOR (OPTIONAL) */}
+              <div className="bg-[#FAF0E4] border border-[#E8DCCB] rounded-xl sm:rounded-2xl p-2 sm:p-2.5 space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] sm:text-xs font-black uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
+                    <User size={13} className="text-amber-700" />
+                    <span>Select Retail Customer:</span>
+                  </span>
+                  <span className="text-[9px] font-bold text-amber-800 bg-amber-100 border border-amber-200 px-1.5 py-0.2 rounded">
+                    Optional (Walk-in)
+                  </span>
+                </div>
+
+                {selectedCustomerObj ? (
+                  <div className="bg-white border-2 border-amber-400/80 rounded-xl p-2 sm:p-2.5 shadow-sm space-y-1.5 animate-in fade-in slide-in-from-top-1 duration-200">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2 sm:gap-2.5 min-w-0">
+                        {selectedCustomerObj.photo ? (
+                          <img
+                            src={selectedCustomerObj.photo}
+                            alt={selectedCustomerObj.name}
+                            className="w-9 h-9 sm:w-10 sm:h-10 rounded-full object-cover border-2 border-amber-500 shadow-xs ring-2 ring-amber-300 ring-offset-1 shrink-0"
+                          />
+                        ) : (
+                          <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-amber-600 text-white font-black text-xs sm:text-sm flex items-center justify-center shadow-xs ring-2 ring-amber-300 ring-offset-1 shrink-0">
+                            {(selectedCustomerObj.name || 'C').charAt(0).toUpperCase()}
+                          </div>
+                        )}
+
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="text-xs sm:text-sm font-black text-slate-900 truncate">
+                              {selectedCustomerObj.name || 'Walk-in Customer'}
+                            </span>
+                            <span className="text-[9px] font-extrabold bg-emerald-100 text-emerald-900 border border-emerald-300 px-1.5 py-0.2 rounded shrink-0">
+                              Retail
+                            </span>
+                          </div>
+                          {selectedCustomerObj.phone && (
+                            <div className="flex items-center gap-1 text-[11px] text-slate-600 font-mono font-bold mt-0.5">
+                              <Phone size={11} className="text-slate-400 shrink-0" />
+                              <span>{selectedCustomerObj.phone}</span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-1 shrink-0">
+                        <button
+                          type="button"
+                          onClick={handleClearCustomer}
+                          className="px-2 py-1 bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 rounded-lg text-[10px] font-bold transition-all cursor-pointer active:scale-95 flex items-center gap-0.5"
+                          title="Clear customer"
+                        >
+                          <X size={11} />
+                          <span>Clear</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setIsCustomerDropdownOpen(!isCustomerDropdownOpen)}
+                          className="px-2 py-1 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200 rounded-lg text-[10px] font-bold transition-all cursor-pointer active:scale-95"
+                        >
+                          {isCustomerDropdownOpen ? 'Close' : 'Change'}
+                        </button>
+                      </div>
                     </div>
-                    <div className="grid grid-cols-5 gap-1 sm:gap-1.5">
-                      {[
-                        { name: 'Whole', label: 'Whole' },
-                        { name: 'Cleaned', label: 'Cleaned' },
-                        { name: 'Curry Cut', label: 'Curry Cut' },
-                        { name: 'Fry Cut', label: 'Fry Cut' },
-                        { name: 'Boneless Fillet', label: 'Boneless' }
-                      ].map(cut => {
-                        const isSelected = selectedCutType === cut.name;
-                        return (
-                          <button
-                            key={cut.name}
-                            type="button"
-                            onClick={() => setSelectedCutType(cut.name)}
-                            className={`h-6 sm:h-7 px-0.5 rounded-md text-[9px] sm:text-[10px] font-bold border transition-colors cursor-pointer flex items-center justify-center ${
-                              isSelected
-                                ? 'bg-[#994d1c] text-white border-[#994d1c] shadow-xs font-black'
-                                : 'bg-white text-slate-700 border-slate-300 hover:border-sky-400 hover:bg-sky-50 font-semibold'
-                            }`}
-                          >
-                            {cut.label}
-                          </button>
-                        );
-                      })}
+
+                    {Boolean(selectedCustomerObj.businessName && String(selectedCustomerObj.businessName).trim()) && (
+                      <div className="flex items-center gap-1.5 text-xs text-slate-800 font-bold bg-[#FAF0E4] px-2 py-1 rounded-lg border border-[#E8DCCB]">
+                        <Building size={13} className="text-amber-700 shrink-0" />
+                        <span className="text-slate-500 font-medium">Shop Name:</span>
+                        <span className="text-slate-900 font-black">{String(selectedCustomerObj.businessName).trim()}</span>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div
+                    onClick={() => setIsCustomerDropdownOpen(true)}
+                    className="bg-white border-2 border-dashed border-amber-400 hover:border-amber-500 rounded-xl p-2.5 text-center cursor-pointer active:scale-98 transition-all group"
+                  >
+                    <div className="flex items-center justify-center gap-2 text-amber-800 font-bold text-xs">
+                      <User size={15} className="text-amber-600 group-hover:scale-110 transition-transform" />
+                      <span>Tap here to select Retail Customer (Optional)</span>
+                      <ChevronDown size={14} className="text-amber-600" />
                     </div>
                   </div>
+                )}
 
-                  {/* Weighing & Scale Weight: Dual Kg + Grams & Fraction Calculation */}
-                  <div className="bg-[#F7EFE2] border border-amber-300 rounded-lg sm:rounded-xl p-1.5 sm:p-2 space-y-1.5 sm:space-y-2">
-                    {/* Size Grade Selector (Small / Medium / Big) */}
-                    {(() => {
-                      const scaleGrams = parseFloat(fishWeightGrams) || 0;
-                      const netGrams = Math.max(0, scaleGrams - tareGrams);
-                      const netKg = netGrams / 1000;
-
-                      const isSmallOn = selectedFishItem.sizeGrades?.small?.enabled !== false;
-                      const isMediumOn = selectedFishItem.sizeGrades?.medium?.enabled !== false;
-                      const isBigOn = selectedFishItem.sizeGrades?.big?.enabled !== false;
-
-                      const smallMax = parseFloat(selectedFishItem.sizeGrades?.small?.maxKg) || 1;
-                      const mediumMax = parseFloat(selectedFishItem.sizeGrades?.medium?.maxKg) || 4;
-
-                      const allGrades = [
-                        { key: 'small', label: 'Small', range: `0 to ${smallMax} Kg`, enabled: isSmallOn },
-                        { key: 'medium', label: 'Medium', range: `${smallMax} to ${mediumMax} Kg`, enabled: isMediumOn },
-                        { key: 'big', label: 'Big', range: `${mediumMax}+ Kg`, enabled: isBigOn }
-                      ];
-
-                      const gradesInfo = allGrades.filter(g => g.enabled);
-                      const activeGrade = (gradesInfo.some(g => g.key === selectedGradeOverride))
-                        ? selectedGradeOverride
-                        : (gradesInfo[0]?.key || 'medium');
-
-                      if (gradesInfo.length === 0) return null;
-
-                      return (
-                        <div className="bg-white/90 p-1.5 sm:p-2 rounded-lg sm:rounded-xl border border-amber-200 space-y-1">
-                          <div className="flex justify-between items-center text-[10.5px] sm:text-xs">
-                            <span className="font-bold text-slate-800 flex items-center gap-1">
-                              <span>Fish Size Grade:</span>
-                            </span>
-                            <span className="text-[9px] sm:text-[10px] text-slate-500 font-semibold">
-                              Select Available Grade
-                            </span>
-                          </div>
-                          <div className={`grid gap-1 sm:gap-1.5 ${
-                            gradesInfo.length === 1 ? 'grid-cols-1' : gradesInfo.length === 2 ? 'grid-cols-2' : 'grid-cols-3'
-                          }`}>
-                            {gradesInfo.map(g => {
-                              const isSelected = activeGrade === g.key;
-                              const gradeRate = getItemPricePerKg(selectedFishItem, fishOrderMode, g.key);
-                              return (
-                                <button
-                                  key={g.key}
-                                  type="button"
-                                  onClick={() => setSelectedGradeOverride(g.key)}
-                                  className={`py-1 sm:py-1.5 px-1 sm:px-2 rounded-md sm:rounded-lg text-center transition-all cursor-pointer border ${
-                                    isSelected
-                                      ? 'bg-amber-600 text-white border-amber-700 shadow-xs font-black'
-                                      : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-amber-50'
-                                  }`}
-                                >
-                                  <div className="flex items-center justify-center gap-1 leading-tight">
-                                    <span className="text-[10px] sm:text-[11px] font-bold">{g.label}</span>
-                                    <span className={`text-[8px] sm:text-[8.5px] ${isSelected ? 'text-amber-100' : 'text-slate-400'}`}>({g.range})</span>
-                                  </div>
-                                  <div className={`text-[9px] sm:text-[9.5px] font-mono font-bold leading-tight ${isSelected ? 'text-white' : 'text-emerald-700'}`}>₹{gradeRate}/Kg</div>
-                                </button>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      );
-                    })()}
-
-                    {/* Section 1: Predefined Kilograms (Kg) */}
-                    <div className="space-y-1.5">
-                      <div className="flex justify-between items-center">
-                        <span className="text-[10.5px] sm:text-xs font-bold text-slate-800 flex items-center gap-1">
-                          <span>1. Select Kilograms (Kg)</span>
-                        </span>
-                        <div className="flex items-center gap-1">
-                          <span className="text-[10px] text-slate-500 font-semibold">Custom Kg:</span>
-                          <input
-                            type="number"
-                            min="0"
-                            step="1"
-                            value={inputKg}
-                            onChange={(e) => {
-                              const newKg = e.target.value.replace(/[^0-9]/g, '');
-                              setInputKg(newKg);
-                              const kgVal = parseInt(newKg, 10) || 0;
-                              const gVal = parseInt(inputGrams, 10) || 0;
-                              setFishWeightGrams(String(kgVal * 1000 + gVal));
-                            }}
-                            className="w-12 sm:w-14 bg-white border border-slate-300 rounded px-1 py-0.5 text-center font-mono font-black text-[11px] sm:text-xs text-slate-900"
-                          />
-                        </div>
-                      </div>
-                      <div className="grid grid-cols-5 gap-1 sm:gap-1.5">
-                        {['0', '1', '2', '3', '4', '5', '10', '15', '20', '25'].map((kgPreset) => (
-                          <button
-                            key={kgPreset}
-                            type="button"
-                            onClick={() => {
-                              setInputKg(kgPreset);
-                              const kgVal = parseInt(kgPreset, 10) || 0;
-                              const gVal = parseInt(inputGrams, 10) || 0;
-                              setFishWeightGrams(String(kgVal * 1000 + gVal));
-                            }}
-                            className={`h-6 sm:h-7 px-0.5 rounded-md text-[10px] sm:text-[11px] font-bold border transition-colors cursor-pointer flex items-center justify-center ${
-                              inputKg === kgPreset
-                                ? 'bg-amber-700 text-white border-amber-800 font-black shadow-xs'
-                                : 'bg-white text-slate-700 border-slate-300 hover:border-amber-400 hover:bg-amber-50 font-semibold'
-                            }`}
-                          >
-                            {kgPreset} Kg
-                          </button>
-                        ))}
-                      </div>
+                {/* Dropdown Customer Search Menu */}
+                {isCustomerDropdownOpen && (
+                  <div className="bg-white border border-[#E8DCCB] rounded-xl shadow-xl p-2 space-y-2 animate-in fade-in slide-in-from-top-1 duration-200">
+                    <div className="relative">
+                      <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                      <input
+                        type="text"
+                        placeholder="Search customer by name or phone..."
+                        value={customerSearch}
+                        onChange={(e) => setCustomerSearch(e.target.value)}
+                        className="w-full pl-8 pr-3 py-1.5 bg-[#FAF0E4] border border-[#E8DCCB] rounded-lg text-xs font-bold text-slate-800 focus:outline-none focus:border-amber-500"
+                      />
                     </div>
 
-                    {/* Section 2: Sub-Grams & Fractions (¼, ½, ¾ Kg) */}
-                    <div className="space-y-1.5">
-                      <div className="flex justify-between items-center flex-wrap gap-1">
-                        <span className="text-[10.5px] sm:text-xs font-bold text-slate-800 flex items-center gap-1">
-                          <span>2. Select Sub-Grams / Fractions</span>
+                    <div className="max-h-36 overflow-y-auto space-y-1 divide-y divide-[#E8DCCB]/40">
+                      {filteredPredefinedCustomers.length > 0 ? (
+                        filteredPredefinedCustomers.map((c) => (
+                          <div
+                            key={c._id || c.phone}
+                            onClick={() => handleSelectCustomer(c)}
+                            className="pt-1.5 first:pt-0 p-1.5 hover:bg-amber-50 rounded-lg cursor-pointer transition-colors flex items-center justify-between gap-2 active:scale-98"
+                          >
+                            <div className="flex items-center gap-2 min-w-0">
+                              {c.photo ? (
+                                <img src={c.photo} alt={c.name} className="w-7 h-7 rounded-full object-cover shrink-0" />
+                              ) : (
+                                <div className="w-7 h-7 rounded-full bg-amber-500 text-white font-bold text-xs flex items-center justify-center shrink-0">
+                                  {(c.name || 'C').charAt(0).toUpperCase()}
+                                </div>
+                              )}
+                              <div className="min-w-0">
+                                <div className="text-xs font-black text-slate-900 truncate">{c.name}</div>
+                                <div className="text-[10px] text-slate-500 font-mono">{c.phone}</div>
+                              </div>
+                            </div>
+                            <span className="text-[9px] font-bold text-emerald-800 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded shrink-0">
+                              Select
+                            </span>
+                          </div>
+                        ))
+                      ) : (
+                        <div className="text-center py-2 text-xs text-slate-500">
+                          No matching retail customers found
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* 2. FISHES IN THIS BILL - VISUAL TABS & "+ ADD ANOTHER FISH" BUTTON */}
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between px-0.5">
+                  <span className="text-[10.5px] sm:text-xs font-black uppercase tracking-wider text-slate-800 flex items-center gap-1.5">
+                    <Scale size={13} className="text-amber-700" />
+                    <span>Fishes in this Bill ({retailSlots.length}):</span>
+                  </span>
+                  <span className="text-[10px] font-bold text-amber-900 bg-amber-100 border border-amber-300 px-2 py-0.2 rounded-full">
+                    Tap to Switch Fish
+                  </span>
+                </div>
+
+                <div className="flex items-center gap-1.5 overflow-x-auto pb-1 no-scrollbar">
+                  {retailSlots.map((slot, sIdx) => {
+                    const scaleGrams = parseFloat(slot.fishWeightGrams) || 0;
+                    const netGrams = Math.max(0, scaleGrams - (slot.tareGrams || 0));
+                    const netKg = netGrams / 1000;
+                    const isCurrentActive = activeRetailSlotIndex === sIdx && !showAddFishPicker;
+                    return (
+                      <button
+                        key={slot.id || sIdx}
+                        type="button"
+                        onClick={() => { setActiveRetailSlotIndex(sIdx); setShowAddFishPicker(false); }}
+                        className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border font-bold text-xs transition-all cursor-pointer shrink-0 ${
+                          isCurrentActive
+                            ? 'bg-amber-600 text-white border-amber-700 shadow-sm font-black'
+                            : 'bg-white text-slate-800 border-[#E8DCCB] hover:bg-amber-50'
+                        }`}
+                      >
+                        <div className="w-5 h-5 rounded-md overflow-hidden bg-slate-100 shrink-0 flex items-center justify-center">
+                          {slot.fish?.image ? (
+                            <img src={formatImageUrl(slot.fish.image)} alt={slot.fish.name} className="w-full h-full object-cover" />
+                          ) : (
+                            <span className="text-[11px]">🐟</span>
+                          )}
+                        </div>
+                        <span className="truncate max-w-[85px] sm:max-w-[110px]">{slot.fish?.name || `Fish #${sIdx + 1}`}</span>
+                        <span className={`text-[10px] font-mono ${isCurrentActive ? 'text-amber-100' : 'text-slate-500'}`}>
+                          {netKg.toFixed(1)}kg
                         </span>
-                        <div className="flex items-center flex-wrap gap-1">
-                          <span className="text-[10px] text-slate-500 font-semibold">Tare:</span>
-                          {[0, 20, 50, 100, 200].map(tVal => (
+                        {retailSlots.length > 1 && (
+                          <span
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleRemoveRetailSlot(sIdx);
+                            }}
+                            className={`ml-0.5 rounded px-1 py-0.2 text-[10px] font-black cursor-pointer ${
+                              isCurrentActive
+                                ? 'bg-amber-700 hover:bg-amber-800 text-white'
+                                : 'text-red-500 hover:bg-red-50'
+                            }`}
+                            title="Remove fish"
+                          >
+                            ✕
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
+
+                  {retailSlots.length < 10 && (
+                    <button
+                      type="button"
+                      onClick={() => setShowAddFishPicker(true)}
+                      className={`flex items-center gap-1 px-3 py-1.5 rounded-xl font-black text-xs transition-all cursor-pointer active:scale-95 shrink-0 shadow-2xs border ${
+                        showAddFishPicker
+                          ? 'bg-emerald-600 text-white border-emerald-700'
+                          : 'bg-[#FAF0E4] hover:bg-[#F5E8D8] text-amber-900 border-amber-300'
+                      }`}
+                    >
+                      <Plus size={14} strokeWidth={3} />
+                      <span>Add Another Fish</span>
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* 3. CONDITIONAL: VISUAL PHOTO-GRID FISH PICKER OR ACTIVE FISH CALCULATOR */}
+              {showAddFishPicker ? (
+                /* Visual Fish Picker with Big Photos & Telugu Names */
+                <div className="bg-white border-2 border-amber-400 rounded-2xl p-2.5 sm:p-3 shadow-md space-y-2 animate-in fade-in zoom-in-95 duration-200">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-black text-amber-950 uppercase tracking-wide flex items-center gap-1.5">
+                      <span>🐟 Tap Any Fish Photo to Add to Bill:</span>
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setShowAddFishPicker(false)}
+                      className="text-xs font-bold text-slate-500 hover:text-slate-800 bg-slate-100 hover:bg-slate-200 px-2 py-0.5 rounded-lg transition-colors cursor-pointer"
+                    >
+                      Close ✕
+                    </button>
+                  </div>
+
+                  <div className="relative">
+                    <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                    <input
+                      type="text"
+                      placeholder="Type name or search fish (English / తెలుగు)..."
+                      value={addFishSearch}
+                      onChange={(e) => setAddFishSearch(e.target.value)}
+                      className="w-full pl-8 pr-3 py-1.5 bg-[#FAF0E4] border border-[#E8DCCB] rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:border-amber-500"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-[46vh] overflow-y-auto pr-0.5">
+                    {items
+                      .filter(it => it.isAvailable !== false)
+                      .filter(it => {
+                        if (!addFishSearch) return true;
+                        const s = addFishSearch.toLowerCase();
+                        return (it.name && it.name.toLowerCase().includes(s)) ||
+                          (it.nameTranslations && Object.values(it.nameTranslations).some(v => String(v).toLowerCase().includes(s))) ||
+                          (it.scientificName && it.scientificName.toLowerCase().includes(s));
+                      })
+                      .map(f => {
+                        const fRate = getItemPricePerKg(f, 'retail');
+                        const fStock = Number(f.stock ?? f.inventoryStock ?? f.currentStock ?? 0);
+                        const fIsSea = getItemWaterType(f) === 'sea_water';
+                        return (
+                          <div
+                            key={f._id}
+                            onClick={() => handlePickFishToAdd(f)}
+                            className="bg-[#FAF0E4]/60 hover:bg-amber-100/90 border-2 border-[#E8DCCB] hover:border-amber-500 rounded-xl p-2 cursor-pointer transition-all active:scale-95 shadow-2xs flex flex-col items-center text-center group"
+                          >
+                            <div className="w-16 h-16 sm:w-18 sm:h-18 rounded-lg overflow-hidden bg-white border border-[#E8DCCB] mb-1.5 flex items-center justify-center shrink-0 shadow-xs">
+                              {f.image ? (
+                                <img src={formatImageUrl(f.image)} alt={f.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
+                              ) : (
+                                <span className="text-2xl">🐟</span>
+                              )}
+                            </div>
+                            <span className="text-xs font-black text-slate-900 leading-tight line-clamp-1">
+                              {(language !== 'en' && f.nameTranslations?.[language]) || f.name}
+                            </span>
+                            <div className="flex items-center gap-1 mt-0.5">
+                              <span className={`text-[8px] font-bold px-1 rounded ${fIsSea ? 'bg-sky-100 text-sky-800' : 'bg-emerald-100 text-emerald-800'}`}>
+                                {fIsSea ? 'Sea' : 'Fresh'}
+                              </span>
+                              <span className="text-[9px] font-bold text-slate-500">Stock: {fStock}k</span>
+                            </div>
+                            <span className="text-xs font-black text-emerald-800 font-mono mt-1">₹{fRate.toFixed(0)}/Kg</span>
+                          </div>
+                        );
+                      })}
+                  </div>
+                </div>
+              ) : (
+                /* Active Fish Editor */
+                (() => {
+                  const currentSlot = retailSlots[activeRetailSlotIndex] || retailSlots[0];
+                  if (!currentSlot) return null;
+                  const currentFish = currentSlot.fish || selectedFishItem;
+                  const activeGrade = currentSlot.sizeGrade || currentFish?.defaultSizeGrade || 'small';
+                  const activeRate = getItemPricePerKg(currentFish, 'retail', activeGrade);
+                  const stockKg = Number(currentFish?.stock ?? currentFish?.inventoryStock ?? currentFish?.currentStock ?? 0);
+                  const isSea = getItemWaterType(currentFish) === 'sea_water';
+
+                  const currentScaleGrams = parseFloat(currentSlot.fishWeightGrams) || 0;
+                  const currentNetGrams = Math.max(0, currentScaleGrams - (currentSlot.tareGrams || 0));
+                  const currentNetKg = currentNetGrams / 1000;
+                  const currentSlotTotal = currentNetKg * activeRate;
+                  const fractionLabel = formatKgFraction(currentNetKg);
+
+                  const smallMax = parseFloat(currentFish?.sizeGrades?.small?.maxKg) || 1;
+                  const mediumMax = parseFloat(currentFish?.sizeGrades?.medium?.maxKg) || 4;
+                  const allGrades = [
+                    { key: 'small', label: 'Small', range: `0-${smallMax}Kg`, enabled: currentFish?.sizeGrades?.small?.enabled !== false },
+                    { key: 'medium', label: 'Medium', range: `${smallMax}-${mediumMax}Kg`, enabled: currentFish?.sizeGrades?.medium?.enabled !== false },
+                    { key: 'big', label: 'Big', range: `${mediumMax}+Kg`, enabled: currentFish?.sizeGrades?.big?.enabled !== false }
+                  ].filter(g => g.enabled);
+
+                  return (
+                    <div className="bg-white border-2 border-[#E8DCCB] rounded-xl sm:rounded-2xl p-2.5 sm:p-3 shadow-xs space-y-2.5">
+                      {/* Active Fish Big Header Card */}
+                      <div className="bg-[#FAF0E4] border border-[#E8DCCB] rounded-xl p-2 sm:p-2.5 flex items-center gap-2.5 sm:gap-3">
+                        <div className="w-18 h-18 sm:w-22 sm:h-22 rounded-xl overflow-hidden bg-white border border-[#E8DCCB] shrink-0 relative flex items-center justify-center shadow-xs">
+                          {currentFish.image ? (
+                            <img
+                              src={formatImageUrl(currentFish.image)}
+                              alt={currentFish.name}
+                              className="w-full h-full object-cover"
+                            />
+                          ) : (
+                            <span className="text-3xl">🐟</span>
+                          )}
+                        </div>
+
+                        <div className="flex-1 min-w-0 space-y-1">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className={`inline-flex items-center gap-1 text-[9px] font-bold px-1.5 py-0.2 rounded-full border whitespace-nowrap shadow-2xs ${
+                              isSea
+                                ? 'bg-sky-50 text-sky-800 border-sky-200'
+                                : 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                            }`}>
+                              <span className={`w-1.5 h-1.5 rounded-full ${isSea ? 'bg-sky-500' : 'bg-emerald-500'}`}></span>
+                              <span>{isSea ? t('Sea Water') : t('Fresh Water')}</span>
+                            </span>
+                            <span className="text-[9.5px] font-bold text-slate-600 bg-white border border-slate-300 px-1.5 py-0.2 rounded">
+                              Stock: <strong className="text-slate-900 font-mono">{stockKg} Kg</strong>
+                            </span>
+                          </div>
+
+                          <h3 className="text-sm sm:text-base font-black text-slate-900 leading-tight">
+                            {(language !== 'en' && currentFish.nameTranslations?.[language]) || currentFish.name}
+                          </h3>
+
+                          {currentFish.scientificName && (
+                            <p className="text-[10px] sm:text-[11px] text-slate-500 italic truncate">
+                              {currentFish.scientificName}
+                            </p>
+                          )}
+
+                          <div className="flex items-center gap-2 pt-0.5 text-[10.5px] sm:text-xs flex-wrap">
+                            <span className="text-slate-700 font-bold flex items-center gap-1">
+                              <span>Rate:</span>
+                              <strong className="text-emerald-800 font-black font-mono text-xs sm:text-sm">
+                                ₹{activeRate.toFixed(2)}
+                              </strong>
+                              <span className="text-[10px] text-slate-500">/Kg</span>
+                              {activeGrade && (
+                                <span className="text-[9px] text-amber-900 bg-amber-100 border border-amber-300 px-1.5 py-0.2 rounded font-extrabold capitalize ml-0.5">
+                                  {activeGrade}
+                                </span>
+                              )}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Cutting Style / Preparation */}
+                      <div className="bg-[#FAF0E4] border border-sky-500/30 rounded-lg p-1.5 space-y-1">
+                        <div className="flex justify-between items-center text-[10px] font-bold text-slate-700">
+                          <span>Cutting Style / Preparation</span>
+                          <span className="text-[9px] text-slate-400">Butcher instruction</span>
+                        </div>
+                        <div className="grid grid-cols-5 gap-1">
+                          {[
+                            { name: 'Whole', label: 'Whole' },
+                            { name: 'Cleaned', label: 'Cleaned' },
+                            { name: 'Curry Cut', label: 'Curry' },
+                            { name: 'Fry Cut', label: 'Fry' },
+                            { name: 'Boneless Fillet', label: 'Boneless' }
+                          ].map(cut => (
                             <button
-                              key={tVal}
+                              key={cut.name}
                               type="button"
-                              onClick={() => setTareGrams(tVal)}
-                              className={`px-1.5 py-0.5 rounded text-[10px] font-bold border transition-all cursor-pointer ${
-                                tareGrams === tVal
-                                  ? 'bg-amber-500 text-slate-950 border-amber-500 font-black shadow-xs'
-                                  : 'bg-white text-slate-600 border-slate-300 hover:bg-slate-100'
+                              onClick={() => handleRetailSlotCutChange(activeRetailSlotIndex, cut.name)}
+                              className={`h-7 rounded text-[9.5px] font-bold border transition-colors cursor-pointer flex items-center justify-center ${
+                                currentSlot.cutType === cut.name
+                                  ? 'bg-[#994d1c] text-white border-[#994d1c] shadow-xs font-black'
+                                  : 'bg-white text-slate-700 border-slate-300 hover:bg-sky-50'
                               }`}
                             >
-                              {tVal === 0 ? 'Zero' : `-${tVal}g`}
+                              {cut.label}
                             </button>
                           ))}
-                          <div className="flex items-center gap-0.5 bg-white px-1.5 py-0.5 rounded border border-slate-300 shadow-2xs">
+                        </div>
+                      </div>
+
+                      {/* Fish Size Grade */}
+                      {allGrades.length > 0 && (
+                        <div className="grid grid-cols-3 gap-1">
+                          {allGrades.map(g => {
+                            const isSelected = activeGrade === g.key;
+                            const gradeRate = getItemPricePerKg(currentFish, 'retail', g.key);
+                            return (
+                              <button
+                                key={g.key}
+                                type="button"
+                                onClick={() => handleRetailSlotGradeChange(activeRetailSlotIndex, g.key)}
+                                className={`py-1.5 px-1 rounded-md text-center border cursor-pointer transition-all ${
+                                  isSelected
+                                    ? 'bg-amber-600 text-white border-amber-700 shadow-xs font-black'
+                                    : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-amber-50'
+                                }`}
+                              >
+                                <div className="text-[10px] font-bold">{g.label}</div>
+                                <div className={`text-[9px] font-mono font-bold ${isSelected ? 'text-white' : 'text-emerald-700'}`}>₹{gradeRate}/Kg</div>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+
+                      {/* Kilograms (Kg) Presets */}
+                      <div className="space-y-1">
+                        <div className="flex justify-between items-center text-[10px] font-bold text-slate-700">
+                          <span>1. Select Kilograms (Kg)</span>
+                          <div className="flex items-center gap-1">
+                            <span className="text-[9px] text-slate-500">Custom Kg:</span>
                             <input
                               type="number"
                               min="0"
-                              max="5000"
-                              step="1"
-                              value={tareGrams === 0 ? '' : tareGrams}
-                              onChange={(e) => {
-                                const val = parseInt(e.target.value, 10);
-                                setTareGrams(isNaN(val) || val < 0 ? 0 : val);
-                              }}
-                              placeholder="0"
-                              className="w-10 text-center font-mono font-bold text-[10.5px] text-slate-900 bg-amber-50/70 border border-amber-200 rounded px-0.5 py-0.2 focus:outline-none focus:ring-1 focus:ring-[#ea580c] [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                              value={currentSlot.inputKg}
+                              onChange={(e) => handleRetailSlotKgChange(activeRetailSlotIndex, e.target.value)}
+                              className="w-14 bg-white border border-slate-300 rounded px-1 py-0.2 text-center font-mono font-bold text-xs"
                             />
-                            <span className="text-[9.5px] font-bold text-slate-600">g</span>
-                            {tareGrams > 0 && (
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-5 gap-1">
+                          {['0', '1', '2', '3', '4', '5', '10', '15', '20', '25'].map(kgPreset => (
+                            <button
+                              key={kgPreset}
+                              type="button"
+                              onClick={() => handleRetailSlotKgChange(activeRetailSlotIndex, kgPreset)}
+                              className={`h-7 rounded text-[10px] font-bold border transition-colors cursor-pointer flex items-center justify-center ${
+                                currentSlot.inputKg === kgPreset
+                                  ? 'bg-amber-700 text-white border-amber-800 font-black shadow-xs'
+                                  : 'bg-white text-slate-700 border-slate-300 hover:bg-amber-50'
+                              }`}
+                            >
+                              {kgPreset} Kg
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Sub-grams & Tare */}
+                      <div className="space-y-1">
+                        <div className="flex justify-between items-center text-[10px] font-bold text-slate-700">
+                          <span>2. Select Sub-Grams / Fractions</span>
+                          <div className="flex items-center gap-1">
+                            <span className="text-[9px] text-slate-500">Tare:</span>
+                            {[0, 20, 50, 100].map(tVal => (
                               <button
+                                key={tVal}
                                 type="button"
-                                onClick={() => setTareGrams(0)}
-                                title="Clear Tare"
-                                className="text-slate-400 hover:text-rose-600 p-0.2 ml-0.5 cursor-pointer"
+                                onClick={() => handleRetailSlotTareChange(activeRetailSlotIndex, tVal)}
+                                className={`px-1.5 py-0.5 rounded text-[9.5px] font-bold border ${
+                                  (currentSlot.tareGrams || 0) === tVal
+                                    ? 'bg-amber-500 text-slate-950 border-amber-500 font-black'
+                                    : 'bg-white text-slate-600 border-slate-300'
+                                }`}
                               >
-                                <X size={10} />
+                                {tVal === 0 ? 'Zero' : `-${tVal}g`}
                               </button>
-                            )}
+                            ))}
                           </div>
                         </div>
+                        <div className="grid grid-cols-4 gap-1">
+                          {[
+                            { label: '0g (Zero)', val: '0' },
+                            { label: '250g (¼ Kg)', val: '250' },
+                            { label: '500g (½ Kg)', val: '500' },
+                            { label: '750g (¾ Kg)', val: '750' }
+                          ].map(gPreset => (
+                            <button
+                              key={gPreset.val}
+                              type="button"
+                              onClick={() => handleRetailSlotGramsChange(activeRetailSlotIndex, gPreset.val)}
+                              className={`h-7 rounded text-[10px] font-bold border cursor-pointer flex items-center justify-center ${
+                                currentSlot.inputGrams === gPreset.val
+                                  ? 'bg-amber-700 text-white border-amber-800 font-black'
+                                  : 'bg-white text-slate-700 border-slate-300 hover:bg-amber-50'
+                              }`}
+                            >
+                              {gPreset.label}
+                            </button>
+                          ))}
+                        </div>
                       </div>
-                      <div className="grid grid-cols-4 gap-1 sm:gap-1.5">
-                        {[
-                          { label: '0g (Zero)', val: '0' },
-                          { label: '250g (¼ Kg)', val: '250' },
-                          { label: '500g (½ Kg)', val: '500' },
-                          { label: '750g (¾ Kg)', val: '750' }
-                        ].map((gPreset) => (
-                          <button
-                            key={gPreset.val}
-                            type="button"
-                            onClick={() => {
-                              setInputGrams(gPreset.val);
-                              const kgVal = parseInt(inputKg, 10) || 0;
-                              const gVal = parseInt(gPreset.val, 10) || 0;
-                              setFishWeightGrams(String(kgVal * 1000 + gVal));
-                            }}
-                            className={`h-6 sm:h-7 px-0.5 rounded-md text-[10px] sm:text-[11px] font-bold border transition-colors cursor-pointer flex items-center justify-center leading-tight ${
-                              inputGrams === gPreset.val
-                                ? 'bg-amber-700 text-white border-amber-800 font-black shadow-xs'
-                                : 'bg-white text-slate-700 border-slate-300 hover:border-amber-400 hover:bg-amber-50 font-semibold'
-                            }`}
-                          >
-                            {gPreset.label}
-                          </button>
-                        ))}
+
+                      {/* Scale Input & Slot Price Breakdown */}
+                      <div className="flex items-center justify-between bg-slate-100 p-2 rounded-lg border border-slate-200">
+                        <div className="flex items-center gap-1.5 flex-1 min-w-0">
+                          <Scale size={16} className="text-slate-500 shrink-0" />
+                          <input
+                            type="number"
+                            min="0"
+                            value={currentSlot.fishWeightGrams}
+                            onChange={(e) => handleRetailSlotScaleGramsChange(activeRetailSlotIndex, e.target.value)}
+                            placeholder="Scale grams"
+                            className="w-28 bg-white border border-slate-300 rounded px-2 py-1 font-mono font-black text-sm text-slate-900"
+                          />
+                          <span className="text-[10px] font-bold text-slate-500 uppercase">Scale Grams</span>
+                        </div>
+                        <div className="text-right shrink-0">
+                          <span className="text-[10.5px] text-slate-600 font-bold block">{currentNetKg.toFixed(3)} Kg ({fractionLabel})</span>
+                          <span className="text-sm sm:text-base font-black text-emerald-800 font-mono">₹{currentSlotTotal.toFixed(2)}</span>
+                        </div>
+                      </div>
+
+
+                    </div>
+                  );
+                })()
+              )}
+
+              {/* 4. RETAIL ORDER SUMMARY & LIST OF ADDED FISHES WITH IMAGES */}
+              {(() => {
+                const totalKg = retailSlots.reduce((acc, s) => {
+                  const scaleGrams = parseFloat(s.fishWeightGrams) || 0;
+                  const netGrams = Math.max(0, scaleGrams - (s.tareGrams || 0));
+                  return acc + (netGrams / 1000);
+                }, 0);
+                const totalAmt = retailSlots.reduce((acc, s) => {
+                  const scaleGrams = parseFloat(s.fishWeightGrams) || 0;
+                  const netGrams = Math.max(0, scaleGrams - (s.tareGrams || 0));
+                  const netKg = netGrams / 1000;
+                  const activeGrade = s.sizeGrade || s.fish?.defaultSizeGrade || 'small';
+                  const activeRate = getItemPricePerKg(s.fish, 'retail', activeGrade);
+                  return acc + (netKg * activeRate);
+                }, 0);
+                const validCount = retailSlots.filter(s => s.fish && (parseFloat(s.fishWeightGrams) || 0) > 0).length;
+
+                return (
+                  <div className="bg-gradient-to-r from-amber-500/20 via-orange-500/15 to-amber-500/20 border-2 border-amber-500/50 rounded-xl sm:rounded-2xl p-2.5 shadow-sm space-y-2">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <span className="text-xs font-black text-amber-950 uppercase tracking-wider block">
+                          Retail Order Summary
+                        </span>
+                        <span className="text-[11px] text-amber-800 font-bold">
+                          {validCount} Varieties &bull; Total Weight: <strong className="font-mono text-slate-900">{totalKg.toFixed(3)} Kg</strong>
+                        </span>
+                      </div>
+                      <div className="text-right">
+                        <span className="text-[10px] text-slate-500 uppercase font-bold block">Total Billed</span>
+                        <span className="text-base sm:text-xl font-black text-emerald-800 font-mono">
+                          ₹{totalAmt.toFixed(2)}
+                        </span>
                       </div>
                     </div>
 
-                    {/* Scale Digital Reading Input (Two-Way Synchronized) */}
-                    <div className="flex items-center gap-1.5 sm:gap-2 bg-slate-100 border border-slate-300 rounded-lg sm:rounded-xl px-2.5 sm:px-3 py-1 sm:py-1.5 focus-within:border-[#994d1c] focus-within:bg-white transition-colors overflow-hidden">
-                      <Scale size={16} className="text-slate-600 shrink-0 sm:w-[18px] sm:h-[18px]" />
-                      <input
-                        type="number"
-                        min="1"
-                        step="1"
-                        value={fishWeightGrams}
-                        onWheel={(e) => e.target.blur()}
-                        onKeyDown={(e) => {
-                          if (['-', '+', 'e', 'E'].includes(e.key)) {
-                            e.preventDefault();
-                          }
-                        }}
-                        onChange={(e) => {
-                          const sanitized = e.target.value.replace(/[^0-9.]/g, '');
-                          setFishWeightGrams(sanitized);
-                          const total = parseFloat(sanitized) || 0;
-                          const k = Math.floor(total / 1000);
-                          const g = total % 1000;
-                          setInputKg(String(k));
-                          setInputGrams(String(g));
-                        }}
-                        placeholder="Scale total grams"
-                        className="flex-1 min-w-0 bg-transparent font-mono text-base sm:text-lg font-black text-slate-900 focus:outline-none"
-                      />
-                      <span className="text-[8.5px] sm:text-[10px] font-bold text-slate-500 shrink-0 uppercase tracking-wider bg-slate-200/80 px-2 py-0.5 rounded">Scale Grams</span>
-                    </div>
-
-                    {/* Accurate Real-World Billing & Stock Breakdown */}
-                    {(() => {
-                      const scaleGrams = parseFloat(fishWeightGrams) || 0;
-                      const netGrams = Math.max(0, scaleGrams - tareGrams);
-                      const netKg = netGrams / 1000;
-                      const activeGrade = selectedGradeOverride || selectedFishItem.defaultSizeGrade || 'small';
-                      const activeRate = getItemPricePerKg(selectedFishItem, fishOrderMode, activeGrade);
-                      const calculatedPrice = (netKg * activeRate);
-                      const fractionLabel = formatKgFraction(netKg);
-
-                      return (
-                        <div className="bg-slate-100/90 border border-slate-200 rounded-lg sm:rounded-xl p-1.5 sm:p-2 space-y-1">
-                          <div className="grid grid-cols-3 gap-1.5 text-center">
-                            <div className="bg-white border border-slate-200 rounded-md sm:rounded-lg p-1 sm:p-1.5 shadow-xs">
-                              <span className="text-[9.5px] sm:text-[10px] text-slate-500 font-semibold block leading-tight">Weighed Net</span>
-                              <span className="font-mono font-black text-amber-900 text-xs block">
-                                {netKg.toFixed(3)} Kg
-                              </span>
-                              <span className="text-[11px] font-black text-slate-800 block">
-                                ({fractionLabel})
-                              </span>
-                            </div>
-                            <div className="bg-white border border-slate-200 rounded-md sm:rounded-lg p-1 sm:p-1.5 shadow-xs">
-                              <span className="text-[9.5px] sm:text-[10px] text-slate-500 font-semibold block leading-tight">Preparation</span>
-                              <span className="font-bold text-slate-800 text-xs truncate block">
-                                {selectedCutType}
-                              </span>
-                              <span className="text-[10px] text-slate-500 font-medium capitalize">
-                                Grade: {activeGrade}
-                              </span>
-                            </div>
-                            <div className="bg-white border border-slate-200 rounded-md sm:rounded-lg p-1 sm:p-1.5 shadow-xs">
-                              <span className="text-[9.5px] sm:text-[10px] text-slate-500 font-semibold block leading-tight">Rate</span>
-                              <span className="font-mono font-bold text-slate-800 text-xs">
-                                ₹{activeRate.toFixed(2)}/Kg
-                              </span>
-                              <span className="text-[10px] text-emerald-700 font-semibold capitalize">
-                                {fishOrderMode === 'export' ? 'Export' : fishOrderMode === 'bulk' ? 'Wholesale' : 'Retail'}
-                              </span>
-                            </div>
-                          </div>
-
-                          <div className="flex justify-between items-center pt-2 border-t border-slate-200">
-                            <div>
-                              <span className="text-xs font-bold text-slate-800">Total Billed:</span>
-                              <span className="text-[10px] text-emerald-700 font-semibold block">1:1 Raw Stock Deducted</span>
-                            </div>
-                            <div className="text-right">
-                              <span className="text-sm sm:text-base md:text-lg font-black text-emerald-700 font-mono">₹{calculatedPrice.toFixed(2)}</span>
-                              <span className="text-[10px] text-slate-500 font-medium block">
-                                {netKg.toFixed(2)} Kg @ ₹{activeRate}/Kg
-                              </span>
-                            </div>
-                          </div>
+                    {/* List of Added Fishes with Images */}
+                    {retailSlots.filter(s => s.fish).length > 0 && (
+                      <div className="pt-1.5 border-t border-amber-500/30">
+                        <span className="text-[10px] font-black uppercase text-amber-900 block mb-1">
+                          Added Fish Items:
+                        </span>
+                        <div className="flex gap-2 overflow-x-auto py-0.5 no-scrollbar">
+                          {retailSlots.filter(s => s.fish).map((slot, sIdx) => {
+                            const scaleGrams = parseFloat(slot.fishWeightGrams) || 0;
+                            const netGrams = Math.max(0, scaleGrams - (slot.tareGrams || 0));
+                            const netKg = netGrams / 1000;
+                            const activeGrade = slot.sizeGrade || slot.fish?.defaultSizeGrade || 'small';
+                            const activeRate = getItemPricePerKg(slot.fish, 'retail', activeGrade);
+                            const itemAmt = netKg * activeRate;
+                            return (
+                              <div
+                                key={slot.id || sIdx}
+                                onClick={() => { setActiveRetailSlotIndex(sIdx); setShowAddFishPicker(false); }}
+                                className={`flex items-center gap-2 border rounded-xl p-1.5 shrink-0 shadow-2xs cursor-pointer transition-all ${
+                                  activeRetailSlotIndex === sIdx
+                                    ? 'bg-amber-100/90 border-amber-500 ring-1 ring-amber-400'
+                                    : 'bg-white/95 border-amber-300 hover:bg-amber-50'
+                                }`}
+                              >
+                                <div className="w-8 h-8 rounded-lg overflow-hidden bg-slate-100 border border-slate-200 shrink-0 flex items-center justify-center">
+                                  {slot.fish?.image ? (
+                                    <img src={formatImageUrl(slot.fish.image)} alt={slot.fish.name} className="w-full h-full object-cover" />
+                                  ) : (
+                                    <span className="text-sm">🐟</span>
+                                  )}
+                                </div>
+                                <div className="text-[10.5px] leading-tight min-w-[70px]">
+                                  <div className="font-black text-slate-800 truncate max-w-[110px]">{slot.fish.name}</div>
+                                  <div className="text-amber-900 font-bold font-mono text-[9.5px]">
+                                    {netKg.toFixed(2)} Kg &bull; {slot.cutType} &bull; ₹{itemAmt.toFixed(0)}
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })}
                         </div>
-                      );
-                    })()}
+                      </div>
+                    )}
                   </div>
+                );
+              })()}
+
+              {/* Action Buttons: Cancel, SAVE (KHATA), SAVE & PRINT */}
+              <div className="space-y-1.5 pt-1">
+                <div className="grid grid-cols-12 gap-1.5 sm:gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedFishItem(null)}
+                    className="col-span-3 py-2 px-1 rounded-xl border border-slate-300 text-slate-700 bg-white hover:bg-slate-100 font-bold text-xs transition-all cursor-pointer active:scale-95 flex items-center justify-center"
+                  >
+                    Cancel
+                  </button>
 
                   <button
                     type="button"
-                    disabled={!fishWeightGrams || parseFloat(fishWeightGrams) <= 0}
-                    onClick={(e) => {
-                      const scaleGrams = parseFloat(fishWeightGrams) || 1000;
-                      if (scaleGrams <= 0) return;
-                      const netGrams = Math.max(0, scaleGrams - tareGrams);
+                    disabled={actionLoading !== null}
+                    onClick={() => handleRetailSave(false)}
+                    className="col-span-4 py-2 sm:py-2.5 px-1.5 sm:px-2 rounded-xl bg-slate-800 hover:bg-slate-900 text-white font-black text-[11px] sm:text-xs shadow-md active:scale-95 transition-all disabled:opacity-50 flex items-center justify-center gap-1 cursor-pointer"
+                  >
+                    {actionLoading === 'save' ? (
+                      <Loader2 size={13} className="animate-spin text-white" />
+                    ) : (
+                      <Save size={13} />
+                    )}
+                    <span>SAVE (KHATA)</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    disabled={actionLoading !== null}
+                    onClick={() => handleRetailSave(true)}
+                    className="col-span-5 py-2 sm:py-2.5 px-1.5 sm:px-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-700 hover:to-teal-600 text-white font-black text-[11px] sm:text-xs shadow-md active:scale-95 transition-all disabled:opacity-50 flex items-center justify-center gap-1 cursor-pointer"
+                  >
+                    {actionLoading === 'print' ? (
+                      <Loader2 size={13} className="animate-spin text-white" />
+                    ) : (
+                      <Printer size={13} />
+                    )}
+                    <span>SAVE & PRINT</span>
+                  </button>
+                </div>
+
+                {/* Secondary Button: Add to Fish Order (Keep Shopping) */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    const validSlots = retailSlots.filter(s => s.fish && (parseFloat(s.fishWeightGrams) || 0) > 0);
+                    if (validSlots.length === 0) {
+                      if (showToast) showToast('Please enter weight before adding', 'warning');
+                      return;
+                    }
+                    validSlots.forEach(slot => {
+                      const scaleGrams = parseFloat(slot.fishWeightGrams) || 1000;
+                      const netGrams = Math.max(0, scaleGrams - (slot.tareGrams || 0));
                       const netKg = netGrams / 1000;
-                      const activeGrade = selectedGradeOverride || selectedFishItem.defaultSizeGrade || 'small';
-                      const activeRate = getItemPricePerKg(selectedFishItem, fishOrderMode, activeGrade);
+                      const activeGrade = slot.sizeGrade || slot.fish?.defaultSizeGrade || 'small';
+                      const activeRate = getItemPricePerKg(slot.fish, 'retail', activeGrade);
                       const calculatedPrice = parseFloat((netKg * activeRate).toFixed(2));
                       const fractionLabel = formatKgFraction(netKg);
-                      const weightLabel = `${fractionLabel} (${netKg.toFixed(2)} Kg)`;
 
                       const itemToAdd = {
-                        ...selectedFishItem,
-                        itemKey: `${selectedFishItem._id}_${selectedCutType}_${netGrams}g_${activeGrade}_${fishOrderMode}`,
-                        menuItem: selectedFishItem._id,
-                        originalId: selectedFishItem._id,
-                        originalFishName: selectedFishItem.name,
-                        name: `${selectedFishItem.name} (${selectedCutType} - ${fractionLabel})`,
+                        ...slot.fish,
+                        itemKey: `${slot.fish._id}_${slot.cutType}_${netGrams}g_${activeGrade}_retail`,
+                        menuItem: slot.fish._id,
+                        originalId: slot.fish._id,
+                        originalFishName: slot.fish.name,
+                        name: `${slot.fish.name} (${slot.cutType} - ${fractionLabel})`,
                         price: calculatedPrice,
                         quantity: 1,
                         sellingUnit: 'Kg',
                         enteredWeight: netKg,
                         netWeightKg: netKg,
-                        grossWeightKg: netKg, // 1:1 exact raw catch deduction
+                        grossWeightKg: netKg,
                         pricePerKg: activeRate,
                         sizeGrade: activeGrade,
-                        orderMode: fishOrderMode,
-                        cutType: selectedCutType,
+                        orderMode: 'retail',
+                        cutType: slot.cutType,
                         yieldFactor: 1.0,
-                        tareWeightKg: (tareGrams / 1000)
+                        tareWeightKg: ((slot.tareGrams || 0) / 1000)
                       };
 
-                      // Retrieve the original card's position on the screen
-                      let startX = window.innerWidth / 2;
-                      let startY = window.innerHeight * 0.4;
-                      const cardEl = document.querySelector(`[data-fish-card-id="${selectedFishItem._id}"]`);
-                      if (cardEl) {
-                        const cRect = cardEl.getBoundingClientRect();
-                        startX = cRect.left + cRect.width / 2;
-                        startY = cRect.top + (showImages ? 65 : cRect.height / 2);
-                      } else if (lastClickedCardPos.current && lastClickedCardPos.current.cardId === selectedFishItem._id) {
-                        startX = lastClickedCardPos.current.x;
-                        startY = lastClickedCardPos.current.y;
-                      }
-
-                      triggerFlyAnimation(
-                        startX,
-                        startY,
-                        selectedFishItem.name,
-                        formatImageUrl(selectedFishItem.image)
-                      );
-
                       onSelectItem(itemToAdd);
-                      setSelectedFishItem(null);
-                    }}
-                    className="w-full bg-gradient-to-r from-[#994d1c] to-[#7c3f1d] hover:from-[#884318] hover:to-[#6c3618] disabled:opacity-40 disabled:cursor-not-allowed text-white font-black py-1.5 sm:py-2 md:py-2.5 rounded-lg sm:rounded-xl shadow-lg cursor-pointer transition-all active:scale-[0.98] text-xs sm:text-sm"
-                  >
-                    Add to Fish Order
-                  </button>
-                </div>
+                    });
+                    setSelectedFishItem(null);
+                  }}
+                  className="w-full bg-[#FAF0E4] hover:bg-[#F5E8D8] text-amber-900 border border-[#E8DCCB] font-bold py-1.5 rounded-lg cursor-pointer transition-all active:scale-[0.98] text-[11px] sm:text-xs flex items-center justify-center gap-1"
+                >
+                  <span>+ Add to Order (Keep Shopping)</span>
+                </button>
+              </div>
             </div>
           </div>
         </div>,
@@ -2454,116 +3323,422 @@ const MenuGrid = ({
         >
           <div
             data-box-packer-modal="true"
-            className="bg-[#FDFBF7] w-full max-w-[540px] max-h-[96vh] sm:max-h-[92vh] rounded-xl sm:rounded-2xl md:rounded-3xl shadow-2xl border-2 border-[#E8DCCB] flex flex-col overflow-hidden text-slate-800 my-auto"
+            className="bg-[#FDFBF7] w-full max-w-[580px] max-h-[96vh] sm:max-h-[92vh] rounded-2xl md:rounded-3xl shadow-2xl border-2 border-[#E8DCCB] flex flex-col overflow-hidden text-slate-800 my-auto animate-in zoom-in-95 duration-200"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Modal Header */}
-            <div className="flex justify-between items-center px-3 sm:px-4 md:px-5 py-2 sm:py-2.5 border-b border-[#E8DCCB] bg-gradient-to-r from-[#FAF0E4] via-[#FFF8EE] to-[#FAF0E4] shrink-0">
-              <div className="flex items-center gap-3">
-                <div className="w-8 h-8 sm:w-9 sm:h-9 md:w-11 md:h-11 rounded-xl bg-amber-500 text-white flex items-center justify-center font-bold text-[10px] sm:text-xs uppercase tracking-wider shadow-sm border border-amber-400 shrink-0">
+            <div className="flex justify-between items-center px-2.5 sm:px-4 md:px-5 py-1.5 sm:py-2 border-b border-[#E8DCCB] bg-gradient-to-r from-[#FAF0E4] via-[#FFF8EE] to-[#FAF0E4] shrink-0">
+              <div className="flex items-center gap-2 sm:gap-3">
+                <div className="w-7 h-7 sm:w-9 sm:h-9 rounded-lg sm:rounded-xl bg-amber-500 text-white flex items-center justify-center font-bold text-[9px] sm:text-xs uppercase tracking-wider shadow-sm border border-amber-400 shrink-0">
                   Box
                 </div>
                 <div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-[10px] font-black uppercase tracking-wider text-amber-900 bg-amber-200/80 px-2.5 py-0.5 rounded-full border border-amber-300">
-                      {fishOrderMode === 'export' ? 'EXPORT (BULK) BOX PACKER' : 'WHOLESALE BOX PACKER'}
+                  <div className="flex items-center gap-1.5 sm:gap-2">
+                    <span className="text-[8.5px] sm:text-[10px] font-black uppercase tracking-wider text-amber-900 bg-amber-200/80 px-2 py-0.2 rounded-full border border-amber-300">
+                      {fishOrderMode === 'export' ? 'EXPORT BOX PACKER' : 'WHOLESALE BOX PACKER'}
                     </span>
-                    <span className="text-sm font-black text-amber-900 bg-amber-100 px-2 py-0.5 rounded-md">
+                    <span className="text-[11px] sm:text-xs font-black text-amber-900 bg-amber-100 px-1.5 py-0.2 rounded-md">
                       Box #{currentBoxNumber}
                     </span>
                   </div>
-                  <h2 className="text-base sm:text-lg font-black text-slate-900 mt-0.5">
+                  <h2 className="text-xs sm:text-base font-black text-slate-900 mt-0.5">
                     Packing {fishOrderMode === 'export' ? 'Export' : 'Wholesale'} Box #{currentBoxNumber}
                   </h2>
-                  <p className="text-[10px] sm:text-[11px] text-slate-500 font-medium hidden sm:block">
-                    Mix 1 to 10 fish items in this box with custom weights & prices
-                  </p>
                 </div>
               </div>
               <button
                 type="button"
                 onClick={() => setShowBoxPacker(false)}
-                className="text-slate-500 hover:text-slate-800 bg-white hover:bg-[#F5E8D8] border border-[#E8DCCB] rounded-full p-2 transition-all cursor-pointer shadow-xs"
+                className="text-slate-500 hover:text-slate-800 bg-white hover:bg-[#F5E8D8] border border-[#E8DCCB] rounded-full p-1.5 transition-all cursor-pointer shadow-xs active:scale-95"
               >
-                <X size={18} />
+                <X size={16} />
               </button>
             </div>
 
             {/* Modal Body */}
-            <div className="p-2 sm:p-2.5 md:p-3 space-y-2 sm:space-y-2.5 overflow-y-auto flex-1">
-              {/* Step 1: Number of Items in this Box */}
-              <div className="bg-white border border-[#E8DCCB] rounded-xl sm:rounded-2xl p-2 sm:p-2.5 shadow-2xs space-y-1.5">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-2.5">
-                  <div>
-                    <span className="text-[10.5px] sm:text-xs font-black text-slate-800 uppercase tracking-wide flex items-center gap-1.5">
-                      <span>1️⃣</span> Number of Fish Items in this Box:
-                    </span>
-                    <span className="text-[10px] sm:text-[11px] text-slate-500 hidden sm:inline">
-                      Select how many different fish varieties will be packed into Box #{currentBoxNumber}
-                    </span>
+            <div className="p-2 sm:p-2.5 md:p-3 space-y-2 overflow-y-auto flex-1">
+              {/* 1. COMPACT UNCROPPED FISH IMAGE & DETAILS */}
+              {activeBoxFish && (
+                <div className="bg-[#FAF0E4] border border-[#E8DCCB] rounded-xl sm:rounded-2xl p-2 sm:p-2.5 flex items-center gap-2.5 sm:gap-3.5 relative overflow-hidden transition-all duration-300">
+                  <div className="w-16 h-14 sm:w-28 sm:h-20 md:w-36 md:h-24 bg-white rounded-lg sm:rounded-xl border border-[#E8DCCB] overflow-hidden flex items-center justify-center p-1 shadow-inner shrink-0 group">
+                    {activeBoxFish.image ? (
+                      <img
+                        src={formatImageUrl(activeBoxFish.image)}
+                        alt={activeBoxFish.name}
+                        className="w-full h-full object-contain transition-transform duration-300 group-hover:scale-105"
+                      />
+                    ) : (
+                      <Fish size={24} className="text-amber-400" />
+                    )}
                   </div>
-                  
-                  {/* Stepper +/- */}
-                  <div className="flex items-center gap-1.5 self-start sm:self-auto bg-[#FAF0E4] p-1 rounded-xl border border-[#E8DCCB]">
-                    <button
-                      type="button"
-                      onClick={() => handleSlotCountChange(boxSlotCount - 1)}
-                      disabled={boxSlotCount <= 1}
-                      className="w-6 h-6 sm:w-7 sm:h-7 rounded-md sm:rounded-lg bg-white hover:bg-slate-100 disabled:opacity-40 text-slate-800 font-black text-xs sm:text-base flex items-center justify-center border border-[#E8DCCB] shadow-2xs cursor-pointer"
-                    >
-                      -
-                    </button>
-                    <span className="w-6 sm:w-8 text-center font-black text-xs sm:text-sm text-amber-900 font-mono">
-                      {boxSlotCount}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => handleSlotCountChange(boxSlotCount + 1)}
-                      disabled={boxSlotCount >= 10}
-                      className="w-7 h-7 rounded-lg bg-white hover:bg-slate-100 disabled:opacity-40 text-slate-800 font-black text-base flex items-center justify-center border border-[#E8DCCB] shadow-2xs cursor-pointer"
-                    >
-                      +
-                    </button>
+
+                  <div className="flex-1 min-w-0 space-y-0.5 sm:space-y-1 text-left">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className="text-[8.5px] sm:text-[9.5px] font-black uppercase px-1.5 py-0.2 rounded bg-amber-500 text-white shadow-2xs">
+                        {fishOrderMode === 'export' ? 'Export Variety' : 'Wholesale Variety'}
+                      </span>
+                      {activeBoxFish.waterType && (
+                        <span className="text-[8.5px] sm:text-[9.5px] font-bold px-1.5 py-0.2 rounded bg-slate-800 text-white">
+                          {activeBoxFish.waterType === 'fresh_water' ? 'Fresh Water' : 'Sea Water'}
+                        </span>
+                      )}
+                    </div>
+
+                    <h3 className="text-xs sm:text-sm md:text-base font-black text-slate-900 leading-tight truncate">
+                      {activeBoxFish.name}
+                    </h3>
+
+                    {activeBoxFish.scientificName && (
+                      <p className="text-[10px] text-slate-500 italic truncate hidden sm:block">
+                        {activeBoxFish.scientificName}
+                      </p>
+                    )}
+
+                    <div className="flex items-center gap-2 pt-0.5 text-[10px] sm:text-xs flex-wrap">
+                      <span className="text-slate-600 font-bold flex items-center gap-1">
+                        <span>Rate:</span>
+                        <strong className="text-emerald-700 font-black font-mono">
+                          ₹{boxSlots[0]?.pricePerKg || (fishOrderMode === 'export' ? (activeBoxFish.exportPricePerKg || activeBoxFish.wholesalePricePerKg || activeBoxFish.price || 0) : (activeBoxFish.wholesalePricePerKg || activeBoxFish.price || 0))}/Kg
+                        </strong>
+                        {boxSlots[0]?.sizeGrade && (
+                          <span className="text-[9px] text-amber-900 bg-amber-200/80 px-1 py-0.2 rounded font-extrabold capitalize border border-amber-300">
+                            {boxSlots[0].sizeGrade}
+                          </span>
+                        )}
+                      </span>
+                      <span className="text-slate-400">&bull;</span>
+                      <span className="text-slate-600 font-bold">
+                        Stock: <strong className="text-slate-900 font-mono">{activeBoxFish.stock ?? activeBoxFish.inventoryStock ?? 0} Kg</strong>
+                      </span>
+                    </div>
                   </div>
+                </div>
+              )}
+
+              {/* 2. PREDEFINED CUSTOMER / DEALER SELECTOR */}
+              <div className="bg-[#FAF0E4] border border-[#E8DCCB] rounded-xl sm:rounded-2xl p-2 sm:p-2.5 space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] sm:text-xs font-black uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
+                    <User size={13} className="text-amber-700" />
+                    <span>{fishOrderMode === 'export' ? 'Predefined Export Client:' : 'Predefined Wholesale Dealer:'}</span>
+                  </span>
                 </div>
 
-                {/* Quick Item Count Buttons 1..10 */}
-                <div className="grid grid-cols-5 sm:grid-cols-10 gap-1.5">
-                  {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(cnt => (
-                    <button
-                      key={cnt}
-                      type="button"
-                      onClick={() => handleSlotCountChange(cnt)}
-                      className={`py-1 sm:py-1.5 rounded-lg sm:rounded-xl text-[10px] sm:text-xs font-bold border transition-all cursor-pointer ${
-                        boxSlotCount === cnt
-                          ? 'bg-amber-500 text-white border-amber-600 font-black shadow-xs scale-105'
-                          : 'bg-[#FAF0E4] hover:bg-[#F5E8D8] text-slate-700 border-[#E8DCCB]'
-                      }`}
-                    >
-                      {cnt} {cnt === 1 ? 'Item' : 'Items'}
-                    </button>
-                  ))}
-                </div>
+                {selectedCustomerObj ? (
+                  <div className="bg-white border-2 border-amber-400/80 rounded-xl p-2 sm:p-2.5 shadow-sm space-y-1.5 animate-in fade-in slide-in-from-top-1 duration-200">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2 sm:gap-2.5 min-w-0">
+                        {selectedCustomerObj.photo ? (
+                          <img
+                            src={selectedCustomerObj.photo}
+                            alt={selectedCustomerObj.name}
+                            className="w-9 h-9 sm:w-10 sm:h-10 rounded-full object-cover border-2 border-amber-500 shadow-xs ring-2 ring-amber-300 ring-offset-1 shrink-0 transition-transform duration-200 hover:scale-105"
+                          />
+                        ) : (
+                          <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-amber-600 text-white font-black text-xs sm:text-sm flex items-center justify-center shadow-xs ring-2 ring-amber-300 ring-offset-1 shrink-0">
+                            {(selectedCustomerObj.name || 'D').charAt(0).toUpperCase()}
+                          </div>
+                        )}
+
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="text-xs sm:text-sm font-black text-slate-900 truncate">
+                              {selectedCustomerObj.name || 'Guest Dealer'}
+                            </span>
+                            <span className="text-[9px] font-extrabold bg-amber-500/20 text-amber-900 border border-amber-300 px-1.5 py-0.2 rounded shrink-0">
+                              {fishOrderMode === 'export' ? (selectedCustomerObj.exportSubCategory === 'DAM' ? 'DAM Export' : 'Local Export') : 'Wholesale'}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-1 text-[11px] text-slate-600 font-mono font-bold mt-0.5">
+                            <Phone size={11} className="text-slate-400 shrink-0" />
+                            <span>{selectedCustomerObj.phone}</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-1 shrink-0">
+                        <button
+                          type="button"
+                          onClick={handleClearCustomer}
+                          className="px-2 py-1 bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 rounded-lg text-[10px] font-bold transition-all cursor-pointer active:scale-95 flex items-center gap-0.5"
+                          title="Clear customer"
+                        >
+                          <X size={11} />
+                          <span>Clear</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setIsCustomerDropdownOpen(!isCustomerDropdownOpen)}
+                          className="px-2 py-1 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200 rounded-lg text-[10px] font-bold transition-all cursor-pointer active:scale-95"
+                        >
+                          {isCustomerDropdownOpen ? 'Close' : 'Change'}
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Conditional Shop Name: ONLY shown if businessName exists and is not empty */}
+                    {Boolean(selectedCustomerObj.businessName && String(selectedCustomerObj.businessName).trim()) && (
+                      <div className="flex items-center gap-1.5 text-xs text-slate-800 font-bold bg-[#FAF0E4] px-2 py-1 rounded-lg border border-[#E8DCCB]">
+                        <Building size={13} className="text-amber-700 shrink-0" />
+                        <span className="text-slate-500 font-medium">Shop Name:</span>
+                        <span className="text-slate-900 font-black">{String(selectedCustomerObj.businessName).trim()}</span>
+                      </div>
+                    )}
+
+                    {/* Detailed Locked Timestamp */}
+                    {isOrderLocked && lockedTimestamp && (
+                      <div className="flex items-center gap-1.5 text-[10.5px] text-emerald-800 font-bold pt-1 border-t border-amber-500/20">
+                        <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shrink-0" />
+                        <span>Locked At:</span>
+                        <span className="font-mono text-emerald-900 font-black">{lockedTimestamp}</span>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div
+                    onClick={() => setIsCustomerDropdownOpen(true)}
+                    className="bg-white border-2 border-dashed border-amber-400 hover:border-amber-500 rounded-xl p-3 text-center cursor-pointer active:scale-98 transition-all group"
+                  >
+                    <div className="flex items-center justify-center gap-2 text-amber-800 font-bold text-xs">
+                      <User size={16} className="text-amber-600 group-hover:scale-110 transition-transform" />
+                      <span>Tap here to select {fishOrderMode === 'export' ? 'Export Client' : 'Wholesale Dealer'}</span>
+                      <ChevronDown size={14} className="text-amber-600" />
+                    </div>
+                  </div>
+                )}
+
+                {/* Predefined Dealer Dropdown Search Menu */}
+                {isCustomerDropdownOpen && (
+                  <div className="bg-white border border-[#E8DCCB] rounded-xl shadow-xl p-2 space-y-2 animate-in fade-in slide-in-from-top-1 duration-200">
+                    <div className="relative">
+                      <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                      <input
+                        type="text"
+                        placeholder="Search by name, phone or shop..."
+                        value={customerSearch}
+                        onChange={(e) => setCustomerSearch(e.target.value)}
+                        className="w-full pl-8 pr-3 py-1.5 bg-[#FAF0E4] border border-[#E8DCCB] rounded-lg text-xs font-bold text-slate-800 focus:outline-none focus:border-amber-500"
+                      />
+                    </div>
+
+                    <div className="max-h-40 overflow-y-auto space-y-1 divide-y divide-[#E8DCCB]/40">
+                      {filteredPredefinedCustomers.length > 0 ? (
+                        filteredPredefinedCustomers.map((c) => (
+                          <div
+                            key={c._id || c.phone}
+                            onClick={() => handleSelectCustomer(c)}
+                            className="pt-1.5 first:pt-0 p-1.5 hover:bg-amber-50 rounded-lg cursor-pointer transition-colors flex items-center justify-between gap-2 active:scale-98"
+                          >
+                            <div className="flex items-center gap-2 min-w-0">
+                              {c.photo ? (
+                                <img src={c.photo} alt={c.name} className="w-7 h-7 rounded-full object-cover shrink-0" />
+                              ) : (
+                                <div className="w-7 h-7 rounded-full bg-slate-200 text-slate-700 font-bold text-xs flex items-center justify-center shrink-0">
+                                  {(c.name || 'D').charAt(0).toUpperCase()}
+                                </div>
+                              )}
+                              <div className="min-w-0">
+                                <span className="text-xs font-bold text-slate-900 block truncate">{c.name}</span>
+                                <div className="flex items-center gap-1.5 text-[10px] text-slate-500">
+                                  <span className="font-mono">{c.phone}</span>
+                                  {c.businessName && <span className="truncate">&bull; {c.businessName}</span>}
+                                </div>
+                              </div>
+                            </div>
+                            <span className="text-[10px] font-black text-amber-600 shrink-0">Select &rarr;</span>
+                          </div>
+                        ))
+                      ) : (
+                        <div className="text-center py-2 text-xs text-slate-400">
+                          No matching {fishOrderMode === 'export' ? 'export clients' : 'wholesale dealers'} found
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
 
-              {/* Step 2: Fish Items Slots */}
+              {/* 3. FISH ITEMS SLOTS WITH TOP TABS & PHOTO PICKER */}
               <div className="space-y-2.5">
-                <div className="flex items-center justify-between px-1">
-                  <span className="text-[10.5px] sm:text-xs font-black text-slate-800 uppercase tracking-wide flex items-center gap-1.5">
-                    <span>2️⃣</span> Fish Varieties & Weights:
-                  </span>
-                  <span className="text-[10px] sm:text-[11px] text-amber-800 font-bold">
-                    {boxSlots.length} of {boxSlotCount} slots configured
-                  </span>
+                {/* Visual Fish Tabs in this Box */}
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between px-1">
+                    <span className="text-[10.5px] sm:text-xs font-black text-slate-800 uppercase tracking-wide flex items-center gap-1.5">
+                      <Scale size={13} className="text-amber-700" />
+                      <span>Fishes in Box #{currentBoxNumber} ({boxSlots.length}):</span>
+                    </span>
+                    <span className="text-[10px] sm:text-[11px] text-amber-900 bg-amber-100 font-bold px-2 py-0.5 rounded-full border border-amber-200">
+                      Tap photo to change
+                    </span>
+                  </div>
+
+                  <div className="flex items-center gap-1.5 overflow-x-auto pb-1 no-scrollbar">
+                    {boxSlots.map((slot, sIdx) => {
+                      const netSlotKg = (parseFloat(slot.weightKg) || 0) + ((parseFloat(slot.weightGrams) || 0) / 1000);
+                      return (
+                        <div
+                          key={slot.id || sIdx}
+                          className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border border-[#E8DCCB] bg-white font-bold text-xs shadow-2xs shrink-0"
+                        >
+                          <div
+                            onClick={() => {
+                              setSlotIndexToChange(sIdx);
+                              setShowWholesaleFishPicker(true);
+                            }}
+                            className="w-5 h-5 rounded-md overflow-hidden bg-slate-100 shrink-0 flex items-center justify-center cursor-pointer hover:ring-2 hover:ring-amber-500"
+                            title="Tap to change fish photo"
+                          >
+                            {slot.fish?.image ? (
+                              <img src={formatImageUrl(slot.fish.image)} alt={slot.fish.name} className="w-full h-full object-cover" />
+                            ) : (
+                              <span className="text-[11px]">🐟</span>
+                            )}
+                          </div>
+                          <span className="truncate max-w-[85px] sm:max-w-[110px]">{slot.fish?.name || `Fish #${sIdx + 1}`}</span>
+                          <span className="text-[10px] font-mono text-slate-500">
+                            {netSlotKg.toFixed(1)}kg
+                          </span>
+                          {boxSlots.length > 1 && (
+                            <span
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleRemoveSlot(sIdx);
+                              }}
+                              className="ml-0.5 rounded px-1 py-0.2 text-[10px] font-black cursor-pointer text-red-500 hover:bg-red-50"
+                              title="Remove fish from box"
+                            >
+                              ✕
+                            </span>
+                          )}
+                        </div>
+                      );
+                    })}
+
+                    {boxSlots.length < 10 && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSlotIndexToChange(null);
+                          setShowWholesaleFishPicker(true);
+                        }}
+                        className={`flex items-center gap-1 px-3 py-1.5 rounded-xl font-black text-xs transition-all cursor-pointer active:scale-95 shrink-0 shadow-2xs border ${
+                          showWholesaleFishPicker && slotIndexToChange === null
+                            ? 'bg-emerald-600 text-white border-emerald-700'
+                            : 'bg-[#FAF0E4] hover:bg-[#F5E8D8] text-amber-900 border-amber-300'
+                        }`}
+                      >
+                        <Plus size={14} strokeWidth={3} />
+                        <span>Add Another Fish</span>
+                      </button>
+                    )}
+                  </div>
                 </div>
 
-                <div className="space-y-1.5 sm:space-y-2 max-h-[30vh] sm:max-h-[36vh] overflow-y-auto pr-0.5 sm:pr-1">
+                {/* CONDITIONAL: VISUAL PHOTO-GRID FISH PICKER FOR WHOLESALE / EXPORT */}
+                {showWholesaleFishPicker && (
+                  <div className="bg-white border-2 border-amber-400 rounded-2xl p-2.5 sm:p-3 shadow-md space-y-2 animate-in fade-in zoom-in-95 duration-200">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-black text-amber-950 uppercase tracking-wide flex items-center gap-1.5">
+                        <span>🐟 Tap Any Fish Photo to {slotIndexToChange !== null ? `Change Fish #${slotIndexToChange + 1}` : `Add to Box #${currentBoxNumber}`}:</span>
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowWholesaleFishPicker(false);
+                          setSlotIndexToChange(null);
+                        }}
+                        className="text-xs font-bold text-slate-500 hover:text-slate-800 bg-slate-100 hover:bg-slate-200 px-2 py-0.5 rounded-lg transition-colors cursor-pointer"
+                      >
+                        Close ✕
+                      </button>
+                    </div>
+
+                    <div className="relative">
+                      <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                      <input
+                        type="text"
+                        placeholder="Search fish (English / తెలుగు)..."
+                        value={wholesaleFishSearch}
+                        onChange={(e) => setWholesaleFishSearch(e.target.value)}
+                        className="w-full pl-8 pr-3 py-1.5 bg-[#FAF0E4] border border-[#E8DCCB] rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:border-amber-500"
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-[46vh] overflow-y-auto pr-0.5">
+                      {items
+                        .filter(it => it.isAvailable !== false)
+                        .filter(it => {
+                          if (!wholesaleFishSearch) return true;
+                          const s = wholesaleFishSearch.toLowerCase();
+                          return (it.name && it.name.toLowerCase().includes(s)) ||
+                            (it.nameTranslations && Object.values(it.nameTranslations).some(v => String(v).toLowerCase().includes(s))) ||
+                            (it.scientificName && it.scientificName.toLowerCase().includes(s));
+                        })
+                        .map(f => {
+                          const fRate = getItemPricePerKg(f, fishOrderMode);
+                          const fStock = Number(f.stock ?? f.inventoryStock ?? f.currentStock ?? 0);
+                          const fIsSea = getItemWaterType(f) === 'sea_water';
+                          const teluguName = f.nameTranslations?.te || f.nameTranslations?.telugu || '';
+                          return (
+                            <div
+                              key={f._id}
+                              onClick={() => {
+                                if (slotIndexToChange !== null) {
+                                  handleSlotFishChange(slotIndexToChange, f._id);
+                                  setSlotIndexToChange(null);
+                                  setShowWholesaleFishPicker(false);
+                                } else {
+                                  handlePickWholesaleFishToAdd(f);
+                                }
+                              }}
+                              className="bg-[#FAF0E4]/60 hover:bg-amber-100/90 border-2 border-[#E8DCCB] hover:border-amber-500 rounded-xl p-2 cursor-pointer transition-all active:scale-95 shadow-2xs flex flex-col items-center text-center group"
+                            >
+                              <div className="w-16 h-16 sm:w-18 sm:h-18 rounded-lg overflow-hidden bg-white border border-[#E8DCCB] mb-1.5 flex items-center justify-center shrink-0 shadow-xs">
+                                {f.image ? (
+                                  <img src={formatImageUrl(f.image)} alt={f.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
+                                ) : (
+                                  <span className="text-2xl">🐟</span>
+                                )}
+                              </div>
+                              <div className="w-full">
+                                <span className="text-xs font-black text-slate-900 truncate block leading-snug">
+                                  {f.name}
+                                </span>
+                                {teluguName && (
+                                  <span className="text-[11px] font-bold text-amber-900 truncate block leading-snug">
+                                    ({teluguName})
+                                  </span>
+                                )}
+                                <div className="flex items-center justify-center gap-1 mt-1 flex-wrap">
+                                  <span className={`text-[9px] font-bold px-1.5 py-0.2 rounded-full border ${
+                                    fIsSea ? 'bg-sky-50 text-sky-800 border-sky-300' : 'bg-emerald-50 text-emerald-800 border-emerald-300'
+                                  }`}>
+                                    {fIsSea ? '🌊 Sea' : '🌿 Fresh'}
+                                  </span>
+                                  <span className="text-[9px] font-mono text-slate-500">
+                                    {fStock}kg
+                                  </span>
+                                </div>
+                                <div className="mt-1 font-mono font-black text-amber-900 text-xs bg-white/80 py-0.5 px-1 rounded border border-amber-200">
+                                  ₹{fRate}/Kg
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                    </div>
+                  </div>
+                )}
+
+                <div className="space-y-2 max-h-[34vh] overflow-y-auto pr-0.5">
                   {boxSlots.map((slot, index) => {
-                    const itemTotal = (parseFloat(slot.weightKg) || 0) * (parseFloat(slot.pricePerKg) || 0);
+                    const netSlotKg = (parseFloat(slot.weightKg) || 0) + ((parseFloat(slot.weightGrams) || 0) / 1000);
+                    const itemTotal = netSlotKg * (parseFloat(slot.pricePerKg) || 0);
+
                     return (
                       <div
                         key={slot.id || index}
-                        className="bg-white border border-[#E8DCCB] hover:border-amber-400/80 rounded-xl sm:rounded-2xl p-2 sm:p-2.5 md:p-3 shadow-2xs transition-all space-y-1 sm:space-y-1.5"
+                        className="bg-white border border-[#E8DCCB] hover:border-amber-400/80 rounded-xl sm:rounded-2xl p-2.5 shadow-2xs transition-all space-y-1.5"
                       >
                         <div className="flex items-center justify-between gap-2">
                           <span className="text-[11px] font-black text-amber-800 bg-[#FAF0E4] border border-[#E8DCCB] px-2 py-0.5 rounded-lg">
@@ -2582,51 +3757,91 @@ const MenuGrid = ({
                         </div>
 
                         <div className="grid grid-cols-12 gap-1.5 sm:gap-2 items-center">
-                          {/* Fish selector (Row 1 on mobile, inline on tab/desktop) */}
+                          {/* Fish selector with visual thumbnail */}
                           <div className="col-span-12 sm:col-span-5">
-                            <label className="text-[9.5px] sm:text-[10px] font-bold text-slate-500 uppercase block mb-0.5 sm:mb-1">
+                            <label className="text-[9.5px] font-bold text-slate-500 uppercase block mb-0.5">
                               Select Fish Variety
                             </label>
-                            <SearchableDropdown
-                              mode="select"
-                              value={slot.fishId || ''}
-                              onChange={(val) => handleSlotFishChange(index, val)}
-                              options={fishBoxOptions}
-                              placeholder="-- Choose Fish Variety --"
-                              searchPlaceholder="Search fish species..."
-                              className="w-full"
-                              inputClassName="!h-9 !py-0 !rounded-lg sm:!rounded-xl !text-[11px] sm:!text-xs flex items-center font-bold !bg-[#FAF0E4] !border-[#E8DCCB]"
-                              minDropdownWidth={290}
-                              accentColor="orange"
-                              clearable={false}
-                              required
-                            />
+                            <div className="flex items-center gap-1.5">
+                              <div
+                                onClick={() => {
+                                  setSlotIndexToChange(index);
+                                  setShowWholesaleFishPicker(true);
+                                }}
+                                className="w-9 h-9 rounded-lg overflow-hidden bg-white border border-[#E8DCCB] shrink-0 flex items-center justify-center shadow-xs cursor-pointer hover:border-amber-500 hover:ring-2 hover:ring-amber-300 transition-all"
+                                title="Tap to change fish photo"
+                              >
+                                {slot.fish?.image ? (
+                                  <img src={formatImageUrl(slot.fish.image)} alt={slot.fish?.name || 'Fish'} className="w-full h-full object-cover" />
+                                ) : (
+                                  <span className="text-base">🐟</span>
+                                )}
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <SearchableDropdown
+                                  mode="select"
+                                  value={slot.fishId || ''}
+                                  onChange={(val) => handleSlotFishChange(index, val)}
+                                  options={fishBoxOptions}
+                                  placeholder="-- Choose Fish Variety --"
+                                  searchPlaceholder="Search fish species..."
+                                  className="w-full"
+                                  inputClassName="!h-9 !py-0 !rounded-lg sm:!rounded-xl !text-[11px] sm:!text-xs flex items-center font-bold !bg-[#FAF0E4] !border-[#E8DCCB]"
+                                  minDropdownWidth={290}
+                                  accentColor="orange"
+                                  clearable={false}
+                                  required
+                                />
+                              </div>
+                            </div>
                           </div>
 
-                          {/* Weight (Kg) (Row 2 on mobile, inline on tab/desktop) */}
-                          <div className="col-span-4 sm:col-span-3">
-                            <label className="text-[9.5px] sm:text-[10px] font-bold text-slate-500 uppercase block mb-0.5 sm:mb-1 truncate">
-                              Weight (Kg)
+                          {/* Kilograms (Kg) Input */}
+                          <div className="col-span-4 sm:col-span-2">
+                            <label className="text-[9.5px] font-black text-slate-700 uppercase block mb-0.5">
+                              Kg
                             </label>
                             <div className="relative">
                               <input
                                 type="number"
-                                min="0.1"
-                                step="0.5"
+                                min="0"
+                                step="1"
                                 value={slot.weightKg}
-                                onChange={(e) => handleSlotWeightChange(index, e.target.value)}
-                                placeholder="e.g. 10"
-                                className="w-full bg-white border border-[#E8DCCB] rounded-lg sm:rounded-xl pl-1 pr-5 sm:pr-6 py-1 sm:py-1.5 text-[11px] sm:text-xs font-black text-slate-900 focus:outline-none focus:border-amber-500 font-mono text-center"
+                                onChange={(e) => handleSlotWeightKgChange(index, e.target.value)}
+                                placeholder="Kg"
+                                className="w-full bg-white border border-[#E8DCCB] rounded-lg sm:rounded-xl pl-1 pr-5 py-1 text-[11px] sm:text-xs font-black text-slate-900 focus:outline-none focus:border-amber-500 font-mono text-center active:scale-98 transition-all"
                               />
-                              <span className="absolute right-1.5 top-1 sm:top-1.5 text-[9px] sm:text-[10px] text-slate-400 font-bold pointer-events-none">
+                              <span className="absolute right-1 top-1 text-[9px] text-slate-400 font-bold pointer-events-none">
                                 Kg
                               </span>
                             </div>
                           </div>
 
-                          {/* Rate / Price per Kg (Row 2 on mobile, inline on tab/desktop) */}
+                          {/* Grams (g) Input */}
                           <div className="col-span-4 sm:col-span-2">
-                            <label className="text-[9.5px] sm:text-[10px] font-bold text-slate-500 uppercase block mb-0.5 sm:mb-1 truncate">
+                            <label className="text-[9.5px] font-black text-slate-700 uppercase block mb-0.5">
+                              Grams (g)
+                            </label>
+                            <div className="relative">
+                              <input
+                                type="number"
+                                min="0"
+                                max="999"
+                                step="50"
+                                value={slot.weightGrams ?? '0'}
+                                onChange={(e) => handleSlotWeightGramsChange(index, e.target.value)}
+                                placeholder="g"
+                                className="w-full bg-white border border-[#E8DCCB] rounded-lg sm:rounded-xl pl-1 pr-4 py-1 text-[11px] sm:text-xs font-black text-slate-900 focus:outline-none focus:border-amber-500 font-mono text-center active:scale-98 transition-all"
+                              />
+                              <span className="absolute right-1 top-1 text-[9px] text-slate-400 font-bold pointer-events-none">
+                                g
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* Rate / Price per Kg */}
+                          <div className="col-span-4 sm:col-span-3 text-right">
+                            <label className="text-[9.5px] font-bold text-slate-500 uppercase block mb-0.5">
                               Rate (₹/Kg)
                             </label>
                             <div className="relative">
@@ -2637,19 +3852,85 @@ const MenuGrid = ({
                                 value={slot.pricePerKg}
                                 onChange={(e) => handleSlotPriceChange(index, e.target.value)}
                                 placeholder="Rate"
-                                className="w-full bg-white border border-[#E8DCCB] rounded-lg sm:rounded-xl px-1 sm:px-2 py-1 sm:py-1.5 text-[11px] sm:text-xs font-black text-slate-900 focus:outline-none focus:border-amber-500 font-mono text-center"
+                                className="w-full bg-white border border-[#E8DCCB] rounded-lg sm:rounded-xl px-1 sm:px-2 py-1 text-[11px] sm:text-xs font-black text-slate-900 focus:outline-none focus:border-amber-500 font-mono text-center active:scale-98 transition-all"
                               />
                             </div>
                           </div>
+                        </div>
 
-                          {/* Total Amount (Row 2 on mobile, inline on tab/desktop) */}
-                          <div className="col-span-4 sm:col-span-2 text-right">
-                            <label className="text-[9.5px] sm:text-[10px] font-bold text-slate-500 uppercase block mb-0.5 sm:mb-1 truncate text-right">
-                              Item Total
-                            </label>
-                            <div className="text-[11px] sm:text-xs font-black text-amber-900 font-mono py-1 sm:py-1.5 flex items-center justify-end min-h-[28px] sm:min-h-0">
-                              ₹{itemTotal.toFixed(2)}
+                        {/* Auto-Fetched Fish Size Grades (Small, Medium, Big) for Wholesale / Export */}
+                        {(() => {
+                          const grades = getItemSizeGrades(slot.fish, fishOrderMode);
+                          if (!grades || grades.length === 0) return null;
+                          const currentGrade = slot.sizeGrade || (grades.some(g => g.key === 'medium') ? 'medium' : grades[0]?.key);
+
+                          return (
+                            <div className="bg-[#FAF0E4]/80 p-1.5 rounded-lg sm:rounded-xl border border-[#E8DCCB] space-y-1">
+                              <div className="flex items-center justify-between text-[9px] sm:text-[9.5px]">
+                                <span className="font-bold text-slate-700 flex items-center gap-1">
+                                  <span>Fish Size Grade:</span>
+                                </span>
+                                <span className="text-[8.5px] text-amber-800 font-semibold">
+                                  Auto-sets Avg Weight & {fishOrderMode === 'export' ? 'Export' : 'Wholesale'} Rate
+                                </span>
+                              </div>
+                              <div className={`grid gap-1 sm:gap-1.5 ${
+                                grades.length === 1 ? 'grid-cols-1' : grades.length === 2 ? 'grid-cols-2' : 'grid-cols-3'
+                              }`}>
+                                {grades.map(g => {
+                                  const isSelected = currentGrade === g.key;
+                                  return (
+                                    <button
+                                      key={g.key}
+                                      type="button"
+                                      onClick={() => handleSlotGradeChange(index, g.key)}
+                                      className={`py-1 px-1.5 rounded-lg text-center transition-all cursor-pointer border ${
+                                        isSelected
+                                          ? 'bg-amber-600 text-white border-amber-700 shadow-xs font-black'
+                                          : 'bg-white text-slate-700 border-[#E8DCCB] hover:bg-amber-50'
+                                      }`}
+                                    >
+                                      <div className="flex items-center justify-center gap-1 leading-tight">
+                                        <span className="text-[10px] sm:text-[11px] font-bold">{g.label}</span>
+                                        <span className={`text-[8px] sm:text-[8.5px] ${isSelected ? 'text-amber-100' : 'text-slate-400'}`}>
+                                          ({g.range})
+                                        </span>
+                                      </div>
+                                      <div className={`text-[9px] sm:text-[9.5px] font-mono font-bold leading-tight ${isSelected ? 'text-white' : 'text-emerald-700'}`}>
+                                        ₹{g.price}/Kg
+                                      </div>
+                                    </button>
+                                  );
+                                })}
+                              </div>
                             </div>
+                          );
+                        })()}
+
+                        {/* Quick Grams Increments + Slot Total */}
+                        <div className="flex items-center justify-between text-[10px] font-bold pt-1 border-t border-[#E8DCCB]/60">
+                          <div className="flex items-center gap-1 flex-wrap">
+                            <span className="text-slate-400 text-[9px]">Quick:</span>
+                            {[100, 250, 400, 500, 750].map(g => (
+                              <button
+                                key={g}
+                                type="button"
+                                onClick={() => handleSlotWeightGramsChange(index, String(g))}
+                                className="px-1.5 py-0.5 rounded bg-[#FAF0E4] hover:bg-amber-100 border border-[#E8DCCB] text-amber-900 font-mono active:scale-95 transition-all cursor-pointer"
+                              >
+                                +{g}g
+                              </button>
+                            ))}
+                            <button
+                              type="button"
+                              onClick={() => handleSlotWeightGramsChange(index, '0')}
+                              className="px-1.5 py-0.5 rounded bg-slate-100 hover:bg-slate-200 text-slate-600 font-mono active:scale-95 transition-all cursor-pointer"
+                            >
+                              0g
+                            </button>
+                          </div>
+                          <div className="text-right font-mono font-black text-amber-950 text-xs">
+                            {Number(netSlotKg.toFixed(3))} Kg = ₹{itemTotal.toFixed(2)}
                           </div>
                         </div>
                       </div>
@@ -2660,8 +3941,11 @@ const MenuGrid = ({
                 {boxSlots.length < 10 && (
                   <button
                     type="button"
-                    onClick={handleAddSlot}
-                    className="w-full py-2 bg-white hover:bg-[#FAF0E4] border border-dashed border-[#E8DCCB] hover:border-amber-400 text-amber-800 text-xs font-bold rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1.5"
+                    onClick={() => {
+                      setSlotIndexToChange(null);
+                      setShowWholesaleFishPicker(true);
+                    }}
+                    className="w-full py-2 bg-white hover:bg-[#FAF0E4] border border-dashed border-[#E8DCCB] hover:border-amber-400 text-amber-800 text-xs font-bold rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1.5 active:scale-98"
                   >
                     <span>+</span>
                     <span>Add Another Fish to Box #{currentBoxNumber}</span>
@@ -2669,51 +3953,147 @@ const MenuGrid = ({
                 )}
               </div>
 
-              {/* Step 3: Total Box Summary Card */}
+              {/* 4. TOTAL BOX SUMMARY CARD & ORDER PREVIEW */}
               {(() => {
-                const totalKg = boxSlots.reduce((acc, s) => acc + (parseFloat(s.weightKg) || 0), 0);
-                const totalAmt = boxSlots.reduce((acc, s) => acc + ((parseFloat(s.weightKg) || 0) * (parseFloat(s.pricePerKg) || 0)), 0);
-                const validCount = boxSlots.filter(s => s.fish && (parseFloat(s.weightKg) || 0) > 0).length;
+                const totalKg = boxSlots.reduce((acc, s) => {
+                  const wt = (parseFloat(s.weightKg) || 0) + ((parseFloat(s.weightGrams) || 0) / 1000);
+                  return acc + wt;
+                }, 0);
+                const totalAmt = boxSlots.reduce((acc, s) => {
+                  const wt = (parseFloat(s.weightKg) || 0) + ((parseFloat(s.weightGrams) || 0) / 1000);
+                  return acc + (wt * (parseFloat(s.pricePerKg) || 0));
+                }, 0);
+                const validCount = boxSlots.filter(s => {
+                  const wt = (parseFloat(s.weightKg) || 0) + ((parseFloat(s.weightGrams) || 0) / 1000);
+                  return s.fish && wt > 0;
+                }).length;
 
                 return (
-                  <div className="bg-gradient-to-r from-amber-500/20 via-orange-500/15 to-amber-500/20 border-2 border-amber-500/50 rounded-xl sm:rounded-2xl p-2 sm:p-2.5 shadow-sm">
+                  <div className="bg-gradient-to-r from-amber-500/20 via-orange-500/15 to-amber-500/20 border-2 border-amber-500/50 rounded-xl sm:rounded-2xl p-2.5 shadow-sm space-y-1">
                     <div className="flex items-center justify-between">
                       <div>
                         <span className="text-xs font-black text-amber-950 uppercase tracking-wider block">
                           Box #{currentBoxNumber} Summary
                         </span>
                         <span className="text-[11px] text-amber-800 font-bold">
-                          {validCount} Varieties &bull; Total Weight: <strong className="font-mono text-slate-900">{totalKg.toFixed(2)} Kg</strong>
+                          {validCount} Varieties &bull; Total Weight: <strong className="font-mono text-slate-900">{totalKg.toFixed(3)} Kg</strong>
                         </span>
                       </div>
                       <div className="text-right">
                         <span className="text-[10px] text-slate-500 uppercase font-bold block">Box Total Price</span>
-                        <span className="text-base sm:text-xl md:text-2xl font-black text-amber-900 font-mono">
+                        <span className="text-base sm:text-xl font-black text-amber-900 font-mono">
                           ₹{totalAmt.toFixed(2)}
                         </span>
                       </div>
                     </div>
+
+                    {/* List of Added Fish Varieties with Images in Box */}
+                    {boxSlots.filter(s => s.fish).length > 0 && (
+                      <div className="pt-1.5 border-t border-amber-500/30">
+                        <span className="text-[10px] font-black uppercase text-amber-900 block mb-1">
+                          Added Fish Varieties:
+                        </span>
+                        <div className="flex gap-2 overflow-x-auto py-0.5 no-scrollbar">
+                          {boxSlots.filter(s => s.fish).map((slot, sIdx) => {
+                            const netSlotKg = (parseFloat(slot.weightKg) || 0) + ((parseFloat(slot.weightGrams) || 0) / 1000);
+                            const slotAmt = netSlotKg * (parseFloat(slot.pricePerKg) || 0);
+                            return (
+                              <div
+                                key={slot.id || sIdx}
+                                className="flex items-center gap-2 bg-white/95 border border-amber-300 rounded-xl p-1.5 shrink-0 shadow-2xs"
+                              >
+                                <div className="w-8 h-8 rounded-lg overflow-hidden bg-slate-100 border border-slate-200 shrink-0 flex items-center justify-center">
+                                  {slot.fish?.image ? (
+                                    <img src={formatImageUrl(slot.fish.image)} alt={slot.fish.name} className="w-full h-full object-cover" />
+                                  ) : (
+                                    <span className="text-sm">🐟</span>
+                                  )}
+                                </div>
+                                <div className="text-[10.5px] leading-tight min-w-[70px]">
+                                  <div className="font-black text-slate-800 truncate max-w-[110px]">{slot.fish.name}</div>
+                                  <div className="text-amber-900 font-bold font-mono text-[9.5px]">
+                                    {netSlotKg.toFixed(2)} Kg &bull; ₹{slotAmt.toFixed(0)}
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+
+                    {cart && cart.length > 0 && (
+                      <div className="pt-1 border-t border-amber-500/30 flex items-center justify-between text-[11px] text-slate-700 font-bold">
+                        <span>Existing Boxes in Order ({cart.length} items):</span>
+                        <span className="font-mono font-black text-emerald-800">
+                          Order Total: ₹{(cartTotal + totalAmt).toFixed(2)}
+                        </span>
+                      </div>
+                    )}
                   </div>
                 );
               })()}
             </div>
 
-            {/* Modal Footer */}
-            <div className="p-2 sm:p-2.5 border-t border-[#E8DCCB] bg-[#FAF0E4] flex items-center justify-between gap-2 sm:gap-3 shrink-0">
-              <button
-                type="button"
-                onClick={() => setShowBoxPacker(false)}
-                className="px-3 sm:px-4 py-1.5 sm:py-2.5 rounded-lg sm:rounded-xl border border-slate-300 text-slate-700 bg-white hover:bg-slate-100 font-bold text-xs transition-all cursor-pointer"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={handleAddBoxToOrder}
-                className="flex-1 py-1.5 sm:py-2.5 rounded-lg sm:rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white font-black text-xs sm:text-sm shadow-md cursor-pointer transition-all active:scale-98 flex items-center justify-center"
-              >
-                <span>Add Box #{currentBoxNumber} to Order</span>
-              </button>
+            {/* Modal Footer with Instant Action Buttons */}
+            <div className="p-2 sm:p-2.5 md:p-3 border-t border-[#E8DCCB] bg-[#FAF0E4] flex flex-col gap-1.5 sm:gap-2 shrink-0">
+              {/* Desktop Only: "+ Add Box to Order" button */}
+              <div className="hidden lg:flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowBoxPacker(false)}
+                  className="px-3 py-2 rounded-xl border border-slate-300 text-slate-700 bg-white hover:bg-slate-100 font-bold text-xs transition-all cursor-pointer active:scale-95"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleAddBoxToOrder()}
+                  className="flex-1 py-2 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white font-black text-xs sm:text-sm shadow-md cursor-pointer transition-all active:scale-98 flex items-center justify-center gap-1.5"
+                >
+                  <span>+ Add Box #{currentBoxNumber} to Order</span>
+                </button>
+              </div>
+
+              {/* Action Buttons: On Mobile & Tablet, this is the clean 1-row footer with Cancel, SAVE KHATA, SAVE & PRINT */}
+              <div className="grid grid-cols-12 gap-1.5 sm:gap-2 pt-0.5 lg:pt-1 lg:border-t lg:border-[#E8DCCB]">
+                {/* On mobile and tablet: Cancel button is right here */}
+                <button
+                  type="button"
+                  onClick={() => setShowBoxPacker(false)}
+                  className="lg:hidden col-span-3 py-2 px-1 rounded-xl border border-slate-300 text-slate-700 bg-white hover:bg-slate-100 font-bold text-xs transition-all cursor-pointer active:scale-95 flex items-center justify-center"
+                >
+                  Cancel
+                </button>
+
+                <button
+                  type="button"
+                  disabled={actionLoading !== null}
+                  onClick={() => handleModalSave(false)}
+                  className="col-span-4 lg:col-span-6 py-2 sm:py-2.5 px-1.5 sm:px-3 rounded-xl bg-slate-800 hover:bg-slate-900 text-white font-black text-[11px] sm:text-xs md:text-sm shadow-md active:scale-95 transition-all disabled:opacity-50 flex items-center justify-center gap-1 sm:gap-1.5 cursor-pointer"
+                >
+                  {actionLoading === 'save' ? (
+                    <Loader2 size={13} className="animate-spin text-white" />
+                  ) : (
+                    <Save size={13} />
+                  )}
+                  <span>SAVE (KHATA)</span>
+                </button>
+
+                <button
+                  type="button"
+                  disabled={actionLoading !== null}
+                  onClick={() => handleModalSave(true)}
+                  className="col-span-5 lg:col-span-6 py-2 sm:py-2.5 px-1.5 sm:px-3 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-700 hover:to-teal-600 text-white font-black text-[11px] sm:text-xs md:text-sm shadow-md active:scale-95 transition-all disabled:opacity-50 flex items-center justify-center gap-1 sm:gap-1.5 cursor-pointer"
+                >
+                  {actionLoading === 'print' ? (
+                    <Loader2 size={13} className="animate-spin text-white" />
+                  ) : (
+                    <Printer size={13} />
+                  )}
+                  <span>SAVE & PRINT</span>
+                </button>
+              </div>
             </div>
           </div>
         </div>,

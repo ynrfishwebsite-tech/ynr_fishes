@@ -9,9 +9,10 @@ import { getActiveOrder, saveOrder, generateBill, settleBill, apiReopenOrder, ap
 import { sendWhatsAppBill, getWhatsAppStatus } from '../../../api/communication/whatsapp';
 import api from '../../../api/system/axios';
 import { getCachedOpenOrders, upsertCachedOpenOrder, removeCachedOpenOrder } from '../../../db/offlineDb';
-import { Search, UtensilsCrossed, Maximize, Minimize, TrendingUp, ShoppingBag, LayoutGrid, Menu, ChevronLeft, ChevronRight, ChevronDown, Lock, Unlock, X, User, UserPlus, Phone, Loader2, Plus, Check } from 'lucide-react';
+import { Search, UtensilsCrossed, Maximize, Minimize, TrendingUp, ShoppingBag, LayoutGrid, Menu, ChevronLeft, ChevronRight, ChevronDown, Lock, Unlock, X, User, UserPlus, Phone, Loader2, Plus, Check,Printer } from 'lucide-react';
 import useDebounce from '../../../hooks/useDebounce';
 import Invoice from './Invoice';
+import { getBillTotalWeightKg } from './BillHistory';
 import CancelOrderModal from './CancelOrderModal';
 import { useLanguage } from '../../../context/LanguageContext';
 import realtimeService from '../../../services/realtimeService';
@@ -164,7 +165,7 @@ const GENERATED_NEW_TABLES = new Set();
 
 const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individual', onOrderUpdate, onNavigate, onGoBack, userRole = 'Admin' }) => {
   const { t } = useLanguage();
-  const isExplicitNew = !initialTable || initialTable === 'NEW_ORDER' || initialAction === 'new' || (typeof window !== 'undefined' && sessionStorage.getItem('ms_initial_action') === 'new');
+  const isExplicitNew = (initialAction === 'new' || initialTable === 'NEW_ORDER' || (!initialTable && typeof window !== 'undefined' && sessionStorage.getItem('ms_initial_action') === 'new')) && initialAction !== 'open';
   const effectiveInitialTable = isExplicitNew ? '' : (initialTable || '');
   const [activeTable, setActiveTable] = useState(effectiveInitialTable);
   const [floors, setFloors] = useState([]);
@@ -527,18 +528,44 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
   }, [fishOrderMode]);
 
   // ─── WhatsApp Auto-Send Toggle & Status ──────────────────────────────────────
-  // Toggle persisted across sessions in localStorage so it stays active
-  const [autoWhatsappEnabled, setAutoWhatsappEnabled] = useState(() => {
+  // Mode-specific WhatsApp Auto-Send getter for Retail, Wholesale, and Export
+  const getAutoWaForCurrentMode = useCallback((mode) => {
     try {
-      const local = localStorage.getItem('ms_auto_wa');
-      if (local !== null) return local === '1';
-      const sess = sessionStorage.getItem('ms_auto_wa');
-      if (sess !== null) return sess === '1';
-      return false;
+      const s = JSON.parse(localStorage.getItem('restaurantSettings') || '{}');
+      if (mode === 'export') {
+        if (s.autoWhatsappExport !== undefined) return s.autoWhatsappExport === true;
+        const local = localStorage.getItem('ms_auto_wa_export');
+        return local !== null ? local === '1' : false;
+      } else if (mode === 'bulk') {
+        if (s.autoWhatsappWholesale !== undefined) return s.autoWhatsappWholesale === true;
+        const local = localStorage.getItem('ms_auto_wa_wholesale');
+        return local !== null ? local === '1' : false;
+      } else {
+        if (s.autoWhatsappRetail !== undefined) return s.autoWhatsappRetail === true;
+        const local = localStorage.getItem('ms_auto_wa_retail');
+        if (local !== null) return local === '1';
+        const legacy = localStorage.getItem('ms_auto_wa');
+        return legacy !== null ? legacy === '1' : false;
+      }
     } catch {
       return false;
     }
+  }, []);
+
+  // Toggle persisted across sessions in localStorage so it stays active
+  const [autoWhatsappEnabled, setAutoWhatsappEnabled] = useState(() => {
+    return getAutoWaForCurrentMode(initialFishMode || 'individual');
   });
+
+  // Sync mode-specific auto-whatsapp setting whenever mode changes or settings updated
+  useEffect(() => {
+    setAutoWhatsappEnabled(getAutoWaForCurrentMode(fishOrderMode));
+    const handleStorageChange = () => {
+      setAutoWhatsappEnabled(getAutoWaForCurrentMode(fishOrderMode));
+    };
+    window.addEventListener('storage', handleStorageChange);
+    return () => window.removeEventListener('storage', handleStorageChange);
+  }, [fishOrderMode, getAutoWaForCurrentMode]);
   // Tracks bill IDs already sent via WhatsApp to prevent duplicate sends
   const whatsappBillSentIds = useRef(new Set());
   const [isWhatsAppConnected, setIsWhatsAppConnected] = useState(false);
@@ -602,12 +629,98 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
 
     let itemsList = '';
     let totalQty = 0;
-    if (Array.isArray(bill.items)) {
-      itemsList = bill.items.map(item => {
-        const qty = item.quantity || 1;
-        const price = (item.price || 0) * qty;
+    const totalWeightKg = getBillTotalWeightKg(bill);
+
+    // Group items into Wholesale Boxes and Individual Items
+    const boxes = {};
+    const individual = [];
+    const activeItems = (bill.items || []).filter(i => !i.isCancelled);
+
+    activeItems.forEach(item => {
+      if (item.boxNumber) {
+        const k = String(item.boxNumber);
+        if (!boxes[k]) {
+          boxes[k] = {
+            boxNumber: item.boxNumber,
+            boxLabel: item.boxLabel || `Box #${item.boxNumber}`,
+            items: [],
+            totalWeightKg: 0,
+            totalPrice: 0
+          };
+        }
+        boxes[k].items.push(item);
+        boxes[k].totalWeightKg += Number(item.weightKg) || 0;
+        const q = (item.quantity || 1) - (item.cancelledQuantity || 0);
+        boxes[k].totalPrice += (Number(item.price) || 0) * q;
+      } else {
+        individual.push(item);
+      }
+    });
+
+    const getItemDetails = (item) => {
+      let cut = item?.cutType || item?.cuttingStyle || '';
+      let rawName = item?.name || 'Item';
+      let weightInfo = '';
+
+      const parenMatch = rawName.match(/\((.*?)\)/);
+      if (parenMatch) {
+        const inside = parenMatch[1];
+        const cutMatch = inside.match(/\b(Whole|Cleaned|Curry Cut|Fry Cut|Boneless|Curry|Fry)\b/i);
+        if (cutMatch && !cut) cut = cutMatch[1];
+        const weightMatch = inside.match(/(\d+(?:\.\d+)?\s*(?:kg|g|gms|boxes|box))/i);
+        if (weightMatch) weightInfo = weightMatch[1];
+      }
+      if (cut) {
+        const cLower = cut.toLowerCase();
+        if (cLower.includes('curry')) cut = 'Curry Cut';
+        else if (cLower.includes('fry')) cut = 'Fry Cut';
+        else if (cLower.includes('bone')) cut = 'Boneless';
+        else if (cLower.includes('clean')) cut = 'Cleaned';
+        else if (cLower.includes('whole')) cut = 'Whole';
+      }
+      let cleanName = rawName.replace(/\s*\((?:Whole|Cleaned|Curry Cut|Fry Cut|Boneless|Curry|Fry)\s*-\s*[^)]+\)/i, '').trim();
+      if (!cleanName) cleanName = rawName;
+      return {
+        displayName: cleanName,
+        cutType: cut,
+        weightInfo: weightInfo || (item?.weightKg ? `${item.weightKg} Kg` : (item?.enteredWeight ? `${item.enteredWeight} Kg` : ''))
+      };
+    };
+
+    if (Object.keys(boxes).length > 0) {
+      const boxLines = [];
+      Object.values(boxes).forEach(box => {
+        const wtStr = box.totalWeightKg > 0 ? ` • ${box.totalWeightKg.toFixed(1).replace(/\.0$/, '')} Kg` : '';
+        boxLines.push(`📦 *${box.boxLabel} (${box.items.length} items${wtStr}) - ₹${box.totalPrice.toFixed(2)}*`);
+        box.items.forEach(item => {
+          const qty = (item.quantity || 1) - (item.cancelledQuantity || 0);
+          totalQty += qty;
+          const { displayName, cutType, weightInfo } = getItemDetails(item);
+          const wtPart = item.weightKg ? ` (${item.weightKg}Kg @ ₹${item.pricePerKg || Math.round((item.price / (item.weightKg || 1)))}/kg)` : (weightInfo ? ` (${weightInfo})` : '');
+          const cutPart = cutType ? ` [Cut: ${cutType}]` : '';
+          boxLines.push(`  • ${displayName}${wtPart} x${qty} - ₹${(Number(item.price || 0) * qty).toFixed(2)}${cutPart}`);
+        });
+      });
+      if (individual.length > 0) {
+        boxLines.push(`🐟 *Individual Items:*`);
+        individual.forEach(item => {
+          const qty = (item.quantity || 1) - (item.cancelledQuantity || 0);
+          totalQty += qty;
+          const { displayName, cutType, weightInfo } = getItemDetails(item);
+          const wtPart = weightInfo ? ` (${weightInfo})` : (item.weightKg ? ` (${item.weightKg} Kg)` : '');
+          const cutPart = cutType ? ` [Cut: ${cutType}]` : '';
+          boxLines.push(`  • ${displayName}${wtPart} x${qty} - ₹${(Number(item.price || 0) * qty).toFixed(2)}${cutPart}`);
+        });
+      }
+      itemsList = boxLines.join('\n');
+    } else if (activeItems.length > 0) {
+      itemsList = activeItems.map(item => {
+        const qty = (item.quantity || 1) - (item.cancelledQuantity || 0);
         totalQty += qty;
-        return `• ${item.name || 'Item'} x${qty} - ₹${Number(price).toFixed(2)}`;
+        const { displayName, cutType, weightInfo } = getItemDetails(item);
+        const wtPart = weightInfo ? ` (${weightInfo})` : (item.weightKg ? ` (${item.weightKg} Kg)` : '');
+        const cutPart = cutType ? ` [Cut: ${cutType}]` : '';
+        return `• ${displayName}${wtPart} x${qty} - ₹${(Number(item.price || 0) * qty).toFixed(2)}${cutPart}`;
       }).join('\n');
     }
 
@@ -631,9 +744,14 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
       } else {
         paymentInfo = 'Mixed Payment';
       }
+    } else if (payMode === 'Partial' || bill.status === 'Partial') {
+      const paid = Number(bill.paidAmount ?? bill.amountPaid ?? bill.partialPayment?.paidAmount ?? 0);
+      const due = Number(bill.dueAmount ?? bill.partialPayment?.dueAmount ?? Math.max(0, (bill.total || 0) - paid));
+      const method = bill.partialPayment?.method || 'Cash';
+      paymentInfo = `Partially Paid (Paid ${method}: ₹${paid.toFixed(2)} | Khata Due: ₹${due.toFixed(2)})`;
     } else if (payMode === 'Card') {
       paymentInfo = 'Card';
-    } else if (payMode === 'Unpaid') {
+    } else if (payMode === 'Unpaid' || bill.status === 'Unpaid') {
       paymentInfo = 'Unpaid (Khata)';
     } else {
       paymentInfo = 'Cash';
@@ -668,11 +786,12 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
       (customerName ? `*Customer:* ${customerName}\n` : '') +
       (customerPhone ? `*Phone:* ${customerPhone}\n` : '') +
       `━━━━━━━━━━━━━━━━━━━━\n` +
-      `*ITEMS ORDERED (${totalQty} Qty):*\n` +
+      `*ITEMS ORDERED (${totalQty} Qty${totalWeightKg > 0 ? ` • ${totalWeightKg.toFixed(1).replace(/\.0$/, '')} Kg` : ''}):*\n` +
       `${itemsList}\n` +
       `━━━━━━━━━━━━━━━━━━━━\n` +
       `• *Subtotal:* ₹${subtotal}` +
       discount +
+      (totalWeightKg > 0 ? `\n• *Total Weight:* *${totalWeightKg.toFixed(1).replace(/\.0$/, '')} Kg*` : '') +
       `\n• *GRAND TOTAL:* *₹${total}*\n` +
       `• *Payment Mode:* ${paymentInfo}\n` +
       `━━━━━━━━━━━━━━━━━━━━\n` +
@@ -968,13 +1087,27 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
         } catch (e) { }
       } else {
         setActiveTable(initialTable);
+        setMobileTab('cart');
         if (initialTable.startsWith('DEL-')) {
           setBillType('Delivery');
         } else if (initialTable.startsWith('TAK-')) {
           setBillType('Takeaway');
+        } else if (initialTable.startsWith('WS-')) {
+          setBillType('Takeaway');
+          setFishOrderMode('bulk');
+          setCustomerCategory('Wholesale');
+        } else if (initialTable.startsWith('EXP-')) {
+          setBillType('Takeaway');
+          setFishOrderMode('export');
+          setCustomerCategory('Export');
+        } else if (initialTable.startsWith('RET-')) {
+          setBillType('Takeaway');
+          setFishOrderMode('individual');
+          setCustomerCategory('Retail');
         } else {
           setBillType('Dine-In');
         }
+        fetchActiveOrder(initialTable, true);
       }
     } else if (initialAction === 'new') {
       setActiveTable('');
@@ -1079,7 +1212,7 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
 
     const isExplicitInitial = Boolean(initialTable && isTableMatching(activeTable, initialTable));
 
-    if (isTableChanged && !isExistingInOpenOrders && !isExplicitInitial && !isAutoAssignedTable && !isNewGenerated) {
+    if (isTableChanged && !isExistingInOpenOrders && !isExplicitInitial && !isAutoAssignedTable && !isNewGenerated && !activeTable.match(/^(WS-|EXP-|RET-)/)) {
       // ⚡ Immediate 0ms cart clear on switching to an empty table — no loading spinner
       setLoading(false);
       setCart([]);
@@ -2301,27 +2434,33 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
   };
   // ─────────────────────────────────────────────────────────────────────────────
 
-  const handleSaveOrder = async (isHold = false) => {
+  const handleSaveOrder = async (isHold = false, overrideItems = null) => {
     const isHoldStrict = isHold === true;
     setActionLoading(isHoldStrict ? 'hold' : 'save');
-    if (!activeTable) {
+    let currentTable = activeTableRef.current || activeTable;
+    if (!currentTable) {
       if (billType === 'Delivery' || billType === 'Takeaway') {
         const generatedOrderNo = generateSequentialOrderNo(billType);
         newlyGeneratedTables.current.add(generatedOrderNo);
+        activeTableRef.current = generatedOrderNo;
         setActiveTable(generatedOrderNo);
-        setTimeout(() => handleSaveOrderWithTable(generatedOrderNo, isHoldStrict), 100);
+        setTimeout(() => handleSaveOrderWithTable(generatedOrderNo, isHoldStrict, overrideItems), 50);
       } else {
         showToast(t('pleaseSelectTable'), 'error');
         setActionLoading(null);
         return;
       }
     } else {
-      handleSaveOrderWithTable(activeTable, isHoldStrict);
+      handleSaveOrderWithTable(currentTable, isHoldStrict, overrideItems);
     }
   };
 
-  const handleSaveOrderWithTable = async (tableNo, isHold = false) => {
-    if (cart.length === 0) {
+  const handleSaveOrderWithTable = async (tableNo, isHold = false, overrideItems = null) => {
+    const currentCart = (overrideItems && Array.isArray(overrideItems) && overrideItems.length > 0)
+      ? overrideItems
+      : ((cartRef.current && cartRef.current.length > 0) ? cartRef.current : cart);
+
+    if (!currentCart || currentCart.length === 0) {
       showToast(t('pleaseAddItemsToOrder'), 'warning');
       setActionLoading(null);
       return;
@@ -2336,7 +2475,7 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
 
     const orderData = {
       tableNo: tableNo,
-      items: cart,
+      items: currentCart,
       billType: billType || (fishOrderMode === 'bulk' ? 'Wholesale' : (fishOrderMode === 'export' ? 'Export' : 'Retail')),
       orderChannel: fishOrderMode === 'bulk' ? 'Wholesale-Box' : (fishOrderMode === 'export' ? 'Online-Delivery' : 'Counter-Retail'),
       orderMode: fishOrderMode,
@@ -2598,12 +2737,13 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
     showToast(t('newOrder'), 'success');
   }, [showToast, t, fishOrderMode]);
 
-  const handleGenerateBill = async () => {
-    let tableToUse = activeTable;
+  const handleGenerateBill = async (overrideItems = null) => {
+    let tableToUse = activeTableRef.current || activeTable;
     if (!tableToUse) {
       if (billType === 'Delivery' || billType === 'Takeaway') {
         tableToUse = generateSequentialOrderNo(billType);
         newlyGeneratedTables.current.add(tableToUse);
+        activeTableRef.current = tableToUse;
         setActiveTable(tableToUse);
       } else {
         showToast(t('pleaseSelectTable'), 'error');
@@ -2611,10 +2751,17 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
       }
     }
 
-    if (cart.length === 0) {
+    const currentCart = (overrideItems && Array.isArray(overrideItems) && overrideItems.length > 0)
+      ? overrideItems
+      : ((cartRef.current && cartRef.current.length > 0) ? cartRef.current : cart);
+
+    if (!currentCart || currentCart.length === 0) {
       showToast(t('pleaseAddItemsToOrder'), 'warning');
       return;
     }
+
+    const currentSubtotal = currentCart.reduce((sum, item) => sum + (Number(item.price || 0) * (Number(item.quantity) || 1)), 0);
+    const currentTotal = Math.max(0, currentSubtotal - (parseFloat(discountAmount) || 0) + (parseFloat(taxVal) || 0) + (parseFloat(deliveryCharge) || 0) + (parseFloat(containerCharge) || 0) + (parseFloat(cuttingCharge) || 0));
 
     // If order is ALREADY billed, open the invoice preview INSTANTLY.
     // If completedBill is already in memory, show it immediately with zero delay.
@@ -2654,8 +2801,8 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
 
       const billData = {
         tableNo: tableToUse,
-        items: cart, // ⚡ Pass cart directly — backend generates/updates bill in ONE single atomic call!
-        subtotal,
+        items: currentCart, // ⚡ Pass latest items directly — backend generates/updates bill in ONE single atomic call!
+        subtotal: currentSubtotal,
         discount: discountAmount,
         discountType: discount.type,
         discountValue: discount.value === '' ? 0 : parseFloat(discount.value) || 0,
@@ -2666,8 +2813,7 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
         deliveryCharge: parseFloat(deliveryCharge || 0),
         containerCharge: parseFloat(containerCharge || 0),
         cuttingCharge: parseFloat(cuttingCharge || 0),
-        cuttingCharge: parseFloat(cuttingCharge || 0),
-        total: total,
+        total: currentTotal,
         billType,
         orderSource: billType === 'Delivery' ? orderSource : undefined,
         customerName: customerName || (openOrdersList?.find(o => isTableMatching(o.tableNo, tableToUse))?.customerName || ''),
@@ -2688,13 +2834,25 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
 
       const targetId = (orderId && !orderId.startsWith('offline_')) ? orderId : 'new';
 
-      let optimisticBillData = null;
-      if (directPrintConfigs.save) {
-        optimisticBillData = { ...billData, _id: targetId, items: cart, restaurantDetails: s, billNumber: billNumber || 'MS0001', status: 'Billed', billedAt: new Date(), createdAt: new Date() };
-        setCompletedBill(optimisticBillData);
-        isViewingInvoiceRef.current = true;
-        setShowInvoice(true);
-      }
+      // ⚡ INSTANT PREVIEW: Always show invoice preview immediately without waiting for network roundtrip
+      const activePrefix = fishOrderMode === 'export' ? 'EXP' : fishOrderMode === 'bulk' ? 'WHL' : 'RET';
+      const optimisticBillNumber = billNumber || `${activePrefix}-${Date.now().toString().slice(-4)}`;
+      const optimisticBillData = {
+        ...billData,
+        _id: targetId,
+        items: currentCart,
+        restaurantDetails: s,
+        billNumber: optimisticBillNumber,
+        status: 'Billed',
+        billedAt: new Date(),
+        createdAt: new Date()
+      };
+      setCompletedBill(optimisticBillData);
+      setBillNumber(optimisticBillNumber);
+      setOrderStatus('Billed');
+      isViewingInvoiceRef.current = true;
+      setShowInvoice(true);
+
       // ⚡ Direct dynamic execution - pure server response time
       const billedOrder = await generateBill(targetId, billData);
       if (billedOrder) {
@@ -2706,12 +2864,12 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
         removeClearedTableRecord(tableToUse);
         const billedData = {
           ...billedOrder,
-          items: (cart && cart.length > 0) ? cart : (billedOrder.items || []),
+          items: (currentCart && currentCart.length > 0) ? currentCart : (billedOrder.items || []),
           tableNo: billedOrder.tableNo || tableToUse,
-          subtotal: subtotal || billedOrder.subtotal,
+          subtotal: currentSubtotal || billedOrder.subtotal,
           tax: taxVal || billedOrder.tax,
           discount: discountAmount || billedOrder.discount,
-          total: total || billedOrder.total,
+          total: currentTotal || billedOrder.total,
           billType: billType || billedOrder.billType,
           orderSource: orderSource || billedOrder.orderSource,
           customerName: customerName || billedOrder.customerName || '',
@@ -2952,7 +3110,8 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
       // Instant Auto-send WhatsApp e-Bill (Fires in background immediately when Settle is clicked)
       const alreadySent = Boolean(settledOrder?.whatsappSent || (confirmedBillNumber && isBillAlreadySent(confirmedBillNumber)));
       const phoneToSend = (confirmedBill.customerPhone || settledOrder?.customerPhone || '').trim();
-      const shouldAutoSend = Boolean(autoWhatsappEnabled && !alreadySent && phoneToSend.length >= 10);
+      const isModeAutoEnabled = getAutoWaForCurrentMode(fishOrderMode);
+      const shouldAutoSend = Boolean((isModeAutoEnabled || autoWhatsappEnabled) && !alreadySent && phoneToSend.length >= 10);
       if (shouldAutoSend) {
         setTimeout(() => triggerInstantWhatsAppAutoSend(confirmedBill), 0);
       }
@@ -3201,17 +3360,17 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
     setContainerCharge('0');
     setOrderSource('Direct');
 
-    setActiveTable('');
-    setCart([]);
-    cartRef.current = [];
-    setOrderId(null);
-    setOrderStatus('Open');
-    setBillNumber(null);
-    setCompletedBill(null);
+    // Automatically generate the next sequential order number for the SAME mode
+    const modeType = fishOrderMode === 'bulk' ? 'Wholesale' : (fishOrderMode === 'export' ? 'Export' : (billType === 'Delivery' ? 'Delivery' : 'Retail'));
+    const nextOrderNo = generateSequentialOrderNo(modeType);
+    newlyGeneratedTables.current.add(nextOrderNo);
+    setActiveTable(nextOrderNo);
+    activeTableRef.current = nextOrderNo;
     try {
-      sessionStorage.removeItem('ms_initial_table');
+      sessionStorage.setItem('ms_initial_table', nextOrderNo);
       sessionStorage.setItem('ms_initial_action', 'new');
     } catch (e) { }
+    setMobileTab('menu');
 
     fetchDailyStats();
 
@@ -3614,21 +3773,17 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
       </div>
 
       <div className="flex flex-col md:hidden px-3 pt-2 gap-2 shrink-0 bg-background border-b border-border/50 pb-2.5">
-        {/* Mobile Dealer / Customer Pill Bar for Wholesale / Export */}
-        {(fishOrderMode === 'bulk' || fishOrderMode === 'export' || customerName) && (
+        {/* Mobile Dealer / Customer Pill Bar (Retail only or when non-bulk/export) */}
+        {!(fishOrderMode === 'bulk' || fishOrderMode === 'export') && customerName && (
           <div
-            onClick={() => setMobileTab('cart')}
-            className={`px-3 py-1.5 rounded-xl border flex items-center justify-between text-xs cursor-pointer active:scale-98 transition-all ${isOrderLocked
+            className={`px-3 py-1.5 rounded-xl border flex items-center justify-between text-xs transition-all ${isOrderLocked
                 ? 'bg-amber-500/10 border-amber-500/30 text-amber-900 shadow-xs'
-                : 'bg-[#FAF0E4] border-[#E8DCCB] text-slate-700 hover:border-amber-400'
+                : 'bg-[#FAF0E4] border-[#E8DCCB] text-slate-700'
               }`}
           >
             <div className="flex items-center gap-1.5 min-w-0">
-              <span className="font-black text-[9.5px] uppercase px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-900 shrink-0">
-                {fishOrderMode === 'export' ? (exportSubCategory === 'DAM' ? 'DAM Export' : 'Local Export') : (fishOrderMode === 'bulk' ? 'Wholesale' : 'Dealer')}
-              </span>
               <span className="font-bold truncate text-[11px] text-slate-800">
-                {customerName || 'Tap to assign Predefined Dealer'}
+                {customerName}
               </span>
             </div>
             <div className="flex items-center gap-1 shrink-0 text-[10px] font-bold">
@@ -3637,41 +3792,13 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
                   🔒 {lockedTimestamp ? (lockedTimestamp.split(',')[1] || 'Locked') : 'Locked'}
                 </span>
               ) : (
-                <span className="text-[#ea580c] font-black">{customerName ? 'Tap to Lock' : 'Select'} &rarr;</span>
+                <span className="text-[#ea580c] font-black">{customerName}</span>
               )}
             </div>
           </div>
         )}
 
-        <div className="flex gap-2">
-          <button
-            onClick={() => setMobileTab('menu')}
-            className={`flex-1 py-2 rounded-xl font-bold text-xs sm:text-sm transition-all flex items-center justify-center gap-1.5 ${mobileTab === 'menu' ?
-              'bg-primary text-white shadow-md' :
-              'bg-surface text-text-muted border border-border hover:bg-surface-hover'}`
-            }>
-
-            <span>{t('menuItems') === 'menuItems' ? 'Menu Items' : (t('menuItems') || 'Menu Items')}</span>
-          </button>
-          <button
-            id="mobile-cart-tab"
-            data-mobile-cart-tab="true"
-            onClick={() => setMobileTab('cart')}
-            className={`flex-1 py-2 rounded-xl font-bold text-xs sm:text-sm transition-all flex items-center justify-center gap-1.5 relative ${mobileTab === 'cart' ?
-              'bg-primary text-white shadow-md' :
-              'bg-surface text-text-muted border border-border hover:bg-surface-hover'}`
-            }>
-
-            <span>🛒 {t('currentOrder') === 'currentOrder' ? 'Current Order' : (t('currentOrder') || 'Current Order')}</span>
-            {cart.length > 0 &&
-              <span data-mobile-cart-badge="true" className="bg-amber-500 text-white text-[10px] px-1.5 py-0.5 rounded-full font-black">
-                {cart.length}
-              </span>
-            }
-          </button>
-        </div>
-
-        {mobileTab === 'menu' && (
+        {(mobileTab === 'menu' || fishOrderMode === 'bulk' || fishOrderMode === 'export') && (
           <div className="flex items-center gap-2 w-full mt-0.5">
             <div className="relative group flex-1">
               <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-text-muted group-focus-within:text-primary transition-colors" size={16} />
@@ -3710,7 +3837,7 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
 
       <div className="flex-1 flex flex-col overflow-hidden">
         <div className="flex-1 flex flex-col xl:flex-row overflow-y-auto xl:overflow-hidden relative">
-          <div className={`flex flex-col bg-surface border-b xl:border-b-0 xl:border-r border-border/50 ${mobileTab === 'cart' ? 'hidden md:flex' : 'flex'} w-full md:min-h-[580px] xl:min-h-0 xl:flex-1 shrink-0 xl:shrink transition-all duration-300`
+          <div className={`flex flex-col bg-surface border-b xl:border-b-0 xl:border-r border-border/50 ${mobileTab === 'cart' ? 'hidden xl:flex' : 'flex'} w-full md:min-h-[580px] xl:min-h-0 xl:flex-1 shrink-0 xl:shrink transition-all duration-300`
           }>
             <MenuGrid
               onSelectItem={addToCart}
@@ -3745,6 +3872,21 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
               orderStatus={orderStatus}
               hasPendingChanges={hasPendingLocalChanges.current}
               showToast={showToast}
+              customerName={customerName}
+              setCustomerName={setCustomerName}
+              customerPhone={customerPhone}
+              setCustomerPhone={setCustomerPhone}
+              customerPhoto={customerPhoto}
+              customerCategory={customerCategory}
+              exportSubCategory={exportSubCategory}
+              isOrderLocked={isOrderLocked}
+              setIsOrderLocked={setIsOrderLocked}
+              lockedTimestamp={lockedTimestamp}
+              setLockedTimestamp={setLockedTimestamp}
+              onCustomerSelect={handlePredefinedCustomerSelect}
+              onSaveOrder={(overrideItems) => handleSaveOrder(false, overrideItems)}
+              onGenerateBill={(overrideItems) => handleGenerateBill(overrideItems)}
+              actionLoading={actionLoading}
             />
           </div>
 
@@ -3754,7 +3896,9 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
               maxWidth: '45vw',
               minWidth: isCartCollapsed ? 0 : '360px'
             } : { width: '100%', maxWidth: '100vw' }}
-            className={`flex flex-col bg-surface ${mobileTab === 'menu' ? 'hidden md:flex' : 'flex'} ${isCartCollapsed ? 'xl:w-0 border-none opacity-0 xl:opacity-100 overflow-visible' : 'border-t md:border-t-2 xl:border-t-0 xl:border-l border-border/50 overflow-visible'} shrink-0 w-full xl:w-auto xl:h-full md:min-h-[500px] md:h-[540px] transition-none relative`}>
+            className={`flex flex-col bg-surface ${
+              mobileTab === 'menu' ? 'hidden xl:flex' : 'flex'
+            } ${isCartCollapsed ? 'xl:w-0 border-none opacity-0 xl:opacity-100 overflow-visible' : 'border-t md:border-t-2 xl:border-t-0 xl:border-l border-border/50 overflow-visible'} shrink-0 w-full xl:w-auto xl:h-full md:min-h-[500px] md:h-[540px] transition-none relative`}>
 
 
             {/* Drag Handle (Desktop only) */}
@@ -3841,8 +3985,15 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
                 onToggleAutoWhatsapp={(val) => {
                   setAutoWhatsappEnabled(val);
                   try {
+                    const modeKey = fishOrderMode === 'export' ? 'autoWhatsappExport' : fishOrderMode === 'bulk' ? 'autoWhatsappWholesale' : 'autoWhatsappRetail';
+                    const storageKey = fishOrderMode === 'export' ? 'ms_auto_wa_export' : fishOrderMode === 'bulk' ? 'ms_auto_wa_wholesale' : 'ms_auto_wa_retail';
+                    localStorage.setItem(storageKey, val ? '1' : '0');
+                    sessionStorage.setItem(storageKey, val ? '1' : '0');
                     localStorage.setItem('ms_auto_wa', val ? '1' : '0');
-                    sessionStorage.setItem('ms_auto_wa', val ? '1' : '0');
+                    const s = JSON.parse(localStorage.getItem('restaurantSettings') || '{}');
+                    s[modeKey] = val;
+                    localStorage.setItem('restaurantSettings', JSON.stringify(s));
+                    window.dispatchEvent(new Event('storage'));
                   } catch (e) { }
                 }}
                 isWhatsAppConnected={isWhatsAppConnected}
@@ -3859,21 +4010,26 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
           </div>
         </div>
 
-        {cart.length > 0 && mobileTab === 'menu' && (typeof window !== 'undefined' && localStorage.getItem('menuGrid_displayMode') === 'grid') &&
-          <div className="md:hidden p-3 bg-surface border border-border rounded-2xl shadow-xl flex items-center justify-between shrink-0 animate-bounce-short">
+        {cart.length > 0 && (
+          <div className="xl:hidden p-2.5 sm:p-3 bg-surface border-t border-border shadow-xl flex items-center justify-between shrink-0 animate-bounce-short z-30">
             <div className="flex flex-col">
-              <span className="text-[10px] text-text-muted font-bold uppercase">{t('total')} ({cart.reduce((sum, item) => item.isCancelled ? sum : sum + item.quantity - (item.cancelledQuantity || 0), 0)} {t('items')})</span>
+              <span className="text-[10px] text-text-muted font-bold uppercase">
+                {activeTable ? `${activeTable} • ` : ''}{cart.length} {cart.length === 1 ? 'Box/Item' : 'Boxes/Items'}
+              </span>
               <span className="text-base font-black text-primary">₹{total.toFixed(2)}</span>
             </div>
-            <button
-              onClick={() => setMobileTab('cart')}
-              className="px-4 py-2 bg-primary text-white rounded-xl font-bold text-xs shadow-md shadow-primary/20 hover:bg-primary-hover flex items-center gap-2">
-
-              <span>{t('viewOrder')}</span>
-              <span className="bg-white/20 px-1.5 py-0.5 rounded-full text-[10px]">➔</span>
-            </button>
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={() => handleGenerateBill()}
+                className="px-4 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-xl font-bold text-xs shadow-md shadow-emerald-500/20 flex items-center gap-1.5 cursor-pointer active:scale-95"
+              >
+                <Printer size={13} />
+                <span>SAVE & PRINT</span>
+              </button>
+            </div>
           </div>
-        }
+        )}
       </div>
 
       {showPayment &&
@@ -3932,11 +4088,7 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
             bill={billToShow}
             onClose={() => {
               setAutoSendWhatsAppToInvoice(false);
-              if (billToShow.status === 'Paid' || completedBill || orderStatus === 'Paid') {
-                handleFinish();
-              } else {
-                setShowInvoice(false);
-              }
+              handleFinish();
             }}
             onSave={() => {
               setAutoSendWhatsAppToInvoice(false);
@@ -4135,7 +4287,7 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
               ) : null;
             })()}
             <div style={{ fontSize: '16px', fontWeight: 'bold', textTransform: 'uppercase' }}>
-              {JSON.parse(localStorage.getItem('restaurantSettings') || '{}').restaurantName || 'YNR FISHES'}
+              {JSON.parse(localStorage.getItem('restaurantSettings') || '{}').restaurantName || ''}
             </div>
             <div style={{ fontSize: '11px', marginTop: '2px', color: '#333' }}>
               {(JSON.parse(localStorage.getItem('restaurantSettings') || '{}').address || '').split('\n').map((line, i) => (
@@ -4186,40 +4338,220 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
             <span style={{ fontWeight: 'bold' }}>Bill No.: #{offscreenBill.billNumber || offscreenBill.confirmedBillNumber || '---'}</span>
           </div>
 
+          {/* Customer Details (Dynamically respects admin settings toggles for retail/wholesale/export) */}
+          {(() => {
+            const s = JSON.parse(localStorage.getItem('restaurantSettings') || '{}');
+            const custConfig = s.receiptCustomerDisplay || {
+              retail: { enabled: true, showName: true, showPhone: true, showAddress: false, showShopName: false },
+              wholesale: { enabled: true, showName: true, showPhone: true, showAddress: true, showShopName: true },
+              export: { enabled: true, showName: true, showPhone: true, showAddress: true, showShopName: true }
+            };
+            const isExp = offscreenBill.customerCategory === 'Export' || offscreenBill.orderMode === 'export' || String(offscreenBill.billNumber || '').startsWith('EXP-') || String(offscreenBill.tableNo || '').startsWith('EXP-');
+            const isWs = !isExp && (offscreenBill.customerCategory === 'Wholesale' || offscreenBill.orderMode === 'bulk' || String(offscreenBill.billNumber || '').startsWith('WS-') || String(offscreenBill.tableNo || '').startsWith('WS-') || Number(offscreenBill.totalBoxes || 0) > 0);
+            const modeKey = isExp ? 'export' : (isWs ? 'wholesale' : 'retail');
+            const cfg = custConfig[modeKey] || { enabled: true, showName: true, showPhone: true };
+            if (!cfg.enabled) return null;
+
+            const cName = cfg.showName ? (offscreenBill.customerName || offscreenBill.customer?.name) : null;
+            const cPhone = cfg.showPhone ? (offscreenBill.customerPhone || offscreenBill.customer?.phone) : null;
+            const cShop = cfg.showShopName ? (offscreenBill.shopName || offscreenBill.customerShopName || offscreenBill.customer?.shopName) : null;
+            const cAddress = cfg.showAddress ? (offscreenBill.customerAddress || offscreenBill.deliveryAddress || offscreenBill.customer?.address) : null;
+
+            if (!cName && !cPhone && !cShop && !cAddress) return null;
+
+            return (
+              <div style={{ borderTop: '1px dashed #000', borderBottom: '1px dashed #000', padding: '4px 0', margin: '4px 0 6px 0', fontSize: '11px' }}>
+                <div style={{ fontWeight: 'bold', fontSize: '11px', textTransform: 'uppercase', marginBottom: '2px' }}>
+                  CUSTOMER DETAILS:
+                </div>
+                {cName && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span>Name:</span>
+                    <span style={{ fontWeight: 'bold' }}>{cName}</span>
+                  </div>
+                )}
+                {cShop && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span>Shop:</span>
+                    <span style={{ fontWeight: 'bold' }}>{cShop}</span>
+                  </div>
+                )}
+                {cPhone && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span>Phone:</span>
+                    <span style={{ fontWeight: 'bold' }}>{cPhone}</span>
+                  </div>
+                )}
+                {cAddress && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span>Address:</span>
+                    <span style={{ fontWeight: 'bold', maxWidth: '65%', textAlign: 'right' }}>{typeof cAddress === 'string' ? cAddress : JSON.stringify(cAddress)}</span>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
+
           <div style={{ borderTop: '1px dashed #000', margin: '8px 0' }}></div>
 
           {/* Table Header */}
           <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold', fontSize: '11px', marginBottom: '4px' }}>
             <span style={{ flex: 1 }}>Item</span>
-            <span style={{ width: '40px', textAlign: 'center' }}>Qty.</span>
-            <span style={{ width: '55px', textAlign: 'right' }}>Price</span>
-            <span style={{ width: '60px', textAlign: 'right' }}>Amount</span>
+            <span style={{ width: '36px', textAlign: 'center' }}>Qty.</span>
+            <span style={{ width: '60px', textAlign: 'right' }}>Price</span>
+            <span style={{ width: '64px', textAlign: 'right' }}>Amount</span>
           </div>
 
-          <div style={{ borderTop: '1px dashed #000', margin: '4px 0' }}></div>
+          <div style={{ borderTop: '1.5px solid #000', margin: '3px 0 5px 0' }}></div>
 
-          {/* Items */}
-          {Array.isArray(offscreenBill.items) && offscreenBill.items.map((item, idx) => {
-            const qty = item.quantity || 1;
-            const price = item.price || 0;
-            const amt = price * qty;
+          {/* Grouped Items & Boxes */}
+          {(() => {
+            const boxes = {};
+            const individual = [];
+            const active = (offscreenBill.items || []).filter(item => !item.isCancelled);
+            active.forEach(item => {
+              if (item.boxNumber) {
+                const k = String(item.boxNumber);
+                if (!boxes[k]) {
+                  boxes[k] = {
+                    boxNumber: item.boxNumber,
+                    boxLabel: item.boxLabel || `Box #${item.boxNumber}`,
+                    items: [],
+                    totalWeightKg: 0,
+                    totalPrice: 0
+                  };
+                }
+                boxes[k].items.push(item);
+                boxes[k].totalWeightKg += Number(item.weightKg) || 0;
+                const q = (item.quantity || 1) - (item.cancelledQuantity || 0);
+                boxes[k].totalPrice += (Number(item.price) || 0) * q;
+              } else {
+                individual.push(item);
+              }
+            });
+
+            const getItemCutting = (item) => {
+              let cut = item?.cutType || item?.cuttingStyle || '';
+              let rawName = item?.name || 'Item';
+              let weightInfo = '';
+
+              const parenMatch = rawName.match(/\((.*?)\)/);
+              if (parenMatch) {
+                const inside = parenMatch[1];
+                const cutMatch = inside.match(/\b(Whole|Cleaned|Curry Cut|Fry Cut|Boneless|Curry|Fry)\b/i);
+                if (cutMatch && !cut) cut = cutMatch[1];
+                const weightMatch = inside.match(/(\d+(?:\.\d+)?\s*(?:kg|g|gms|boxes|box))/i);
+                if (weightMatch) weightInfo = weightMatch[1];
+              }
+              if (cut) {
+                const cLower = cut.toLowerCase();
+                if (cLower.includes('curry')) cut = 'Curry Cut';
+                else if (cLower.includes('fry')) cut = 'Fry Cut';
+                else if (cLower.includes('bone')) cut = 'Boneless';
+                else if (cLower.includes('clean')) cut = 'Cleaned';
+                else if (cLower.includes('whole')) cut = 'Whole';
+              }
+              let cleanName = rawName.replace(/\s*\((?:Whole|Cleaned|Curry Cut|Fry Cut|Boneless|Curry|Fry)\s*-\s*[^)]+\)/i, '').trim();
+              if (!cleanName) cleanName = rawName;
+              return {
+                displayName: cleanName,
+                cutType: cut,
+                weightInfo: weightInfo || (item?.weightKg ? `${item.weightKg} Kg` : (item?.enteredWeight ? `${item.enteredWeight} Kg` : ''))
+              };
+            };
+
+            const boxKeys = Object.keys(boxes);
+            const boxKg = Object.values(boxes).reduce((s, b) => s + b.totalWeightKg, 0);
+            const totalLoose = individual.reduce((s, i) => s + ((i.quantity || 1) - (i.cancelledQuantity || 0)), 0);
+            const totalBillKg = getBillTotalWeightKg(offscreenBill);
+
             return (
-              <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', margin: '3px 0' }}>
-                <span style={{ flex: 1, paddingRight: '4px', wordBreak: 'break-word' }}>{item.name}</span>
-                <span style={{ width: '40px', textAlign: 'center' }}>{qty}</span>
-                <span style={{ width: '55px', textAlign: 'right' }}>{Number(price).toFixed(2)}</span>
-                <span style={{ width: '60px', textAlign: 'right', fontWeight: 'bold' }}>{Number(amt).toFixed(2)}</span>
+              <div>
+                {/* Wholesale Boxes */}
+                {Object.values(boxes).map((box) => (
+                  <div key={`wa-box-${box.boxNumber}`} style={{ marginBottom: '6px', border: '1.5px solid #000000', borderRadius: '3px', padding: '4px 6px', background: '#fafafa' }}>
+                    {/* Box Header Row */}
+                    <div style={{ display: 'flex', width: '100%', justifyContent: 'space-between', alignItems: 'center', fontWeight: 'bold', fontSize: '11.5px', borderBottom: '1px dashed #666', paddingBottom: '3px', marginBottom: '3px' }}>
+                      <span>{box.boxLabel} ({box.items.length} items{box.totalWeightKg > 0 ? ` • ${box.totalWeightKg.toFixed(1).replace(/\.0$/, '')} Kg` : ''})</span>
+                      <span style={{ fontWeight: 'bold' }}>{box.totalPrice.toFixed(2)}</span>
+                    </div>
+                    {/* Items inside Box */}
+                    {box.items.map((item, idx) => {
+                      const activeQty = (item.quantity || 1) - (item.cancelledQuantity || 0);
+                      if (activeQty <= 0) return null;
+                      const { displayName, cutType, weightInfo } = getItemCutting(item);
+                      const unitRate = item.pricePerKg || (item.weightKg ? Math.round(item.price / item.weightKg) : null);
+                      return (
+                        <div key={idx} style={{ display: 'flex', width: '100%', alignItems: 'flex-start', fontSize: '11px', paddingLeft: '4px', margin: '3px 0' }}>
+                          <div style={{ flex: '1 1 0%', textAlign: 'left', wordBreak: 'break-word', paddingRight: '4px' }}>
+                            <div>
+                              • {displayName}{item.weightKg ? ` (${item.weightKg}Kg @ ₹${unitRate}/kg)` : (weightInfo ? ` (${weightInfo})` : '')}
+                            </div>
+                            {cutType && (
+                              <div style={{ fontSize: '10px', fontWeight: 600, color: '#222', marginTop: '1px' }}>
+                                Cut: <span style={{ fontWeight: 700, color: '#000' }}>{cutType}</span>
+                              </div>
+                            )}
+                          </div>
+                          <div style={{ width: '36px', textAlign: 'center', flexShrink: 0 }}>{activeQty}</div>
+                          <div style={{ width: '60px', textAlign: 'right', flexShrink: 0 }}>{(Number(item.price) || 0).toFixed(2)}</div>
+                          <div style={{ width: '64px', textAlign: 'right', flexShrink: 0, fontWeight: 'bold' }}>{(Number(item.price || 0) * activeQty).toFixed(2)}</div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ))}
+
+                {/* Individual / Loose Items */}
+                {individual.length > 0 && (
+                  <div>
+                    {boxKeys.length > 0 && (
+                      <div style={{ fontSize: '11px', fontWeight: 'bold', margin: '4px 0 2px 0', textTransform: 'uppercase' }}>
+                        🐟 Individual / Loose Items
+                      </div>
+                    )}
+                    {individual.map((item, idx) => {
+                      const activeQty = (item.quantity || 1) - (item.cancelledQuantity || 0);
+                      if (activeQty <= 0) return null;
+                      const { displayName, cutType, weightInfo } = getItemCutting(item);
+                      return (
+                        <div key={idx} style={{ display: 'flex', width: '100%', alignItems: 'flex-start', fontSize: '11px', margin: '3px 0' }}>
+                          <div style={{ flex: '1 1 0%', textAlign: 'left', wordBreak: 'break-word', paddingRight: '4px' }}>
+                            <div style={{ fontWeight: 600 }}>
+                              {displayName}
+                              {weightInfo && <span style={{ fontWeight: 'normal' }}> ({weightInfo})</span>}
+                            </div>
+                            {cutType && (
+                              <div style={{ fontSize: '10px', fontWeight: 600, color: '#222', marginTop: '1px' }}>
+                                Cut: <span style={{ fontWeight: 700, color: '#000' }}>{cutType}</span>
+                              </div>
+                            )}
+                          </div>
+                          <div style={{ width: '36px', textAlign: 'center', flexShrink: 0 }}>{activeQty}</div>
+                          <div style={{ width: '60px', textAlign: 'right', flexShrink: 0 }}>{(Number(item.price) || 0).toFixed(2)}</div>
+                          <div style={{ width: '64px', textAlign: 'right', flexShrink: 0, fontWeight: 'bold' }}>{(Number(item.price || 0) * activeQty).toFixed(2)}</div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                <div style={{ borderTop: '1px dashed #000', margin: '8px 0' }}></div>
+
+                {/* Totals Summary Row */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', fontWeight: 'bold' }}>
+                  <span>
+                    {boxKeys.length > 0 && totalLoose > 0
+                      ? `Total: ${boxKeys.length} Box(es) + ${totalLoose} Loose`
+                      : boxKeys.length > 0
+                        ? `Total: ${boxKeys.length} ${boxKeys.length === 1 ? 'Box' : 'Boxes'} (${boxKg.toFixed(1).replace(/\.0$/, '')} Kg)`
+                        : `Total Qty: ${totalLoose || active.reduce((s, i) => s + (i.quantity || 1), 0)}${totalBillKg > 0 ? ` (${totalBillKg.toFixed(1).replace(/\.0$/, '')} Kg)` : ''}`}
+                  </span>
+                  <span>Sub Total: ₹{Number(offscreenBill.subtotal || 0).toFixed(2)}</span>
+                </div>
               </div>
             );
-          })}
-
-          <div style={{ borderTop: '1px dashed #000', margin: '8px 0' }}></div>
-
-          {/* Totals */}
-          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', fontWeight: 'bold' }}>
-            <span>Total Qty: {Array.isArray(offscreenBill.items) ? offscreenBill.items.reduce((sum, i) => sum + (i.quantity || 1), 0) : 0}</span>
-            <span>Sub Total: ₹{Number(offscreenBill.subtotal || 0).toFixed(2)}</span>
-          </div>
+          })()}
 
           <div style={{ borderTop: '2px solid #000', margin: '8px 0' }}></div>
 
@@ -4230,9 +4562,37 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
 
           <div style={{ borderTop: '1px dashed #000', margin: '8px 0' }}></div>
 
-          <div style={{ textAlign: 'center', fontSize: '11px', fontWeight: 'bold' }}>
-            Paid via {offscreenBill.paymentMode || 'Cash'}{offscreenBill.paymentMode === 'UPI' && (offscreenBill.upiApp || offscreenBill.paymentMethod) ? ` [${offscreenBill.upiApp || offscreenBill.paymentMethod}]` : ''}
-          </div>
+          {/* Payment Status / Partial Khata Breakdown */}
+          {(() => {
+            if (offscreenBill.status === 'Partial' || offscreenBill.paymentMode === 'Partial') {
+              const paid = Number(offscreenBill.paidAmount ?? offscreenBill.amountPaid ?? offscreenBill.partialPayment?.paidAmount ?? 0);
+              const due = Number(offscreenBill.dueAmount ?? offscreenBill.partialPayment?.dueAmount ?? Math.max(0, (offscreenBill.total || 0) - paid));
+              const method = offscreenBill.partialPayment?.method || 'Cash';
+              return (
+                <div style={{ textAlign: 'center', margin: '4px 0', borderTop: '1.5px dashed #000', borderBottom: '1.5px dashed #000', padding: '4px 0' }}>
+                  <div style={{ fontWeight: 'bold', fontSize: '12px' }}>PARTIALLY PAID (KHATA)</div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', marginTop: '2px' }}>
+                    <span>Paid ({method}): ₹{Number(paid).toFixed(2)}</span>
+                    <span style={{ fontWeight: 'bold' }}>Due: ₹{Number(due).toFixed(2)}</span>
+                  </div>
+                </div>
+              );
+            } else if (offscreenBill.status === 'Unpaid') {
+              return (
+                <div style={{ textAlign: 'center', fontWeight: 'bold', fontSize: '12px', margin: '4px 0', borderTop: '1.5px dashed #000', borderBottom: '1.5px dashed #000', padding: '4px 0' }}>
+                  UNPAID (KHATA BILL)
+                </div>
+              );
+            } else {
+              const isUpi = offscreenBill.paymentMode === 'UPI' || offscreenBill.paymentMode === 'QR' || offscreenBill.paymentMode === 'Online';
+              const appSuffix = isUpi && (offscreenBill.upiApp || offscreenBill.paymentMethod) ? ` [${offscreenBill.upiApp || offscreenBill.paymentMethod}]` : '';
+              return (
+                <div style={{ textAlign: 'center', fontSize: '11px', fontWeight: 'bold', margin: '4px 0' }}>
+                  Paid via {offscreenBill.paymentMode || 'Cash'}{appSuffix}
+                </div>
+              );
+            }
+          })()}
 
           {/* QR Code */}
           {(() => {

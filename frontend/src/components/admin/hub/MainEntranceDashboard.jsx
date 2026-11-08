@@ -294,11 +294,11 @@ export default function MainEntranceDashboard({
       navOptions: {},
       keywords: ['export active', 'export orders', 'cargo queue', 'dam queue', 'active']
     },
-    // 8. Retail Bills
+    // 8. Retail Bills & Hub
     {
       id: 'retail-bill-history',
       title: 'Retail Bills',
-      subtitle: 'Past Invoices',
+      subtitle: 'Bills • CRM • Khata',
       category: 'Billing',
       icon: FileText,
       iconColor: '#059669',
@@ -306,13 +306,13 @@ export default function MainEntranceDashboard({
       borderColor: '#a7f3d0',
       navView: 'retail-bill-history',
       navOptions: {},
-      keywords: ['retail bills', 'retail bill history', 'retail invoices', 'receipts', 'sales']
+      keywords: ['retail bills', 'retail hub', 'retail crm', 'retail khata', 'retail bill history', 'retail invoices', 'receipts', 'sales']
     },
-    // 9. Wholesale Bills
+    // 9. Wholesale Bills & Hub
     {
       id: 'wholesale-bill-history',
       title: 'Wholesale Bills',
-      subtitle: 'Past Invoices',
+      subtitle: 'Bills • CRM • Khata',
       category: 'Billing',
       icon: FileText,
       iconColor: '#d97706',
@@ -320,13 +320,13 @@ export default function MainEntranceDashboard({
       borderColor: '#fde68a',
       navView: 'wholesale-bill-history',
       navOptions: {},
-      keywords: ['wholesale bills', 'wholesale bill history', 'wholesale invoices', 'crates history']
+      keywords: ['wholesale bills', 'wholesale hub', 'wholesale dealers', 'wholesale crm', 'wholesale khata', 'wholesale bill history', 'wholesale invoices', 'crates history']
     },
-    // 10. Export Bills
+    // 10. Export Bills & Hub
     {
       id: 'export-bill-history',
       title: 'Export Bills',
-      subtitle: 'Past Invoices',
+      subtitle: 'Bills • CRM • Khata',
       category: 'Billing',
       icon: FileText,
       iconColor: '#2563eb',
@@ -334,7 +334,7 @@ export default function MainEntranceDashboard({
       borderColor: '#bfdbfe',
       navView: 'export-bill-history',
       navOptions: {},
-      keywords: ['export bills', 'export bill history', 'export invoices', 'consignments history']
+      keywords: ['export bills', 'export hub', 'export crm', 'export khata', 'export clients', 'export bill history', 'export invoices', 'consignments history']
     },
     // 7. Second Dashboard
     {
@@ -408,21 +408,7 @@ export default function MainEntranceDashboard({
       navOptions: {},
       keywords: ['fish registry', 'fish species', 'varieties', 'menu', 'rates', 'pricing', 'items']
     },
-    // 12. Khata Book
-    {
-      id: 'khata',
-      title: 'Khata Book',
-      subtitle: 'Credit Accounts',
-      category: 'Finance',
-      icon: BookMarked,
-      iconColor: '#e11d48',
-      iconBg: '#fff1f2',
-      borderColor: '#fecdd3',
-      navView: 'khata',
-      navOptions: {},
-      keywords: ['khata', 'credit', 'customer balance', 'khata book', 'due', 'udhar', 'ledger']
-    },
-    // 13. Daily Expenses
+    // 12. Daily Expenses
     {
       id: 'expenses',
       title: 'Daily Expenses',
@@ -436,7 +422,7 @@ export default function MainEntranceDashboard({
       navOptions: {},
       keywords: ['expenses', 'daily expenses', 'spending', 'petty cash', 'cost', 'bills']
     },
-    // 14. Vehicles & Transport
+    // 13. Vehicles & Transport
     {
       id: 'vehicles',
       title: 'Vehicles & Transport',
@@ -449,20 +435,6 @@ export default function MainEntranceDashboard({
       navView: 'vehicles',
       navOptions: {},
       keywords: ['vehicles', 'transport', 'fleet', 'trips', 'drivers', 'dispatch', 'fuel', 'logistics']
-    },
-    // 15. Customers & CRM
-    {
-      id: 'crm',
-      title: 'Customers & CRM',
-      subtitle: 'Dealers & Retailers',
-      category: 'Billing',
-      icon: Users,
-      iconColor: '#0891b2',
-      iconBg: '#ecfeff',
-      borderColor: '#a5f3fc',
-      navView: 'crm',
-      navOptions: {},
-      keywords: ['customers', 'crm', 'dealers', 'wholesale buyers', 'contacts', 'address', 'phone']
     },
     // 16. Extra Operations
     {

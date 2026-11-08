@@ -3,6 +3,81 @@ import api from '../system/axios';
 const CRM_CACHE_KEY = 'resto_crm_cache';
 
 /**
+ * Save a single customer object to local CRM cache immediately
+ * and dispatch window event so all open components synchronize instantly
+ */
+export const saveCustomerToCache = (newCustomer) => {
+  if (!newCustomer || !newCustomer.phone) return;
+  try {
+    const cleanPhone = String(newCustomer.phone).replace(/\D/g, '').slice(-10);
+    const raw = localStorage.getItem(CRM_CACHE_KEY);
+    let list = [];
+    if (raw) {
+      try { list = JSON.parse(raw); } catch (e) { list = []; }
+    }
+    if (!Array.isArray(list)) list = [];
+
+    const idx = list.findIndex(c => {
+      const p = String(c?.phone || '').replace(/\D/g, '').slice(-10);
+      return p === cleanPhone;
+    });
+
+    if (idx >= 0) {
+      list[idx] = { ...list[idx], ...newCustomer };
+    } else {
+      list.unshift(newCustomer);
+    }
+
+    localStorage.setItem(CRM_CACHE_KEY, JSON.stringify(list));
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('customersUpdated', { detail: newCustomer }));
+    }
+  } catch (e) {
+    console.warn('Failed to save customer to cache:', e);
+  }
+};
+
+/**
+ * Merge an array of customers into local CRM cache by clean phone
+ */
+export const updateAllCustomersCache = (incomingList) => {
+  if (!Array.isArray(incomingList)) return;
+  try {
+    const raw = localStorage.getItem(CRM_CACHE_KEY);
+    let existingList = [];
+    if (raw) {
+      try { existingList = JSON.parse(raw); } catch (e) { existingList = []; }
+    }
+    if (!Array.isArray(existingList)) existingList = [];
+
+    const map = new Map();
+    // Pre-populate with existing cache
+    existingList.forEach(c => {
+      if (c && c.phone) {
+        const clean = String(c.phone).replace(/\D/g, '').slice(-10);
+        if (clean) map.set(clean, c);
+      }
+    });
+
+    // Merge incoming server records
+    incomingList.forEach(c => {
+      if (c && c.phone) {
+        const clean = String(c.phone).replace(/\D/g, '').slice(-10);
+        if (clean) {
+          const prev = map.get(clean) || {};
+          map.set(clean, { ...prev, ...c });
+        }
+      }
+    });
+
+    const merged = Array.from(map.values());
+    localStorage.setItem(CRM_CACHE_KEY, JSON.stringify(merged));
+  } catch (e) {
+    console.warn('Failed to update all customers cache:', e);
+  }
+};
+
+/**
  * Get customers from local cache, optionally filtered by category
  */
 export const getCachedCustomers = (category = 'All', exportSubCategory = 'All') => {
@@ -13,6 +88,7 @@ export const getCachedCustomers = (category = 'All', exportSubCategory = 'All') 
     if (!Array.isArray(list)) return [];
 
     return list.filter(c => {
+      if (!c) return false;
       if (category === 'All') return true;
       const cat = c.category || (c.lastOrderType === 'Wholesale' ? 'Wholesale' : (c.lastOrderType === 'Export' ? 'Export' : 'Retail'));
       if (cat !== category) return false;
@@ -30,15 +106,9 @@ export const getCachedCustomers = (category = 'All', exportSubCategory = 'All') 
 };
 
 /**
- * Fetch all customers from server with cache fallback
+ * Fetch customers from server with instant cache fallback and persistent cache sync
  */
 export const fetchPredefinedCustomers = async (category = 'All', exportSubCategory = 'All', forceRefresh = false) => {
-  // If not forcing refresh, return instant cache if available
-  if (!forceRefresh) {
-    const cached = getCachedCustomers(category, exportSubCategory);
-    if (cached.length > 0) return cached;
-  }
-
   try {
     const params = {};
     if (category !== 'All') params.category = category;
@@ -47,8 +117,11 @@ export const fetchPredefinedCustomers = async (category = 'All', exportSubCatego
     const res = await api.get('/customers', { params });
     const customers = res.data || [];
 
-    if (Array.isArray(customers) && category === 'All') {
-      localStorage.setItem(CRM_CACHE_KEY, JSON.stringify(customers));
+    if (Array.isArray(customers)) {
+      updateAllCustomersCache(customers);
+      if (category === 'All' && exportSubCategory === 'All') {
+        localStorage.setItem(CRM_CACHE_KEY, JSON.stringify(customers));
+      }
     }
     return customers;
   } catch (err) {
@@ -85,4 +158,3 @@ export const searchPredefinedCustomers = async (q, category = 'All', exportSubCa
     return localMatches;
   }
 };
-

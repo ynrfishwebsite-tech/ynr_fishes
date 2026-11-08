@@ -538,71 +538,8 @@ class WhatsAppService {
     return this.sendMessage(rawPhone, text);
   }
 
-  async sendLoyaltyMessage(rawPhone, { customerName, pointsEarned, totalPoints, walletBalance, tier = null, restaurantName, welcomeBonus = 0, isFirstVisit = false, walletRedeemed = 0, imageUrl = null, imageBase64 = null }) {
-    const customerDisplayName = (customerName && customerName !== 'Guest' && String(customerName).trim())
-      ? String(customerName).trim()
-      : 'Valued Customer';
-    const restName = (restaurantName && String(restaurantName).trim())
-      ? String(restaurantName).trim()
-      : (this.restaurantName || 'YNR Fishes');
-    const walletBalanceFormatted = Number(walletBalance || 0).toFixed(0);
-    const READ_MORE = String.fromCharCode(8206).repeat(4001);
-    const tierLine = tier ? `\n👑 *Membership Tier:* ${tier}` : '';
-
-    let message;
-    
-    // Attempt to fetch custom template
-    let customTemplate = null;
-    let templateKey = isFirstVisit ? 'welcomeMessage' : 'loyaltyEarned';
-    try {
-      const models = await getTenantModels(this.tenantId);
-      if (models?.Setting) {
-        const tplDoc = await models.Setting.findOne({ key: 'whatsapp_templates' }).lean();
-        if (tplDoc && tplDoc.value) {
-          const tpls = typeof tplDoc.value === 'string' ? JSON.parse(tplDoc.value) : tplDoc.value;
-          if (tpls && tpls[templateKey] && tpls[templateKey].trim() !== '') {
-            customTemplate = tpls[templateKey];
-          }
-        }
-      }
-    } catch (e) {
-      console.warn('[WhatsApp] Failed to fetch custom templates:', e.message);
-    }
-
-    if (customTemplate) {
-      message = customTemplate
-        .replace(/\[CustomerName\]/gi, customerDisplayName)
-        .replace(/\[PointsEarned\]/gi, pointsEarned || 0)
-        .replace(/\[TotalPoints\]/gi, totalPoints || 0)
-        .replace(/\[RestaurantName\]/gi, restName);
-    } else {
-      if (isFirstVisit && welcomeBonus > 0) {
-        message =
-`👋 Welcome *${customerDisplayName}*!
-🎉 You've joined *${restName}*'s Loyalty Program!
-${READ_MORE}
-━━━━━━━━━━━━━━━━━━━━
-🎁 *Welcome Bonus:* ${welcomeBonus} pts added!
-${pointsEarned > 0 ? `⭐ *Points Earned this visit:* ${pointsEarned} pts\n` : ''}${walletRedeemed > 0 ? `💳 *Wallet Used:* ₹${walletRedeemed}\n` : ''}💰 *Wallet Balance:* ₹${walletBalanceFormatted}${tierLine}
-
-Use your wallet balance on your next visit! 😊`;
-      } else {
-        message =
-`🌟 Hi *${customerDisplayName}*!
-Thank you for shopping at *${restName}*! 🐟
-${READ_MORE}
-━━━━━━━━━━━━━━━━━━━━${walletRedeemed > 0 ? `\n💳 *Wallet Redeemed:* ₹${walletRedeemed}` : ''}${pointsEarned > 0 ? `\n⭐ *Points Earned:* ${pointsEarned} pts` : ''}
-🏆 *Total Points:* ${totalPoints} pts
-💰 *Wallet Balance:* ₹${walletBalanceFormatted}${tierLine}
-
-Use your wallet balance on your next visit! 😊`;
-      }
-    }
-
-    if (imageUrl || imageBase64) {
-      return this.sendBillMedia(rawPhone, { imageUrl, imageBase64, caption: message });
-    }
-    return this.sendTextMessage(rawPhone, message);
+  async sendLoyaltyMessage() {
+    return { success: true };
   }
 
   async sendCampaignMessage(rawPhone, { imageUrl = null, imageBase64 = null, caption = '' }) {
@@ -626,8 +563,8 @@ Use your wallet balance on your next visit! 😊`;
 
     const text = `Hi ${greeting},
 
-We hope you enjoy your fresh fish & seafood from *${restName}*! 🐟
-⭐ How was your experience?
+We hope you enjoy your fresh fish & seafood from *${restName}*!
+How was your experience?
 
 We would love to hear your feedback. Rate your experience here:
 ${reviewLink}
@@ -707,7 +644,7 @@ Thank you for visiting!`;
       };
     } else {
       console.log(`[sendBillMedia] Payload type=TEXT (no media provided)`);
-      messagePayload = { text: caption || '🧾 *Your Digital e-Bill Receipt*' };
+      messagePayload = { text: caption || '*Your Digital e-Bill Receipt*' };
     }
 
     try {

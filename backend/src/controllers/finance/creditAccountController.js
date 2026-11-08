@@ -1,6 +1,10 @@
 import CreditAccountDefault from '../../models/finance/CreditAccount.js';
 import BillDefault from '../../models/billing/Bill.js';
+import SettingDefault from '../../models/system/Setting.js';
+import CustomerDefault from '../../models/crm/Customer.js';
 import { getTenantModel } from '../../utils/database/tenantHelper.js';
+import { getTenantModels } from '../../utils/database/tenantManager.js';
+import { resolveTenantInfo } from "../communication/whatsappController.js";
 
 // ─────────────────────────────────────────────────────
 // LEGACY: Get all credit accounts (basic list, no pagination)
@@ -88,10 +92,14 @@ export const getKhataAccounts = async (req, res) => {
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 20;
     const search = (req.query.search || '').trim();
+    const category = (req.query.category || req.query.salesCategory || '').trim();
     const skip = (page - 1) * limit;
 
-    // Step 1: Aggregate all Unpaid bills grouped by customerPhone
-    const matchFilter = { status: 'Unpaid', customerPhone: { $exists: true, $ne: null, $not: /^\s*$/ } };
+    // Step 1: Aggregate all genuinely Unpaid and Partial Khata bills grouped by customerPhone
+    const matchFilter = { status: { $in: ['Unpaid', 'Partial'] }, customerPhone: { $exists: true, $ne: null, $not: /^\s*$/ } };
+    if (category && category !== 'All') {
+      matchFilter.customerCategory = category;
+    }
     if (search) {
       matchFilter.$or = [
         { customerName: { $regex: search, $options: 'i' } },
@@ -101,31 +109,79 @@ export const getKhataAccounts = async (req, res) => {
 
     const billGroups = await Bill.aggregate([
       { $match: matchFilter },
+      { $sort: { createdAt: 1 } },
       {
         $group: {
           _id: '$customerPhone',
           customerName: { $last: '$customerName' },
-          phoneNumber: { $first: '$customerPhone' },
-          billTotal: { $sum: '$total' },
+          phoneNumber: { $last: '$customerPhone' },
+          billTotal: {
+            $sum: {
+              $cond: [
+                { $eq: ['$status', 'Partial'] },
+                { $ifNull: ['$dueAmount', { $subtract: ['$total', { $ifNull: ['$paidAmount', 0] }] }] },
+                '$total'
+              ]
+            }
+          },
           billCount: { $sum: 1 },
-          lastUpdate: { $max: '$updatedAt' }
+          lastUpdate: { $max: '$updatedAt' },
+          bills: { $push: { items: '$items', boxes: '$boxes' } }
         }
       },
       { $sort: { lastUpdate: -1 } }
     ]);
 
-    // Step 2: Balance = sum of remaining Unpaid bills (NO CreditAccount deduction needed
-    // because settleKhataPayment already marks bills as Paid in the DB — so Unpaid sum
-    // is always accurate and avoids stale CreditAccount payment double-deduction)
-    const merged = billGroups.map(group => ({
-      _id: group._id,
-      customerName: group.customerName || 'Unknown Customer',
-      phoneNumber: group.phoneNumber,
-      balance: group.billTotal,      // ← pure sum of remaining Unpaid bills
-      billTotal: group.billTotal,
-      billCount: group.billCount,
-      updatedAt: group.lastUpdate
-    })).filter(a => a.balance > 0);
+    // Cross-reference CRM Customer directory by phone number to guarantee latest full customer names
+    const phones = billGroups.map(g => g._id).filter(Boolean);
+    const cleanPhones = phones.map(p => String(p).replace(/\D/g, '').slice(-10));
+    const Customer = getTenantModel(req, 'Customer', CustomerDefault);
+    const crmCustomers = await Customer.find({
+      $or: [
+        { phone: { $in: phones } },
+        { phone: { $in: cleanPhones } }
+      ]
+    }).select('name phone photo').lean();
+
+    const crmMap = {};
+    for (const c of crmCustomers) {
+      const cp = String(c.phone || '').replace(/\D/g, '').slice(-10);
+      crmMap[cp] = c;
+    }
+
+    // Step 2: Balance = sum of remaining Unpaid/Partial bills
+    const merged = billGroups.map(group => {
+      const cleanP = String(group.phoneNumber || group._id || '').replace(/\D/g, '').slice(-10);
+      const crmCust = crmMap[cleanP];
+      const resolvedName = crmCust?.name || group.customerName || 'Customer';
+
+      // Compute total weight across unpaid/partial bills for this debtor
+      let totalWeightKg = 0;
+      for (const b of (group.bills || [])) {
+        let bw = 0;
+        if (Array.isArray(b.boxes) && b.boxes.length > 0) {
+          bw = b.boxes.reduce((s, box) => s + (Number(box.totalWeight) || (box.items || []).reduce((sb, bi) => sb + Number(bi.weightKg || bi.netWeightKg || bi.quantity || 0), 0)), 0);
+        }
+        if (bw <= 0 && Array.isArray(b.items)) {
+          for (const it of b.items) {
+            if (it.isCancelled) continue;
+            bw += Number(it.netWeightKg || it.enteredWeight || it.weightKg || (it.sellingUnit === 'Kg' ? it.quantity : 0) || 0);
+          }
+        }
+        totalWeightKg += bw;
+      }
+
+      return {
+        _id: group._id,
+        customerName: resolvedName,
+        phoneNumber: group.phoneNumber,
+        balance: group.billTotal,
+        billTotal: group.billTotal,
+        billCount: group.billCount,
+        totalWeightKg: Math.round(totalWeightKg * 10) / 10,
+        updatedAt: group.lastUpdate
+      };
+    }).filter(a => a.balance > 0);
 
     // Step 4: Apply pagination manually (after merge)
     const totalDocs = merged.length;
@@ -162,30 +218,73 @@ export const getKhataLedger = async (req, res) => {
     const { phoneNumber } = req.params;
     const cleanPhone = String(phoneNumber).replace(/\D/g, '').slice(-10);
 
-    // Get all Unpaid bills for this customer — search by last 10 digits of phone
+    // Get all Unpaid and Partial Khata bills for this customer with complete itemized data
     const bills = await Bill.find({
       customerPhone: { $regex: cleanPhone, $options: 'i' },
-      status: 'Unpaid'
+      status: { $in: ['Unpaid', 'Partial'] }
     })
       .sort({ createdAt: -1 })
-      .select('billNumber billType status paymentMode total createdAt updatedAt customerName customerPhone tableNo');
+      .lean();
 
-    // Balance = pure sum of remaining Unpaid bills (no CreditAccount deduction)
-    // Bills are marked Paid in DB when settlement happens, so Unpaid sum is always accurate
-    const balance = bills.reduce((sum, b) => sum + (b.total || 0), 0);
+    // Determine the customer's actual latest bill for e-bill receipt generation
+    let latestBill = bills.length > 0 ? bills[0] : null;
+    if (!latestBill) {
+      latestBill = await Bill.findOne({
+        customerPhone: { $regex: cleanPhone, $options: 'i' }
+      })
+        .sort({ createdAt: -1 })
+        .lean();
+    }
+
+    // Balance = pure sum of remaining due across Unpaid & Partial bills (no CreditAccount deduction)
+    // Bills are marked Paid in DB when settlement happens, so Unpaid/due sum is always accurate
+    const balance = bills.reduce((sum, b) => {
+      if (b.status === 'Partial') {
+        return sum + (b.dueAmount ?? Math.max(0, (b.total || 0) - (b.paidAmount || b.amountPaid || 0)));
+      }
+      return sum + (b.total || 0);
+    }, 0);
 
     // Get CreditAccount for payment history display only (not for balance calculation)
     const account = await CreditAccount.findOne({
       phoneNumber: { $regex: cleanPhone, $options: 'i' }
     }).lean();
 
+    // Dynamically lookup CRM Customer for full real name
+    const Customer = getTenantModel(req, 'Customer', CustomerDefault);
+    const crmCust = await Customer.findOne({
+      phone: { $regex: cleanPhone, $options: 'i' }
+    }).select('name phone photo').lean();
+
+    const resolvedCustomerName = crmCust?.name || latestBill?.customerName || bills[0]?.customerName || account?.customerName || 'Customer';
+
+    // Attach computed weight in KGs to each bill in ledger
+    const billsWithWeight = bills.map(b => {
+      let bw = 0;
+      if (Array.isArray(b.boxes) && b.boxes.length > 0) {
+        bw = b.boxes.reduce((s, box) => s + (Number(box.totalWeight) || (box.items || []).reduce((sb, bi) => sb + Number(bi.weightKg || bi.netWeightKg || bi.quantity || 0), 0)), 0);
+      }
+      if (bw <= 0 && Array.isArray(b.items)) {
+        for (const it of b.items) {
+          if (it.isCancelled) continue;
+          bw += Number(it.netWeightKg || it.enteredWeight || it.weightKg || (it.sellingUnit === 'Kg' ? it.quantity : 0) || 0);
+        }
+      }
+      return {
+        ...b,
+        weightKg: Math.round(bw * 10) / 10
+      };
+    });
+
     res.status(200).json({
-      account: account || {
-        customerName: bills[0]?.customerName || 'Unknown',
+      account: {
+        ...(account || {}),
+        customerName: resolvedCustomerName,
         phoneNumber: cleanPhone,
         balance
       },
-      bills,
+      bills: billsWithWeight,
+      latestBill,
       transactions: account?.transactions?.sort((a, b) => new Date(b.date) - new Date(a.date)) || []
     });
   } catch (error) {
@@ -211,11 +310,18 @@ export const settleKhataPayment = async (req, res) => {
     const cleanPhone = String(phoneNumber).replace(/\D/g, '').slice(-10);
     const paidAmount = Number(amount);
 
-    // ── Step 1: Fetch all unpaid bills for this customer ──
+    // ── Step 1: Fetch all genuine unpaid & partial Khata bills for this customer ──
     const unpaidBills = await Bill.find({
       customerPhone: { $regex: cleanPhone, $options: 'i' },
-      status: 'Unpaid'
+      status: { $in: ['Unpaid', 'Partial'] }
     }).sort({ createdAt: 1 }); // oldest first default
+
+    const getBillDue = (b) => {
+      if (b.status === 'Partial') {
+        return b.dueAmount ?? Math.max(0, (b.total || 0) - (b.paidAmount || b.amountPaid || 0));
+      }
+      return b.total || 0;
+    };
 
     // ── Step 2: Allocate payment bill by bill ──
     let remaining = paidAmount;
@@ -230,6 +336,8 @@ export const settleKhataPayment = async (req, res) => {
       tBill.status = 'Paid';
       tBill.paymentMode = paymentMode;
       tBill.amountPaid = tBill.total;
+      tBill.paidAmount = tBill.total;
+      tBill.dueAmount = 0;
       tBill.clearedAt = now;
       if (upiApp) tBill.upiApp = upiApp;
 
@@ -258,10 +366,11 @@ export const settleKhataPayment = async (req, res) => {
       const targetBillIndex = unpaidBills.findIndex(b => b._id.toString() === targetBillId);
       if (targetBillIndex !== -1) {
         const tBill = unpaidBills[targetBillIndex];
-        if (tBill.total <= remaining) {
+        const bDue = getBillDue(tBill);
+        if (bDue <= remaining) {
           applyPaymentToBill(tBill);
           await tBill.save();
-          remaining -= tBill.total;
+          remaining -= bDue;
           clearedBillIds.push(tBill._id);
           unpaidBills.splice(targetBillIndex, 1); // Remove from list so we don't process it again
         }
@@ -271,19 +380,32 @@ export const settleKhataPayment = async (req, res) => {
     // Process remaining bills oldest-to-newest with any leftover amount
     for (const bill of unpaidBills) {
       if (remaining <= 0) break;
-      if (bill.total <= remaining) {
+      const bDue = getBillDue(bill);
+      if (bDue <= remaining) {
         applyPaymentToBill(bill);
         await bill.save();
-        remaining -= bill.total;
+        remaining -= bDue;
         clearedBillIds.push(bill._id);
       }
-      // If the payment doesn't cover this bill fully, leave it as Unpaid
     }
 
-    // ── Step 3: Recalculate true outstanding balance from remaining Unpaid bills ──
+    // ── Step 3: Recalculate true outstanding balance from remaining Unpaid/Partial bills ──
     const remainingBillAgg = await Bill.aggregate([
-      { $match: { customerPhone: { $regex: cleanPhone, $options: 'i' }, status: 'Unpaid' } },
-      { $group: { _id: null, total: { $sum: '$total' } } }
+      { $match: { customerPhone: { $regex: cleanPhone, $options: 'i' }, status: { $in: ['Unpaid', 'Partial'] } } },
+      {
+        $group: {
+          _id: null,
+          total: {
+            $sum: {
+              $cond: [
+                { $eq: ['$status', 'Partial'] },
+                { $ifNull: ['$dueAmount', { $subtract: ['$total', { $ifNull: ['$paidAmount', 0] }] }] },
+                '$total'
+              ]
+            }
+          }
+        }
+      }
     ]);
     const trueBalance = remainingBillAgg[0]?.total || 0;
 
@@ -330,6 +452,262 @@ export const settleKhataPayment = async (req, res) => {
   } catch (error) {
     console.error('[Khata] Error settling payment:', error);
     res.status(500).json({ message: 'Error settling Khata payment', error: error.message });
+  }
+};
+
+// POST /api/credit-accounts/khata/send-reminder
+export const sendKhataReminder = async (req, res) => {
+  try {
+    const { phoneNumber, customerName, balance, billNumber, category, imageBase64, customMessage } = req.body;
+    if (!phoneNumber) {
+      return res.status(400).json({ message: 'Phone number is required' });
+    }
+
+    const cleanPhone = String(phoneNumber).replace(/\D/g, '').slice(-10);
+    const amountStr = Number(balance || 0).toLocaleString('en-IN');
+    const billRef = billNumber ? ` for Bill #${billNumber}` : '';
+    const catLabel = category ? ` (${category})` : '';
+
+    // Dynamically fetch depot & store settings directly from database (no code fallbacks)
+    const Setting = getTenantModel(req, 'Setting', SettingDefault);
+    const storeSettingsDoc = await Setting.findOne({ key: 'restaurantSettings' }).lean();
+    let storeSettings = storeSettingsDoc?.value;
+    if (typeof storeSettings === 'string') {
+      try { storeSettings = JSON.parse(storeSettings); } catch (e) { storeSettings = {}; }
+    }
+    if (!storeSettings || typeof storeSettings !== 'object') storeSettings = {};
+
+    const shopName = (storeSettings.restaurantName || '').trim();
+    const shopAddress = (storeSettings.address || '').replace(/\r?\n/g, ', ').trim();
+    const shopPhone = (storeSettings.phone || '').trim();
+    const footerMsg = (storeSettings.footerMessage || '').replace(/\*/g, '').trim();
+
+    const headerTitle = shopName ? `*${shopName.toUpperCase()} - PAYMENT REMINDER*` : `*PAYMENT REMINDER*`;
+    const fromLine = shopName ? `from ${shopName}.` : 'regarding your pending balance.';
+    const addressBlock = shopAddress ? `*Depot Address:* ${shopAddress}\n` : '';
+    const contactBlock = shopPhone ? `*Contact:* ${shopPhone}\n` : '';
+    const footerBlock = footerMsg ? `${footerMsg}` : '';
+    const footerSection = (addressBlock || contactBlock || footerBlock)
+      ? `\n\n${addressBlock}${contactBlock}${footerBlock}`.trimEnd()
+      : '';
+
+    // Standard WhatsApp hidden delimiter to trigger collapsible "... Read more" in WhatsApp chat
+    const READ_MORE = String.fromCharCode(8206).repeat(4001);
+
+    const formatDateTime12 = (dateInput) => {
+      if (!dateInput) return '';
+      const d = new Date(dateInput);
+      if (isNaN(d.getTime())) return '';
+      const datePart = d.toLocaleDateString('en-GB', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+        timeZone: 'Asia/Kolkata'
+      });
+      const timePart = d.toLocaleTimeString('en-US', {
+        hour: 'numeric',
+        minute: '2-digit',
+        hour12: true,
+        timeZone: 'Asia/Kolkata'
+      });
+      return `${datePart}, ${timePart}`;
+    };
+
+    const getDaysCompleted = (dateInput) => {
+      if (!dateInput) return 0;
+      const billedDate = new Date(dateInput);
+      if (isNaN(billedDate.getTime())) return 0;
+      const now = new Date();
+      const diffMs = now.getTime() - billedDate.getTime();
+      return Math.max(0, Math.floor(diffMs / (1000 * 60 * 60 * 24)));
+    };
+
+    const formatDaysText = (days) => {
+      if (days <= 0) return 'Today (0 days completed)';
+      if (days === 1) return '1 day completed';
+      return `${days} days completed`;
+    };
+
+    const calcBillWeight = (b) => {
+      if (!b) return 0;
+      if (Array.isArray(b.boxes) && b.boxes.length > 0) {
+        const boxWeight = b.boxes.reduce((sum, bx) => {
+          const bw = Number(bx.totalWeight || 0);
+          if (bw > 0) return sum + bw;
+          if (Array.isArray(bx.items)) {
+            return sum + bx.items.reduce((s, i) => s + Number(i.weightKg || i.netWeightKg || i.enteredWeight || i.quantity || 0), 0);
+          }
+          return sum;
+        }, 0);
+        if (boxWeight > 0) return Math.round(boxWeight * 10) / 10;
+      }
+      if (Array.isArray(b.items)) {
+        const w = b.items.reduce((sum, i) => {
+          if (i.isCancelled) return sum;
+          return sum + Number(i.netWeightKg || i.enteredWeight || i.weightKg || (i.sellingUnit === 'Kg' ? i.quantity : 0) || 0);
+        }, 0);
+        return Math.round(w * 10) / 10;
+      }
+      return 0;
+    };
+
+    let rawText = '';
+    if (customMessage && typeof customMessage === 'string' && customMessage.trim()) {
+      rawText = customMessage.trim();
+    } else {
+      const Bill = getTenantModel(req, 'Bill', BillDefault);
+      const unpaidBills = await Bill.find({
+        customerPhone: { $regex: cleanPhone, $options: 'i' },
+        status: { $in: ['Unpaid', 'Partial'] }
+      }).sort({ createdAt: 1 }).lean();
+
+      if (unpaidBills.length > 1) {
+        const oldestBill = unpaidBills[0];
+        const latestBill = unpaidBills[unpaidBills.length - 1];
+
+        const oldestDateStr = formatDateTime12(oldestBill?.billedAt || oldestBill?.createdAt);
+        const oldestDays = getDaysCompleted(oldestBill?.billedAt || oldestBill?.createdAt);
+
+        const latestDateStr = formatDateTime12(latestBill?.billedAt || latestBill?.createdAt);
+        const latestDays = getDaysCompleted(latestBill?.billedAt || latestBill?.createdAt);
+
+        const totalWeight = unpaidBills.reduce((sum, b) => sum + calcBillWeight(b), 0);
+        const weightLine = totalWeight > 0 ? `\n• *Total Purchased Weight:* *${totalWeight.toFixed(1).replace(/\.0$/, '')} Kg*` : '';
+
+        const breakdownLines = unpaidBills.map((b) => {
+          const bDue = b.status === 'Partial'
+            ? (b.dueAmount ?? Math.max(0, (b.total || 0) - (b.paidAmount || b.amountPaid || 0)))
+            : (b.total || 0);
+          const bDate = formatDateTime12(b.billedAt || b.createdAt);
+          const bDays = getDaysCompleted(b.billedAt || b.createdAt);
+          const daysStr = formatDaysText(bDays);
+          const bWeight = calcBillWeight(b);
+          const bWtStr = bWeight > 0 ? ` • ${bWeight} Kg` : '';
+          return `• #${b.billNumber || 'Bill'} (${bDate}): ₹${Number(bDue).toLocaleString('en-IN')}${bWtStr} • ${daysStr}`;
+        }).join('\n');
+
+        rawText = `${headerTitle}\n\nNamaskaram *${customerName || 'Customer'}* garu,\n\nThis is a friendly reminder ${fromLine}\nYou have an outstanding Khata balance of *₹${amountStr}* across ${unpaidBills.length} pending bills${catLabel}.${weightLine}\n\n• *Oldest Pending Since:* ${oldestDateStr} (${formatDaysText(oldestDays)})\n• *Latest Bill Date:* ${latestDateStr} (${formatDaysText(latestDays)})\n\n*Pending Bills Breakdown:*\n${breakdownLines}\n\nKindly clear this pending amount at your earliest convenience via UPI or Cash.${footerSection}`;
+      } else if (unpaidBills.length === 1) {
+        const singleBill = unpaidBills[0];
+        const billDateStr = formatDateTime12(singleBill?.billedAt || singleBill?.createdAt);
+        const billDays = getDaysCompleted(singleBill?.billedAt || singleBill?.createdAt);
+        const daysText = formatDaysText(billDays);
+        const ref = singleBill.billNumber ? ` for Bill #${singleBill.billNumber}` : billRef;
+        const sWeight = calcBillWeight(singleBill);
+        const sWeightLine = sWeight > 0 ? `\n• *Total Purchased Weight:* *${sWeight.toFixed(1).replace(/\.0$/, '')} Kg*` : '';
+
+        rawText = `${headerTitle}\n\nNamaskaram *${customerName || 'Customer'}* garu,\n\nThis is a friendly reminder ${fromLine}\nYou have an outstanding Khata balance of *₹${amountStr}*${ref}${catLabel}.\n\n• *Billed Date & Time:* ${billDateStr}${sWeightLine}\n• *Pending Duration:* ${daysText}\n\nKindly clear this pending amount at your earliest convenience via UPI or Cash.${footerSection}`;
+      } else {
+        rawText = `${headerTitle}\n\nNamaskaram *${customerName || 'Customer'}* garu,\n\nThis is a friendly reminder ${fromLine}\nYou have an outstanding Khata balance of *₹${amountStr}*${billRef}${catLabel}.\n\nKindly clear this pending amount at your earliest convenience via UPI or Cash.${footerSection}`;
+      }
+    }
+
+    // Embed READ_MORE delimiter right after greeting for WhatsApp collapsible display
+    let text = rawText;
+    if (!text.includes(READ_MORE) && text.includes('garu,')) {
+      text = text.replace('garu,', `garu,\n${READ_MORE}`);
+    }
+
+    const { tenantId, whatsappService } = await resolveTenantInfo(req);
+
+    if (!whatsappService) {
+      return res.status(200).json({
+        success: false,
+        isWhatsAppConnected: false,
+        message: 'WhatsApp Service could not be resolved.',
+        whatsappText: rawText,
+        cleanPhone
+      });
+    }
+
+    // 1. Actively ensure socket connection before checking status
+    await whatsappService.ensureConnection().catch(() => {});
+
+    let waStatus = whatsappService.getStatus();
+    let isConnected = waStatus?.status === 'CONNECTED';
+
+    // 2. Check DB persisted credentials & status if memory socket is warming up
+    if (!isConnected && tenantId) {
+      try {
+        const models = req.models || (await getTenantModels(tenantId).catch(() => null));
+        if (models?.Setting) {
+          const dbStatusDoc = await models.Setting.findOne({ key: 'whatsapp_status' }).lean();
+          const hasAuthCreds = models.WhatsAppAuth ? (await models.WhatsAppAuth.countDocuments({ id: 'creds' })) > 0 : false;
+          if (dbStatusDoc?.value?.status === 'CONNECTED' && hasAuthCreds) {
+            isConnected = true;
+            // Force connection in background
+            await whatsappService.ensureConnection(true).catch(() => {});
+          }
+        }
+      } catch (dbErr) {
+        console.warn('[sendKhataReminder] DB status check warning:', dbErr.message);
+      }
+    }
+
+    if (!isConnected) {
+      return res.status(200).json({
+        success: false,
+        isWhatsAppConnected: false,
+        message: 'WhatsApp Bot is offline. Scan QR code in settings to send directly in background.',
+        whatsappText: rawText,
+        cleanPhone
+      });
+    }
+
+    // 3. Attempt direct send with automatic retry on socket hiccup
+    try {
+      if (imageBase64) {
+        console.log(`[sendKhataReminder] Sending media e-bill with reminder to ${cleanPhone}...`);
+        await whatsappService.sendBillMedia(cleanPhone, {
+          imageBase64,
+          caption: text,
+          fileName: `eBill_${billNumber || 'Khata_Due'}.jpg`
+        });
+      } else {
+        console.log(`[sendKhataReminder] Sending text-only reminder to ${cleanPhone}...`);
+        await whatsappService.sendMessage(cleanPhone, text);
+      }
+
+      return res.status(200).json({
+        success: true,
+        isWhatsAppConnected: true,
+        message: `WhatsApp reminder ${imageBase64 ? 'with e-bill image ' : ''}sent directly to +91 ${cleanPhone}!`,
+        cleanPhone
+      });
+    } catch (firstErr) {
+      console.warn(`[sendKhataReminder] First attempt warning: ${firstErr.message}. Forcing reconnect and retrying...`);
+      try {
+        await whatsappService.ensureConnection(true);
+        if (imageBase64) {
+          await whatsappService.sendBillMedia(cleanPhone, {
+            imageBase64,
+            caption: text,
+            fileName: `eBill_${billNumber || 'Khata_Due'}.jpg`
+          });
+        } else {
+          await whatsappService.sendMessage(cleanPhone, text);
+        }
+
+        return res.status(200).json({
+          success: true,
+          isWhatsAppConnected: true,
+          message: `WhatsApp reminder ${imageBase64 ? 'with e-bill image ' : ''}sent directly to +91 ${cleanPhone} (after auto-reconnect)!`,
+          cleanPhone
+        });
+      } catch (retryErr) {
+        console.error('[sendKhataReminder] Retry attempt failed:', retryErr.message);
+        return res.status(200).json({
+          success: false,
+          isWhatsAppConnected: false,
+          message: `Direct send failed: ${retryErr.message}. You can send via WhatsApp web.`,
+          whatsappText: text,
+          cleanPhone
+        });
+      }
+    }
+  } catch (err) {
+    console.error('Error sending Khata reminder:', err);
+    res.status(500).json({ message: err.message || 'Failed to send WhatsApp reminder' });
   }
 };
 

@@ -235,17 +235,20 @@ export const sendBill = async (req, res) => {
     const imgKB  = imageBase64    ? Math.round(imageBase64.length    * 0.75 / 1024) : 0;
     const pdfKB  = pdfBase64      ? Math.round(pdfBase64.length      * 0.75 / 1024) : 0;
     const docKB  = documentBase64 ? Math.round(documentBase64.length * 0.75 / 1024) : 0;
-    console.log(`[WhatsApp sendBill] ▶ phone=${phone} | imageKB=${imgKB} | pdfKB=${pdfKB} | docKB=${docKB} | hasText=${!!billText} | billId=${billId || 'none'} | billNumber=${billNumber || 'none'} | forceResend=${!!forceResend}`);
+    const isForce = forceResend === true || forceResend === 'true' || forceResend === 1 || forceResend === '1';
+    console.log(`[WhatsApp sendBill] ▶ phone=${phone} | imageKB=${imgKB} | pdfKB=${pdfKB} | docKB=${docKB} | hasText=${!!billText} | billId=${billId || 'none'} | billNumber=${billNumber || 'none'} | forceResend=${isForce}`);
 
     const { tenantId, whatsappService } = await resolveTenantInfo(req);
 
     // --- Prevent duplicate WhatsApp sends for the same bill ---
     const lockKey = `${tenantId}_${billId || billNumber}`;
-    if (!forceResend) {
+    if (!isForce) {
       if (processingBills.has(lockKey)) {
         return res.status(409).json({ error: 'This bill is currently being sent.', alreadySent: true });
       }
       processingBills.add(lockKey);
+    } else {
+      processingBills.delete(lockKey);
     }
     
     let models = null;
@@ -255,7 +258,7 @@ export const sendBill = async (req, res) => {
 
     const BillModel = (models && models.Bill) || getTenantModel(req, 'Bill', BillDefault);
 
-    if (!forceResend && BillModel && (billId || billNumber)) {
+    if (!isForce && BillModel && (billId || billNumber)) {
       try {
         const query = billId && mongoose.Types.ObjectId.isValid(billId)
           ? { _id: billId }
@@ -273,7 +276,7 @@ export const sendBill = async (req, res) => {
       }
     }
 
-    const cleanupLock = () => { if (!forceResend) processingBills.delete(lockKey); };
+    const cleanupLock = () => { processingBills.delete(lockKey); };
 
     // --- DIAGNOSTIC: Log socket state BEFORE ensureConnection ---
     const wsStateBefore = whatsappService.sock?.ws?.socket?.readyState ?? whatsappService.sock?.ws?.readyState ?? 'none';
@@ -458,7 +461,6 @@ export const getTemplates = async (req, res) => {
     let templatesDoc = await models.Setting.findOne({ key: 'whatsapp_templates' }).lean();
     
     const defaultTemplates = {
-      loyaltyEarned: "Thank you for visiting! You earned [PointsEarned] points. Your new balance is [TotalPoints] points.",
       khataReminder: "Namaskaram [CustomerName], your pending Udhaar balance at [RestaurantName] is ₹[KhataBalance]. Please pay soon!",
       referralMessage: "Hey! [RestaurantName] uses YNR Fishes POS and loves it. Click here to get your first month free!",
       eBillReceipt: "Hi [CustomerName], thank you for shopping at [RestaurantName]. Please find your fresh seafood bill attached.",

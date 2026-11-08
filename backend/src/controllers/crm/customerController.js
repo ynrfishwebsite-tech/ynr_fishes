@@ -126,6 +126,44 @@ export const getAllCustomers = async (req, res) => {
       });
     }
 
+    // Dynamically calculate lifetime total weight in Kgs across all bills for each customer
+    const allPhones = customers.map(c => c.phone).filter(Boolean);
+    if (allPhones.length > 0) {
+      try {
+        const cleanPhones = allPhones.map(p => String(p).replace(/\D/g, '').slice(-10));
+        const billsForWeight = await Bill.find({
+          $or: [
+            { customerPhone: { $in: allPhones } },
+            { customerPhone: { $in: cleanPhones } }
+          ],
+          status: { $nin: ['Cancelled', 'Deleted'] }
+        }).select('customerPhone items boxes').lean();
+
+        const weightMap = {};
+        for (const b of billsForWeight) {
+          const cp = String(b.customerPhone || '').replace(/\D/g, '').slice(-10);
+          let bw = 0;
+          if (Array.isArray(b.boxes) && b.boxes.length > 0) {
+            bw = b.boxes.reduce((s, box) => s + (Number(box.totalWeight) || (box.items || []).reduce((sb, bi) => sb + Number(bi.weightKg || bi.netWeightKg || bi.quantity || 0), 0)), 0);
+          }
+          if (bw <= 0 && Array.isArray(b.items)) {
+            for (const it of b.items) {
+              if (it.isCancelled) continue;
+              bw += Number(it.netWeightKg || it.enteredWeight || it.weightKg || (it.sellingUnit === 'Kg' ? it.quantity : 0) || 0);
+            }
+          }
+          weightMap[cp] = (weightMap[cp] || 0) + bw;
+        }
+
+        customers.forEach(c => {
+          const cp = String(c.phone || '').replace(/\D/g, '').slice(-10);
+          c.totalWeightKg = Math.round((weightMap[cp] || 0) * 10) / 10;
+        });
+      } catch (weightErr) {
+        console.warn('Could not compute customer total weights:', weightErr.message);
+      }
+    }
+
     res.status(200).json(customers);
   } catch (error) {
     res.status(500).json({ message: error.message });

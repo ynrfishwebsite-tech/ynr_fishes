@@ -41,7 +41,6 @@ const WhatsAppConnectModal = ({ isOpen, onClose }) => {
 
   // Templates State
   const [templates, setTemplates] = useState({
-    loyaltyEarned: "",
     khataReminder: "",
     referralMessage: "",
     eBillReceipt: "",
@@ -50,7 +49,7 @@ const WhatsAppConnectModal = ({ isOpen, onClose }) => {
     weMissYou: "",
     customMessage: ""
   });
-  const [activeTemplateKey, setActiveTemplateKey] = useState('loyaltyEarned');
+  const [activeTemplateKey, setActiveTemplateKey] = useState('eBillReceipt');
   const [savingTemplates, setSavingTemplates] = useState(false);
   const [templatesLoaded, setTemplatesLoaded] = useState(false);
 

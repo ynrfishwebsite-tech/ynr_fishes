@@ -71,7 +71,12 @@ const Settings = ({ user, setUser, onNavigate, onGoBack }) => {
     autoSendTime: '14:30',
     autoSendTime2: '22:30',
     enableGlobalNotifications: true,
-    defaultBillingLayout: 'grid'
+    defaultBillingLayout: 'grid',
+    receiptCustomerDisplay: {
+      retail: { enabled: true, showName: true, showPhone: true, showAddress: false, showShopName: false },
+      wholesale: { enabled: true, showName: true, showPhone: true, showAddress: true, showShopName: true },
+      export: { enabled: true, showName: true, showPhone: true, showAddress: true, showShopName: true }
+    }
   });
 
   const [username, setUsername] = useState(user ? user.username : '');
@@ -385,11 +390,57 @@ const Settings = ({ user, setUser, onNavigate, onGoBack }) => {
           const merged = { ...currentLocal, ...updated, [field]: value };
           localStorage.setItem('restaurantSettings', JSON.stringify(merged));
           window.dispatchEvent(new CustomEvent('settingsUpdated', { detail: merged }));
-        } catch (e) {}
+        } catch (e) { }
       }
       return updated;
     });
     validateField(field, value);
+  };
+
+  const handleToggleCustomerReceiptMode = (modeKey, enabled) => {
+    setSettings((prev) => {
+      const current = prev.receiptCustomerDisplay || {
+        retail: { enabled: true, showName: true, showPhone: true, showAddress: false, showShopName: false },
+        wholesale: { enabled: true, showName: true, showPhone: true, showAddress: true, showShopName: true },
+        export: { enabled: true, showName: true, showPhone: true, showAddress: true, showShopName: true }
+      };
+      const updated = {
+        ...current,
+        [modeKey]: {
+          ...current[modeKey],
+          enabled
+        }
+      };
+      const newSettings = { ...prev, receiptCustomerDisplay: updated };
+      try {
+        localStorage.setItem('restaurantSettings', JSON.stringify(newSettings));
+        window.dispatchEvent(new CustomEvent('settingsUpdated', { detail: newSettings }));
+      } catch (e) { }
+      return newSettings;
+    });
+  };
+
+  const handleToggleCustomerReceiptField = (modeKey, fieldKey, val) => {
+    setSettings((prev) => {
+      const current = prev.receiptCustomerDisplay || {
+        retail: { enabled: true, showName: true, showPhone: true, showAddress: false, showShopName: false },
+        wholesale: { enabled: true, showName: true, showPhone: true, showAddress: true, showShopName: true },
+        export: { enabled: true, showName: true, showPhone: true, showAddress: true, showShopName: true }
+      };
+      const updated = {
+        ...current,
+        [modeKey]: {
+          ...current[modeKey],
+          [fieldKey]: val
+        }
+      };
+      const newSettings = { ...prev, receiptCustomerDisplay: updated };
+      try {
+        localStorage.setItem('restaurantSettings', JSON.stringify(newSettings));
+        window.dispatchEvent(new CustomEvent('settingsUpdated', { detail: newSettings }));
+      } catch (e) { }
+      return newSettings;
+    });
   };
 
   const fetchIpLocation = async () => {
@@ -621,11 +672,10 @@ const Settings = ({ user, setUser, onNavigate, onGoBack }) => {
               <LayoutGrid size={16} className="text-amber-800" />
               {t("Default Billing Catalog Layout")}
             </label>
-            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-              (settings.defaultBillingLayout || 'grid') === 'grid'
-                ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
-                : 'bg-amber-100 text-amber-800 border border-amber-300'
-            }`}>
+            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${(settings.defaultBillingLayout || 'grid') === 'grid'
+              ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+              : 'bg-amber-100 text-amber-800 border border-amber-300'
+              }`}>
               {(settings.defaultBillingLayout || 'grid') === 'grid' ? t("Grid View (Default)") : t("3D Roller / Wheel")}
             </span>
           </div>
@@ -648,7 +698,7 @@ const Settings = ({ user, setUser, onNavigate, onGoBack }) => {
                 const resto = JSON.parse(localStorage.getItem('restaurantSettings') || '{}');
                 resto.defaultBillingLayout = newMode;
                 localStorage.setItem('restaurantSettings', JSON.stringify(resto));
-              } catch (err) {}
+              } catch (err) { }
               window.dispatchEvent(new CustomEvent('settingsUpdated', { detail: { ...settings, defaultBillingLayout: newMode } }));
             }}
           />
@@ -668,14 +718,13 @@ const Settings = ({ user, setUser, onNavigate, onGoBack }) => {
               const resto = JSON.parse(localStorage.getItem('restaurantSettings') || '{}');
               resto.defaultBillingLayout = 'grid';
               localStorage.setItem('restaurantSettings', JSON.stringify(resto));
-            } catch (err) {}
+            } catch (err) { }
             window.dispatchEvent(new CustomEvent('settingsUpdated', { detail: { ...settings, defaultBillingLayout: 'grid' } }));
           }}
-          className={`px-3 py-1 rounded-lg text-xs font-bold border transition-all cursor-pointer flex items-center gap-1.5 ${
-            (settings.defaultBillingLayout || 'grid') === 'grid'
-              ? 'bg-[#994d1c] text-white border-[#7c3f1d] shadow-xs'
-              : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100'
-          }`}
+          className={`px-3 py-1 rounded-lg text-xs font-bold border transition-all cursor-pointer flex items-center gap-1.5 ${(settings.defaultBillingLayout || 'grid') === 'grid'
+            ? 'bg-[#994d1c] text-white border-[#7c3f1d] shadow-xs'
+            : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100'
+            }`}
         >
           <LayoutGrid size={12} />
           <span>{t("Grid Layout (Recommended)")}</span>
@@ -689,14 +738,13 @@ const Settings = ({ user, setUser, onNavigate, onGoBack }) => {
               const resto = JSON.parse(localStorage.getItem('restaurantSettings') || '{}');
               resto.defaultBillingLayout = '3d_roller';
               localStorage.setItem('restaurantSettings', JSON.stringify(resto));
-            } catch (err) {}
+            } catch (err) { }
             window.dispatchEvent(new CustomEvent('settingsUpdated', { detail: { ...settings, defaultBillingLayout: '3d_roller' } }));
           }}
-          className={`px-3 py-1 rounded-lg text-xs font-bold border transition-all cursor-pointer flex items-center gap-1.5 ${
-            settings.defaultBillingLayout === '3d_roller'
-              ? 'bg-[#994d1c] text-white border-[#7c3f1d] shadow-xs'
-              : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100'
-          }`}
+          className={`px-3 py-1 rounded-lg text-xs font-bold border transition-all cursor-pointer flex items-center gap-1.5 ${settings.defaultBillingLayout === '3d_roller'
+            ? 'bg-[#994d1c] text-white border-[#7c3f1d] shadow-xs'
+            : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100'
+            }`}
         >
           <CircleDot size={12} />
           <span>{t("3D Roller / Wheel")}</span>
@@ -738,11 +786,10 @@ const Settings = ({ user, setUser, onNavigate, onGoBack }) => {
                   key={cat.id}
                   type="button"
                   onClick={() => setActiveSection(cat.id)}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap cursor-pointer shadow-2xs active:scale-95 ${
-                    isActive
-                      ? 'bg-[#ea580c] text-white shadow-xs font-bold border border-[#c2410c]'
-                      : 'bg-white text-slate-700 hover:bg-[#F5E8D8] border border-[#E8DCCB]'
-                  }`}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap cursor-pointer shadow-2xs active:scale-95 ${isActive
+                    ? 'bg-[#ea580c] text-white shadow-xs font-bold border border-[#c2410c]'
+                    : 'bg-white text-slate-700 hover:bg-[#F5E8D8] border border-[#E8DCCB]'
+                    }`}
                 >
                   <Icon size={13} className={isActive ? 'text-white' : 'text-[#ea580c]'} />
                   <span>{cat.label}</span>
@@ -757,237 +804,408 @@ const Settings = ({ user, setUser, onNavigate, onGoBack }) => {
           <div className="flex flex-col gap-4">
             {/* Profile Information */}
             {(activeSection === 'all' || activeSection === 'profile') && (
-            <div className="bg-surface rounded-2xl p-4 border border-border shadow-lg">
-              <div className="flex items-center gap-3 mb-6">
-                <div className="w-10 h-10 bg-primary/10 rounded-xl flex items-center justify-center">
-                  <User className="text-primary" size={20} />
+              <div className="bg-surface rounded-2xl p-4 border border-border shadow-lg">
+                <div className="flex items-center gap-3 mb-6">
+                  <div className="w-10 h-10 bg-primary/10 rounded-xl flex items-center justify-center">
+                    <User className="text-primary" size={20} />
+                  </div>
+                  <h2 className="text-xl font-bold text-text-main">{t("Profile Information")}</h2>
                 </div>
-                <h2 className="text-xl font-bold text-text-main">{t("Profile Information")}</h2>
+
+                <div className="space-y-2">
+                  <label className="text-sm font-semibold text-text-main flex items-center gap-2">
+                    <User size={14} />{t("Username")}
+
+                  </label>
+                  <input
+                    type="text"
+                    value={username}
+                    onChange={(e) => setUsername(e.target.value)}
+                    className="w-full px-4 py-3 border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary bg-background text-text-main" placeholder={t("Enter username")} />
+
+
+                </div>
               </div>
-
-              <div className="space-y-2">
-                <label className="text-sm font-semibold text-text-main flex items-center gap-2">
-                  <User size={14} />{t("Username")}
-
-                </label>
-                <input
-                  type="text"
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
-                  className="w-full px-4 py-3 border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary bg-background text-text-main" placeholder={t("Enter username")} />
-
-
-              </div>
-            </div>
             )}
 
             {/* Printer Configuration */}
             {(activeSection === 'all' || activeSection === 'printer') && (
-            <div className="bg-surface rounded-2xl p-4 border border-border shadow-lg">
-              <div className="flex items-center justify-between mb-4">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 bg-primary/10 rounded-xl flex items-center justify-center">
-                    <Printer className="text-primary" size={20} />
-                  </div>
-                  <div>
-                    <h2 className="text-xl font-bold text-text-main">
-                      {t("Printer & Station Setup")}
-                    </h2>
-                    <p className="text-xs text-text-muted mt-0.5">{t("Configure thermal receipt & counter printers")}</p>
-                  </div>
-                </div>
-              
-              </div>
-
-              <div className="space-y-4">
-                {/* Redirect to full printer config */}
-                <div
-                  onClick={() => { if (onNavigate) onNavigate('printer'); else window.location.href = '/printer'; }}
-                  className="flex items-center justify-between p-4 bg-primary/5 hover:bg-primary/10 border border-primary/20 rounded-xl cursor-pointer group transition-all"
-                >
+              <div className="bg-surface rounded-2xl p-4 border border-border shadow-lg">
+                <div className="flex items-center justify-between mb-4">
                   <div className="flex items-center gap-3">
-                    <div className="w-9 h-9 bg-primary/10 rounded-lg flex items-center justify-center shrink-0">
-                      <Printer size={18} className="text-primary" />
+                    <div className="w-10 h-10 bg-primary/10 rounded-xl flex items-center justify-center">
+                      <Printer className="text-primary" size={20} />
                     </div>
                     <div>
-                      <p className="font-bold text-sm text-text-main">{t("Thermal Printer Configuration")}</p>
-                      <p className="text-xs text-text-muted mt-0.5">{t("Add receipt printers & counter printing stations")}</p>
+                      <h2 className="text-xl font-bold text-text-main">
+                        {t("Printer & Station Setup")}
+                      </h2>
+                      <p className="text-xs text-text-muted mt-0.5">{t("Configure thermal receipt & counter printers")}</p>
                     </div>
                   </div>
-                  <span className="text-primary font-bold text-sm group-hover:translate-x-1 transition-transform">→</span>
+
                 </div>
 
-
-                {/* Bill Text Size */}
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <label className="text-sm font-semibold text-text-main flex items-center gap-2">
-                      <Type size={16} className="text-primary" />
-                      <span>{t("Receipt & Bill Text Size")}</span>
-                    </label>
-                    <button
-                      type="button"
-                      onClick={() => setShowFontSizeModal(true)}
-                      className="text-xs font-bold text-primary hover:underline flex items-center gap-1 cursor-pointer">
-                      <span>{t("Change Size")}</span>
-                    </button>
-                  </div>
+                <div className="space-y-4">
+                  {/* Redirect to full printer config */}
                   <div
-                    onClick={() => setShowFontSizeModal(true)}
-                    className="w-full px-4 py-3 border border-border rounded-xl bg-background text-text-main flex items-center justify-between cursor-pointer hover:border-primary transition">
-                    <div className="flex items-center gap-2">
-                      <span className="font-bold text-sm">
-                        {RECEIPT_FONT_SIZES.find(s => s.id === (settings.receiptFontSize || 'medium'))?.label || t("Medium")}
-                      </span>
-                      <span className="text-xs text-text-muted">
-                        ({t("Normal: ")}{RECEIPT_FONT_SIZES.find(s => s.id === (settings.receiptFontSize || 'medium'))?.normalPx}, {t("Heading: ")}{RECEIPT_FONT_SIZES.find(s => s.id === (settings.receiptFontSize || 'medium'))?.headingPx})
-                      </span>
-                    </div>
-                    <span className="text-xs text-text-muted">▼</span>
-                  </div>
-                </div>
-
-                {/* Bill Font Style */}
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <label className="text-sm font-semibold text-text-main flex items-center gap-2">
-                      <Type size={16} className="text-primary" />
-                      <span>{t("Receipt & Bill Font Style (15 Readable Styles)")}</span>
-                    </label>
-                    <button
-                      type="button"
-                      onClick={() => setShowFontStyleModal(true)}
-                      className="text-xs font-bold text-primary hover:underline flex items-center gap-1 cursor-pointer">
-                      <span>{t("Change Style")}</span>
-                    </button>
-                  </div>
-
-                  {(() => {
-                    const currentFont = findReceiptFont(settings.receiptFontFamily);
-                    return (
-                      <div
-                        onClick={() => setShowFontStyleModal(true)}
-                        className="w-full px-4 py-3 border border-border rounded-xl bg-background text-text-main flex flex-col gap-2 cursor-pointer hover:border-primary transition shadow-sm hover:shadow-md group">
-                        <div className="flex items-center justify-between gap-2">
-                          <div className="flex items-center gap-2.5 min-w-0">
-                            <span
-                              className="font-bold text-sm sm:text-base text-text-main truncate transition-colors group-hover:text-primary"
-                              style={{ fontFamily: currentFont.value, ...(currentFont.previewStyle || {}) }}>
-                              {currentFont.label}
-                            </span>
-                            <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-primary/10 text-primary uppercase tracking-wider shrink-0">
-                              {currentFont.category}
-                            </span>
-                          </div>
-                          <span className="text-xs text-text-muted group-hover:text-primary transition shrink-0">▼</span>
-                        </div>
-                        <div
-                          className="w-full px-3 py-2 rounded-lg bg-surface border border-border/70 text-xs sm:text-sm text-text-main flex items-center justify-between gap-2 overflow-hidden"
-                          style={{ fontFamily: currentFont.value, ...(currentFont.previewStyle || {}) }}>
-                          <span className="truncate">Sample: 1 x Chicken Biryani ₹250.00 • Subtotal ₹470.00</span>
-                          <span className="font-bold shrink-0 text-primary">TOTAL ₹470</span>
-                        </div>
+                    onClick={() => { if (onNavigate) onNavigate('printer'); else window.location.href = '/printer'; }}
+                    className="flex items-center justify-between p-4 bg-primary/5 hover:bg-primary/10 border border-primary/20 rounded-xl cursor-pointer group transition-all"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="w-9 h-9 bg-primary/10 rounded-lg flex items-center justify-center shrink-0">
+                        <Printer size={18} className="text-primary" />
                       </div>
-                    );
-                  })()}
-
-                  <p className="text-[11px] text-text-muted">
-                    {t("Selected font applies cleanly across both 58mm & 80mm slips with high thermal legibility.")}
-                  </p>
-                </div>
-
-                {/* Silent Printing */}
-                <div className="flex items-center justify-between pt-2 border-t border-border mt-4">
-                  <div className="space-y-0.5">
-                    <label className="text-sm font-semibold text-text-main">{t("Silent Printing")}</label>
-                    <p className="text-xs text-text-muted">{t("Print directly without showing the print dialog")}</p>
-                  </div>
-                  <label className="relative inline-flex items-center cursor-pointer select-none shrink-0">
-                    <input
-                      type="checkbox"
-                      className="sr-only"
-                      checked={settings.silentPrinting !== false}
-                      onChange={(e) => handleInputChange('silentPrinting', e.target.checked)}
-                      disabled={!isElectron && !isAndroidApp} />
-                    <div className={`w-11 h-6 rounded-full transition-colors relative flex items-center p-0.5 ${settings.silentPrinting !== false ? 'bg-primary' : 'bg-gray-300'}`}>
-                      <div className={`w-5 h-5 bg-white rounded-full shadow-md transform transition-transform ${settings.silentPrinting !== false ? 'translate-x-5' : 'translate-x-0'}`} />
+                      <div>
+                        <p className="font-bold text-sm text-text-main">{t("Thermal Printer Configuration")}</p>
+                        <p className="text-xs text-text-muted mt-0.5">{t("Add receipt printers & counter printing stations")}</p>
+                      </div>
                     </div>
-                  </label>
+                    <span className="text-primary font-bold text-sm group-hover:translate-x-1 transition-transform">→</span>
+                  </div>
+
+
+                  {/* Bill Text Size */}
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <label className="text-sm font-semibold text-text-main flex items-center gap-2">
+                        <Type size={16} className="text-primary" />
+                        <span>{t("Receipt & Bill Text Size")}</span>
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => setShowFontSizeModal(true)}
+                        className="text-xs font-bold text-primary hover:underline flex items-center gap-1 cursor-pointer">
+                        <span>{t("Change Size")}</span>
+                      </button>
+                    </div>
+                    <div
+                      onClick={() => setShowFontSizeModal(true)}
+                      className="w-full px-4 py-3 border border-border rounded-xl bg-background text-text-main flex items-center justify-between cursor-pointer hover:border-primary transition">
+                      <div className="flex items-center gap-2">
+                        <span className="font-bold text-sm">
+                          {RECEIPT_FONT_SIZES.find(s => s.id === (settings.receiptFontSize || 'medium'))?.label || t("Medium")}
+                        </span>
+                        <span className="text-xs text-text-muted">
+                          ({t("Normal: ")}{RECEIPT_FONT_SIZES.find(s => s.id === (settings.receiptFontSize || 'medium'))?.normalPx}, {t("Heading: ")}{RECEIPT_FONT_SIZES.find(s => s.id === (settings.receiptFontSize || 'medium'))?.headingPx})
+                        </span>
+                      </div>
+                      <span className="text-xs text-text-muted">▼</span>
+                    </div>
+                  </div>
+
+                  {/* Bill Font Style */}
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <label className="text-sm font-semibold text-text-main flex items-center gap-2">
+                        <Type size={16} className="text-primary" />
+                        <span>{t("Receipt & Bill Font Style (15 Readable Styles)")}</span>
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => setShowFontStyleModal(true)}
+                        className="text-xs font-bold text-primary hover:underline flex items-center gap-1 cursor-pointer">
+                        <span>{t("Change Style")}</span>
+                      </button>
+                    </div>
+
+                    {(() => {
+                      const currentFont = findReceiptFont(settings.receiptFontFamily);
+                      return (
+                        <div
+                          onClick={() => setShowFontStyleModal(true)}
+                          className="w-full px-4 py-3 border border-border rounded-xl bg-background text-text-main flex flex-col gap-2 cursor-pointer hover:border-primary transition shadow-sm hover:shadow-md group">
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="flex items-center gap-2.5 min-w-0">
+                              <span
+                                className="font-bold text-sm sm:text-base text-text-main truncate transition-colors group-hover:text-primary"
+                                style={{ fontFamily: currentFont.value, ...(currentFont.previewStyle || {}) }}>
+                                {currentFont.label}
+                              </span>
+                              <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-primary/10 text-primary uppercase tracking-wider shrink-0">
+                                {currentFont.category}
+                              </span>
+                            </div>
+                            <span className="text-xs text-text-muted group-hover:text-primary transition shrink-0">▼</span>
+                          </div>
+                          <div
+                            className="w-full px-3 py-2 rounded-lg bg-surface border border-border/70 text-xs sm:text-sm text-text-main flex items-center justify-between gap-2 overflow-hidden"
+                            style={{ fontFamily: currentFont.value, ...(currentFont.previewStyle || {}) }}>
+                            <span className="truncate">Sample: 1 x Chicken Biryani ₹250.00 • Subtotal ₹470.00</span>
+                            <span className="font-bold shrink-0 text-primary">TOTAL ₹470</span>
+                          </div>
+                        </div>
+                      );
+                    })()}
+
+                    <p className="text-[11px] text-text-muted">
+                      {t("Selected font applies cleanly across both 58mm & 80mm slips with high thermal legibility.")}
+                    </p>
+                  </div>
+
+                  {/* Silent Printing */}
+                  <div className="flex items-center justify-between pt-2 border-t border-border mt-4">
+                    <div className="space-y-0.5">
+                      <label className="text-sm font-semibold text-text-main">{t("Silent Printing")}</label>
+                      <p className="text-xs text-text-muted">{t("Print directly without showing the print dialog")}</p>
+                    </div>
+                    <label className="relative inline-flex items-center cursor-pointer select-none shrink-0">
+                      <input
+                        type="checkbox"
+                        className="sr-only"
+                        checked={settings.silentPrinting !== false}
+                        onChange={(e) => handleInputChange('silentPrinting', e.target.checked)}
+                        disabled={!isElectron && !isAndroidApp} />
+                      <div className={`w-11 h-6 rounded-full transition-colors relative flex items-center p-0.5 ${settings.silentPrinting !== false ? 'bg-primary' : 'bg-gray-300'}`}>
+                        <div className={`w-5 h-5 bg-white rounded-full shadow-md transform transition-transform ${settings.silentPrinting !== false ? 'translate-x-5' : 'translate-x-0'}`} />
+                      </div>
+                    </label>
+                  </div>
+                  {!isElectron && !isAndroidApp && (
+                    <p className="text-xs text-amber-600 bg-amber-50 p-2 rounded border border-amber-200">
+                      {t("Silent printing is only available in the Desktop App and Android Bluetooth mode. In the web version, a print dialog will always appear.")}
+                    </p>
+                  )}
                 </div>
-                {!isElectron && !isAndroidApp && (
-                  <p className="text-xs text-amber-600 bg-amber-50 p-2 rounded border border-amber-200">
-                    {t("Silent printing is only available in the Desktop App and Android Bluetooth mode. In the web version, a print dialog will always appear.")}
-                  </p>
-                )}
               </div>
-            </div>
             )}
 
 
 
-            {/* Fish Depot & Store Information */}
-            {(activeSection === 'all' || activeSection === 'store') && (
-            <div className="bg-surface rounded-2xl p-4 border border-border shadow-lg">
-              <div className="flex items-center gap-3 mb-6">
-                <div className="w-10 h-10 bg-primary/10 rounded-xl flex items-center justify-center">
-                  <Building className="text-primary" size={20} />
+            {/* Customer Details on Bill Receipts (Admin Controls: Retail, Wholesale, Export) */}
+            {(activeSection === 'all' || activeSection === 'printer' || activeSection === 'store') && (
+              <div className="bg-surface rounded-2xl p-4 border border-border shadow-lg">
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="w-10 h-10 bg-primary/10 rounded-xl flex items-center justify-center">
+                    <User className="text-primary" size={20} />
+                  </div>
+                  <div>
+                    <h2 className="text-lg sm:text-xl font-bold text-text-main flex items-center gap-2">
+                      <span>{t("Customer Details on Bill Receipts")}</span>
+                      <span className="text-[10px] bg-primary/10 text-primary px-2 py-0.5 rounded-full font-bold uppercase tracking-wider">
+                        {t("Print Control")}
+                      </span>
+                    </h2>
+                    <p className="text-xs text-text-muted mt-0.5">
+                      {t("Control customer details printed on Retail, Wholesale, and Export bill receipts, with individual sub-field toggles.")}
+                    </p>
+                  </div>
                 </div>
-                <div>
-                  <h2 className="text-xl font-bold text-text-main">{t("Fish Depot & Store Information")}</h2>
-                  <p className="text-xs text-text-muted mt-0.5">{t("Store branding, contact details & legal registration")}</p>
-                </div>
-              </div>
 
-              <div className="flex flex-col gap-5">
-                {/* Restaurant Logo */}
-                <div className="md:col-span-2 space-y-2 pb-2">
-                  <label className="text-sm font-semibold text-text-main flex items-center gap-2">
-                    <ImageIcon size={14} />{t("Printed Bill Logo")}
+                {/* 3 Mode Columns (Mobile: 1-col, Tablet/Desktop: 3-cols) */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  {[
+                    {
+                      key: 'retail',
+                      title: 'Retail Bills',
+                      badge: 'Walk-In / Counter',
+                      color: 'emerald',
+                      border: 'border-emerald-500/30',
+                      bg: 'bg-emerald-500/5',
+                      headerBg: 'bg-emerald-500/10 text-emerald-800 dark:text-emerald-300'
+                    },
+                    {
+                      key: 'wholesale',
+                      title: 'Wholesale Bills',
+                      badge: 'B2B / Boxes',
+                      color: 'amber',
+                      border: 'border-amber-500/30',
+                      bg: 'bg-amber-500/5',
+                      headerBg: 'bg-amber-500/10 text-amber-800 dark:text-amber-300'
+                    },
+                    {
+                      key: 'export',
+                      title: 'Export Bills',
+                      badge: 'Transit / Crates',
+                      color: 'blue',
+                      border: 'border-blue-500/30',
+                      bg: 'bg-blue-500/5',
+                      headerBg: 'bg-blue-500/10 text-blue-800 dark:text-blue-300'
+                    }
+                  ].map((mode) => {
+                    const cfg = settings.receiptCustomerDisplay?.[mode.key] || {
+                      enabled: true,
+                      showName: true,
+                      showPhone: true,
+                      showAddress: mode.key !== 'retail',
+                      showShopName: mode.key !== 'retail'
+                    };
 
-                  </label>
-                  <div className="bg-background p-3.5 rounded-xl border border-border">
-                    {Boolean(settings.logo && settings.logo !== '[logo_stored]' && logoDetails) ? (
-                      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-                        <div className="flex items-center gap-3.5 min-w-0">
-                          {/* Logo Preview Box */}
-                          <div className="p-2 bg-surface border border-border shadow-2xl rounded-xl text-text-main border border-border shadow-xs flex items-center justify-center min-w-[70px] min-h-[60px] max-h-[70px] shrink-0">
-                            <img
-                              src={settings.logo}
-                              alt="Fish Depot Logo"
-                              className="h-14 max-w-[130px] object-contain"
-                              onError={() => {
-                                console.warn("Logo failed to load, resetting");
-                                setSettings(prev => ({ ...prev, logo: '', logoInfo: null }));
-                              }}
-                            />
-                          </div>
-                          {/* Logo File Information (Name, Extension, File Size) */}
-                          <div className="min-w-0 space-y-1">
-                            <p className="text-xs sm:text-sm font-bold text-text-main truncate max-w-[200px] sm:max-w-[280px]" title={logoDetails.name}>
-                              {logoDetails.name}
-                            </p>
-                            <div className="flex flex-wrap items-center gap-1.5">
-                              <span className="inline-flex items-center px-1.5 py-0.5 rounded-md text-[10px] font-mono font-bold bg-primary/10 text-primary border border-primary/20">
-                                {logoDetails.extension}
+                    return (
+                      <div
+                        key={mode.key}
+                        className={`rounded-xl border ${mode.border} ${mode.bg} p-3.5 flex flex-col justify-between transition-all shadow-xs`}>
+
+                        {/* Master Mode Header & Switch */}
+                        <div>
+                          <div className="flex items-center justify-between pb-2 border-b border-border/70">
+                            <div>
+                              <div className="font-extrabold text-sm text-text-main flex items-center gap-1.5">
+                                <span>{t(mode.title)}</span>
+                              </div>
+                              <span className="text-[10px] font-semibold text-text-muted">
+                                {mode.badge}
                               </span>
-                              {logoDetails.sizeStr && (
-                                <span className="inline-flex items-center px-1.5 py-0.5 rounded-md text-[10px] font-mono font-medium bg-surface-hover text-text-muted border border-border">
-                                  {logoDetails.sizeStr}
-                                </span>
-                              )}
-                              {logoDetails.dimensions && (
-                                <span className="hidden sm:inline-flex items-center px-1.5 py-0.5 rounded-md text-[10px] font-mono text-text-muted bg-surface-hover border border-border">
-                                  {logoDetails.dimensions}
-                                </span>
-                              )}
                             </div>
+
+                            {/* Master Switch */}
+                            <label className="relative inline-flex items-center cursor-pointer select-none shrink-0" title={`${mode.title} Master Toggle`}>
+                              <input
+                                type="checkbox"
+                                className="sr-only"
+                                checked={cfg.enabled !== false}
+                                onChange={(e) => handleToggleCustomerReceiptMode(mode.key, e.target.checked)}
+                              />
+                              <div className={`w-11 h-6 rounded-full transition-colors relative flex items-center p-0.5 ${cfg.enabled !== false ? 'bg-emerald-600' : 'bg-gray-300'}`}>
+                                <div className={`w-5 h-5 bg-white rounded-full shadow-md transform transition-transform ${cfg.enabled !== false ? 'translate-x-5' : 'translate-x-0'}`} />
+                              </div>
+                            </label>
+                          </div>
+
+                          {/* Status label */}
+                          <div className="my-2">
+                            {cfg.enabled !== false ? (
+                              <span className="inline-flex items-center gap-1 text-[10.5px] font-bold text-emerald-700 bg-emerald-100/70 dark:bg-emerald-900/30 dark:text-emerald-300 px-2 py-0.5 rounded-md">
+                                ✓ {t("Visible on Receipt")}
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 text-[10.5px] font-bold text-slate-500 bg-slate-200/80 dark:bg-slate-800 dark:text-slate-400 px-2 py-0.5 rounded-md">
+                                ✕ {t("Hidden (Not Printed)")}
+                              </span>
+                            )}
+                          </div>
+
+                          {/* Sub-Toggles */}
+                          <div className={`space-y-1.5 mt-2 pt-2 border-t border-border/50 transition-opacity ${cfg.enabled !== false ? 'opacity-100' : 'opacity-40 pointer-events-none'}`}>
+                            <div className="text-[10px] font-bold uppercase tracking-wider text-text-muted mb-1">
+                              {t("Select Fields to Print:")}
+                            </div>
+
+                            {[
+                              { id: 'showName', label: 'Customer Name' },
+                              { id: 'showPhone', label: 'Mobile Number' },
+                              { id: 'showShopName', label: 'Shop Name' },
+                              { id: 'showAddress', label: 'Address' }
+                            ].map((field) => (
+                              <div
+                                key={field.id}
+                                className="flex items-center justify-between py-1 px-2 rounded-lg bg-surface border border-border/60">
+                                <span className="text-xs font-semibold text-text-main">
+                                  {t(field.label)}
+                                </span>
+                                <label className="relative inline-flex items-center cursor-pointer select-none shrink-0">
+                                  <input
+                                    type="checkbox"
+                                    className="sr-only"
+                                    checked={cfg[field.id] !== false}
+                                    onChange={(e) => handleToggleCustomerReceiptField(mode.key, field.id, e.target.checked)}
+                                    disabled={cfg.enabled === false}
+                                  />
+                                  <div className={`w-8 h-4.5 rounded-full transition-colors relative flex items-center p-0.5 ${cfg[field.id] !== false ? 'bg-primary' : 'bg-gray-300'}`}>
+                                    <div className={`w-3.5 h-3.5 bg-white rounded-full shadow-md transform transition-transform ${cfg[field.id] !== false ? 'translate-x-3.5' : 'translate-x-0'}`} />
+                                  </div>
+                                </label>
+                              </div>
+                            ))}
                           </div>
                         </div>
 
-                        {/* Action Buttons */}
-                        <div className="flex items-center gap-2 w-full sm:w-auto shrink-0">
-                          <label className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-3 py-1.5 bg-surface-hover hover:bg-surface border border-border text-text-main rounded-lg text-xs font-bold cursor-pointer transition-all">
-                            <Upload size={14} />{t("Change")}
+                        <div className="mt-2.5 pt-1.5 border-t border-border/40 text-[9.5px] text-text-muted">
+                          {cfg.enabled !== false
+                            ? t("Only checked fields appear on slips.")
+                            : t("Customer section completely omitted.")}
+                        </div>
+
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Fish Depot & Store Information */}
+            {(activeSection === 'all' || activeSection === 'store') && (
+              <div className="bg-surface rounded-2xl p-4 border border-border shadow-lg">
+                <div className="flex items-center gap-3 mb-6">
+                  <div className="w-10 h-10 bg-primary/10 rounded-xl flex items-center justify-center">
+                    <Building className="text-primary" size={20} />
+                  </div>
+                  <div>
+                    <h2 className="text-xl font-bold text-text-main">{t("Fish Depot & Store Information")}</h2>
+                    <p className="text-xs text-text-muted mt-0.5">{t("Store branding, contact details & legal registration")}</p>
+                  </div>
+                </div>
+
+                <div className="flex flex-col gap-5">
+                  {/* Restaurant Logo */}
+                  <div className="md:col-span-2 space-y-2 pb-2">
+                    <label className="text-sm font-semibold text-text-main flex items-center gap-2">
+                      <ImageIcon size={14} />{t("Printed Bill Logo")}
+
+                    </label>
+                    <div className="bg-background p-3.5 rounded-xl border border-border">
+                      {Boolean(settings.logo && settings.logo !== '[logo_stored]' && logoDetails) ? (
+                        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                          <div className="flex items-center gap-3.5 min-w-0">
+                            {/* Logo Preview Box */}
+                            <div className="p-2 bg-surface border border-border shadow-2xl rounded-xl text-text-main border border-border shadow-xs flex items-center justify-center min-w-[70px] min-h-[60px] max-h-[70px] shrink-0">
+                              <img
+                                src={settings.logo}
+                                alt="Fish Depot Logo"
+                                className="h-14 max-w-[130px] object-contain"
+                                onError={() => {
+                                  console.warn("Logo failed to load, resetting");
+                                  setSettings(prev => ({ ...prev, logo: '', logoInfo: null }));
+                                }}
+                              />
+                            </div>
+                            {/* Logo File Information (Name, Extension, File Size) */}
+                            <div className="min-w-0 space-y-1">
+                              <p className="text-xs sm:text-sm font-bold text-text-main truncate max-w-[200px] sm:max-w-[280px]" title={logoDetails.name}>
+                                {logoDetails.name}
+                              </p>
+                              <div className="flex flex-wrap items-center gap-1.5">
+                                <span className="inline-flex items-center px-1.5 py-0.5 rounded-md text-[10px] font-mono font-bold bg-primary/10 text-primary border border-primary/20">
+                                  {logoDetails.extension}
+                                </span>
+                                {logoDetails.sizeStr && (
+                                  <span className="inline-flex items-center px-1.5 py-0.5 rounded-md text-[10px] font-mono font-medium bg-surface-hover text-text-muted border border-border">
+                                    {logoDetails.sizeStr}
+                                  </span>
+                                )}
+                                {logoDetails.dimensions && (
+                                  <span className="hidden sm:inline-flex items-center px-1.5 py-0.5 rounded-md text-[10px] font-mono text-text-muted bg-surface-hover border border-border">
+                                    {logoDetails.dimensions}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Action Buttons */}
+                          <div className="flex items-center gap-2 w-full sm:w-auto shrink-0">
+                            <label className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-3 py-1.5 bg-surface-hover hover:bg-surface border border-border text-text-main rounded-lg text-xs font-bold cursor-pointer transition-all">
+                              <Upload size={14} />{t("Change")}
+                              <input
+                                type="file"
+                                accept=".png, .jpg, .jpeg, image/png, image/jpeg"
+                                onChange={handleLogoUpload}
+                                className="hidden"
+                              />
+                            </label>
+                            <button
+                              type="button"
+                              onClick={() => setSettings(prev => ({ ...prev, logo: '', logoInfo: null }))}
+                              className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-3 py-1.5 bg-error/10 hover:bg-error/20 text-error rounded-lg text-xs font-bold transition-all cursor-pointer"
+                            >
+                              <Trash2 size={14} />{t("Remove")}
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="flex flex-wrap items-center gap-3">
+                          <label className="flex items-center gap-2 px-4 py-2 bg-primary/10 hover:bg-primary/20 text-primary rounded-lg text-sm font-bold cursor-pointer transition-all shadow-xs">
+                            <Upload size={16} />{t("Upload Logo (PNG/JPG)")}
                             <input
                               type="file"
                               accept=".png, .jpg, .jpeg, image/png, image/jpeg"
@@ -995,275 +1213,255 @@ const Settings = ({ user, setUser, onNavigate, onGoBack }) => {
                               className="hidden"
                             />
                           </label>
-                          <button
-                            type="button"
-                            onClick={() => setSettings(prev => ({ ...prev, logo: '', logoInfo: null }))}
-                            className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-3 py-1.5 bg-error/10 hover:bg-error/20 text-error rounded-lg text-xs font-bold transition-all cursor-pointer"
-                          >
-                            <Trash2 size={14} />{t("Remove")}
-                          </button>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="flex flex-wrap items-center gap-3">
-                        <label className="flex items-center gap-2 px-4 py-2 bg-primary/10 hover:bg-primary/20 text-primary rounded-lg text-sm font-bold cursor-pointer transition-all shadow-xs">
-                          <Upload size={16} />{t("Upload Logo (PNG/JPG)")}
-                          <input
-                            type="file"
-                            accept=".png, .jpg, .jpeg, image/png, image/jpeg"
-                            onChange={handleLogoUpload}
-                            className="hidden"
-                          />
-                        </label>
-                        <div className="text-xs text-text-muted flex items-center gap-1.5">
-                          <span>{t("Displayed at top of printed bills")}</span>
-                          <span className="px-1.5 py-0.5 rounded bg-surface-hover border border-border text-[11px] font-mono font-bold text-text-main">
-                            max 2MB • PNG/JPG
-                          </span>
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Show Logo On/Off Toggle */}
-                    {Boolean(settings.logo && settings.logo !== '[logo_stored]') && (
-                      <div className="flex items-center justify-between mt-3 pt-3 border-t border-border">
-                        <div className="space-y-0.5">
-                          <label className="text-sm font-semibold text-text-main flex items-center gap-2">
-                            <ImageIcon size={14} />{t("Show Logo on Bills")}
-                          </label>
-                          <p className="text-xs text-text-muted">{t("Toggle to show or hide the logo on printed bills & WhatsApp e-bill")}</p>
-                        </div>
-                        <label className="relative inline-flex items-center cursor-pointer select-none shrink-0">
-                          <input
-                            type="checkbox"
-                            className="sr-only"
-                            checked={settings.showLogo !== false}
-                            onChange={(e) => handleInputChange('showLogo', e.target.checked)}
-                          />
-                          <div className={`w-11 h-6 rounded-full transition-colors relative flex items-center p-0.5 ${settings.showLogo !== false ? 'bg-primary' : 'bg-gray-300'}`}>
-                            <div className={`w-5 h-5 bg-white rounded-full shadow-md transform transition-transform ${settings.showLogo !== false ? 'translate-x-5' : 'translate-x-0'}`} />
+                          <div className="text-xs text-text-muted flex items-center gap-1.5">
+                            <span>{t("Displayed at top of printed bills")}</span>
+                            <span className="px-1.5 py-0.5 rounded bg-surface-hover border border-border text-[11px] font-mono font-bold text-text-main">
+                              max 2MB • PNG/JPG
+                            </span>
                           </div>
-                        </label>
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                {/* Business / Store Name */}
-                <div className="space-y-2">
-                  <label className="text-sm font-semibold text-text-main flex items-center gap-2">
-                    <Building size={14} />{t("Business / Store Name")}
-
-                  </label>
-                  <input
-                    type="text"
-                    value={settings.restaurantName}
-                    onChange={(e) => handleInputChange('restaurantName', e.target.value)}
-                    className="w-full px-4 py-3 border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary bg-background text-text-main" placeholder={t("YNR FISHES")} />
-
-
-                </div>
-
-                {/* Store Category Type */}
-                <div className="space-y-2">
-                  <label className="text-sm font-semibold text-text-main flex items-center gap-2">
-                    <FileText size={14} />{t("Store Category Type")}
-
-                  </label>
-                  <input
-                    type="text"
-                    value={settings.restaurantType}
-                    onChange={(e) => handleInputChange('restaurantType', e.target.value)}
-                    className="w-full px-4 py-2 border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary bg-background text-text-main" placeholder={t("e.g. Fresh Sea Fish & Marine Products")} />
-
-
-                </div>
-
-                {/* Address */}
-                <div className="space-y-2 md:col-span-2">
-                  <label className="text-sm font-semibold text-text-main flex items-center gap-2">
-                    <MapPin size={14} />{t("Address")}
-
-                  </label>
-                  <textarea
-                    value={settings.address}
-                    onChange={(e) => handleInputChange('address', e.target.value)}
-                    rows={2}
-                    className="w-full px-4 py-2 border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary bg-background text-text-main resize-none" placeholder={t("Enter full address")} />
-
-
-                </div>
-
-                {/* Phone */}
-                <div className="space-y-2">
-                  <label className="text-sm font-semibold text-text-main flex items-center gap-2">
-                    <Phone size={14} />{t("Phone Number")}
-                  </label>
-                  <input
-                    type="tel"
-                    value={settings.phone}
-                    onChange={(e) => handleInputChange('phone', e.target.value)}
-                    onKeyPress={(e) => {
-                      if (!/[0-9]/.test(e.key) && !['Backspace', 'Delete', 'Tab', 'Enter'].includes(e.key)) {
-                        e.preventDefault();
-                      }
-                    }}
-                    className={`w-full px-4 py-2 border ${errors.phone ? 'border-red-500 ring-1 ring-red-500 focus:ring-red-500' : 'border-border focus:ring-primary/20 focus:border-primary'} rounded-xl focus:outline-none focus:ring-2 bg-background text-text-main`} placeholder={t("Enter phone number")} />
-                  {errors.phone && <p className="text-xs text-red-500 mt-1 font-semibold">{errors.phone}</p>}
-                </div>
-
-                {/* WhatsApp Report Number */}
-                <div className="space-y-2">
-                  <label className="text-sm font-semibold text-text-main flex items-center gap-2">
-                    <Phone size={14} className="text-emerald-600" />{t("WhatsApp Report Number (Optional)")}
-                  </label>
-                  <input
-                    type="tel"
-                    value={settings.whatsappNumber || ''}
-                    onChange={(e) => handleInputChange('whatsappNumber', e.target.value)}
-                    onKeyPress={(e) => {
-                      if (!/[0-9]/.test(e.key) && !['Backspace', 'Delete', 'Tab', 'Enter'].includes(e.key)) {
-                        e.preventDefault();
-                      }
-                    }}
-                    className={`w-full px-4 py-2 border ${errors.whatsappNumber ? 'border-red-500 ring-1 ring-red-500 focus:ring-red-500' : 'border-border focus:ring-primary/20 focus:border-primary'} rounded-xl focus:outline-none focus:ring-2 bg-background text-text-main`}
-                    placeholder={t("e.g. 9876543210 (Defaults to Phone Number)")} />
-                  {errors.whatsappNumber && <p className="text-xs text-red-500 mt-1 font-semibold">{errors.whatsappNumber}</p>}
-                </div>
-
-                {/* Email */}
-                <div className="space-y-2">
-                  <label className="text-sm font-semibold text-text-main flex items-center gap-2">
-                    <Mail size={14} />{t("Email")}
-
-                  </label>
-                  <input
-                    type="email"
-                    value={settings.email}
-                    onChange={(e) => handleInputChange('email', e.target.value)}
-                    onKeyPress={(e) => {
-                      if (!/[a-zA-Z0-9@._-]/.test(e.key) && !['Backspace', 'Delete', 'Tab', 'Enter'].includes(e.key)) {
-                        e.preventDefault();
-                      }
-                    }}
-                    className="w-full px-4 py-3 border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary bg-background text-text-main" placeholder={t("Enter email address")} />
-
-
-                </div>
-
-                {/* GSTIN */}
-                <div className="space-y-2">
-                  <label className="text-sm font-semibold text-text-main flex items-center gap-2">
-                    <FileText size={14} />{t("GSTIN")}
-
-                  </label>
-                  <input
-                    type="text"
-                    value={settings.gstin}
-                    onChange={(e) => handleInputChange('gstin', e.target.value.toUpperCase())}
-                    className={`w-full px-4 py-3 border ${errors.gstin ? 'border-red-500 ring-1 ring-red-500 focus:ring-red-500' : 'border-border focus:ring-primary/20 focus:border-primary'} rounded-xl focus:outline-none focus:ring-2 bg-background text-text-main`} placeholder={t("Enter GSTIN")} />
-                  {errors.gstin && <p className="text-xs text-red-500 mt-1 font-semibold">{errors.gstin}</p>}
-                </div>
-
-                {/* Left Column Settings (FSSAI, UPI, WhatsApp, Footer) */}
-                {/* Left Column Settings */}
-                <div className="flex flex-col gap-6">
-                  {/* FSSAI */}
-                  <div className="space-y-2">
-                    <label className="text-sm font-semibold text-text-main flex items-center gap-2">
-                      <FileText size={14} />{t("FSSAI Number")}
-                    </label>
-                    <input
-                      type="text"
-                      value={settings.fssai || ''}
-                      onChange={(e) => handleInputChange('fssai', e.target.value.replace(/\D/g, '').slice(0, 14))}
-                      className={`w-full px-4 py-3 border ${errors.fssai ? 'border-red-500 ring-1 ring-red-500 focus:ring-red-500' : 'border-border focus:ring-primary/20 focus:border-primary'} rounded-xl focus:outline-none focus:ring-2 bg-background text-text-main`} placeholder={t("Enter FSSAI License Number")} />
-                    {errors.fssai && <p className="text-xs text-red-500 mt-1 font-semibold">{errors.fssai}</p>}
-                  </div>
-
-                  {/* UPI ID */}
-                  <div className="space-y-2">
-                    <label className="text-sm font-semibold text-text-main flex items-center gap-2">
-                      <FileText size={14} />{t("UPI Payment VPA / ID")}
-                    </label>
-                    <input
-                      type="text"
-                      value={settings.upiId || ''}
-                      onChange={(e) => handleInputChange('upiId', e.target.value)}
-                      className={`w-full px-4 py-3 border ${errors.upiId ? 'border-red-500 ring-1 ring-red-500 focus:ring-red-500' : 'border-blue-200 focus:ring-blue-500/20 focus:border-blue-500'} rounded-xl focus:outline-none focus:ring-2 bg-blue-50 text-blue-900 font-mono`} placeholder={t("e.g. restaurant@upi")} />
-                    {errors.upiId && <p className="text-xs text-red-500 mt-1 font-semibold">{errors.upiId}</p>}
-                  </div>
-                  {/* WhatsApp Automated Bot Configuration - Trigger */}
-                  <div
-                    className="p-4 bg-[#FDFBF7] hover:bg-[#F5E8D8] transition-all rounded-2xl border-2 border-emerald-400/80 shadow-sm cursor-pointer group"
-                    onClick={() => setShowWhatsappSettingsModal(true)}
-                  >
-                    <div className="flex items-center justify-between gap-3">
-                      <div className="flex items-center gap-2.5 min-w-0">
-                        <div className="w-10 h-10 rounded-xl bg-emerald-100 border border-emerald-300 flex items-center justify-center text-emerald-600 shrink-0 shadow-xs group-hover:scale-105 transition-transform">
-                          <svg className="w-5 h-5 fill-current" viewBox="0 0 24 24">
-                            <path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946.003-6.556 5.338-11.891 11.893-11.891 3.181.001 6.167 1.24 8.413 3.488 2.245 2.248 3.481 5.236 3.48 8.414-.003 6.557-5.338 11.892-11.893 11.892-1.99-.001-3.951-.5-5.688-1.448l-6.305 1.654zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884-.001 2.225.651 3.891 1.746 5.634l-.999 3.648 3.742-.981zm11.387-5.464c-.074-.124-.272-.198-.57-.347-.297-.149-1.758-.868-2.031-.967-.272-.099-.47-.149-.669.149-.198.297-.768.967-.941 1.165-.173.198-.347.223-.644.074-.297-.149-1.255-.462-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.297-.347.446-.521.151-.172.2-.296.3-.495.099-.198.05-.372-.025-.521-.075-.148-.669-1.611-.916-2.206-.242-.579-.487-.501-.669-.51l-.57-.01c-.198 0-.52.074-.792.372s-1.04 1.016-1.04 2.479 1.065 2.876 1.213 3.074c.149.198 2.095 3.2 5.076 4.487.709.306 1.263.489 1.694.626.712.226 1.36.194 1.872.118.571-.085 1.758-.719 2.006-1.413.248-.695.248-1.29.173-1.414z" />
-                          </svg>
                         </div>
-                        <span className="text-sm font-extrabold text-slate-900">
-                          {t("WhatsApp Automations")}
-                        </span>
-                      </div>
-                      <span className="text-xs font-black text-white bg-emerald-600 hover:bg-emerald-700 px-3.5 py-1.5 rounded-lg shrink-0 transition-all shadow-sm flex items-center gap-1">
-                        <span>{t("Configure")}</span>
-                        <span className="text-sm">→</span>
-                      </span>
-                    </div>
-                    <p className="text-xs text-slate-700 font-semibold mt-2.5 text-left">
-                      {t("DayBook, Reminders, Feedback & Win-Back campaigns")}
-                    </p>
-                    <div className="flex flex-wrap gap-1.5 mt-2.5">
-                      {settings.autoSendDaybook && <span className="text-[10px] bg-emerald-100 text-emerald-900 border border-emerald-300 px-2.5 py-0.5 rounded-full font-bold">DayBook ✓</span>}
-                      {settings.feedback_whatsapp_enabled && <span className="text-[10px] bg-emerald-100 text-emerald-900 border border-emerald-300 px-2.5 py-0.5 rounded-full font-bold">Feedback ✓</span>}
-                      {settings.winback_enabled && <span className="text-[10px] bg-emerald-100 text-emerald-900 border border-emerald-300 px-2.5 py-0.5 rounded-full font-bold">Win-Back ✓</span>}
-                      {!settings.autoSendDaybook && !settings.feedback_whatsapp_enabled && !settings.winback_enabled && (
-                        <span className="text-[11px] font-bold text-slate-600 bg-slate-100 px-2.5 py-0.5 rounded-full border border-slate-300">
-                          No automations enabled
-                        </span>
+                      )}
+
+                      {/* Show Logo On/Off Toggle */}
+                      {Boolean(settings.logo && settings.logo !== '[logo_stored]') && (
+                        <div className="flex items-center justify-between mt-3 pt-3 border-t border-border">
+                          <div className="space-y-0.5">
+                            <label className="text-sm font-semibold text-text-main flex items-center gap-2">
+                              <ImageIcon size={14} />{t("Show Logo on Bills")}
+                            </label>
+                            <p className="text-xs text-text-muted">{t("Toggle to show or hide the logo on printed bills & WhatsApp e-bill")}</p>
+                          </div>
+                          <label className="relative inline-flex items-center cursor-pointer select-none shrink-0">
+                            <input
+                              type="checkbox"
+                              className="sr-only"
+                              checked={settings.showLogo !== false}
+                              onChange={(e) => handleInputChange('showLogo', e.target.checked)}
+                            />
+                            <div className={`w-11 h-6 rounded-full transition-colors relative flex items-center p-0.5 ${settings.showLogo !== false ? 'bg-primary' : 'bg-gray-300'}`}>
+                              <div className={`w-5 h-5 bg-white rounded-full shadow-md transform transition-transform ${settings.showLogo !== false ? 'translate-x-5' : 'translate-x-0'}`} />
+                            </div>
+                          </label>
+                        </div>
                       )}
                     </div>
                   </div>
 
-                  {/* Footer Message */}
-                  <div className="space-y-1.5 p-3 bg-[#FDFBF7] rounded-xl border border-slate-200 shadow-md">
-                    <label className="text-xs font-bold text-slate-800 flex items-center gap-2">
-                      <FileText size={14} className="text-sky-600" />{t("Footer Message")}
+                  {/* Business / Store Name */}
+                  <div className="space-y-2">
+                    <label className="text-sm font-semibold text-text-main flex items-center gap-2">
+                      <Building size={14} />{t("Business / Store Name")}
+
                     </label>
                     <input
                       type="text"
-                      value={settings.footerMessage}
-                      onChange={(e) => handleInputChange('footerMessage', e.target.value)}
-                      className="w-full px-3 py-2 border border-slate-300 rounded-xl focus:outline-none focus:border-sky-400 bg-[#F7EFE2] text-slate-800 text-sm" placeholder={t("Enter footer message for receipts")} />
-                    <p className="text-[10px] text-slate-400">{t("Shown at the bottom of every printed receipt.")}</p>
+                      value={settings.restaurantName}
+                      onChange={(e) => handleInputChange('restaurantName', e.target.value)}
+                      className="w-full px-4 py-3 border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary bg-background text-text-main" placeholder={t("YNR FISHES")} />
+
+
                   </div>
 
-                  {/* Default Catalog Layout (Grid vs 3D Roller) */}
-                  {renderCatalogLayoutToggle()}
+                  {/* Store Category Type */}
+                  <div className="space-y-2">
+                    <label className="text-sm font-semibold text-text-main flex items-center gap-2">
+                      <FileText size={14} />{t("Store Category Type")}
 
+                    </label>
+                    <input
+                      type="text"
+                      value={settings.restaurantType}
+                      onChange={(e) => handleInputChange('restaurantType', e.target.value)}
+                      className="w-full px-4 py-2 border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary bg-background text-text-main" placeholder={t("e.g. Fresh Sea Fish & Marine Products")} />
+
+
+                  </div>
+
+                  {/* Address */}
+                  <div className="space-y-2 md:col-span-2">
+                    <label className="text-sm font-semibold text-text-main flex items-center gap-2">
+                      <MapPin size={14} />{t("Address")}
+
+                    </label>
+                    <textarea
+                      value={settings.address}
+                      onChange={(e) => handleInputChange('address', e.target.value)}
+                      rows={2}
+                      className="w-full px-4 py-2 border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary bg-background text-text-main resize-none" placeholder={t("Enter full address")} />
+
+
+                  </div>
+
+                  {/* Phone */}
+                  <div className="space-y-2">
+                    <label className="text-sm font-semibold text-text-main flex items-center gap-2">
+                      <Phone size={14} />{t("Phone Number")}
+                    </label>
+                    <input
+                      type="tel"
+                      value={settings.phone}
+                      onChange={(e) => handleInputChange('phone', e.target.value)}
+                      onKeyPress={(e) => {
+                        if (!/[0-9]/.test(e.key) && !['Backspace', 'Delete', 'Tab', 'Enter'].includes(e.key)) {
+                          e.preventDefault();
+                        }
+                      }}
+                      className={`w-full px-4 py-2 border ${errors.phone ? 'border-red-500 ring-1 ring-red-500 focus:ring-red-500' : 'border-border focus:ring-primary/20 focus:border-primary'} rounded-xl focus:outline-none focus:ring-2 bg-background text-text-main`} placeholder={t("Enter phone number")} />
+                    {errors.phone && <p className="text-xs text-red-500 mt-1 font-semibold">{errors.phone}</p>}
+                  </div>
+
+                  {/* WhatsApp Report Number */}
+                  <div className="space-y-2">
+                    <label className="text-sm font-semibold text-text-main flex items-center gap-2">
+                      <Phone size={14} className="text-emerald-600" />{t("WhatsApp Report Number (Optional)")}
+                    </label>
+                    <input
+                      type="tel"
+                      value={settings.whatsappNumber || ''}
+                      onChange={(e) => handleInputChange('whatsappNumber', e.target.value)}
+                      onKeyPress={(e) => {
+                        if (!/[0-9]/.test(e.key) && !['Backspace', 'Delete', 'Tab', 'Enter'].includes(e.key)) {
+                          e.preventDefault();
+                        }
+                      }}
+                      className={`w-full px-4 py-2 border ${errors.whatsappNumber ? 'border-red-500 ring-1 ring-red-500 focus:ring-red-500' : 'border-border focus:ring-primary/20 focus:border-primary'} rounded-xl focus:outline-none focus:ring-2 bg-background text-text-main`}
+                      placeholder={t("e.g. 9876543210 (Defaults to Phone Number)")} />
+                    {errors.whatsappNumber && <p className="text-xs text-red-500 mt-1 font-semibold">{errors.whatsappNumber}</p>}
+                  </div>
+
+                  {/* Email */}
+                  <div className="space-y-2">
+                    <label className="text-sm font-semibold text-text-main flex items-center gap-2">
+                      <Mail size={14} />{t("Email")}
+
+                    </label>
+                    <input
+                      type="email"
+                      value={settings.email}
+                      onChange={(e) => handleInputChange('email', e.target.value)}
+                      onKeyPress={(e) => {
+                        if (!/[a-zA-Z0-9@._-]/.test(e.key) && !['Backspace', 'Delete', 'Tab', 'Enter'].includes(e.key)) {
+                          e.preventDefault();
+                        }
+                      }}
+                      className="w-full px-4 py-3 border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary bg-background text-text-main" placeholder={t("Enter email address")} />
+
+
+                  </div>
+
+                  {/* GSTIN */}
+                  <div className="space-y-2">
+                    <label className="text-sm font-semibold text-text-main flex items-center gap-2">
+                      <FileText size={14} />{t("GSTIN")}
+
+                    </label>
+                    <input
+                      type="text"
+                      value={settings.gstin}
+                      onChange={(e) => handleInputChange('gstin', e.target.value.toUpperCase())}
+                      className={`w-full px-4 py-3 border ${errors.gstin ? 'border-red-500 ring-1 ring-red-500 focus:ring-red-500' : 'border-border focus:ring-primary/20 focus:border-primary'} rounded-xl focus:outline-none focus:ring-2 bg-background text-text-main`} placeholder={t("Enter GSTIN")} />
+                    {errors.gstin && <p className="text-xs text-red-500 mt-1 font-semibold">{errors.gstin}</p>}
+                  </div>
+
+                  {/* Left Column Settings (FSSAI, UPI, WhatsApp, Footer) */}
+                  {/* Left Column Settings */}
+                  <div className="flex flex-col gap-6">
+                    {/* FSSAI */}
+                    <div className="space-y-2">
+                      <label className="text-sm font-semibold text-text-main flex items-center gap-2">
+                        <FileText size={14} />{t("FSSAI Number")}
+                      </label>
+                      <input
+                        type="text"
+                        value={settings.fssai || ''}
+                        onChange={(e) => handleInputChange('fssai', e.target.value.replace(/\D/g, '').slice(0, 14))}
+                        className={`w-full px-4 py-3 border ${errors.fssai ? 'border-red-500 ring-1 ring-red-500 focus:ring-red-500' : 'border-border focus:ring-primary/20 focus:border-primary'} rounded-xl focus:outline-none focus:ring-2 bg-background text-text-main`} placeholder={t("Enter FSSAI License Number")} />
+                      {errors.fssai && <p className="text-xs text-red-500 mt-1 font-semibold">{errors.fssai}</p>}
+                    </div>
+
+                    {/* UPI ID */}
+                    <div className="space-y-2">
+                      <label className="text-sm font-semibold text-text-main flex items-center gap-2">
+                        <FileText size={14} />{t("UPI Payment VPA / ID")}
+                      </label>
+                      <input
+                        type="text"
+                        value={settings.upiId || ''}
+                        onChange={(e) => handleInputChange('upiId', e.target.value)}
+                        className={`w-full px-4 py-3 border ${errors.upiId ? 'border-red-500 ring-1 ring-red-500 focus:ring-red-500' : 'border-blue-200 focus:ring-blue-500/20 focus:border-blue-500'} rounded-xl focus:outline-none focus:ring-2 bg-blue-50 text-blue-900 font-mono`} placeholder={t("e.g. restaurant@upi")} />
+                      {errors.upiId && <p className="text-xs text-red-500 mt-1 font-semibold">{errors.upiId}</p>}
+                    </div>
+                    {/* WhatsApp Automated Bot Configuration - Trigger */}
+                    <div
+                      className="p-4 bg-[#FDFBF7] hover:bg-[#F5E8D8] transition-all rounded-2xl border-2 border-emerald-400/80 shadow-sm cursor-pointer group"
+                      onClick={() => setShowWhatsappSettingsModal(true)}
+                    >
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <div className="w-10 h-10 rounded-xl bg-emerald-100 border border-emerald-300 flex items-center justify-center text-emerald-600 shrink-0 shadow-xs group-hover:scale-105 transition-transform">
+                            <svg className="w-5 h-5 fill-current" viewBox="0 0 24 24">
+                              <path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946.003-6.556 5.338-11.891 11.893-11.891 3.181.001 6.167 1.24 8.413 3.488 2.245 2.248 3.481 5.236 3.48 8.414-.003 6.557-5.338 11.892-11.893 11.892-1.99-.001-3.951-.5-5.688-1.448l-6.305 1.654zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884-.001 2.225.651 3.891 1.746 5.634l-.999 3.648 3.742-.981zm11.387-5.464c-.074-.124-.272-.198-.57-.347-.297-.149-1.758-.868-2.031-.967-.272-.099-.47-.149-.669.149-.198.297-.768.967-.941 1.165-.173.198-.347.223-.644.074-.297-.149-1.255-.462-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.297-.347.446-.521.151-.172.2-.296.3-.495.099-.198.05-.372-.025-.521-.075-.148-.669-1.611-.916-2.206-.242-.579-.487-.501-.669-.51l-.57-.01c-.198 0-.52.074-.792.372s-1.04 1.016-1.04 2.479 1.065 2.876 1.213 3.074c.149.198 2.095 3.2 5.076 4.487.709.306 1.263.489 1.694.626.712.226 1.36.194 1.872.118.571-.085 1.758-.719 2.006-1.413.248-.695.248-1.29.173-1.414z" />
+                            </svg>
+                          </div>
+                          <span className="text-sm font-extrabold text-slate-900">
+                            {t("WhatsApp Automations")}
+                          </span>
+                        </div>
+                        <span className="text-xs font-black text-white bg-emerald-600 hover:bg-emerald-700 px-3.5 py-1.5 rounded-lg shrink-0 transition-all shadow-sm flex items-center gap-1">
+                          <span>{t("Configure")}</span>
+                          <span className="text-sm">→</span>
+                        </span>
+                      </div>
+                      <p className="text-xs text-slate-700 font-semibold mt-2.5 text-left">
+                        {t("DayBook, Reminders, Feedback & Win-Back campaigns")}
+                      </p>
+                      <div className="flex flex-wrap gap-1.5 mt-2.5">
+                        {settings.autoSendDaybook && <span className="text-[10px] bg-emerald-100 text-emerald-900 border border-emerald-300 px-2.5 py-0.5 rounded-full font-bold">DayBook ✓</span>}
+                        {settings.feedback_whatsapp_enabled && <span className="text-[10px] bg-emerald-100 text-emerald-900 border border-emerald-300 px-2.5 py-0.5 rounded-full font-bold">Feedback ✓</span>}
+                        {settings.winback_enabled && <span className="text-[10px] bg-emerald-100 text-emerald-900 border border-emerald-300 px-2.5 py-0.5 rounded-full font-bold">Win-Back ✓</span>}
+                        {!settings.autoSendDaybook && !settings.feedback_whatsapp_enabled && !settings.winback_enabled && (
+                          <span className="text-[11px] font-bold text-slate-600 bg-slate-100 px-2.5 py-0.5 rounded-full border border-slate-300">
+                            No automations enabled
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Footer Message */}
+                    <div className="space-y-1.5 p-3 bg-[#FDFBF7] rounded-xl border border-slate-200 shadow-md">
+                      <label className="text-xs font-bold text-slate-800 flex items-center gap-2">
+                        <FileText size={14} className="text-sky-600" />{t("Footer Message")}
+                      </label>
+                      <input
+                        type="text"
+                        value={settings.footerMessage}
+                        onChange={(e) => handleInputChange('footerMessage', e.target.value)}
+                        className="w-full px-3 py-2 border border-slate-300 rounded-xl focus:outline-none focus:border-sky-400 bg-[#F7EFE2] text-slate-800 text-sm" placeholder={t("Enter footer message for receipts")} />
+                      <p className="text-[10px] text-slate-400">{t("Shown at the bottom of every printed receipt.")}</p>
+                    </div>
+
+                    {/* Default Catalog Layout (Grid vs 3D Roller) */}
+                    {renderCatalogLayoutToggle()}
+
+                  </div>
                 </div>
               </div>
-            </div>
             )}
 
             {/* Taxes & Security Configuration */}
             {(activeSection === 'all' || activeSection === 'taxes') && (
-            <div className="bg-surface rounded-2xl p-4 border border-border shadow-lg">
-              <div className="flex items-center gap-3 mb-6">
-                <div className="w-10 h-10 bg-primary/10 rounded-xl flex items-center justify-center">
-                  <Lock className="text-primary" size={20} />
+              <div className="bg-surface rounded-2xl p-4 border border-border shadow-lg">
+                <div className="flex items-center gap-3 mb-6">
+                  <div className="w-10 h-10 bg-primary/10 rounded-xl flex items-center justify-center">
+                    <Lock className="text-primary" size={20} />
+                  </div>
+                  <div>
+                    <h2 className="text-xl font-bold text-text-main">{t("Taxes & Security Configuration")}</h2>
+                    <p className="text-xs text-text-muted mt-0.5">{t("GST rates, Dynamic QR payment, Owner PIN & live notifications")}</p>
+                  </div>
                 </div>
-                <div>
-                  <h2 className="text-xl font-bold text-text-main">{t("Taxes & Security Configuration")}</h2>
-                  <p className="text-xs text-text-muted mt-0.5">{t("GST rates, Dynamic QR payment, Owner PIN & live notifications")}</p>
-                </div>
-              </div>
 
-              <div className="flex flex-col gap-6">
+                <div className="flex flex-col gap-6">
                   {/* Individual Tax Configuration */}
                   <div className="space-y-3 p-4 bg-[#FDFBF7] rounded-xl border border-slate-200 shadow-md">
                     <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
@@ -1362,11 +1560,10 @@ const Settings = ({ user, setUser, onNavigate, onGoBack }) => {
                             <UtensilsCrossed size={16} className="text-amber-800" />
                             {t("Fish Cutting & Cleaning Charges")}
                           </label>
-                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                            settings.enableCuttingCharges
-                              ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
-                              : 'bg-slate-200 text-slate-600'
-                          }`}>
+                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${settings.enableCuttingCharges
+                            ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                            : 'bg-slate-200 text-slate-600'
+                            }`}>
                             {settings.enableCuttingCharges ? t("Active") : t("Disabled")}
                           </span>
                         </div>
@@ -1508,27 +1705,27 @@ const Settings = ({ user, setUser, onNavigate, onGoBack }) => {
                     </div>
                   </div>
 
-                {/* Global Notifications Security */}
-                <div className="space-y-4 md:col-span-2 mt-4 pt-4 border-t border-slate-200">
-                  <div className="flex items-center justify-between">
-                    <div className="flex flex-col">
-                      <label className="text-sm font-semibold text-slate-800 flex items-center gap-2">
-                        <MessageSquare size={14} className="text-sky-400" />{t("Global Live Notifications")}
+                  {/* Global Notifications Security */}
+                  <div className="space-y-4 md:col-span-2 mt-4 pt-4 border-t border-slate-200">
+                    <div className="flex items-center justify-between">
+                      <div className="flex flex-col">
+                        <label className="text-sm font-semibold text-slate-800 flex items-center gap-2">
+                          <MessageSquare size={14} className="text-sky-400" />{t("Global Live Notifications")}
+                        </label>
+                        <span className="text-xs text-slate-400 mt-1 max-w-xl">{t("Turn off to completely disable live notifications (Saved, Updated, Printed) for all users/devices of this store. Local device toasts will still work. Turning this off significantly improves performance.")}</span>
+                      </div>
+                      <label className="relative inline-flex items-center cursor-pointer">
+                        <input
+                          type="checkbox"
+                          className="sr-only peer"
+                          checked={settings.enableGlobalNotifications !== false}
+                          onChange={(e) => handleInputChange('enableGlobalNotifications', e.target.checked)} />
+                        <div className="w-11 h-6 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-sky-500"></div>
                       </label>
-                      <span className="text-xs text-slate-400 mt-1 max-w-xl">{t("Turn off to completely disable live notifications (Saved, Updated, Printed) for all users/devices of this store. Local device toasts will still work. Turning this off significantly improves performance.")}</span>
                     </div>
-                    <label className="relative inline-flex items-center cursor-pointer">
-                      <input
-                        type="checkbox"
-                        className="sr-only peer"
-                        checked={settings.enableGlobalNotifications !== false}
-                        onChange={(e) => handleInputChange('enableGlobalNotifications', e.target.checked)} />
-                      <div className="w-11 h-6 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-sky-500"></div>
-                    </label>
                   </div>
                 </div>
               </div>
-            </div>
             )}
           </div>
 
@@ -1550,7 +1747,7 @@ const Settings = ({ user, setUser, onNavigate, onGoBack }) => {
               <div className="bg-[#e5ddd5] rounded-xl p-3 max-w-xs mx-auto shadow-sm min-h-[300px] flex flex-col gap-2">
                 <div className="bg-[#128C7E] text-white rounded-t-xl -mx-3 -mt-3 px-4 py-3 flex items-center gap-3 mb-2">
                   <div className="w-9 h-9 rounded-full bg-[#25D366] flex items-center justify-center shrink-0">
-                    <svg className="w-5 h-5 fill-white" viewBox="0 0 24 24"><path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946.003-6.556 5.338-11.891 11.893-11.891 3.181.001 6.167 1.24 8.413 3.488 2.245 2.248 3.481 5.236 3.48 8.414-.003 6.557-5.338 11.892-11.893 11.892-1.99-.001-3.951-.5-5.688-1.448l-6.305 1.654zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884-.001 2.225.651 3.891 1.746 5.634l-.999 3.648 3.742-.981zm11.387-5.464c-.074-.124-.272-.198-.57-.347-.297-.149-1.758-.868-2.031-.967-.272-.099-.47-.149-.669.149-.198.297-.768.967-.941 1.165-.173.198-.347.223-.644.074-.297-.149-1.255-.462-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.297-.347.446-.521.151-.172.2-.296.3-.495.099-.198.05-.372-.025-.521-.075-.148-.669-1.611-.916-2.206-.242-.579-.487-.501-.669-.51l-.57-.01c-.198 0-.52.074-.792.372s-1.04 1.016-1.04 2.479 1.065 2.876 1.213 3.074c.149.198 2.095 3.2 5.076 4.487.709.306 1.263.489 1.694.626.712.226 1.36.194 1.872.118.571-.085 1.758-.719 2.006-1.413.248-.695.248-1.29.173-1.414z"/></svg>
+                    <svg className="w-5 h-5 fill-white" viewBox="0 0 24 24"><path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946.003-6.556 5.338-11.891 11.893-11.891 3.181.001 6.167 1.24 8.413 3.488 2.245 2.248 3.481 5.236 3.48 8.414-.003 6.557-5.338 11.892-11.893 11.892-1.99-.001-3.951-.5-5.688-1.448l-6.305 1.654zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884-.001 2.225.651 3.891 1.746 5.634l-.999 3.648 3.742-.981zm11.387-5.464c-.074-.124-.272-.198-.57-.347-.297-.149-1.758-.868-2.031-.967-.272-.099-.47-.149-.669.149-.198.297-.768.967-.941 1.165-.173.198-.347.223-.644.074-.297-.149-1.255-.462-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.297-.347.446-.521.151-.172.2-.296.3-.495.099-.198.05-.372-.025-.521-.075-.148-.669-1.611-.916-2.206-.242-.579-.487-.501-.669-.51l-.57-.01c-.198 0-.52.074-.792.372s-1.04 1.016-1.04 2.479 1.065 2.876 1.213 3.074c.149.198 2.095 3.2 5.076 4.487.709.306 1.263.489 1.694.626.712.226 1.36.194 1.872.118.571-.085 1.758-.719 2.006-1.413.248-.695.248-1.29.173-1.414z" /></svg>
                   </div>
                   <div>
                     <p className="text-sm font-bold">{settings.restaurantName || 'YNR FISHES'}</p>
@@ -1744,6 +1941,111 @@ const Settings = ({ user, setUser, onNavigate, onGoBack }) => {
                   <span>{t("Link Bot")}</span>
                 </button>
               </div>
+
+              {/* Auto-WhatsApp e-Bill After Settlement - Separate Toggles for Retail, Wholesale, Export */}
+              <div className="p-3.5 sm:p-4 bg-emerald-50/50 rounded-2xl border-2 border-emerald-400/60 space-y-3">
+                <div className="flex items-center gap-2">
+                  <span className="text-base">⚡</span>
+                  <div>
+                    <h4 className="text-sm font-black text-slate-800 uppercase tracking-wide">
+                      {t("Auto-WhatsApp e-Bill After Settlement")}
+                    </h4>
+                    <p className="text-xs text-slate-600 font-medium mt-0.5">
+                      {t("Configure automated WhatsApp receipt delivery for each sales channel")}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="space-y-2.5 pt-1">
+                  {/* Retail Toggle */}
+                  <div className="flex items-center justify-between p-3 bg-white rounded-xl border border-slate-200 shadow-2xs hover:border-emerald-300 transition-all">
+                    <div className="min-w-0 flex-1 pr-2">
+                      <div className="flex items-center gap-2">
+                      
+                        <span className="text-xs sm:text-sm font-bold text-slate-900">{t("Retail Auto-WhatsApp e-Bill")}</span>
+                        <span className="text-[9px] font-black uppercase px-1.5 py-0.2 rounded bg-amber-100 text-amber-900 border border-amber-300">Retail</span>
+                      </div>
+                      <p className="text-[11px] text-slate-500 mt-0.5">
+                        {settings.autoWhatsappRetail ? t("Automatic: e-Bill sent immediately on settlement") : t("Manual: Cashier sends manually via preview button")}
+                      </p>
+                    </div>
+                    <label className="relative inline-flex items-center cursor-pointer shrink-0">
+                      <input
+                        type="checkbox"
+                        className="sr-only peer"
+                        checked={settings.autoWhatsappRetail === true}
+                        onChange={(e) => {
+                          handleInputChange('autoWhatsappRetail', e.target.checked);
+                          try {
+                            localStorage.setItem('ms_auto_wa_retail', e.target.checked ? '1' : '0');
+                            window.dispatchEvent(new Event('storage'));
+                          } catch (err) {}
+                        }}
+                      />
+                      <div className="w-11 h-6 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-500"></div>
+                    </label>
+                  </div>
+
+                  {/* Wholesale Toggle */}
+                  <div className="flex items-center justify-between p-3 bg-white rounded-xl border border-slate-200 shadow-2xs hover:border-emerald-300 transition-all">
+                    <div className="min-w-0 flex-1 pr-2">
+                      <div className="flex items-center gap-2">
+                        
+                        <span className="text-xs sm:text-sm font-bold text-slate-900">{t("Wholesale Auto-WhatsApp e-Bill")}</span>
+                        <span className="text-[9px] font-black uppercase px-1.5 py-0.2 rounded bg-blue-100 text-blue-900 border border-blue-300">Wholesale</span>
+                      </div>
+                      <p className="text-[11px] text-slate-500 mt-0.5">
+                        {settings.autoWhatsappWholesale ? t("Automatic: e-Bill sent to wholesale dealer on settlement") : t("Manual: Cashier sends manually via preview button")}
+                      </p>
+                    </div>
+                    <label className="relative inline-flex items-center cursor-pointer shrink-0">
+                      <input
+                        type="checkbox"
+                        className="sr-only peer"
+                        checked={settings.autoWhatsappWholesale === true}
+                        onChange={(e) => {
+                          handleInputChange('autoWhatsappWholesale', e.target.checked);
+                          try {
+                            localStorage.setItem('ms_auto_wa_wholesale', e.target.checked ? '1' : '0');
+                            window.dispatchEvent(new Event('storage'));
+                          } catch (err) {}
+                        }}
+                      />
+                      <div className="w-11 h-6 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-500"></div>
+                    </label>
+                  </div>
+
+                  {/* Export Toggle */}
+                  <div className="flex items-center justify-between p-3 bg-white rounded-xl border border-slate-200 shadow-2xs hover:border-emerald-300 transition-all">
+                    <div className="min-w-0 flex-1 pr-2">
+                      <div className="flex items-center gap-2">
+                     
+                        <span className="text-xs sm:text-sm font-bold text-slate-900">{t("Export Auto-WhatsApp e-Bill")}</span>
+                        <span className="text-[9px] font-black uppercase px-1.5 py-0.2 rounded bg-indigo-100 text-indigo-900 border border-indigo-300">Export</span>
+                      </div>
+                      <p className="text-[11px] text-slate-500 mt-0.5">
+                        {settings.autoWhatsappExport ? t("Automatic: e-Bill sent to export client on settlement") : t("Manual: Cashier sends manually via preview button")}
+                      </p>
+                    </div>
+                    <label className="relative inline-flex items-center cursor-pointer shrink-0">
+                      <input
+                        type="checkbox"
+                        className="sr-only peer"
+                        checked={settings.autoWhatsappExport === true}
+                        onChange={(e) => {
+                          handleInputChange('autoWhatsappExport', e.target.checked);
+                          try {
+                            localStorage.setItem('ms_auto_wa_export', e.target.checked ? '1' : '0');
+                            window.dispatchEvent(new Event('storage'));
+                          } catch (err) {}
+                        }}
+                      />
+                      <div className="w-11 h-6 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-500"></div>
+                    </label>
+                  </div>
+                </div>
+              </div>
+
               {/* Auto-Send DayBook */}
               <div className="p-3.5 sm:p-4 bg-slate-50/70 rounded-2xl border border-slate-200 space-y-3">
                 <div className="flex items-center justify-between gap-2">
@@ -1811,8 +2113,8 @@ const Settings = ({ user, setUser, onNavigate, onGoBack }) => {
                     <div>
                       <label className="text-xs font-bold block mb-1.5 text-slate-700">{t("Send Delay (After Bill Settled)")}</label>
                       <div className="grid grid-cols-3 sm:flex sm:flex-wrap gap-1.5">
-                        {[{label:'Instant',mins:0},{label:'15m',mins:15},{label:'30m',mins:30},{label:'1h',mins:60},{label:'2h',mins:120}].map(p=>(
-                          <button key={p.mins} type="button" onClick={()=>handleInputChange('feedback_whatsapp_delay_minutes',p.mins)} className={`px-2.5 py-1.5 sm:py-1 text-xs font-bold rounded-lg border cursor-pointer transition-all text-center ${(Number(settings.feedback_whatsapp_delay_minutes)||0)===p.mins?'bg-gradient-to-r from-sky-500 to-blue-600 text-white border-sky-400 shadow-md shadow-sky-500/20':'bg-[#FDFBF7] text-slate-800 font-bold border-slate-300 hover:bg-emerald-50 hover:text-emerald-900'}`}>{p.label}</button>
+                        {[{ label: 'Instant', mins: 0 }, { label: '15m', mins: 15 }, { label: '30m', mins: 30 }, { label: '1h', mins: 60 }, { label: '2h', mins: 120 }].map(p => (
+                          <button key={p.mins} type="button" onClick={() => handleInputChange('feedback_whatsapp_delay_minutes', p.mins)} className={`px-2.5 py-1.5 sm:py-1 text-xs font-bold rounded-lg border cursor-pointer transition-all text-center ${(Number(settings.feedback_whatsapp_delay_minutes) || 0) === p.mins ? 'bg-gradient-to-r from-sky-500 to-blue-600 text-white border-sky-400 shadow-md shadow-sky-500/20' : 'bg-[#FDFBF7] text-slate-800 font-bold border-slate-300 hover:bg-emerald-50 hover:text-emerald-900'}`}>{p.label}</button>
                         ))}
                       </div>
                     </div>
@@ -1825,7 +2127,7 @@ const Settings = ({ user, setUser, onNavigate, onGoBack }) => {
                 <div className="flex items-center justify-between gap-2">
                   <div className="min-w-0 flex-1">
                     <label className="text-sm font-bold flex items-center gap-1.5 text-slate-800">
-                      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-emerald-400 shrink-0"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+                      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-emerald-400 shrink-0"><rect x="3" y="3" width="7" height="7" /><rect x="14" y="3" width="7" height="7" /><rect x="14" y="14" width="7" height="7" /><rect x="3" y="14" width="7" height="7" /></svg>
                       <span>{t("Show QR Code in WhatsApp e-Bill")}</span>
                     </label>
                     <p className="text-xs text-slate-600 font-medium mt-0.5">{t("Include UPI QR code in the WhatsApp receipt image sent to customers")}</p>
@@ -1837,7 +2139,7 @@ const Settings = ({ user, setUser, onNavigate, onGoBack }) => {
                 </div>
                 {settings.whatsappShowQr === true && settings.upiId && (
                   <div className="flex items-center gap-2 bg-[#F7EFE2] rounded-xl px-3 py-2 border border-emerald-500/30">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-emerald-400 shrink-0"><polyline points="20 6 9 17 4 12"/></svg>
+                    <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-emerald-400 shrink-0"><polyline points="20 6 9 17 4 12" /></svg>
                     <span className="text-xs text-emerald-900 font-bold">{t("QR will scan to:")} <span className="font-mono font-black text-emerald-950 underline">{settings.upiId}</span></span>
                   </div>
                 )}
@@ -1851,7 +2153,7 @@ const Settings = ({ user, setUser, onNavigate, onGoBack }) => {
                 <div className="flex items-center justify-between gap-2">
                   <div className="min-w-0 flex-1">
                     <label className="text-sm font-bold flex items-center gap-1.5 text-slate-800">
-                      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-emerald-400 shrink-0"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+                      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-emerald-400 shrink-0"><rect x="3" y="3" width="18" height="18" rx="2" /><circle cx="8.5" cy="8.5" r="1.5" /><polyline points="21 15 16 10 5 21" /></svg>
                       <span>{t("Show Logo in WhatsApp e-Bill")}</span>
                     </label>
                     <p className="text-xs text-slate-600 font-medium mt-0.5">{t("Include store logo in the WhatsApp receipt image (independent from printed bill logo setting)")}</p>
@@ -1866,7 +2168,7 @@ const Settings = ({ user, setUser, onNavigate, onGoBack }) => {
                 )}
                 {settings.whatsappShowLogo === true && settings.logo && settings.logo !== '[logo_stored]' && (
                   <div className="flex items-center gap-2 bg-[#F7EFE2] rounded-xl px-3 py-2 border border-emerald-500/30">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-emerald-400 shrink-0"><polyline points="20 6 9 17 4 12"/></svg>
+                    <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-emerald-400 shrink-0"><polyline points="20 6 9 17 4 12" /></svg>
                     <span className="text-xs text-emerald-900 font-bold">{t("Logo will appear at top of WhatsApp e-Bill image")}</span>
                   </div>
                 )}
@@ -1884,12 +2186,12 @@ const Settings = ({ user, setUser, onNavigate, onGoBack }) => {
                 {settings.winback_enabled && (
                   <div className="space-y-3 bg-[#F7EFE2] p-3 rounded-xl border border-slate-200">
                     <div className="flex flex-col sm:flex-row gap-3">
-                      <div className="flex-1"><label className="text-xs font-bold block mb-1 text-slate-700">{t("Inactivity (Days)")}</label><div className="relative"><input type="number" min="1" max="365" value={settings.winback_days_inactive ?? 60} onChange={(e) => handleInputChange('winback_days_inactive', parseInt(e.target.value)||60)} className="w-full px-3 py-2 bg-[#FDFBF7] text-slate-800 border border-slate-300 rounded-lg text-xs font-bold focus:ring-2 focus:ring-sky-500/30 outline-none" /><span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-slate-500">Days</span></div></div>
+                      <div className="flex-1"><label className="text-xs font-bold block mb-1 text-slate-700">{t("Inactivity (Days)")}</label><div className="relative"><input type="number" min="1" max="365" value={settings.winback_days_inactive ?? 60} onChange={(e) => handleInputChange('winback_days_inactive', parseInt(e.target.value) || 60)} className="w-full px-3 py-2 bg-[#FDFBF7] text-slate-800 border border-slate-300 rounded-lg text-xs font-bold focus:ring-2 focus:ring-sky-500/30 outline-none" /><span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-slate-500">Days</span></div></div>
                       <div className="flex-1"><label className="text-xs font-bold block mb-1 text-slate-700">{t("Send Time")}</label><div className="bg-[#FDFBF7] rounded-lg border border-slate-300 px-1"><CustomTimePicker value={settings.winback_execute_time || '11:00'} onChange={(val) => handleInputChange('winback_execute_time', val)} /></div></div>
                     </div>
                     <div>
                       <label className="text-xs font-bold block mb-1 flex items-center justify-between text-slate-700"><span>{t("Win-Back Message")}</span><span className="text-[10px] text-sky-900 bg-sky-100 px-2 py-0.5 rounded font-mono font-bold border border-sky-300">Use [Name]</span></label>
-                      <textarea rows="3" value={settings.winback_offer_text !== undefined ? settings.winback_offer_text : "Hi [Name], we haven't seen you in a while at YNR Fishes! \uD83D\uDC1F Fresh sea catches arrived this morning. Visit us this week for an exclusive 10% loyalty discount & complimentary cleaning! ✨"} onChange={(e) => handleInputChange('winback_offer_text', e.target.value)} className="w-full px-3 py-2 bg-[#FDFBF7] text-slate-800 placeholder:text-slate-500 border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-sky-500/30 outline-none resize-none leading-relaxed" />
+                      <textarea rows="3" value={settings.winback_offer_text !== undefined ? settings.winback_offer_text : "Hi [Name], we haven't seen you in a while at YNR Fishes! \uD83D\uDC1F Fresh sea catches arrived this morning. Visit us this week for an exclusive 10% special discount & complimentary cleaning! ✨"} onChange={(e) => handleInputChange('winback_offer_text', e.target.value)} className="w-full px-3 py-2 bg-[#FDFBF7] text-slate-800 placeholder:text-slate-500 border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-sky-500/30 outline-none resize-none leading-relaxed" />
                     </div>
                   </div>
                 )}
@@ -1938,9 +2240,8 @@ const Settings = ({ user, setUser, onNavigate, onGoBack }) => {
                         type: 'success'
                       });
                     }}
-                    className={`flex items-center justify-between px-6 py-4 cursor-pointer transition-all ${
-                      isSelected ? 'bg-purple-50/80 text-purple-900 font-bold' : 'hover:bg-[#f7f1ea] text-text-muted font-medium'
-                    }`}>
+                    className={`flex items-center justify-between px-6 py-4 cursor-pointer transition-all ${isSelected ? 'bg-purple-50/80 text-purple-900 font-bold' : 'hover:bg-[#f7f1ea] text-text-muted font-medium'
+                      }`}>
                     <div className="flex flex-col">
                       <span className="text-base">{opt.label}</span>
                       <span className="text-xs text-gray-400 font-normal">
@@ -1968,7 +2269,7 @@ const Settings = ({ user, setUser, onNavigate, onGoBack }) => {
       {showFontStyleModal && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[99999] flex items-end sm:items-center justify-center p-0 sm:p-4 animate-in fade-in duration-200">
           <div className="relative w-full max-w-lg bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl overflow-hidden animate-in slide-in-from-bottom sm:zoom-in-95 duration-200 border border-gray-150 flex flex-col max-h-[90vh] sm:max-h-[85vh]">
-            
+
             {/* Mobile swipe/grab indicator pill */}
             <div className="sm:hidden pt-2.5 pb-1 flex justify-center">
               <div className="w-12 h-1.5 bg-gray-300 rounded-full" />
@@ -1997,8 +2298,8 @@ const Settings = ({ user, setUser, onNavigate, onGoBack }) => {
             {/* Category Filter Tabs */}
             <div className="px-5 py-2.5 bg-[#f7f1ea]/80 border-b border-border flex items-center gap-1.5 overflow-x-auto no-scrollbar shrink-0">
               {['All', 'Sans-Serif', 'Serif', 'Monospace', 'Display'].map((cat) => {
-                const count = cat === 'All' 
-                  ? RECEIPT_FONT_STYLES.length 
+                const count = cat === 'All'
+                  ? RECEIPT_FONT_STYLES.length
                   : RECEIPT_FONT_STYLES.filter(f => f.category === cat).length;
                 const isActive = fontCategoryFilter === cat;
                 return (
@@ -2006,11 +2307,10 @@ const Settings = ({ user, setUser, onNavigate, onGoBack }) => {
                     key={cat}
                     type="button"
                     onClick={() => setFontCategoryFilter(cat)}
-                    className={`px-3 py-1 rounded-full text-xs font-semibold whitespace-nowrap transition cursor-pointer ${
-                      isActive
-                        ? 'bg-primary text-white shadow-sm'
-                        : 'bg-white text-text-muted hover:bg-gray-200/70 border border-border'
-                    }`}>
+                    className={`px-3 py-1 rounded-full text-xs font-semibold whitespace-nowrap transition cursor-pointer ${isActive
+                      ? 'bg-primary text-white shadow-sm'
+                      : 'bg-white text-text-muted hover:bg-gray-200/70 border border-border'
+                      }`}>
                     {cat} ({count})
                   </button>
                 );
@@ -2035,12 +2335,11 @@ const Settings = ({ user, setUser, onNavigate, onGoBack }) => {
                           type: 'success'
                         });
                       }}
-                      className={`p-3.5 rounded-2xl border transition-all cursor-pointer flex flex-col gap-1.5 ${
-                        isSelected
-                          ? 'border-primary bg-primary/5 ring-2 ring-primary/20 shadow-sm'
-                          : 'border-border hover:border-primary/40 bg-white hover:bg-[#f7f1ea]/80'
-                      }`}>
-                      
+                      className={`p-3.5 rounded-2xl border transition-all cursor-pointer flex flex-col gap-1.5 ${isSelected
+                        ? 'border-primary bg-primary/5 ring-2 ring-primary/20 shadow-sm'
+                        : 'border-border hover:border-primary/40 bg-white hover:bg-[#f7f1ea]/80'
+                        }`}>
+
                       {/* Top row: Font Name + Category Badge + Radio/Check */}
                       <div className="flex items-center justify-between gap-2">
                         <div className="flex items-center gap-2 min-w-0">

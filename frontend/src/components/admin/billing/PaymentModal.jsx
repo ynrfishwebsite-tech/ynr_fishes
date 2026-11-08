@@ -10,7 +10,9 @@ import {
   Loader2,
   BookOpen,
   Sparkles,
-  Check
+  Check,
+  AlertCircle,
+  Clock
 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import api from '../../../api/system/axios';
@@ -29,36 +31,12 @@ const PaymentModal = ({
   const { t } = useLanguage();
   const [mode, setMode] = useState('Cash');
 
-  // Loyalty & Wallet state
-  const [loyalty, setLoyalty] = useState(null);
-  const [walletRedemption, setWalletRedemption] = useState(0);
-
-  // Fetch customer loyalty data
-  useEffect(() => {
-    if (!customerPhone) return;
-    const cleanPhone = String(customerPhone).replace(/\D/g, '').slice(-10);
-    if (cleanPhone.length !== 10) return;
-
-    let isMounted = true;
-    api.get(`/loyalty/customer/${cleanPhone}`)
-      .then(res => {
-        if (isMounted && res.data && res.data.config?.enabled) {
-          setLoyalty(res.data);
-        }
-      })
-      .catch(() => {});
-    return () => { isMounted = false; };
-  }, [customerPhone]);
-
-  // Max redemption calculation based on restaurant rules
-  const maxPercent = loyalty?.config?.maxRedemptionPercent ?? 100;
-  const maxByPercent = Math.floor((total * maxPercent) / 100);
-  const maxRedeemable = loyalty ? Math.min(loyalty.walletBalance || 0, maxByPercent) : 0;
-
-  // Effective total to pay via payment mode after wallet discount
-  const effectiveTotal = Math.max(0, Number((total - walletRedemption).toFixed(2)));
+  // Effective total to pay via payment mode
+  const effectiveTotal = Math.max(0, Number(total.toFixed(2)));
 
   const [amountPaid, setAmountPaid] = useState(effectiveTotal);
+  const [partialPaid, setPartialPaid] = useState(() => Math.round(effectiveTotal * 0.5));
+  const [partialMethod, setPartialMethod] = useState('Cash');
   const [splitPayments, setSplitPayments] = useState({ cash: 0, upi: 0, card: 0 });
   const [upiApp, setUpiApp] = useState('PhonePe');
   const [enableQrPayment] = useState(() => {
@@ -74,16 +52,20 @@ const PaymentModal = ({
   const currencySymbol = localStorage.getItem('primaryCurrency') === 'USD' ? '$' : '₹';
   const quickAmounts = currencySymbol === '$' ? [10, 50, 100] : [500, 1000, 2000];
 
-  // Update amountPaid when walletRedemption changes
+  // Update amountPaid when mode or effectiveTotal changes
   useEffect(() => {
     if (mode !== 'Cash') {
       setAmountPaid(effectiveTotal);
     } else {
       setAmountPaid(prev => (prev < effectiveTotal ? effectiveTotal : prev));
     }
-  }, [walletRedemption, effectiveTotal, mode]);
+    if (effectiveTotal > 0 && (partialPaid === 0 || partialPaid > effectiveTotal)) {
+      setPartialPaid(Math.round(effectiveTotal * 0.5));
+    }
+  }, [effectiveTotal, mode]);
 
   const balance = amountPaid - effectiveTotal;
+  const partialDue = Math.max(0, Number((effectiveTotal - partialPaid).toFixed(2)));
   const mixedTotal = (splitPayments.cash || 0) + (splitPayments.upi || 0) + (splitPayments.card || 0);
   const isMixedValid = Math.abs(mixedTotal - effectiveTotal) < 0.01;
   const remainingMixed = Number((effectiveTotal - mixedTotal).toFixed(2));
@@ -95,20 +77,16 @@ const PaymentModal = ({
       case 'Card': return <CreditCard size={sz} />;
       case 'UPI': return <Wallet size={sz} />;
       case 'Mixed': return <PieChart size={sz} />;
+      case 'Partial': return <Clock size={sz} className="text-amber-500" />;
       case 'Unpaid': return <BookOpen size={sz} />;
       default: return <IndianRupee size={sz} />;
     }
   };
 
-  const handleApplyWallet = () => {
-    if (walletRedemption > 0) {
-      setWalletRedemption(0);
-    } else {
-      setWalletRedemption(maxRedeemable);
-    }
-  };
 
-  const paymentModes = ['Cash', 'UPI', 'Card', 'Mixed', 'Unpaid'].filter(m => !(hideUnpaid && m === 'Unpaid'));
+  const paymentModes = ['Cash', 'UPI', 'Card', 'Mixed', 'Partial', 'Unpaid'].filter(
+    (m) => !(hideUnpaid && (m === 'Unpaid' || m === 'Partial'))
+  );
 
   return (
     <div className="fixed inset-0 bg-black/80 backdrop-blur-xs flex items-center justify-center z-[99999] p-1.5 sm:p-4 overflow-y-auto">
@@ -134,98 +112,39 @@ const PaymentModal = ({
           {/* Amount Due Area */}
           <div className="text-center py-0.5 sm:py-1">
             <span className="text-text-muted text-[10px] sm:text-xs uppercase tracking-wider font-semibold">
-              {walletRedemption > 0 ? t("Net Payable Amount") : t("Amount Due")}
+              {t("Amount Due")}
             </span>
             <div className="text-2xl sm:text-3xl font-extrabold text-primary leading-tight mt-0.5">
               {currencySymbol}{effectiveTotal.toFixed(2)}
             </div>
-            {walletRedemption > 0 && (
-              <div className="flex items-center justify-center gap-1.5 mt-0.5 text-[10px] sm:text-xs text-text-muted">
-                <span>{t("Bill Total:")} <strong className="line-through">{currencySymbol}{total.toFixed(2)}</strong></span>
-                <span>•</span>
-                <span className="text-emerald-600 font-bold">{t("Wallet Used:")} -{currencySymbol}{walletRedemption.toFixed(2)}</span>
-              </div>
-            )}
           </div>
-
-          {/* Loyalty Wallet Available Banner */}
-          {loyalty && loyalty.walletBalance > 0 && (
-            <div className="bg-gradient-to-r from-amber-500/10 via-emerald-500/10 to-primary/10 border border-emerald-500/30 rounded-lg sm:rounded-xl p-2 sm:p-3 shadow-xs">
-              <div className="flex items-center justify-between gap-1.5">
-                <div className="flex items-center gap-1.5 sm:gap-2">
-                  <div className="p-1 sm:p-1.5 bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 rounded-lg shrink-0">
-                    <Sparkles size={13} className="sm:w-4 sm:h-4" />
-                  </div>
-                  <div>
-                    <div className="flex items-center gap-1">
-                      <span className="text-[11px] sm:text-xs font-bold text-text-main">{t("Loyalty Wallet")}</span>
-                      <span className="text-[9px] bg-amber-500/20 text-amber-700 px-1 py-0.1 rounded-full font-bold">
-                        {loyalty.points || 0} pts
-                      </span>
-                    </div>
-                    <div className="text-[11px] sm:text-xs font-bold text-emerald-600 font-mono">
-                      ₹{loyalty.walletBalance} {t("available")}
-                      {maxPercent < 100 && (
-                        <span className="text-[9px] font-normal text-text-muted ml-1">
-                          ({t("Max")} ₹{maxRedeemable})
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                </div>
-
-                <div>
-                  {walletRedemption > 0 ? (
-                    <button
-                      type="button"
-                      onClick={handleApplyWallet}
-                      className="px-2 py-1 bg-rose-500/10 hover:bg-rose-500/20 text-rose-600 rounded-lg text-[10px] sm:text-xs font-bold transition-colors cursor-pointer flex items-center gap-0.5">
-                      <X size={11} />
-                      <span>{t("Remove")}</span>
-                    </button>
-                  ) : (
-                    <button
-                      type="button"
-                      disabled={maxRedeemable <= 0}
-                      onClick={handleApplyWallet}
-                      className="px-2 py-1 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white rounded-lg text-[10px] sm:text-xs font-bold transition-all shadow-xs cursor-pointer flex items-center gap-0.5">
-                      <Check size={11} />
-                      <span>{t("Use ₹")}{maxRedeemable}</span>
-                    </button>
-                  )}
-                </div>
-              </div>
-              {walletRedemption > 0 && (
-                <div className="mt-1.5 pt-1 border-t border-emerald-500/20 flex items-center justify-between text-[10px] text-emerald-700 dark:text-emerald-400 font-bold">
-                  <span>✅ ₹{walletRedemption} {t("applied")}</span>
-                  <span>{t("Left:")} ₹{Math.max(0, loyalty.walletBalance - walletRedemption)}</span>
-                </div>
-              )}
-            </div>
-          )}
 
           {/* Payment Mode Selection Badges (Fits on single row) */}
           <div>
             <label className="text-[11px] sm:text-xs font-semibold text-text-muted mb-1.5 block uppercase tracking-wider">
               {t("Select Payment Mode")}
             </label>
-            <div className={`grid ${paymentModes.length === 5 ? 'grid-cols-5' : 'grid-cols-4'} gap-1 sm:gap-2`}>
+            <div className="grid grid-cols-3 sm:grid-cols-6 gap-1 sm:gap-1.5">
               {paymentModes.map((m) => (
                 <button
                   key={m}
                   type="button"
-                  className={`flex flex-col items-center justify-center gap-1 py-1.5 px-0.5 sm:py-2.5 sm:px-1.5 rounded-lg sm:rounded-xl border transition-all cursor-pointer ${
+                  className={`flex flex-col items-center justify-center gap-1 py-1.5 px-0.5 sm:py-2.5 sm:px-1 rounded-lg sm:rounded-xl border transition-all cursor-pointer ${
                     mode === m
                       ? 'bg-primary/10 border-primary text-primary shadow-xs font-bold'
                       : 'bg-background border-border text-text-muted hover:bg-surface-hover hover:text-text-main'
                   }`}
                   onClick={() => {
-                    if (m === 'Unpaid' && (!customerPhone || !customerName)) {
-                      alert(t("Customer Name and Phone are required for Unpaid (Khata) bills. Please close and link CRM first."));
+                    if ((m === 'Unpaid' || m === 'Partial') && (!customerPhone || !customerName)) {
+                      alert(t("Customer Name and Phone are required for Unpaid/Partial (Khata) bills. Please close and link customer first."));
                       return;
                     }
                     setMode(m);
-                    if (m !== 'Cash') {
+                    if (m === 'Partial') {
+                      if (!partialPaid || partialPaid >= effectiveTotal) {
+                        setPartialPaid(Math.round(effectiveTotal * 0.5));
+                      }
+                    } else if (m !== 'Cash') {
                       setAmountPaid(effectiveTotal);
                     }
                   }}>
@@ -434,6 +353,159 @@ const PaymentModal = ({
               )}
             </div>
           )}
+
+          {/* PARTIAL PAYMENT MODE SECTION */}
+          {mode === 'Partial' && (
+            <div className="space-y-2.5 sm:space-y-3 animate-in fade-in duration-200">
+              {(!customerPhone || !customerName) && (
+                <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg p-2 text-[11px] text-amber-700 dark:text-amber-400 flex items-center gap-1.5 font-medium">
+                  <AlertCircle size={14} className="shrink-0 text-amber-600" />
+                  <span>{t("Customer linking is recommended so the remaining due can be recorded on Khata.")}</span>
+                </div>
+              )}
+
+              {/* Paid vs Due Cards */}
+              <div className="grid grid-cols-2 gap-2 p-2 bg-background border border-border rounded-xl">
+                <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-lg p-2 text-center">
+                  <div className="text-[10px] font-bold uppercase text-emerald-600 tracking-wider flex items-center justify-center gap-1">
+                    <CheckCircle size={11} />
+                    <span>{t("Paid Now")}</span>
+                  </div>
+                  <div className="text-lg sm:text-xl font-black text-emerald-600 mt-0.5">
+                    {currencySymbol}{Number(partialPaid || 0).toLocaleString('en-IN')}
+                  </div>
+                </div>
+                <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg p-2 text-center">
+                  <div className="text-[10px] font-bold uppercase text-amber-600 tracking-wider flex items-center justify-center gap-1">
+                    <BookOpen size={11} />
+                    <span>{t("Khata Due")}</span>
+                  </div>
+                  <div className="text-lg sm:text-xl font-black text-amber-600 mt-0.5">
+                    {currencySymbol}{Number(partialDue).toLocaleString('en-IN')}
+                  </div>
+                </div>
+              </div>
+
+              {/* Paid Amount Input */}
+              <div className="flex flex-col gap-1">
+                <label className="text-[11px] sm:text-xs font-semibold text-text-muted">
+                  {t("Amount Paid Now by Customer")}
+                </label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted font-bold text-sm sm:text-base">{currencySymbol}</span>
+                  <input
+                    type="number"
+                    min="1"
+                    max={effectiveTotal}
+                    onWheel={(e) => e.target.blur()}
+                    onKeyDown={(e) => { if (e.key === '-' || e.key === 'e' || e.key === 'E') e.preventDefault(); }}
+                    className="w-full bg-background border border-border rounded-lg sm:rounded-xl py-1.5 sm:py-2 pl-7 sm:pl-8 pr-3 text-base sm:text-lg font-bold text-text-main focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all"
+                    value={partialPaid === 0 ? '' : partialPaid}
+                    onChange={(e) => {
+                      const val = parseFloat(e.target.value) || 0;
+                      setPartialPaid(Math.min(effectiveTotal, Math.max(0, val)));
+                    }}
+                    autoFocus
+                  />
+                </div>
+
+                {/* Quick Percentage Chips */}
+                <div className="flex gap-1 sm:gap-1.5 mt-0.5">
+                  {[
+                    { label: '25%', f: 0.25 },
+                    { label: '50%', f: 0.5 },
+                    { label: '75%', f: 0.75 }
+                  ].map((chip) => (
+                    <button
+                      key={chip.label}
+                      type="button"
+                      className="flex-1 py-1 bg-surface border border-border rounded-md text-[10px] sm:text-xs font-bold text-text-muted hover:text-text-main hover:bg-surface-hover transition-all cursor-pointer"
+                      onClick={() => setPartialPaid(Math.round(effectiveTotal * chip.f))}>
+                      {chip.label} ({currencySymbol}{Math.round(effectiveTotal * chip.f)})
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Method Selection for Paid Portion */}
+              <div>
+                <label className="text-[10px] sm:text-[11px] font-semibold text-text-muted mb-1 block uppercase tracking-wider">
+                  {t("Method for Paid Portion")}
+                </label>
+                <div className="grid grid-cols-3 gap-1.5">
+                  {['Cash', 'UPI', 'Card'].map((pm) => (
+                    <button
+                      key={pm}
+                      type="button"
+                      className={`py-1.5 px-1 rounded-lg border text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1 ${
+                        partialMethod === pm
+                          ? 'bg-primary/10 border-primary text-primary shadow-xs'
+                          : 'bg-background border-border text-text-muted hover:bg-surface-hover hover:text-text-main'
+                      }`}
+                      onClick={() => setPartialMethod(pm)}>
+                      {getIcon(pm, true)}
+                      <span>{pm}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* UPI Sub-app & QR if UPI is picked */}
+              {partialMethod === 'UPI' && (
+                <div className="space-y-2 pt-1">
+                  <div>
+                    <label className="text-[10px] sm:text-[11px] font-semibold text-text-muted mb-1 block uppercase tracking-wider">
+                      {t("Record UPI App")}
+                    </label>
+                    <div className="grid grid-cols-3 gap-1">
+                      {['PhonePe', 'GPay', 'Paytm', 'Amazon Pay', 'BharatPe', 'Other'].map((app) => (
+                        <button
+                          key={app}
+                          type="button"
+                          className={`py-1 px-1 rounded-lg border text-[10px] sm:text-[11px] font-bold transition-all cursor-pointer ${
+                            upiApp === app
+                              ? 'bg-primary/10 border-primary text-primary shadow-xs'
+                              : 'bg-background border-border text-text-muted hover:bg-surface-hover hover:text-text-main'
+                          }`}
+                          onClick={() => setUpiApp(app)}>
+                          {app}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {enableQrPayment && partialPaid > 0 && (
+                    <div className="bg-background p-2 rounded-xl border border-primary/20 flex flex-col items-center justify-center text-center shadow-inner relative overflow-hidden">
+                      <div className="bg-primary/10 py-0.5 px-2 rounded-full text-[10px] font-bold text-primary tracking-wide uppercase mb-1">
+                        {t("Scan & Pay UPI Deposit")} ({currencySymbol}{Number(partialPaid).toFixed(2)})
+                      </div>
+                      <div className="bg-white p-1.5 rounded-xl shadow-xs border border-border/40 my-0.5 flex flex-col items-center">
+                        <QRCodeSVG
+                          value={(() => {
+                            let pa = 'maheshsiva864@oksbi';
+                            let pn = 'MS Billings';
+                            try {
+                              const s = JSON.parse(localStorage.getItem('restaurantSettings'));
+                              if (s?.upiId && s.upiId !== 'msbillings@upi') pa = s.upiId.trim();
+                              if (s?.restaurantName) pn = s.restaurantName.trim();
+                            } catch (e) {}
+                            const am = Number(partialPaid || 0).toFixed(2);
+                            const noteText = billNumber ? `Bill #${billNumber} - Rs ${am}` : tableNo ? `Counter ${tableNo} - Rs ${am}` : `Payment Rs ${am}`;
+                            const tn = noteText.replace(/[^a-zA-Z0-9 .#-]/g, '');
+                            const tr = `PAY${Date.now()}`;
+                            return `upi://pay?pa=${pa}&pn=${encodeURIComponent(pn)}&am=${am}&cu=INR&tn=${encodeURIComponent(tn)}&tr=${tr}`;
+                          })()}
+                          size={95}
+                          level="M"
+                          includeMargin={false}
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Compact Action Footer */}
@@ -442,19 +514,33 @@ const PaymentModal = ({
             className={`w-full py-2.5 sm:py-3 px-3 rounded-lg sm:rounded-xl font-bold text-xs sm:text-sm transition-all flex items-center justify-center gap-1.5 shadow-md cursor-pointer ${
               isLoading
                 ? 'bg-blue-600 text-white shadow-blue-500/20 cursor-not-allowed opacity-90'
-                : (mode === 'Cash' && balance < 0) || (mode === 'Mixed' && !isMixedValid)
+                : (mode === 'Cash' && balance < 0) || (mode === 'Mixed' && !isMixedValid) || (mode === 'Partial' && (partialPaid <= 0 || partialPaid > effectiveTotal))
                 ? 'bg-surface-hover text-slate-800 shadow-none cursor-not-allowed border border-border'
                 : mode === 'Unpaid'
                 ? 'bg-amber-600 text-white hover:bg-amber-700 shadow-amber-600/20 hover:shadow-amber-600/40 active:scale-98'
+                : mode === 'Partial'
+                ? 'bg-amber-600 text-white hover:bg-amber-700 shadow-amber-600/20 hover:shadow-amber-600/40 active:scale-98'
                 : 'bg-success text-white hover:bg-green-600 shadow-success/20 hover:shadow-success/40 active:scale-98'
             }`}
-            disabled={isLoading || (mode === 'Cash' && balance < 0) || (mode === 'Mixed' && !isMixedValid)}
+            disabled={
+              isLoading ||
+              (mode === 'Cash' && balance < 0) ||
+              (mode === 'Mixed' && !isMixedValid) ||
+              (mode === 'Partial' && (partialPaid <= 0 || partialPaid > effectiveTotal))
+            }
             onClick={() => onComplete({
               mode,
-              amountPaid,
+              amountPaid: mode === 'Partial' ? partialPaid : amountPaid,
+              paidAmount: mode === 'Partial' ? partialPaid : (mode === 'Unpaid' ? 0 : amountPaid),
+              dueAmount: mode === 'Partial' ? partialDue : (mode === 'Unpaid' ? effectiveTotal : 0),
+              partialPayment: mode === 'Partial' ? {
+                paidAmount: partialPaid,
+                dueAmount: partialDue,
+                method: partialMethod,
+                upiApp: partialMethod === 'UPI' ? upiApp : undefined
+              } : undefined,
               splitPayments,
-              upiApp,
-              walletRedemption
+              upiApp
             })}>
             {isLoading ? (
               <>
@@ -464,7 +550,13 @@ const PaymentModal = ({
             ) : (
               <>
                 <CheckCircle size={16} />
-                <span>{mode === 'Unpaid' ? t("Save as Unpaid (Khata)") : `${t("Complete")} ${t(mode)} ${t("Payment")}`}</span>
+                <span>
+                  {mode === 'Partial'
+                    ? `${t("Save Partial Bill")} (Paid: ${currencySymbol}${Number(partialPaid).toLocaleString('en-IN')})`
+                    : mode === 'Unpaid'
+                    ? t("Save as Unpaid (Khata)")
+                    : `${t("Complete")} ${t(mode)} ${t("Payment")}`}
+                </span>
               </>
             )}
           </button>

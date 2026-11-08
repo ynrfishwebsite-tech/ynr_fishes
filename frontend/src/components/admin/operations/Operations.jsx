@@ -20,8 +20,6 @@ const Operations = ({ onNavigate, onGoBack, userRole = 'admin', onOpenWhatsApp }
     { id: 'day-book', name: 'Cash Flow / Day Book', icon: IndianRupee },
     { id: 'expenses', name: 'Expenses', icon: Wallet },
     { id: 'vehicles', name: 'Vehicles & Fleet Tracking', icon: Truck, highlight: true },
-    { id: 'khata', name: 'Khata Book', icon: CreditCard },
-    { id: 'crm', name: 'Customers & CRM', icon: Users, highlight: true },
     { id: 'analytics', name: 'Analytics & Reports', icon: LineChart },
   ];
 

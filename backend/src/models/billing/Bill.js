@@ -129,7 +129,7 @@ const billSchema = new mongoose.Schema({
   },
   paymentMode: {
     type: String,
-    enum: ['Cash', 'UPI', 'Card', 'Mixed']
+    enum: ['Cash', 'UPI', 'Card', 'Mixed', 'Unpaid', 'Partial']
   },
   splitPayments: {
     cash: { type: Number, default: 0, min: [0, 'Cash cannot be negative'] },
@@ -140,6 +140,22 @@ const billSchema = new mongoose.Schema({
     type: Number,
     default: 0,
     min: [0, 'Amount paid cannot be negative']
+  },
+  paidAmount: {
+    type: Number,
+    default: 0,
+    min: [0, 'Paid amount cannot be negative']
+  },
+  dueAmount: {
+    type: Number,
+    default: 0,
+    min: [0, 'Due amount cannot be negative']
+  },
+  partialPayment: {
+    paidAmount: { type: Number, default: 0 },
+    dueAmount: { type: Number, default: 0 },
+    method: { type: String, default: 'Cash' },
+    upiApp: { type: String }
   },
   changeAmount: {
     type: Number,
@@ -152,7 +168,7 @@ const billSchema = new mongoose.Schema({
   },
   status: {
     type: String,
-    enum: ['Open', 'Billed', 'Paid', 'Unpaid', 'Cancelled', 'Deleted', 'Refunded'],
+    enum: ['Open', 'Billed', 'Paid', 'Unpaid', 'Partial', 'Cancelled', 'Deleted', 'Refunded'],
     default: 'Open'
   },
   clearedAt: { 
@@ -163,6 +179,7 @@ const billSchema = new mongoose.Schema({
   },
   customerPhone: { type: String },
   customerName: { type: String },
+  shopName: { type: String, default: '' },
   customerCategory: {
     type: String,
     enum: ['Retail', 'Wholesale', 'Export'],
