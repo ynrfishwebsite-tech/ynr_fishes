@@ -365,7 +365,7 @@ export default function Fish3DRoller({
                   className={`relative w-full ${viewportWidth < 880 ? 'h-24 sm:h-32 md:h-52' : 'h-24 sm:h-36 md:h-64'} rounded-xl md:rounded-2xl overflow-hidden bg-slate-100 border border-slate-100 shadow-inner group ${isBoxBasedMode ? 'cursor-pointer hover:ring-2 hover:ring-amber-500/50 transition-all' : ''}`}
                 >
                   <span className="absolute top-1.5 left-1.5 md:top-3 md:left-3 text-[9px] md:text-xs font-black uppercase px-1.5 py-0.5 md:px-2.5 md:py-1 rounded md:rounded-lg bg-white/95 text-amber-900 shadow-sm border border-amber-200 z-10">
-                    {isBoxBasedMode ? 'Box' : 'KG'}
+                    KG
                   </span>
 
                   {currentItem.waterType && (
@@ -406,7 +406,7 @@ export default function Fish3DRoller({
               <div className="w-full md:w-56 flex flex-col justify-between shrink-0 bg-amber-50/50 border border-amber-200 rounded-xl md:rounded-2xl p-2 md:p-3 text-center">
                 <div className="flex flex-col items-center justify-center flex-1 py-1.5 md:py-4">
                   <span className="text-[10px] md:text-xs font-black uppercase px-2 py-0.5 md:px-2.5 md:py-1 rounded-md md:rounded-lg bg-white text-amber-900 border border-amber-300 shadow-xs mb-1 md:mb-2">
-                    {isBoxBasedMode ? 'Box Mode' : 'KG Mode'}
+                    KG Mode
                   </span>
                   <Scale size={24} className="text-amber-700 my-1 md:my-2 md:w-9 md:h-9" />
                   <span className="text-[10px] md:text-xs font-bold text-slate-700 capitalize">

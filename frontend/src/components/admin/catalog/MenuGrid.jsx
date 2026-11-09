@@ -2223,7 +2223,7 @@ const MenuGrid = ({
                         <div className="flex items-start justify-between w-full h-4 z-[2] absolute top-2.5 left-0 px-2.5">
                           <div className="flex gap-1 items-center">
                             <span className="text-[10px] font-black uppercase px-1.5 py-0.5 rounded bg-orange-50 text-orange-700 border border-orange-200">
-                              {(fishOrderMode === 'bulk' || fishOrderMode === 'export') ? 'Box' : 'Kg'}
+                              KG
                             </span>
                           </div>
 
@@ -2309,7 +2309,7 @@ const MenuGrid = ({
                                   ? 'bg-amber-50 text-amber-800 border-amber-200'
                                   : 'bg-emerald-50 text-emerald-800 border-emerald-200'
                             }`}>
-                              {(fishOrderMode === 'bulk' || fishOrderMode === 'export') ? 'BOX' : 'KG'}
+                              KG
                             </span>
                             <span className={`text-[9px] font-extrabold px-1.5 py-0.5 rounded-md border ${
                               stockKg > 0

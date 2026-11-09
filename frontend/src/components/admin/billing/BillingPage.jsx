@@ -2935,6 +2935,46 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
     showToast(t('newOrder'), 'success');
   }, [showToast, t, fishOrderMode]);
 
+  // Seamlessly switch order mode (Retail / Wholesale / Export) and navigate directly to a fresh NEW ORDER
+  const handleSwitchOrderMode = useCallback((targetMode) => {
+    setFishOrderMode(targetMode);
+
+    // Cleanly reset order and cart so switching modes always navigates to clean New Order page
+    setActiveTable('');
+    setCart([]);
+    cartRef.current = [];
+    hasPendingLocalChanges.current = false;
+    lastLocalEditTime.current = Date.now();
+    setOrderId(null);
+    setOrderStatus('Open');
+    setBillNumber(null);
+    setCompletedBill(null);
+
+    // Reset customer, discount, extra charges
+    setDiscount({ type: 'percentage', value: '', name: '' });
+    setCustomerPhone('');
+    setCustomerName('');
+    setCustomerInfo(null);
+    setIsOrderLocked(false);
+    setLockedTimestamp('');
+    setCustomerPhoto('');
+    setCustomerAddress('');
+    setCustomerCategory(targetMode === 'bulk' ? 'Wholesale' : (targetMode === 'export' ? 'Export' : 'Retail'));
+    setExportSubCategory(targetMode === 'export' ? 'Local' : null);
+    setDeliveryCharge('');
+    setContainerCharge('');
+    setCuttingCharge('');
+    setIsCuttingChargeEnabled(false);
+    setIsPaid(false);
+
+    try {
+      sessionStorage.removeItem('ms_initial_table');
+      sessionStorage.setItem('ms_initial_action', 'new');
+    } catch (e) { }
+
+    setMobileTab('menu');
+  }, []);
+
   const handleGenerateBill = async (overrideItems = null) => {
     let tableToUse = activeTableRef.current || activeTable;
     if (!tableToUse) {
@@ -3839,7 +3879,7 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
           <div className="flex md:hidden items-center bg-white p-0.5 rounded-lg border border-slate-300 shadow-xs shrink-0 gap-0.5 z-30">
             <button
               type="button"
-              onClick={() => setFishOrderMode('individual')}
+              onClick={() => handleSwitchOrderMode('individual')}
               className={`px-1.5 sm:px-2 py-0.5 sm:py-1 rounded text-[10px] sm:text-[10.5px] font-bold transition-all cursor-pointer ${fishOrderMode === 'individual'
                 ? 'bg-[#059669] text-white shadow-xs font-black'
                 : 'text-slate-600 hover:text-emerald-800'
@@ -3849,7 +3889,7 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
             </button>
             <button
               type="button"
-              onClick={() => setFishOrderMode('bulk')}
+              onClick={() => handleSwitchOrderMode('bulk')}
               className={`px-1 sm:px-1.5 py-0.5 sm:py-1 rounded text-[10px] sm:text-[10.5px] font-bold transition-all cursor-pointer ${fishOrderMode === 'bulk'
                 ? 'bg-[#d97706] text-white shadow-xs font-black'
                 : 'text-slate-600 hover:text-amber-800'
@@ -3859,7 +3899,7 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
             </button>
             <button
               type="button"
-              onClick={() => setFishOrderMode('export')}
+              onClick={() => handleSwitchOrderMode('export')}
               className={`px-1 sm:px-1.5 py-0.5 sm:py-1 rounded text-[10px] sm:text-[10.5px] font-bold transition-all cursor-pointer ${fishOrderMode === 'export'
                 ? 'bg-[#0284c7] text-white shadow-xs font-black'
                 : 'text-slate-600 hover:text-blue-800'
@@ -3925,7 +3965,7 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
           <div className="flex items-center bg-white p-0.5 rounded-lg sm:rounded-xl border border-slate-300 shadow-xs shrink-0 gap-0.5 sm:gap-1 z-30">
             <button
               type="button"
-              onClick={() => setFishOrderMode('individual')}
+              onClick={() => handleSwitchOrderMode('individual')}
               className={`px-2 sm:px-3 py-1 sm:py-1.5 rounded-md sm:rounded-lg text-[10.5px] sm:text-xs font-bold transition-all cursor-pointer ${fishOrderMode === 'individual'
                 ? 'bg-[#059669] text-white shadow-xs font-black'
                 : 'text-slate-600 hover:text-emerald-800 hover:bg-emerald-50'
@@ -3935,7 +3975,7 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
             </button>
             <button
               type="button"
-              onClick={() => setFishOrderMode('bulk')}
+              onClick={() => handleSwitchOrderMode('bulk')}
               className={`px-1.5 sm:px-3 py-1 sm:py-1.5 rounded-md sm:rounded-lg text-[10.5px] sm:text-xs font-bold transition-all cursor-pointer ${fishOrderMode === 'bulk'
                 ? 'bg-[#d97706] text-white shadow-sm shadow-amber-500/30 font-black'
                 : 'text-slate-600 hover:text-amber-800 hover:bg-amber-50'
@@ -3945,7 +3985,7 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
             </button>
             <button
               type="button"
-              onClick={() => setFishOrderMode('export')}
+              onClick={() => handleSwitchOrderMode('export')}
               className={`px-2 sm:px-3 py-1 sm:py-1.5 rounded-md sm:rounded-lg text-[10.5px] sm:text-xs font-bold transition-all cursor-pointer ${fishOrderMode === 'export'
                 ? 'bg-[#0284c7] text-white shadow-sm shadow-blue-500/30 font-black'
                 : 'text-slate-600 hover:text-blue-800 hover:bg-blue-50'
