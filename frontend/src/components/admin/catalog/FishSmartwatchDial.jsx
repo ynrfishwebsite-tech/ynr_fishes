@@ -13,7 +13,9 @@ import {
   Layers,
   Scissors,
   Award,
-  X
+  X,
+  Lock,
+  Unlock
 } from 'lucide-react';
 
 export default function FishSmartwatchDial({
@@ -98,6 +100,7 @@ export default function FishSmartwatchDial({
 
   // Dial rotation state & item cycling physics
   const [dialRingRotation, setDialRingRotation] = useState(0);
+  const [isDialLocked, setIsDialLocked] = useState(false);
   const isDraggingDialRef = useRef(false);
   const lastAngleRef = useRef(0);
   const accumulatedAngleRef = useRef(0);
@@ -196,6 +199,7 @@ export default function FishSmartwatchDial({
 
   // Dial touch rotation gesture - rotates dial AND cycles items like a digital crown
   const handleDialStart = (clientX, clientY, target) => {
+    if (isDialLocked) return;
     if (target && (target.closest('button') || target.closest('input') || target.closest('select'))) {
       return;
     }
@@ -209,7 +213,7 @@ export default function FishSmartwatchDial({
   };
 
   const handleDialMove = (clientX, clientY) => {
-    if (!isDraggingDialRef.current || !dialRef.current) return;
+    if (isDialLocked || !isDraggingDialRef.current || !dialRef.current) return;
     const rect = dialRef.current.getBoundingClientRect();
     const cx = rect.left + rect.width / 2;
     const cy = rect.top + rect.height / 2;
@@ -289,6 +293,7 @@ export default function FishSmartwatchDial({
     if (!el) return;
 
     const handleWheel = (e) => {
+      if (isDialLocked) return;
       // Don't intercept when scrolling native inputs or dropdowns
       if (e.target && (e.target.closest('input') || e.target.closest('select') || e.target.closest('textarea'))) {
         return;
@@ -328,14 +333,24 @@ export default function FishSmartwatchDial({
     return () => {
       el.removeEventListener('wheel', handleWheel);
     };
-  }, [items, setActiveIndex]);
+  }, [items, setActiveIndex, isDialLocked]);
 
   // Center Disc: Tap to Add & View Order, or Swipe horizontally to switch fish
   const handleCenterImageAddAndRedirect = (e) => {
     if (e) e.stopPropagation();
     const success = handleAddCurrentToBill();
-    if (success && onViewOrder) {
-      onViewOrder();
+    if (success) {
+      setIsDialLocked(false);
+      if (onViewOrder) {
+        onViewOrder();
+      } else {
+        setTimeout(() => {
+          const cartEl = document.querySelector('#billing-cart-summary-container') || document.querySelector('.bill-summary-container') || document.querySelector('.counter-sale-cart');
+          if (cartEl) {
+            cartEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          }
+        }, 100);
+      }
     }
   };
 
@@ -353,8 +368,11 @@ export default function FishSmartwatchDial({
     touchStartXRef.current = null;
     touchStartYRef.current = null;
 
-    // Horizontal swipe gesture (> 35px) cycles fish items & ring rotates
+    // Horizontal swipe gesture (> 35px) cycles fish items & ring rotates (disabled when dial is locked)
     if (Math.abs(diffX) > 35 && Math.abs(diffX) > Math.abs(diffY)) {
+      if (isDialLocked) {
+        return;
+      }
       if (diffX > 35 && safeActiveIndex < items.length - 1) {
         setActiveIndex((prev) => Math.min(items.length - 1, prev + 1));
         setDialRingRotation((prev) => prev + ROTATION_STEP_DEG);
@@ -474,13 +492,13 @@ export default function FishSmartwatchDial({
           boxLabel: `Box #${activeBoxNumber}`,
           isWholesaleBox: true,
           sellingUnit: 'Kg',
-          quantity: 1,
+          quantity: netKg,
           weightKg: netKg,
           enteredWeight: netKg,
           grossWeightKg: netKg,
           netWeightKg: netKg,
           pricePerKg: boxRate,
-          price: itemPrice,
+          price: boxRate,
           total: itemPrice,
           sizeGrade: activeGrade,
           cutType: selectedCutType,
@@ -520,13 +538,13 @@ export default function FishSmartwatchDial({
         boxLabel: `Box #${nextSingleBoxNum}`,
         isWholesaleBox: true,
         sellingUnit: 'Kg',
-        quantity: 1,
+        quantity: totalBoxWeightKg,
         weightKg: totalBoxWeightKg,
         enteredWeight: totalBoxWeightKg,
         grossWeightKg: totalBoxWeightKg,
         netWeightKg: totalBoxWeightKg,
         pricePerKg: boxRate,
-        price: totalBoxPrice,
+        price: boxRate,
         total: totalBoxPrice,
         sizeGrade: activeGrade,
         cutType: selectedCutType,
@@ -562,9 +580,9 @@ export default function FishSmartwatchDial({
       originalId: currentItem._id,
       originalFishName: currentItem.name,
       name: `${currentItem.name} (${selectedCutType} - ${fractionLabel})`,
-      price: totalAmount,
+      price: activeRate,
+      quantity: netKg,
       total: totalAmount,
-      quantity: 1,
       sellingUnit: 'Kg',
       enteredWeight: netKg,
       netWeightKg: netKg,
@@ -611,7 +629,7 @@ export default function FishSmartwatchDial({
   return (
     <div
       ref={containerRef}
-      className="relative w-full h-full flex flex-col justify-around items-center select-none py-1 px-1 sm:px-2 overflow-x-hidden"
+      className="relative w-full min-h-[500px] h-auto flex flex-col justify-start gap-1 sm:gap-2 items-center select-none py-1 px-1 sm:px-2 overflow-x-hidden"
     >
       {/* Popovers backdrop */}
       {(showGradeMenu || showCutMenu) && (
@@ -833,9 +851,10 @@ export default function FishSmartwatchDial({
             ======================================================== */}
         <button
           type="button"
-          disabled={safeActiveIndex === 0}
+          disabled={safeActiveIndex === 0 || isDialLocked}
           onClick={(e) => {
             e.stopPropagation();
+            if (isDialLocked) return;
             setActiveIndex(Math.max(0, safeActiveIndex - 1));
             setDialRingRotation((prev) => prev - ROTATION_STEP_DEG);
           }}
@@ -846,17 +865,20 @@ export default function FishSmartwatchDial({
             transform: 'translate(-50%, -50%)',
             zIndex: 35
           }}
-          className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-white shadow-md border border-slate-200/90 flex items-center justify-center text-slate-800 hover:bg-amber-50 active:scale-90 disabled:opacity-20 cursor-pointer transition-all"
-          title="Previous Fish"
+          className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-white shadow-md border border-slate-200/90 flex items-center justify-center text-slate-800 hover:bg-amber-50 active:scale-90 transition-all ${
+            isDialLocked ? 'opacity-30 cursor-not-allowed' : 'disabled:opacity-20 cursor-pointer'
+          }`}
+          title={isDialLocked ? "Dial is locked" : "Previous Fish"}
         >
           <ChevronLeft size={18} className="text-slate-800 stroke-[2.5]" />
         </button>
 
         <button
           type="button"
-          disabled={safeActiveIndex >= items.length - 1}
+          disabled={safeActiveIndex >= items.length - 1 || isDialLocked}
           onClick={(e) => {
             e.stopPropagation();
+            if (isDialLocked) return;
             setActiveIndex(Math.min(items.length - 1, safeActiveIndex + 1));
             setDialRingRotation((prev) => prev + ROTATION_STEP_DEG);
           }}
@@ -867,8 +889,10 @@ export default function FishSmartwatchDial({
             transform: 'translate(-50%, -50%)',
             zIndex: 35
           }}
-          className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-white shadow-md border border-slate-200/90 flex items-center justify-center text-slate-800 hover:bg-amber-50 active:scale-90 disabled:opacity-20 cursor-pointer transition-all"
-          title="Next Fish"
+          className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-white shadow-md border border-slate-200/90 flex items-center justify-center text-slate-800 hover:bg-amber-50 active:scale-90 transition-all ${
+            isDialLocked ? 'opacity-30 cursor-not-allowed' : 'disabled:opacity-20 cursor-pointer'
+          }`}
+          title={isDialLocked ? "Dial is locked" : "Next Fish"}
         >
           <ChevronRight size={18} className="text-slate-800 stroke-[2.5]" />
         </button>
@@ -881,17 +905,17 @@ export default function FishSmartwatchDial({
           onTouchStart={handleCenterTouchStart}
           onTouchEnd={handleCenterTouchEnd}
           onClick={handleCenterClick}
-          className="relative w-[64%] h-[64%] rounded-full border-[3.5px] border-[#fdba74] shadow-xl overflow-hidden z-20 select-none cursor-pointer active:scale-95 transition-transform"
+          className="relative w-[64%] h-[64%] rounded-full border-[3.5px] border-[#fdba74] shadow-xl overflow-hidden z-20 select-none cursor-pointer active:scale-95 transition-transform bg-white flex items-center justify-center"
           style={{
             boxShadow: '0 8px 24px -2px rgba(245, 158, 11, 0.22), inset 0 2px 6px rgba(255, 255, 255, 0.95)'
           }}
         >
-          {/* Fish Image fills full circle like a profile picture */}
+          {/* Fish Image fits full circle preserving entire fish without cropping */}
           {showImages ? (
             <img
               src={formatImageUrl(currentItem.image)}
               alt={currentItem.name}
-              className="absolute inset-0 w-full h-full object-cover object-center pointer-events-none transition-transform duration-300"
+              className="absolute inset-0 w-full h-full object-contain object-center p-3 sm:p-4 pointer-events-none transition-transform duration-300"
             />
           ) : (
             <div className="absolute inset-0 w-full h-full bg-gradient-to-b from-sky-50 to-amber-50 flex items-center justify-center">
@@ -918,7 +942,24 @@ export default function FishSmartwatchDial({
           style={getCurvedSectorCenterStyle(0)}
           className="pointer-events-auto select-none flex flex-col items-center justify-center text-center"
         >
-          <ShoppingBag size={14} className="text-[#92400e] stroke-[2.5] mb-0.5" />
+          <div className="flex items-center gap-1 mb-0.5">
+            {isDialLocked ? (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setIsDialLocked(false);
+                }}
+                className="inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded-full text-[8.5px] font-black bg-amber-600 text-white shadow-2xs hover:bg-amber-700 active:scale-95 transition-all cursor-pointer"
+                title="Dial is locked. Tap to unlock"
+              >
+                <Lock size={9} className="stroke-[3]" />
+                <span>Locked</span>
+              </button>
+            ) : (
+              <ShoppingBag size={14} className="text-[#92400e] stroke-[2.5]" />
+            )}
+          </div>
           {(!isBoxBasedMode || boxFishMode === 'mixed') ? (
             <div
               onClick={(e) => e.stopPropagation()}
@@ -936,10 +977,22 @@ export default function FishSmartwatchDial({
               <div className="flex items-center gap-0.5 px-0.5">
                 <input
                   type="number"
-                  step="0.5"
+                  step="any"
                   min="0.1"
-                  value={weightKg}
+                  value={weightKg === '0' || weightKg === 0 ? '' : weightKg}
+                  onFocus={(e) => {
+                    e.target.select();
+                    setIsDialLocked(true);
+                    setWeightKg('');
+                  }}
+                  onBlur={(e) => {
+                    const parsed = parseFloat(e.target.value);
+                    if (!e.target.value || isNaN(parsed) || parsed <= 0) {
+                      setWeightKg('1.000');
+                    }
+                  }}
                   onChange={(e) => setWeightKg(e.target.value)}
+                  placeholder=""
                   style={{ backgroundColor: 'transparent', boxShadow: 'none' }}
                   className="text-xs sm:text-sm font-black text-slate-900 font-mono text-center bg-transparent border-0 outline-none shadow-none focus:outline-none focus:ring-0 w-11 sm:w-12 leading-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                 />
@@ -973,8 +1026,21 @@ export default function FishSmartwatchDial({
                 <input
                   type="number"
                   min="1"
-                  value={boxWeightKg}
+                  step="any"
+                  value={boxWeightKg === '0' || boxWeightKg === 0 ? '' : boxWeightKg}
+                  onFocus={(e) => {
+                    e.target.select();
+                    setIsDialLocked(true);
+                    setBoxWeightKg('');
+                  }}
+                  onBlur={(e) => {
+                    const parsed = parseFloat(e.target.value);
+                    if (!e.target.value || isNaN(parsed) || parsed <= 0) {
+                      setBoxWeightKg('20');
+                    }
+                  }}
                   onChange={(e) => setBoxWeightKg(e.target.value)}
+                  placeholder=""
                   style={{ backgroundColor: 'transparent', boxShadow: 'none' }}
                   className="text-xs sm:text-sm font-black text-slate-900 font-mono text-center bg-transparent border-0 outline-none shadow-none focus:outline-none focus:ring-0 w-10 sm:w-11 leading-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                 />
@@ -1164,7 +1230,10 @@ export default function FishSmartwatchDial({
                 <button
                   key={kgVal}
                   type="button"
-                  onClick={() => setWeightKg(parseFloat(kgVal).toFixed(3))}
+                  onClick={() => {
+                    setIsDialLocked(false);
+                    setWeightKg(parseFloat(kgVal).toFixed(3));
+                  }}
                   className={`px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-lg text-xs sm:text-sm font-bold shrink-0 transition-all cursor-pointer ${
                     isSelected
                       ? 'bg-[#ea580c] text-white font-black shadow-xs scale-105'
@@ -1187,6 +1256,7 @@ export default function FishSmartwatchDial({
                 type="button"
                 onClick={() => {
                   const base = Math.floor(parseFloat(weightKg) || 0);
+                  setIsDialLocked(false);
                   setWeightKg((base + frac.g).toFixed(3));
                 }}
                 className="px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-lg text-xs sm:text-sm font-bold shrink-0 bg-white/95 text-slate-700 hover:bg-amber-50 border border-slate-200/90 shadow-2xs transition-all cursor-pointer"
@@ -1222,6 +1292,10 @@ export default function FishSmartwatchDial({
                 max="5000"
                 step="1"
                 value={tareGrams === 0 ? '' : tareGrams}
+                onFocus={(e) => {
+                  e.target.select();
+                  setTareGrams(0);
+                }}
                 onChange={(e) => {
                   const val = parseInt(e.target.value, 10);
                   setTareGrams(isNaN(val) || val < 0 ? 0 : val);
@@ -1254,7 +1328,10 @@ export default function FishSmartwatchDial({
                   <button
                     key={wVal}
                     type="button"
-                    onClick={() => setBoxWeightKg(wVal)}
+                    onClick={() => {
+                      setIsDialLocked(false);
+                      setBoxWeightKg(wVal);
+                    }}
                     className={`px-2.5 sm:px-3 py-1 rounded-lg font-bold transition-all cursor-pointer ${
                       isSelected
                         ? 'bg-sky-600 text-white font-black shadow-xs scale-105'
@@ -1274,7 +1351,10 @@ export default function FishSmartwatchDial({
                   <button
                     key={kgVal}
                     type="button"
-                    onClick={() => setWeightKg(parseFloat(kgVal).toFixed(3))}
+                    onClick={() => {
+                      setIsDialLocked(false);
+                      setWeightKg(parseFloat(kgVal).toFixed(3));
+                    }}
                     className={`px-2 sm:px-2.5 py-1 rounded-lg font-bold transition-all cursor-pointer ${
                       isSelected
                         ? 'bg-[#ea580c] text-white font-black shadow-xs scale-105'
@@ -1364,6 +1444,27 @@ export default function FishSmartwatchDial({
             )}
           </div>
         </>
+      )}
+
+      {/* View Current Order Smooth Scroll Pill in the bottom empty section */}
+      {cart && cart.length > 0 && (
+        <div className="w-full flex justify-center py-2.5 mt-1 shrink-0">
+          <button
+            type="button"
+            onClick={() => {
+              const cartEl = document.querySelector('#billing-cart-summary-container') || document.querySelector('.bill-summary-container') || document.querySelector('.counter-sale-cart');
+              if (cartEl) {
+                cartEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+              }
+            }}
+            className="flex items-center gap-2 px-4 py-2 rounded-full bg-emerald-700 hover:bg-emerald-800 active:scale-95 text-white font-black text-xs shadow-md transition-all cursor-pointer border border-emerald-500 animate-pulse"
+            title="Scroll down to Current Order"
+          >
+            <ShoppingCart size={14} />
+            <span>Current Order ({cartCount} {cartCount === 1 ? 'item' : 'items'} • ₹{computedCartTotal.toFixed(0)})</span>
+            <ChevronDown size={14} className="stroke-[3]" />
+          </button>
+        </div>
       )}
     </div>
   );

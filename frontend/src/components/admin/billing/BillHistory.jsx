@@ -13,6 +13,7 @@ import realtimeService from '../../../services/realtimeService';
 import { formatTime12 } from '../../../utils/formatters/timeFormat';
 
 // Helper: Dynamically compute total weight in Kgs for any bill from items/boxes
+export { resolveItemQtyAndRate } from '../../../utils/formatters/billItemFormatters';
 export const getBillTotalWeightKg = (bill) => {
   if (!bill) return 0;
   if (Array.isArray(bill.boxes) && bill.boxes.length > 0) {

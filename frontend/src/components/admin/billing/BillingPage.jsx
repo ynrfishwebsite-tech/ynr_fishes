@@ -12,7 +12,7 @@ import { getCachedOpenOrders, upsertCachedOpenOrder, removeCachedOpenOrder } fro
 import { Search, UtensilsCrossed, Maximize, Minimize, TrendingUp, ShoppingBag, LayoutGrid, Menu, ChevronLeft, ChevronRight, ChevronDown, Lock, Unlock, X, User, UserPlus, Phone, Loader2, Plus, Check,Printer } from 'lucide-react';
 import useDebounce from '../../../hooks/useDebounce';
 import Invoice from './Invoice';
-import { getBillTotalWeightKg } from './BillHistory';
+import { getBillTotalWeightKg, resolveItemQtyAndRate } from './BillHistory';
 import CancelOrderModal from './CancelOrderModal';
 import { useLanguage } from '../../../context/LanguageContext';
 import realtimeService from '../../../services/realtimeService';
@@ -3488,9 +3488,12 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
             {(onGoBack || mobileTab === 'cart') && (
               <BackButton
                 onClick={() => {
-                  if (mobileTab === 'cart') {
-                    setMobileTab('menu');
-                  } else if (onGoBack) {
+                  const scrollParent = document.querySelector('#billing-main-scroll-area') || window;
+                  if (scrollParent && scrollParent.scrollTop > 80) {
+                    scrollParent.scrollTo({ top: 0, behavior: 'smooth' });
+                    return;
+                  }
+                  if (onGoBack) {
                     onGoBack();
                   }
                 }}
@@ -3836,24 +3839,20 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
       </div>
 
       <div className="flex-1 flex flex-col overflow-hidden">
-        <div className="flex-1 flex flex-col xl:flex-row overflow-y-auto xl:overflow-hidden relative">
-          <div className={`flex flex-col bg-surface border-b xl:border-b-0 xl:border-r border-border/50 ${mobileTab === 'cart' ? 'hidden xl:flex' : 'flex'} w-full md:min-h-[580px] xl:min-h-0 xl:flex-1 shrink-0 xl:shrink transition-all duration-300`
-          }>
+        <div id="billing-main-scroll-area" className="flex-1 flex flex-col xl:flex-row overflow-y-auto xl:overflow-hidden relative scroll-smooth">
+          <div id="billing-menu-grid-container" className="flex flex-col bg-surface border-b xl:border-b-0 xl:border-r border-border/50 flex w-full xl:min-h-0 xl:flex-1 shrink-0 xl:shrink transition-all duration-300">
             <MenuGrid
               onSelectItem={addToCart}
               onAddBox={addBoxToCart}
               cart={cart}
               cartTotal={total}
               onViewOrder={() => {
-                setMobileTab('cart');
-                if (typeof window !== 'undefined' && window.innerWidth >= 768 && window.innerWidth < 1280) {
-                  setTimeout(() => {
-                    const billEl = document.querySelector('.bill-summary-container') || document.querySelector('.counter-sale-cart');
-                    if (billEl) {
-                      billEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                    }
-                  }, 280);
-                }
+                setTimeout(() => {
+                  const cartEl = document.querySelector('#billing-cart-summary-container') || document.querySelector('.bill-summary-container') || document.querySelector('.counter-sale-cart');
+                  if (cartEl) {
+                    cartEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                  }
+                }, 80);
               }}
               activeTable={activeTable}
               billType={billType}
@@ -3891,14 +3890,13 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
           </div>
 
           <div
+            id="billing-cart-summary-container"
             style={typeof window !== 'undefined' && window.innerWidth >= 1280 ? {
               width: isCartCollapsed ? 0 : rightPanelWidth,
               maxWidth: '45vw',
               minWidth: isCartCollapsed ? 0 : '360px'
             } : { width: '100%', maxWidth: '100vw' }}
-            className={`flex flex-col bg-surface ${
-              mobileTab === 'menu' ? 'hidden xl:flex' : 'flex'
-            } ${isCartCollapsed ? 'xl:w-0 border-none opacity-0 xl:opacity-100 overflow-visible' : 'border-t md:border-t-2 xl:border-t-0 xl:border-l border-border/50 overflow-visible'} shrink-0 w-full xl:w-auto xl:h-full md:min-h-[500px] md:h-[540px] transition-none relative`}>
+            className={`flex flex-col bg-surface ${isCartCollapsed ? 'xl:w-0 border-none opacity-0 xl:opacity-100 overflow-visible' : 'border-t md:border-t-2 xl:border-t-0 xl:border-l border-border/50 overflow-visible'} shrink-0 w-full xl:w-auto xl:h-full transition-none relative`}>
 
 
             {/* Drag Handle (Desktop only) */}
@@ -3925,7 +3923,16 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
               <BillSummary
                 orderId={orderId}
                 cart={cart}
-                onBackToMenu={() => setMobileTab('menu')}
+                onBackToMenu={() => {
+                  const scrollParent = document.querySelector('#billing-main-scroll-area') || window;
+                  if (scrollParent && scrollParent.scrollTo) {
+                    scrollParent.scrollTo({ top: 0, behavior: 'smooth' });
+                  }
+                  const menuEl = document.querySelector('#billing-menu-grid-container');
+                  if (menuEl) {
+                    menuEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                  }
+                }}
                 hasUnprintedItems={hasUnprintedItems}
                 updateQuantity={updateQuantity}
                 removeBoxFromCart={removeBoxFromCart}
@@ -4479,13 +4486,13 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
                     {box.items.map((item, idx) => {
                       const activeQty = (item.quantity || 1) - (item.cancelledQuantity || 0);
                       if (activeQty <= 0) return null;
-                      const { displayName, cutType, weightInfo } = getItemCutting(item);
-                      const unitRate = item.pricePerKg || (item.weightKg ? Math.round(item.price / item.weightKg) : null);
+                      const { displayName, cutType } = getItemCutting(item);
+                      const qData = resolveItemQtyAndRate(item);
                       return (
                         <div key={idx} style={{ display: 'flex', width: '100%', alignItems: 'flex-start', fontSize: '11px', paddingLeft: '4px', margin: '3px 0' }}>
                           <div style={{ flex: '1 1 0%', textAlign: 'left', wordBreak: 'break-word', paddingRight: '4px' }}>
                             <div>
-                              • {displayName}{item.weightKg ? ` (${item.weightKg}Kg @ ₹${unitRate}/kg)` : (weightInfo ? ` (${weightInfo})` : '')}
+                              • {displayName}
                             </div>
                             {cutType && (
                               <div style={{ fontSize: '10px', fontWeight: 600, color: '#222', marginTop: '1px' }}>
@@ -4493,9 +4500,9 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
                               </div>
                             )}
                           </div>
-                          <div style={{ width: '36px', textAlign: 'center', flexShrink: 0 }}>{activeQty}</div>
-                          <div style={{ width: '60px', textAlign: 'right', flexShrink: 0 }}>{(Number(item.price) || 0).toFixed(2)}</div>
-                          <div style={{ width: '64px', textAlign: 'right', flexShrink: 0, fontWeight: 'bold' }}>{(Number(item.price || 0) * activeQty).toFixed(2)}</div>
+                          <div style={{ width: '42px', textAlign: 'center', flexShrink: 0, fontWeight: 600 }}>{qData.qtyDisplay}</div>
+                          <div style={{ width: '54px', textAlign: 'right', flexShrink: 0 }}>{qData.rateDisplay}</div>
+                          <div style={{ width: '64px', textAlign: 'right', flexShrink: 0, fontWeight: 'bold' }}>{qData.amountDisplay}</div>
                         </div>
                       );
                     })}
@@ -4514,12 +4521,13 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
                       const activeQty = (item.quantity || 1) - (item.cancelledQuantity || 0);
                       if (activeQty <= 0) return null;
                       const { displayName, cutType, weightInfo } = getItemCutting(item);
+                      const qData = resolveItemQtyAndRate(item);
                       return (
                         <div key={idx} style={{ display: 'flex', width: '100%', alignItems: 'flex-start', fontSize: '11px', margin: '3px 0' }}>
                           <div style={{ flex: '1 1 0%', textAlign: 'left', wordBreak: 'break-word', paddingRight: '4px' }}>
                             <div style={{ fontWeight: 600 }}>
                               {displayName}
-                              {weightInfo && <span style={{ fontWeight: 'normal' }}> ({weightInfo})</span>}
+                              {!qData.isKg && weightInfo && <span style={{ fontWeight: 'normal' }}> ({weightInfo})</span>}
                             </div>
                             {cutType && (
                               <div style={{ fontSize: '10px', fontWeight: 600, color: '#222', marginTop: '1px' }}>
@@ -4527,9 +4535,9 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
                               </div>
                             )}
                           </div>
-                          <div style={{ width: '36px', textAlign: 'center', flexShrink: 0 }}>{activeQty}</div>
-                          <div style={{ width: '60px', textAlign: 'right', flexShrink: 0 }}>{(Number(item.price) || 0).toFixed(2)}</div>
-                          <div style={{ width: '64px', textAlign: 'right', flexShrink: 0, fontWeight: 'bold' }}>{(Number(item.price || 0) * activeQty).toFixed(2)}</div>
+                          <div style={{ width: '42px', textAlign: 'center', flexShrink: 0, fontWeight: 600 }}>{qData.qtyDisplay}</div>
+                          <div style={{ width: '54px', textAlign: 'right', flexShrink: 0 }}>{qData.rateDisplay}</div>
+                          <div style={{ width: '64px', textAlign: 'right', flexShrink: 0, fontWeight: 'bold' }}>{qData.amountDisplay}</div>
                         </div>
                       );
                     })}
@@ -4545,7 +4553,7 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
                       ? `Total: ${boxKeys.length} Box(es) + ${totalLoose} Loose`
                       : boxKeys.length > 0
                         ? `Total: ${boxKeys.length} ${boxKeys.length === 1 ? 'Box' : 'Boxes'} (${boxKg.toFixed(1).replace(/\.0$/, '')} Kg)`
-                        : `Total Qty: ${totalLoose || active.reduce((s, i) => s + (i.quantity || 1), 0)}${totalBillKg > 0 ? ` (${totalBillKg.toFixed(1).replace(/\.0$/, '')} Kg)` : ''}`}
+                        : `${totalBillKg > 0 ? `Total Qty: ${totalBillKg.toFixed(1).replace(/\.0$/, '')} Kg` : `Total Qty: ${totalLoose}`}`}
                   </span>
                   <span>Sub Total: ₹{Number(offscreenBill.subtotal || 0).toFixed(2)}</span>
                 </div>

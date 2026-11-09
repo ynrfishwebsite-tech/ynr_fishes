@@ -11,7 +11,7 @@ import { formatTime12 } from '../../../utils/formatters/timeFormat';
 import { getReceiptFontMetrics, findReceiptFont } from '../../../utils/formatters/receiptFonts';
 import { renderElementToESCPOSRaster, renderElementToPNGBase64, autoTrimCanvasBottom } from '../../../utils/formatters/escposRaster';
 import ClothUnrollReceipt from './ClothUnrollReceipt';
-import { getBillTotalWeightKg } from './BillHistory';
+import { getBillTotalWeightKg, resolveItemQtyAndRate } from './BillHistory';
 
 const Invoice = ({ bill: incomingBill, billData, onClose, onSave, onSettle, whatsappBillSentIds, onWhatsAppSent, autoSendWhatsApp = false, isHistoryView = false, isDirectPrint = false, onGlobalToast }) => {
   const bill = incomingBill || billData || {};
@@ -670,10 +670,10 @@ const Invoice = ({ bill: incomingBill, billData, onClose, onSave, onSettle, what
         box.items.forEach(item => {
           const qty = (item.quantity || 0) - (item.cancelledQuantity || 0);
           if (qty <= 0) return;
-          const { displayName, cutType, weightInfo } = getItemCuttingDetails(item);
-          const wtPart = item.weightKg ? ` (${item.weightKg}Kg @ ₹${item.pricePerKg || Math.round(item.price / (item.weightKg || 1))}/kg)` : (weightInfo ? ` (${weightInfo})` : '');
+          const { displayName, cutType } = getItemCuttingDetails(item);
+          const qData = resolveItemQtyAndRate(item);
           const cutPart = cutType ? ` [Cut: ${cutType}]` : '';
-          boxLines.push(`  • ${displayName}${wtPart} x ${qty} @ ₹${(item.price || 0).toFixed(2)} = ₹${((item.price || 0) * qty).toFixed(2)}${cutPart}`);
+          boxLines.push(`  • ${displayName} x ${qData.qtyDisplay} @ ₹${qData.rateDisplay}${qData.isKg ? '/kg' : ''} = ₹${qData.amountDisplay}${cutPart}`);
         });
       });
       if (invoiceIndividualItems.length > 0) {
@@ -681,10 +681,10 @@ const Invoice = ({ bill: incomingBill, billData, onClose, onSave, onSettle, what
         invoiceIndividualItems.forEach(item => {
           const qty = (item.quantity || 0) - (item.cancelledQuantity || 0);
           if (qty <= 0) return;
-          const { displayName, cutType, weightInfo } = getItemCuttingDetails(item);
-          const wtPart = weightInfo ? ` (${weightInfo})` : (item.weightKg ? ` (${item.weightKg} Kg)` : '');
+          const { displayName, cutType } = getItemCuttingDetails(item);
+          const qData = resolveItemQtyAndRate(item);
           const cutPart = cutType ? ` [Cut: ${cutType}]` : '';
-          boxLines.push(`  • ${displayName}${wtPart} x ${qty} @ ₹${(item.price || 0).toFixed(2)} = ₹${((item.price || 0) * qty).toFixed(2)}${cutPart}`);
+          boxLines.push(`  • ${displayName} x ${qData.qtyDisplay} @ ₹${qData.rateDisplay}${qData.isKg ? '/kg' : ''} = ₹${qData.amountDisplay}${cutPart}`);
         });
       }
       itemsList = boxLines.join('\n');
@@ -694,12 +694,10 @@ const Invoice = ({ bill: incomingBill, billData, onClose, onSave, onSettle, what
         .map(item => {
           const qty = (item.quantity || 0) - (item.cancelledQuantity || 0);
           if (qty <= 0) return null;
-          const price = (item.price || 0).toFixed(2);
-          const itemTot = ((item.price || 0) * qty).toFixed(2);
-          const { displayName, cutType, weightInfo } = getItemCuttingDetails(item);
-          const weightPart = weightInfo ? ` (${weightInfo})` : (item.weightKg ? ` (${item.weightKg} Kg)` : '');
+          const { displayName, cutType } = getItemCuttingDetails(item);
+          const qData = resolveItemQtyAndRate(item);
           const cutLine = cutType ? `\n   *Cut: ${cutType}*` : '';
-          return `• ${displayName}${weightPart} x ${qty} @ ₹${price} = ₹${itemTot}${cutLine}`;
+          return `• ${displayName} x ${qData.qtyDisplay} @ ₹${qData.rateDisplay}${qData.isKg ? '/kg' : ''} = ₹${qData.amountDisplay}${cutLine}`;
         })
         .filter(Boolean)
         .join('\n');
@@ -1753,12 +1751,12 @@ const Invoice = ({ bill: incomingBill, billData, onClose, onSave, onSettle, what
                       {box.items.map((item, idx) => {
                         const activeQty = (item.quantity || 0) - (item.cancelledQuantity || 0);
                         if (activeQty <= 0) return null;
-                        const { displayName, cutType, weightInfo } = getItemCuttingDetails(item);
+                        const { displayName, cutType } = getItemCuttingDetails(item);
+                        const qData = resolveItemQtyAndRate(item);
                         return (
                           <div key={idx} style={{ padding: '2px 0 2px 4px', borderBottom: idx < box.items.length - 1 ? '1px dotted #ccc' : 'none' }}>
                             <div style={{ fontWeight: 650, fontSize: fontMetrics.detailSize, textAlign: 'left', wordBreak: 'break-word', lineHeight: '1.2' }}>
                               • {displayName || 'Unknown Item'}
-                              {item.weightKg ? ` (${item.weightKg}Kg @ ₹${item.pricePerKg}/kg)` : (weightInfo ? ` (${weightInfo})` : '')}
                             </div>
                             {cutType && (
                               <div style={{ fontSize: fontMetrics.detailSize, fontWeight: 600, color: '#222', marginTop: '1px', whiteSpace: 'nowrap', lineHeight: '1.2' }}>
@@ -1766,8 +1764,8 @@ const Invoice = ({ bill: incomingBill, billData, onClose, onSave, onSettle, what
                               </div>
                             )}
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: fontMetrics.detailSize, marginTop: '1px' }}>
-                              <span style={{ color: '#444' }}>[{Number(item.price || 0).toFixed(2)}] × {activeQty}</span>
-                              <span style={{ fontWeight: 700 }}>{(item.price * activeQty).toFixed(2)}</span>
+                              <span style={{ color: '#444' }}>[{qData.rateDisplay}{qData.isKg ? '/kg' : ''}] × {qData.qtyDisplay}</span>
+                              <span style={{ fontWeight: 700 }}>{qData.amountDisplay}</span>
                             </div>
                           </div>
                         );
@@ -1787,12 +1785,13 @@ const Invoice = ({ bill: incomingBill, billData, onClose, onSave, onSettle, what
                         const activeQty = (item.quantity || 0) - (item.cancelledQuantity || 0);
                         if (activeQty <= 0) return null;
                         const { displayName, cutType, weightInfo } = getItemCuttingDetails(item);
+                        const qData = resolveItemQtyAndRate(item);
                         return (
                           <div key={idx} style={{ marginBottom: '4px', paddingBottom: '3px', borderBottom: '1px dashed #e0e0e0' }}>
                             <div style={{ fontWeight: 750, fontSize: fontMetrics.itemSize, textAlign: 'left', wordBreak: 'break-word', lineHeight: '1.2' }}>
                               {displayName || 'Unknown Item'}
-                              {weightInfo && <span style={{ fontSize: fontMetrics.detailSize, fontWeight: 'normal' }}> ({weightInfo})</span>}
-                              {item.sellingUnit && !weightInfo && <span style={{ fontSize: fontMetrics.detailSize, fontWeight: 'normal' }}> ({item.sellingUnit})</span>}
+                              {!qData.isKg && weightInfo && <span style={{ fontSize: fontMetrics.detailSize, fontWeight: 'normal' }}> ({weightInfo})</span>}
+                              {!qData.isKg && item.sellingUnit && !weightInfo && <span style={{ fontSize: fontMetrics.detailSize, fontWeight: 'normal' }}> ({item.sellingUnit})</span>}
                             </div>
                             {cutType && (
                               <div style={{ fontSize: fontMetrics.detailSize, fontWeight: 600, color: '#222', marginTop: '1px', whiteSpace: 'nowrap', lineHeight: '1.2' }}>
@@ -1800,8 +1799,8 @@ const Invoice = ({ bill: incomingBill, billData, onClose, onSave, onSettle, what
                               </div>
                             )}
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: fontMetrics.detailSize, marginTop: '1.5px' }}>
-                              <span>[{Number(item.price || 0).toFixed(2)}] × {activeQty}</span>
-                              <span style={{ fontWeight: 750 }}>{(item.price * activeQty).toFixed(2)}</span>
+                              <span>[{qData.rateDisplay}{qData.isKg ? '/kg' : ''}] × {qData.qtyDisplay}</span>
+                              <span style={{ fontWeight: 750 }}>{qData.amountDisplay}</span>
                             </div>
                             {item.hsnCode && (
                               <div style={{ fontSize: '9.5px', color: '#666' }}>HSN: {item.hsnCode}</div>
@@ -1828,7 +1827,7 @@ const Invoice = ({ bill: incomingBill, billData, onClose, onSave, onSettle, what
                     ? `Total: ${totalBoxesCount} Box(es) + ${totalLooseQty} Loose`
                     : totalBoxesCount > 0
                       ? `Total: ${totalBoxesCount} ${totalBoxesCount === 1 ? 'Box' : 'Boxes'} (${totalBoxesWeightKg.toFixed(1).replace(/\.0$/, '')} Kg)`
-                      : `${t("Total Qty: ")}${totalLooseQty}`}
+                      : `${t("Total Qty: ")}${getBillTotalWeightKg(bill) > 0 ? `${getBillTotalWeightKg(bill).toFixed(1).replace(/\.0$/, '')} Kg` : totalLooseQty}`}
                 </span>
                 <div style={{ display: 'flex', gap: '6px' }}>
                   <span>{t("Sub Total:")}</span>
@@ -2204,8 +2203,8 @@ const Invoice = ({ bill: incomingBill, billData, onClose, onSave, onSettle, what
             {/* Items Header */}
             <div className="flex pb-0.5" style={{ display: 'flex', width: '100%', alignItems: 'center', fontSize: fontMetrics.detailSize, fontWeight: 'normal' }}>
               <div className="flex-1" style={{ flex: '1 1 0%', textAlign: 'left' }}>{t('Item')}</div>
-              <div className="w-8 text-center" style={{ width: '32px', textAlign: 'center', flexShrink: 0 }}>{t("Qty.")}</div>
-              <div className="w-14 text-right" style={{ width: '56px', textAlign: 'right', flexShrink: 0 }}>{t("Price")}</div>
+              <div className="w-10 text-center" style={{ width: '42px', textAlign: 'center', flexShrink: 0 }}>{t("Qty.")}</div>
+              <div className="w-12 text-right" style={{ width: '52px', textAlign: 'right', flexShrink: 0 }}>{t("Price")}</div>
               <div className="w-16 text-right" style={{ width: '64px', textAlign: 'right', flexShrink: 0 }}>{t('Amount')}</div>
             </div>
 
@@ -2227,12 +2226,13 @@ const Invoice = ({ bill: incomingBill, billData, onClose, onSave, onSettle, what
                       {box.items.map((item, idx) => {
                         const activeQty = (item.quantity || 0) - (item.cancelledQuantity || 0);
                         if (activeQty <= 0) return null;
-                        const { displayName, cutType, weightInfo } = getItemCuttingDetails(item);
+                        const { displayName, cutType } = getItemCuttingDetails(item);
+                        const qData = resolveItemQtyAndRate(item);
                         return (
                           <div key={idx} className="flex items-start mb-0.5 leading-tight" style={{ display: 'flex', width: '100%', alignItems: 'flex-start', fontSize: fontMetrics.detailSize, paddingLeft: '8px' }}>
                             <div className="flex-1 pr-1 break-words" style={{ flex: '1 1 0%', textAlign: 'left', wordBreak: 'break-word', paddingRight: '4px' }}>
                               <div>
-                                • {displayName || 'Unknown Item'}{item.weightKg ? ` (${item.weightKg}Kg @ ₹${item.pricePerKg}/kg)` : (weightInfo ? ` (${weightInfo})` : '')}
+                                • {displayName || 'Unknown Item'}
                                 {item.hsnCode ? <span style={{ fontSize: '9px', color: '#555' }}> (HSN: {item.hsnCode})</span> : ''}
                               </div>
                               {cutType && (
@@ -2241,9 +2241,9 @@ const Invoice = ({ bill: incomingBill, billData, onClose, onSave, onSettle, what
                                 </div>
                               )}
                             </div>
-                            <div className="w-8 text-center" style={{ width: '32px', textAlign: 'center', flexShrink: 0 }}>{activeQty}</div>
-                            <div className="w-14 text-right" style={{ width: '56px', textAlign: 'right', flexShrink: 0 }}>{(item.price || 0).toFixed(2)}</div>
-                            <div className="w-16 text-right" style={{ width: '64px', textAlign: 'right', flexShrink: 0, fontWeight: 'bold' }}>{(item.price * activeQty).toFixed(2)}</div>
+                            <div className="w-10 text-center" style={{ width: '42px', textAlign: 'center', flexShrink: 0, fontWeight: 600 }}>{qData.qtyDisplay}</div>
+                            <div className="w-12 text-right" style={{ width: '52px', textAlign: 'right', flexShrink: 0 }}>{qData.rateDisplay}</div>
+                            <div className="w-16 text-right" style={{ width: '64px', textAlign: 'right', flexShrink: 0, fontWeight: 'bold' }}>{qData.amountDisplay}</div>
                           </div>
                         );
                       })}
@@ -2262,13 +2262,14 @@ const Invoice = ({ bill: incomingBill, billData, onClose, onSave, onSettle, what
                         const activeQty = (item.quantity || 0) - (item.cancelledQuantity || 0);
                         if (activeQty <= 0) return null;
                         const { displayName, cutType, weightInfo } = getItemCuttingDetails(item);
+                        const qData = resolveItemQtyAndRate(item);
                         return (
                           <div key={idx} className="flex items-start mb-1 leading-tight" style={{ display: 'flex', width: '100%', alignItems: 'flex-start', fontSize: fontMetrics.itemSize, fontWeight: 'normal' }}>
                             <div className="flex-1 pr-1 break-words" style={{ flex: '1 1 0%', textAlign: 'left', wordBreak: 'break-word', paddingRight: '4px', fontSize: fontMetrics.itemSize }}>
                               <div style={{ fontWeight: 750 }}>
                                 {displayName || 'Unknown Item'}
-                                {weightInfo && <span style={{ fontSize: fontMetrics.detailSize, fontWeight: 'normal' }}> ({weightInfo})</span>}
-                                {item.sellingUnit && !weightInfo && <span style={{ fontSize: fontMetrics.detailSize }}> ({item.sellingUnit})</span>}
+                                {!qData.isKg && weightInfo && <span style={{ fontSize: fontMetrics.detailSize, fontWeight: 'normal' }}> ({weightInfo})</span>}
+                                {!qData.isKg && item.sellingUnit && !weightInfo && <span style={{ fontSize: fontMetrics.detailSize }}> ({item.sellingUnit})</span>}
                                 {item.hsnCode ? <span style={{ fontSize: fontMetrics.detailSize }}>{t("(HSN:")}{item.hsnCode})</span> : ''}
                               </div>
                               {cutType && (
@@ -2277,9 +2278,9 @@ const Invoice = ({ bill: incomingBill, billData, onClose, onSave, onSettle, what
                                 </div>
                               )}
                             </div>
-                            <div className="w-8 text-center" style={{ width: '32px', textAlign: 'center', flexShrink: 0, fontSize: fontMetrics.itemSize }}>{activeQty}</div>
-                            <div className="w-14 text-right" style={{ width: '56px', textAlign: 'right', flexShrink: 0, fontSize: fontMetrics.itemSize }}>{(item.price || 0).toFixed(2)}</div>
-                            <div className="w-16 text-right" style={{ width: '64px', textAlign: 'right', flexShrink: 0, fontSize: fontMetrics.itemSize }}>{(item.price * activeQty).toFixed(2)}</div>
+                            <div className="w-10 text-center" style={{ width: '42px', textAlign: 'center', flexShrink: 0, fontSize: fontMetrics.itemSize, fontWeight: 600 }}>{qData.qtyDisplay}</div>
+                            <div className="w-12 text-right" style={{ width: '52px', textAlign: 'right', flexShrink: 0, fontSize: fontMetrics.itemSize }}>{qData.rateDisplay}</div>
+                            <div className="w-16 text-right" style={{ width: '64px', textAlign: 'right', flexShrink: 0, fontSize: fontMetrics.itemSize, fontWeight: 'bold' }}>{qData.amountDisplay}</div>
                           </div>
                         );
                       })}
@@ -2299,7 +2300,7 @@ const Invoice = ({ bill: incomingBill, billData, onClose, onSave, onSettle, what
                     ? `Total: ${totalBoxesCount} Box(es) + ${totalLooseQty} Loose`
                     : totalBoxesCount > 0
                       ? `Total: ${totalBoxesCount} ${totalBoxesCount === 1 ? 'Box' : 'Boxes'} (${totalBoxesWeightKg.toFixed(1).replace(/\.0$/, '')} Kg)`
-                      : `${t("Total Qty:")}${totalLooseQty}`}
+                      : `${t("Total Qty: ")}${getBillTotalWeightKg(bill) > 0 ? `${getBillTotalWeightKg(bill).toFixed(1).replace(/\.0$/, '')} Kg` : totalLooseQty}`}
                 </span>
                 <div className="flex-1 flex justify-between pl-2" style={{ flex: 1, display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingLeft: '8px' }}>
                   <span className="text-left" style={{ textAlign: 'left' }}>{t("Sub Total")}</span>

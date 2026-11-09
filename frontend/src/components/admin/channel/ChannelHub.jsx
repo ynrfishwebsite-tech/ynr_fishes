@@ -11,7 +11,7 @@ import {
 import BackButton from '../common/BackButton';
 import CustomTimePicker from '../common/CustomTimePicker';
 import ImageCropperModal from '../crm/ImageCropperModal';
-import BillHistory, { getBillTotalWeightKg } from '../billing/BillHistory';
+import BillHistory, { getBillTotalWeightKg, resolveItemQtyAndRate } from '../billing/BillHistory';
 import PaymentModal from '../billing/PaymentModal';
 const Invoice = lazy(() => import('../billing/Invoice'));
 import html2canvas from 'html2canvas-pro';
@@ -2500,13 +2500,13 @@ export default function ChannelHub({
                       {box.items.map((item, idx) => {
                         const activeQty = (item.quantity || 1) - (item.cancelledQuantity || 0);
                         if (activeQty <= 0) return null;
-                        const { displayName, cutType, weightInfo } = getItemCutting(item);
-                        const unitRate = item.pricePerKg || (item.weightKg ? Math.round(item.price / item.weightKg) : null);
+                        const { displayName, cutType } = getItemCutting(item);
+                        const qData = resolveItemQtyAndRate(item);
                         return (
                           <div key={idx} style={{ display: 'flex', width: '100%', alignItems: 'flex-start', fontSize: '9.5px', paddingLeft: '3px', margin: '2px 0' }}>
                             <div style={{ flex: '1 1 0%', textAlign: 'left', wordBreak: 'break-word', paddingRight: '3px' }}>
                               <div>
-                                • {displayName}{item.weightKg ? ` (${item.weightKg}Kg @ ₹${unitRate}/kg)` : (weightInfo ? ` (${weightInfo})` : '')}
+                                • {displayName}
                               </div>
                               {cutType && (
                                 <div style={{ fontSize: '9px', fontWeight: 600, color: '#222', marginTop: '1px' }}>
@@ -2514,9 +2514,9 @@ export default function ChannelHub({
                                 </div>
                               )}
                             </div>
-                            <div style={{ width: '32px', textAlign: 'center', flexShrink: 0 }}>{activeQty}</div>
-                            <div style={{ width: '56px', textAlign: 'right', flexShrink: 0 }}>{(Number(item.price) || 0).toFixed(2)}</div>
-                            <div style={{ width: '64px', textAlign: 'right', flexShrink: 0, fontWeight: 'bold' }}>{(Number(item.price || 0) * activeQty).toFixed(2)}</div>
+                            <div style={{ width: '38px', textAlign: 'center', flexShrink: 0, fontWeight: 600 }}>{qData.qtyDisplay}</div>
+                            <div style={{ width: '52px', textAlign: 'right', flexShrink: 0 }}>{qData.rateDisplay}</div>
+                            <div style={{ width: '64px', textAlign: 'right', flexShrink: 0, fontWeight: 'bold' }}>{qData.amountDisplay}</div>
                           </div>
                         );
                       })}
@@ -2535,12 +2535,13 @@ export default function ChannelHub({
                         const activeQty = (item.quantity || 1) - (item.cancelledQuantity || 0);
                         if (activeQty <= 0) return null;
                         const { displayName, cutType, weightInfo } = getItemCutting(item);
+                        const qData = resolveItemQtyAndRate(item);
                         return (
                           <div key={idx} style={{ display: 'flex', width: '100%', alignItems: 'flex-start', fontSize: '9.5px', margin: '2px 0' }}>
                             <div style={{ flex: '1 1 0%', textAlign: 'left', wordBreak: 'break-word', paddingRight: '3px' }}>
                               <div style={{ fontWeight: 600 }}>
                                 {displayName}
-                                {weightInfo && <span style={{ fontWeight: 'normal' }}> ({weightInfo})</span>}
+                                {!qData.isKg && weightInfo && <span style={{ fontWeight: 'normal' }}> ({weightInfo})</span>}
                               </div>
                               {cutType && (
                                 <div style={{ fontSize: '9px', fontWeight: 600, color: '#222', marginTop: '1px' }}>
@@ -2548,9 +2549,9 @@ export default function ChannelHub({
                                 </div>
                               )}
                             </div>
-                            <div style={{ width: '32px', textAlign: 'center', flexShrink: 0 }}>{activeQty}</div>
-                            <div style={{ width: '56px', textAlign: 'right', flexShrink: 0 }}>{(Number(item.price) || 0).toFixed(2)}</div>
-                            <div style={{ width: '64px', textAlign: 'right', flexShrink: 0, fontWeight: 'bold' }}>{(Number(item.price || 0) * activeQty).toFixed(2)}</div>
+                            <div style={{ width: '38px', textAlign: 'center', flexShrink: 0, fontWeight: 600 }}>{qData.qtyDisplay}</div>
+                            <div style={{ width: '52px', textAlign: 'right', flexShrink: 0 }}>{qData.rateDisplay}</div>
+                            <div style={{ width: '64px', textAlign: 'right', flexShrink: 0, fontWeight: 'bold' }}>{qData.amountDisplay}</div>
                           </div>
                         );
                       })}
@@ -2566,7 +2567,7 @@ export default function ChannelHub({
                         ? `Total: ${boxKeys.length} Box(es) + ${totalLoose} Loose`
                         : boxKeys.length > 0
                           ? `Total: ${boxKeys.length} ${boxKeys.length === 1 ? 'Box' : 'Boxes'} (${boxKg.toFixed(1).replace(/\.0$/, '')} Kg)`
-                          : `Total Qty: ${totalLoose || active.reduce((s, i) => s + (i.quantity || 1), 0)}${totalBillKg > 0 ? ` (${totalBillKg.toFixed(1).replace(/\.0$/, '')} Kg)` : ''}`}
+                          : `${totalBillKg > 0 ? `Total Qty: ${totalBillKg.toFixed(1).replace(/\.0$/, '')} Kg` : `Total Qty: ${totalLoose}`}`}
                     </span>
                     <span>Sub Total: ₹{Number(eBillCaptureData.bill.subtotal || eBillCaptureData.bill.total || 0).toFixed(2)}</span>
                   </div>

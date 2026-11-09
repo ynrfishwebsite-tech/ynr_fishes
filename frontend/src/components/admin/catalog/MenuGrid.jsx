@@ -626,7 +626,7 @@ const MenuGrid = ({
       fish: chosenFish,
       sizeGrade: chosenGrade,
       weightKg: String(avgKg),
-      weightGrams: '0',
+      weightGrams: '',
       pricePerKg: String(defaultRate)
     }];
     setBoxSlots(initialSlots);
@@ -655,7 +655,7 @@ const MenuGrid = ({
             fish: chosen,
             sizeGrade: chosenGrade,
             weightKg: String(avgKg),
-            weightGrams: '0',
+            weightGrams: '',
             pricePerKg: String(defaultRate)
           });
         }
@@ -686,7 +686,7 @@ const MenuGrid = ({
         fish: chosen || null,
         sizeGrade: chosenGrade,
         weightKg: String(avgKg),
-        weightGrams: '0',
+        weightGrams: '',
         pricePerKg: String(chosenRate)
       };
     }));
@@ -702,7 +702,7 @@ const MenuGrid = ({
         ...slot,
         sizeGrade: newGradeKey,
         weightKg: String(avgKg),
-        weightGrams: '0',
+        weightGrams: '',
         pricePerKg: String(newRate)
       };
     }));
@@ -755,7 +755,7 @@ const MenuGrid = ({
         fish: chosen,
         sizeGrade: chosenGrade,
         weightKg: String(avgKg),
-        weightGrams: '0',
+        weightGrams: '',
         pricePerKg: String(chosenRate)
       }
     ]);
@@ -780,7 +780,7 @@ const MenuGrid = ({
         fish: chosen,
         sizeGrade: chosenGrade,
         weightKg: String(avgKg),
-        weightGrams: '0',
+        weightGrams: '',
         pricePerKg: String(chosenRate)
       }
     ]);
@@ -816,13 +816,13 @@ const MenuGrid = ({
         orderMode: fishOrderMode,
         sizeGrade: slot.sizeGrade || 'medium',
         sellingUnit: 'Kg',
-        quantity: 1,
+        quantity: wt,
         weightKg: wt,
         enteredWeight: wt,
         grossWeightKg: wt,
         netWeightKg: wt,
         pricePerKg: rate,
-        price: totalAmount,
+        price: rate,
         total: totalAmount,
         itemKey: `${slot.fish._id}_box${currentBoxNumber}_slot${idx}_${Date.now()}`
       };
@@ -1053,8 +1053,9 @@ const MenuGrid = ({
         originalId: slot.fish._id,
         originalFishName: slot.fish.name,
         name: `${slot.fish.name} (${slot.cutType} - ${fractionLabel})`,
-        price: calculatedPrice,
-        quantity: 1,
+        price: activeRate,
+        quantity: netKg,
+        total: calculatedPrice,
         sellingUnit: 'Kg',
         enteredWeight: netKg,
         netWeightKg: netKg,
@@ -2032,7 +2033,7 @@ const MenuGrid = ({
           {displayMode === '3d_roller' ? (
             <>
               {/* Mobile & Tablet View: Dedicated Smartwatch Round Dial UI */}
-              <div className="xl:hidden w-full h-full flex flex-col">
+              <div className="xl:hidden w-full flex flex-col">
                 <FishSmartwatchDial
                   items={filteredItems}
                   activeIndex={activeRollerIndex}
@@ -3043,8 +3044,16 @@ const MenuGrid = ({
                             <input
                               type="number"
                               min="0"
-                              value={currentSlot.inputKg}
+                              value={currentSlot.inputKg === '0' || currentSlot.inputKg === 0 ? '' : (currentSlot.inputKg ?? '')}
+                              onFocus={(e) => {
+                                e.target.select();
+                                handleRetailSlotKgChange(activeRetailSlotIndex, '');
+                              }}
+                              onBlur={(e) => {
+                                if (!e.target.value) handleRetailSlotKgChange(activeRetailSlotIndex, '0');
+                              }}
                               onChange={(e) => handleRetailSlotKgChange(activeRetailSlotIndex, e.target.value)}
+                              placeholder=""
                               className="w-14 bg-white border border-slate-300 rounded px-1 py-0.2 text-center font-mono font-bold text-xs"
                             />
                           </div>
@@ -3119,9 +3128,16 @@ const MenuGrid = ({
                           <input
                             type="number"
                             min="0"
-                            value={currentSlot.fishWeightGrams}
+                            value={currentSlot.fishWeightGrams === '0' || currentSlot.fishWeightGrams === 0 ? '' : (currentSlot.fishWeightGrams ?? '')}
+                            onFocus={(e) => {
+                              e.target.select();
+                              handleRetailSlotScaleGramsChange(activeRetailSlotIndex, '');
+                            }}
+                            onBlur={(e) => {
+                              if (!e.target.value) handleRetailSlotScaleGramsChange(activeRetailSlotIndex, '1000');
+                            }}
                             onChange={(e) => handleRetailSlotScaleGramsChange(activeRetailSlotIndex, e.target.value)}
-                            placeholder="Scale grams"
+                            placeholder=""
                             className="w-28 bg-white border border-slate-300 rounded px-2 py-1 font-mono font-black text-sm text-slate-900"
                           />
                           <span className="text-[10px] font-bold text-slate-500 uppercase">Scale Grams</span>
@@ -3805,10 +3821,19 @@ const MenuGrid = ({
                               <input
                                 type="number"
                                 min="0"
-                                step="1"
-                                value={slot.weightKg}
+                                step="any"
+                                value={slot.weightKg === '0' || slot.weightKg === 0 ? '' : (slot.weightKg ?? '')}
+                                onFocus={(e) => {
+                                  e.target.select();
+                                  handleSlotWeightKgChange(index, '');
+                                }}
+                                onBlur={(e) => {
+                                  if (!e.target.value || isNaN(parseFloat(e.target.value)) || parseFloat(e.target.value) <= 0) {
+                                    handleSlotWeightKgChange(index, '1');
+                                  }
+                                }}
                                 onChange={(e) => handleSlotWeightKgChange(index, e.target.value)}
-                                placeholder="Kg"
+                                placeholder=""
                                 className="w-full bg-white border border-[#E8DCCB] rounded-lg sm:rounded-xl pl-1 pr-5 py-1 text-[11px] sm:text-xs font-black text-slate-900 focus:outline-none focus:border-amber-500 font-mono text-center active:scale-98 transition-all"
                               />
                               <span className="absolute right-1 top-1 text-[9px] text-slate-400 font-bold pointer-events-none">
@@ -3828,9 +3853,18 @@ const MenuGrid = ({
                                 min="0"
                                 max="999"
                                 step="50"
-                                value={slot.weightGrams ?? '0'}
+                                value={slot.weightGrams === '0' || slot.weightGrams === 0 ? '' : (slot.weightGrams ?? '')}
+                                onFocus={(e) => {
+                                  e.target.select();
+                                  handleSlotWeightGramsChange(index, '');
+                                }}
+                                onBlur={(e) => {
+                                  if (!e.target.value || isNaN(parseFloat(e.target.value))) {
+                                    handleSlotWeightGramsChange(index, '');
+                                  }
+                                }}
                                 onChange={(e) => handleSlotWeightGramsChange(index, e.target.value)}
-                                placeholder="g"
+                                placeholder=""
                                 className="w-full bg-white border border-[#E8DCCB] rounded-lg sm:rounded-xl pl-1 pr-4 py-1 text-[11px] sm:text-xs font-black text-slate-900 focus:outline-none focus:border-amber-500 font-mono text-center active:scale-98 transition-all"
                               />
                               <span className="absolute right-1 top-1 text-[9px] text-slate-400 font-bold pointer-events-none">
@@ -3849,9 +3883,18 @@ const MenuGrid = ({
                                 type="number"
                                 min="0"
                                 step="1"
-                                value={slot.pricePerKg}
+                                value={slot.pricePerKg === '0' || slot.pricePerKg === 0 ? '' : (slot.pricePerKg ?? '')}
+                                onFocus={(e) => {
+                                  e.target.select();
+                                  handleSlotPriceChange(index, '');
+                                }}
+                                onBlur={(e) => {
+                                  if (!e.target.value || isNaN(parseFloat(e.target.value))) {
+                                    handleSlotPriceChange(index, '0');
+                                  }
+                                }}
                                 onChange={(e) => handleSlotPriceChange(index, e.target.value)}
-                                placeholder="Rate"
+                                placeholder=""
                                 className="w-full bg-white border border-[#E8DCCB] rounded-lg sm:rounded-xl px-1 sm:px-2 py-1 text-[11px] sm:text-xs font-black text-slate-900 focus:outline-none focus:border-amber-500 font-mono text-center active:scale-98 transition-all"
                               />
                             </div>

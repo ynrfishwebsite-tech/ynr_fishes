@@ -1,4 +1,5 @@
 import { CMD, GS, wrapTextLines, formatTwoCols, generateESCPOSLogoRaster, generateESCPOSQRCodeRaster } from '../utils/escposHelpers.js';
+import { resolveItemQtyAndRate, getBillTotalWeightKg } from './itemResolver.js';
 
 /**
  * Generate a formatted Bill Receipt ESC/POS Buffer for thermal printers (58mm Specific)
@@ -117,10 +118,10 @@ export const generateESCPOSBillReceipt58mm = async (bill, printerConfig = {}, re
   chunks.push(Buffer.from(orderMeta, 'utf-8'));
   chunks.push(solidLine);
 
-  // 4. Items Table Header (58mm: 28 chars)
+  // 4. Items Table Header (58mm: 28-30 chars)
   let itemHead = '';
   const h58Item = 'Item'.padEnd(12, ' ');
-  const h58Qty = 'Qty.'.padStart(4, ' ');
+  const h58Qty = 'Qty.'.padStart(6, ' ');
   const h58Amt = 'Amount'.padStart(10, ' ');
   itemHead += CMD.BOLD_ON + h58Item + ' ' + h58Qty + ' ' + h58Amt + CMD.LINE_FEED + CMD.BOLD_OFF;
   chunks.push(Buffer.from(itemHead, 'utf-8'));
@@ -134,18 +135,22 @@ export const generateESCPOSBillReceipt58mm = async (bill, printerConfig = {}, re
   activeItems.forEach(item => {
     const qty = (item.quantity || 1) - (item.cancelledQuantity || 0);
     if (qty <= 0) return;
+    const qData = resolveItemQtyAndRate(item);
     totalQty += qty;
-    const amount = (Number(item.price || 0) * qty).toFixed(2);
+    const amount = qData.amountDisplay;
     const name = (item.name || item.itemName || 'Unknown Item').trim();
 
     const maxLen = 12;
     const itemLines = wrapTextLines(name, maxLen);
     const firstLineItem = (itemLines[0] || '').padEnd(maxLen, ' ');
-    const qStr = String(qty).padStart(4, ' ');
+    const qStr = qData.qtyDisplay.padStart(6, ' ');
     const aStr = amount.padStart(10, ' ');
     itemsContent += CMD.BOLD_ON + firstLineItem + CMD.BOLD_OFF + ' ' + CMD.BOLD_ON + qStr + CMD.BOLD_OFF + ' ' + CMD.BOLD_ON + aStr + CMD.BOLD_OFF + CMD.LINE_FEED;
     for (let l = 1; l < itemLines.length; l++) {
       itemsContent += CMD.BOLD_ON + `  ${itemLines[l]}` + CMD.BOLD_OFF + CMD.LINE_FEED;
+    }
+    if (qData.isKg) {
+      itemsContent += `  [₹${qData.rateDisplay}/kg]` + CMD.LINE_FEED;
     }
     if (item.specialNote) {
       itemsContent += `  * Note: ${item.specialNote.substring(0, width - 10)}` + CMD.LINE_FEED;
@@ -162,7 +167,9 @@ export const generateESCPOSBillReceipt58mm = async (bill, printerConfig = {}, re
 
   let totalsContent = '';
   const subStr = `Sub Total: ${sub.toFixed(2)}`;
-  totalsContent += formatTwoCols(`Total Qty: ${totalQty}`, subStr, width) + CMD.LINE_FEED;
+  const totalWeightKg = getBillTotalWeightKg(bill);
+  const totalQtyStr = totalWeightKg > 0 ? `${totalWeightKg.toFixed(1).replace(/\.0$/, '')} Kg` : `${totalQty}`;
+  totalsContent += formatTwoCols(`Total Qty: ${totalQtyStr}`, subStr, width) + CMD.LINE_FEED;
 
   if (disc > 0) {
     const discPct = bill.discountType === 'percentage' && bill.discountValue

@@ -740,13 +740,14 @@ const BillSummary = ({
           {cart.length > 0 && (() => {
             const boxKeys = Object.keys(groupedBoxes);
             const totalBoxes = boxKeys.length;
-            const individualQty = individualItems.reduce((sum, item) => sum + (parseInt(item.quantity, 10) || 0), 0);
+            const individualQty = individualItems.reduce((sum, item) => sum + (parseFloat(item.quantity) || 0), 0);
             const totalBoxKg = cart.filter(i => i.boxNumber).reduce((sum, i) => sum + (Number(i.weightKg) || 0), 0);
+            const totalCartKg = cart.reduce((sum, i) => sum + Number(i.netWeightKg || i.enteredWeight || i.weightKg || (i.sellingUnit === 'Kg' ? i.quantity : 0) || 0), 0);
 
             if (totalBoxes > 0 && individualQty > 0) {
               return (
                 <span className="inline-flex items-center px-1.5 py-0.2 rounded-full text-[8.5px] font-black bg-amber-100 text-amber-900 border border-amber-300 shadow-2xs truncate">
-                  📦 {totalBoxes} {totalBoxes === 1 ? 'Box' : 'Boxes'}<span className="hidden sm:inline"> + 🐟 {individualQty} Loose</span>
+                  📦 {totalBoxes} {totalBoxes === 1 ? 'Box' : 'Boxes'}<span className="hidden sm:inline"> + 🐟 {individualQty} {individualItems.some(i => i.sellingUnit === 'Kg') ? 'Kg' : 'Loose'}</span>
                 </span>
               );
             }
@@ -759,7 +760,7 @@ const BillSummary = ({
             }
             return (
               <span className="inline-flex items-center px-1.5 py-0.2 rounded-full text-[8px] font-black bg-orange-100 text-orange-700 border border-orange-200 shadow-2xs truncate">
-                {cart.length} ({cart.reduce((sum, item) => sum + (parseInt(item.quantity, 10) || 0), 0)} {t("Qty")})
+                {cart.length} ({totalCartKg > 0 ? `${totalCartKg.toFixed(1).replace(/\.0$/, '')} Kg` : `${cart.reduce((sum, item) => sum + (parseFloat(item.quantity) || 0), 0)} Qty`})
               </span>
             );
           })()}
@@ -1005,10 +1006,10 @@ const BillSummary = ({
                         {item.sellingUnit && <span className="text-[10px] text-primary ml-1 font-semibold">({item.sellingUnit})</span>}
                       </span>
                       {(() => {
-                        const rawQty = parseInt(item.quantity || 0, 10) || 0;
-                        const cancelledQty = parseInt(item.cancelledQuantity || 0, 10) || 0;
+                        const rawQty = parseFloat(item.quantity || 0) || 0;
+                        const cancelledQty = parseFloat(item.cancelledQuantity || 0) || 0;
                         const effectiveQty = Math.max(0, rawQty - cancelledQty);
-                        const totalQty = Math.max(0, rawQty);
+                        const totalQty = Math.max(0, Math.ceil(rawQty));
 
                         const rawUnitStatuses = Array.isArray(item.unitStatuses) && item.unitStatuses.length === totalQty && totalQty > 0
                           ? item.unitStatuses
@@ -1144,8 +1145,9 @@ const BillSummary = ({
                       min="0.01"
                       step="any"
                       disabled={isLocked || item.isCancelled}
-                      value={item.quantity - (item.cancelledQuantity || 0)}
+                      value={item.quantity - (item.cancelledQuantity || 0) === 0 ? '' : (item.quantity - (item.cancelledQuantity || 0))}
                       onWheel={(e) => e.target.blur()}
+                      onFocus={(e) => e.target.select()}
                       onKeyDown={(e) => {
                         if (e.key === '-' || e.key === 'e' || e.key === '+') e.preventDefault();
                       }}
@@ -1846,9 +1848,13 @@ const BillSummary = ({
             <button
               type="button"
               onClick={() => {
-                if (typeof window !== 'undefined' && window.innerWidth >= 768 && window.innerWidth < 1280) {
-                  const scrollParent = document.querySelector('.flex-1.flex.flex-col.xl\\:flex-row') || window;
+                const scrollParent = document.querySelector('#billing-main-scroll-area') || document.querySelector('.flex-1.flex.flex-col.xl\\:flex-row') || window;
+                if (scrollParent && scrollParent.scrollTo) {
                   scrollParent.scrollTo({ top: 0, behavior: 'smooth' });
+                }
+                const menuEl = document.querySelector('#billing-menu-grid-container');
+                if (menuEl) {
+                  menuEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
                 }
                 if (onBackToMenu) onBackToMenu();
               }}

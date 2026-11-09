@@ -179,7 +179,8 @@ export const deductStockForBillItems = async (req, billItems, performedBy = 'POS
           grossKgToDeduct = Number(item.grossWeightKg);
           netKgSold = Number(item.enteredWeight || item.netWeightKg || grossKgToDeduct);
         } else if (item.enteredWeight && Number(item.enteredWeight) > 0) {
-          grossKgToDeduct = Number(item.enteredWeight) * (orderQty > 1 ? orderQty : 1);
+          const ew = Number(item.enteredWeight);
+          grossKgToDeduct = (orderQty > 1 && Math.abs(orderQty - ew) > 0.001) ? (ew * orderQty) : ew;
           netKgSold = grossKgToDeduct;
         } else if (item.netWeightKg && Number(item.netWeightKg) > 0) {
           grossKgToDeduct = Number(item.netWeightKg);

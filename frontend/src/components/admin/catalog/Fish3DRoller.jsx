@@ -221,9 +221,9 @@ export default function Fish3DRoller({
       originalId: currentItem._id,
       originalFishName: currentItem.name,
       name: `${currentItem.name} (${selectedCutType} - ${fractionLabel})`,
-      price: totalAmount,
+      price: activeRate,
+      quantity: netKg,
       total: totalAmount,
-      quantity: 1,
       sellingUnit: 'Kg',
       enteredWeight: netKg,
       netWeightKg: netKg,
@@ -314,7 +314,7 @@ export default function Fish3DRoller({
                 <img
                   src={formatImageUrl(prevItem.image)}
                   alt={prevItem.name}
-                  className="w-full h-full object-cover"
+                  className="w-full h-full object-contain p-2 bg-white"
                 />
               </div>
             ) : (
@@ -373,7 +373,7 @@ export default function Fish3DRoller({
                   <img
                     src={formatImageUrl(currentItem.image)}
                     alt={currentItem.name}
-                    className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                    className="w-full h-full object-contain p-2 bg-white transition-transform duration-500 group-hover:scale-105"
                   />
 
                   {/* Subtitle pill at bottom of photo */}
@@ -536,10 +536,21 @@ export default function Fish3DRoller({
                       <div className="flex-1 flex items-center justify-center">
                         <input
                           type="number"
-                          step="0.1"
+                          step="any"
                           min="0.1"
-                          value={weightKg}
+                          value={weightKg === '0' || weightKg === 0 ? '' : weightKg}
+                          onFocus={(e) => {
+                            e.target.select();
+                            setWeightKg('');
+                          }}
+                          onBlur={(e) => {
+                            const val = parseFloat(e.target.value);
+                            if (!e.target.value || isNaN(val) || val <= 0) {
+                              setWeightKg('1.000');
+                            }
+                          }}
                           onChange={(e) => setWeightKg(e.target.value)}
+                          placeholder=""
                           className="text-base sm:text-lg md:text-2xl font-black text-slate-900 font-mono tracking-wider text-center bg-transparent focus:outline-none w-24 sm:w-28 md:w-32"
                         />
                         <span className="text-[10px] md:text-xs font-bold text-slate-500">Kg</span>
@@ -620,6 +631,10 @@ export default function Fish3DRoller({
                           max="5000"
                           step="1"
                           value={tareGrams === 0 ? '' : tareGrams}
+                          onFocus={(e) => {
+                            e.target.select();
+                            setTareGrams(0);
+                          }}
                           onChange={(e) => {
                             const val = parseInt(e.target.value, 10);
                             setTareGrams(isNaN(val) || val < 0 ? 0 : val);
@@ -690,8 +705,20 @@ export default function Fish3DRoller({
                       <input
                         type="number"
                         min="1"
-                        value={boxWeightKg}
+                        step="any"
+                        value={boxWeightKg === '0' || boxWeightKg === 0 ? '' : boxWeightKg}
+                        onFocus={(e) => {
+                          e.target.select();
+                          setBoxWeightKg('');
+                        }}
+                        onBlur={(e) => {
+                          const val = parseFloat(e.target.value);
+                          if (!e.target.value || isNaN(val) || val <= 0) {
+                            setBoxWeightKg('20');
+                          }
+                        }}
                         onChange={(e) => setBoxWeightKg(e.target.value)}
+                        placeholder=""
                         className="w-full bg-white border border-slate-300 rounded-lg md:rounded-xl px-2 py-1 md:px-2.5 md:py-1.5 text-xs md:text-base font-black text-slate-900 font-mono focus:outline-none focus:border-amber-600"
                       />
                     </div>
@@ -763,7 +790,7 @@ export default function Fish3DRoller({
                 <img
                   src={formatImageUrl(nextItem.image)}
                   alt={nextItem.name}
-                  className="w-full h-full object-cover"
+                  className="w-full h-full object-contain p-2 bg-white"
                 />
               </div>
             ) : (
