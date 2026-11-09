@@ -116,7 +116,9 @@ const menuSchema = new mongoose.Schema({
       price: { type: Number, default: 0 },
       wholesalePrice: { type: Number, default: 0 },
       exportPrice: { type: Number, default: 0 },
-      enabled: { type: Boolean, default: true }
+      enabled: { type: Boolean, default: true },
+      unit: { type: String, enum: ['kg', 'g'], default: 'kg' },
+      cuttingCharge: { type: Number, default: 0 }
     },
     medium: {
       minKg: { type: Number, default: 1 },
@@ -124,7 +126,9 @@ const menuSchema = new mongoose.Schema({
       price: { type: Number, default: 0 },
       wholesalePrice: { type: Number, default: 0 },
       exportPrice: { type: Number, default: 0 },
-      enabled: { type: Boolean, default: true }
+      enabled: { type: Boolean, default: true },
+      unit: { type: String, enum: ['kg', 'g'], default: 'kg' },
+      cuttingCharge: { type: Number, default: 0 }
     },
     big: {
       minKg: { type: Number, default: 4 },
@@ -132,9 +136,13 @@ const menuSchema = new mongoose.Schema({
       price: { type: Number, default: 0 },
       wholesalePrice: { type: Number, default: 0 },
       exportPrice: { type: Number, default: 0 },
-      enabled: { type: Boolean, default: true }
+      enabled: { type: Boolean, default: true },
+      unit: { type: String, enum: ['kg', 'g'], default: 'kg' },
+      cuttingCharge: { type: Number, default: 0 }
     }
   },
+  customCuttingChargeEnabled: { type: Boolean, default: false },
+  cuttingCharge: { type: Number, default: 0 },
   category: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Category',

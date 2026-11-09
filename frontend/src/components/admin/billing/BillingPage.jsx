@@ -1709,8 +1709,9 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
           }
           setDeliveryCharge(cached.deliveryCharge !== undefined ? String(cached.deliveryCharge) : '0');
           setContainerCharge(cached.containerCharge !== undefined ? String(cached.containerCharge) : '0');
-          setCuttingCharge(cached.cuttingCharge !== undefined ? String(cached.cuttingCharge) : '0');
-          setIsCuttingChargeEnabled(Number(cached.cuttingCharge) > 0);
+          const isRetailCached = !isCachedWholesale && !isCachedExport;
+          setCuttingCharge(isRetailCached && cached.cuttingCharge !== undefined ? String(cached.cuttingCharge) : '0');
+          setIsCuttingChargeEnabled(isRetailCached && Number(cached.cuttingCharge) > 0);
           if (cached.discountType || cached.discountValue !== undefined || cached.discountName) {
             setDiscount({
               type: cached.discountType || 'percentage',
@@ -1903,8 +1904,9 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
         }
         setDeliveryCharge(order.deliveryCharge !== undefined ? String(order.deliveryCharge) : '0');
         setContainerCharge(order.containerCharge !== undefined ? String(order.containerCharge) : '0');
-        setCuttingCharge(order.cuttingCharge !== undefined ? String(order.cuttingCharge) : '0');
-        setIsCuttingChargeEnabled(Number(order.cuttingCharge) > 0);
+        const isOrderRetail = order.customerCategory !== 'Wholesale' && order.orderMode !== 'bulk' && order.customerCategory !== 'Export' && order.orderMode !== 'export' && !String(order.tableNo || '').startsWith('WS-') && !String(order.tableNo || '').startsWith('EXP-');
+        setCuttingCharge(isOrderRetail && order.cuttingCharge !== undefined ? String(order.cuttingCharge) : '0');
+        setIsCuttingChargeEnabled(isOrderRetail && Number(order.cuttingCharge) > 0);
         if (!isBackground || forceReset) {
           if (order.discountType || order.discountValue !== undefined || order.discountName) {
             setDiscount({
@@ -2094,7 +2096,7 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
   const taxableAmount = subtotal - discountAmount;
   const taxVal = taxRate === '' ? 0 : parseFloat(taxRate) || 0;
   const taxAmount = taxableAmount * taxVal / 100;
-  const additionalCharges = parseFloat(deliveryCharge || 0) + parseFloat(containerCharge || 0) + parseFloat(cuttingCharge || 0);
+  const additionalCharges = parseFloat(deliveryCharge || 0) + parseFloat(containerCharge || 0) + (fishOrderMode === 'individual' ? parseFloat(cuttingCharge || 0) : 0);
   const total = Math.max(0, Math.round(taxableAmount + taxAmount + additionalCharges) - walletRedemption);
 
   const syncTimeoutRef = useRef(null);
@@ -2532,7 +2534,7 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
       tax: taxVal,
       deliveryCharge: parseFloat(deliveryCharge || 0),
       containerCharge: parseFloat(containerCharge || 0),
-      cuttingCharge: parseFloat(cuttingCharge || 0),
+      cuttingCharge: fishOrderMode === 'individual' ? parseFloat(cuttingCharge || 0) : 0,
       isHold: isHoldStrict,
       skipNotification: !isHoldStrict, // Frontend already broadcast instantly via WebSocket — skip backend duplicate
       ...(orderId && !orderId.startsWith('offline_') && { id: orderId }),
@@ -2689,6 +2691,11 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
   };
 
   const handleCuttingChargeChange = (val) => {
+    if (fishOrderMode !== 'individual') {
+      setCuttingCharge('0');
+      setIsCuttingChargeEnabled(false);
+      return;
+    }
     if (orderStatus === 'Billed' && !hasPendingLocalChanges.current) {
       showToast(t('Order is billed. Click EDIT to modify.', { defaultValue: 'Order is billed. Click EDIT to modify.' }), 'warning');
       return;
@@ -2698,23 +2705,61 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
     lastLocalEditTime.current = Date.now();
   };
 
-  // Slab-based cutting charge calculation:
-  // <= 1.5 Kg = 1 tier (₹10), 1.55 to 2.5 Kg = 2 tiers (₹20), 2.51 to 3.5 Kg = 3 tiers (₹30), etc.
+  // Configurable & Species-Aware cutting charge calculation:
+  // Cutting charges apply EXCLUSIVELY to Retail orders - NEVER in Wholesale or Export!
   const calculateCuttingCharge = (weightKg, ratePerKg = 10) => {
-    const w = Number(weightKg) || 0;
-    const rate = Number(ratePerKg) || 10;
-    if (w <= 0) return 0;
-    if (w <= 1.5) return rate;
-    return (1 + Math.ceil(w - 1.5)) * rate;
+    if (fishOrderMode !== 'individual') return 0;
+    try {
+      const s = JSON.parse(localStorage.getItem('restaurantSettings') || '{}');
+      const baseRate = Number(ratePerKg) || (Number(s.cuttingChargePerKg) > 0 ? Number(s.cuttingChargePerKg) : 10);
+      const tiers = s.cuttingTiers || [
+        { label: 'Tier 1', maxKg: 1.5, multiplier: 1 },
+        { label: 'Tier 2', maxKg: 2.5, multiplier: 2 },
+        { label: 'Tier 3', maxKg: 3.5, multiplier: 3 },
+        { label: 'Extra', extraPerKg: true, multiplier: 1 }
+      ];
+      const tier1Max = Number(tiers[0]?.maxKg) || 1.5;
+      const tier2Max = Number(tiers[1]?.maxKg) || 2.5;
+      const tier3Max = Number(tiers[2]?.maxKg) || 3.5;
+
+      const w = Number(weightKg) || 0;
+      if (w <= 0) return 0;
+      if (w <= tier1Max) return baseRate;
+      if (w <= tier2Max) return baseRate * 2;
+      if (w <= tier3Max) return baseRate * 3;
+      return baseRate * (3 + Math.ceil(w - tier3Max));
+    } catch {
+      const w = Number(weightKg) || 0;
+      const rate = Number(ratePerKg) || 10;
+      if (w <= 0) return 0;
+      if (w <= 1.5) return rate;
+      return (1 + Math.ceil(w - 1.5)) * rate;
+    }
   };
 
   const totalCartFishWeight = useMemo(() => {
-    return cart.reduce((sum, item) => {
-      if (item.isCancelled) return sum;
-      const w = parseFloat(item.enteredWeight || item.netWeightKg || item.weightKg || (item.sellingUnit === 'Kg' ? item.quantity : 0) || 0);
-      return sum + w;
-    }, 0);
-  }, [cart]);
+    // Only Retail orders have cutting charges
+    if (fishOrderMode !== 'individual') return 0;
+    try {
+      const s = JSON.parse(localStorage.getItem('restaurantSettings') || '{}');
+      const speciesToggles = s.cuttingSpeciesToggles || { fish: true, prawn: true, crab: true };
+      return cart.reduce((sum, item) => {
+        if (item.isCancelled) return sum;
+        if (item.orderMode && item.orderMode !== 'individual') return sum;
+        const sp = (item.speciesType || 'fish').toLowerCase();
+        if (speciesToggles[sp] === false) return sum;
+        const w = parseFloat(item.enteredWeight || item.netWeightKg || item.weightKg || (item.sellingUnit === 'Kg' ? item.quantity : 0) || 0);
+        return sum + w;
+      }, 0);
+    } catch {
+      return cart.reduce((sum, item) => {
+        if (item.isCancelled) return sum;
+        if (item.orderMode && item.orderMode !== 'individual') return sum;
+        const w = parseFloat(item.enteredWeight || item.netWeightKg || item.weightKg || (item.sellingUnit === 'Kg' ? item.quantity : 0) || 0);
+        return sum + w;
+      }, 0);
+    }
+  }, [cart, fishOrderMode]);
 
   const activeCuttingRate = useMemo(() => {
     try {
@@ -2723,12 +2768,88 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
     } catch { return 10; }
   }, []);
 
+  // Force reset cutting charge whenever switching to Wholesale or Export mode
   useEffect(() => {
-    if (isCuttingChargeEnabled && totalCartFishWeight > 0) {
-      const calculated = calculateCuttingCharge(totalCartFishWeight, activeCuttingRate);
-      setCuttingCharge(String(calculated));
+    if (fishOrderMode !== 'individual') {
+      if (cuttingCharge !== '0' && cuttingCharge !== 0 && cuttingCharge !== '') {
+        setCuttingCharge('0');
+      }
+      if (isCuttingChargeEnabled) {
+        setIsCuttingChargeEnabled(false);
+      }
     }
-  }, [isCuttingChargeEnabled, totalCartFishWeight, activeCuttingRate]);
+  }, [fishOrderMode]);
+
+  useEffect(() => {
+    // Strictly zero out cutting charges in Wholesale or Export
+    if (fishOrderMode !== 'individual') {
+      if (cuttingCharge !== '0' && cuttingCharge !== 0 && cuttingCharge !== '') {
+        setCuttingCharge('0');
+      }
+      if (isCuttingChargeEnabled) {
+        setIsCuttingChargeEnabled(false);
+      }
+      return;
+    }
+
+    if (isCuttingChargeEnabled && totalCartFishWeight > 0) {
+      // Calculate taking into account custom per-item / per-grade cutting charges
+      try {
+        const s = JSON.parse(localStorage.getItem('restaurantSettings') || '{}');
+        const speciesToggles = s.cuttingSpeciesToggles || { fish: true, prawn: true, crab: true };
+        const baseRate = activeCuttingRate;
+        const tiers = s.cuttingTiers || [
+          { label: 'Tier 1', maxKg: 1.5, multiplier: 1 },
+          { label: 'Tier 2', maxKg: 2.5, multiplier: 2 },
+          { label: 'Tier 3', maxKg: 3.5, multiplier: 3 },
+          { label: 'Extra', extraPerKg: true, multiplier: 1 }
+        ];
+        const tier1Max = Number(tiers[0]?.maxKg) || 1.5;
+        const tier2Max = Number(tiers[1]?.maxKg) || 2.5;
+        const tier3Max = Number(tiers[2]?.maxKg) || 3.5;
+
+        let customTotal = 0;
+        let standardWeight = 0;
+
+        cart.forEach(item => {
+          if (item.isCancelled) return;
+          if (item.orderMode && item.orderMode !== 'individual') return;
+          const sp = (item.speciesType || 'fish').toLowerCase();
+          if (speciesToggles[sp] === false) return;
+          const w = parseFloat(item.enteredWeight || item.netWeightKg || item.weightKg || (item.sellingUnit === 'Kg' ? item.quantity : 0) || 0);
+          if (w <= 0) return;
+
+          const gradeKey = item.sizeGrade || 'medium';
+          const gradeCut = parseFloat(item.sizeGrades?.[gradeKey]?.cuttingCharge);
+          const itemCut = parseFloat(item.cuttingCharge);
+          const cutRate = gradeCut > 0 ? gradeCut : (itemCut > 0 ? itemCut : 0);
+
+          if (item.customCuttingChargeEnabled && cutRate > 0) {
+            const steps = w <= tier1Max ? 1 : (1 + Math.ceil(w - tier1Max));
+            customTotal += steps * cutRate;
+          } else {
+            standardWeight += w;
+          }
+        });
+
+        let standardCharge = 0;
+        if (standardWeight > 0) {
+          if (standardWeight <= tier1Max) standardCharge = baseRate;
+          else if (standardWeight <= tier2Max) standardCharge = baseRate * 2;
+          else if (standardWeight <= tier3Max) standardCharge = baseRate * 3;
+          else standardCharge = baseRate * (3 + Math.ceil(standardWeight - tier3Max));
+        }
+
+        const calculated = Math.round(customTotal + standardCharge);
+        setCuttingCharge(String(calculated));
+      } catch {
+        const calculated = calculateCuttingCharge(totalCartFishWeight, activeCuttingRate);
+        setCuttingCharge(String(calculated));
+      }
+    } else if (isCuttingChargeEnabled && totalCartFishWeight === 0) {
+      setCuttingCharge('0');
+    }
+  }, [isCuttingChargeEnabled, totalCartFishWeight, activeCuttingRate, cart, fishOrderMode]);
 
   // Immediately resets all state for a clean NEW ORDER (no premature placeholder numbers)
   const handleCreateNewOrder = useCallback(() => {
@@ -2795,7 +2916,8 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
     }
 
     const currentSubtotal = currentCart.reduce((sum, item) => sum + (Number(item.price || 0) * (Number(item.quantity) || 1)), 0);
-    const currentTotal = Math.max(0, currentSubtotal - (parseFloat(discountAmount) || 0) + (parseFloat(taxVal) || 0) + (parseFloat(deliveryCharge) || 0) + (parseFloat(containerCharge) || 0) + (parseFloat(cuttingCharge) || 0));
+    const activeCutting = fishOrderMode === 'individual' ? (parseFloat(cuttingCharge) || 0) : 0;
+    const currentTotal = Math.max(0, currentSubtotal - (parseFloat(discountAmount) || 0) + (parseFloat(taxVal) || 0) + (parseFloat(deliveryCharge) || 0) + (parseFloat(containerCharge) || 0) + activeCutting);
 
     // If order is ALREADY billed, open the invoice preview INSTANTLY.
     // If completedBill is already in memory, show it immediately with zero delay.
@@ -2846,7 +2968,7 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
         tax: taxVal,
         deliveryCharge: parseFloat(deliveryCharge || 0),
         containerCharge: parseFloat(containerCharge || 0),
-        cuttingCharge: parseFloat(cuttingCharge || 0),
+        cuttingCharge: fishOrderMode === 'individual' ? parseFloat(cuttingCharge || 0) : 0,
         total: currentTotal,
         billType,
         orderSource: billType === 'Delivery' ? orderSource : undefined,
@@ -2910,7 +3032,7 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
           customerPhone: customerPhone || billedOrder.customerPhone || '',
           deliveryCharge: deliveryCharge,
           containerCharge: containerCharge,
-          cuttingCharge: cuttingCharge,
+          cuttingCharge: fishOrderMode === 'individual' ? cuttingCharge : 0,
           restaurantDetails: s,
           billNumber: confirmedBillNumber,
           status: 'Billed',
@@ -3093,7 +3215,7 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
 
     try {
       if (directPrintConfigs.settle) {
-        const optimisticSettleBill = { ...optimisticBill, status: 'Paid', paymentMode: paymentData.mode, amountPaid: paymentData.amountPaid, billNumber: billNumber || 'MS0001', tableNo: tableToUse, subtotal, tax: taxVal, discount: discountAmount, total, billType, customerName, customerPhone, deliveryCharge, containerCharge, cuttingCharge, restaurantDetails: { ...s }, settledAt: new Date(), createdAt: new Date() };
+        const optimisticSettleBill = { ...optimisticBill, status: 'Paid', paymentMode: paymentData.mode, amountPaid: paymentData.amountPaid, billNumber: billNumber || 'MS0001', tableNo: tableToUse, subtotal, tax: taxVal, discount: discountAmount, total, billType, customerName, customerPhone, deliveryCharge, containerCharge, cuttingCharge: fishOrderMode === 'individual' ? cuttingCharge : 0, restaurantDetails: { ...s }, settledAt: new Date(), createdAt: new Date() };
         setCompletedBill(optimisticSettleBill);
         isViewingInvoiceRef.current = true;
         setShowInvoice(true);
@@ -3128,7 +3250,7 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
         customerPhone: customerPhone || settledOrder?.customerPhone || optimisticBill.customerPhone,
         deliveryCharge,
         containerCharge,
-        cuttingCharge,
+        cuttingCharge: fishOrderMode === 'individual' ? cuttingCharge : 0,
         restaurantDetails: {
           ...(settledOrder?.restaurantDetails || s),
           logo: (s.logo && s.logo !== '[logo_stored]') ? s.logo : (settledOrder?.restaurantDetails?.logo || '')
@@ -4122,7 +4244,7 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
           customerPhone: customerPhone,
           deliveryCharge: deliveryCharge,
           containerCharge: containerCharge,
-          cuttingCharge: cuttingCharge,
+          cuttingCharge: fishOrderMode === 'individual' ? cuttingCharge : 0,
           restaurantDetails: JSON.parse(localStorage.getItem('restaurantSettings') || '{}'),
           createdAt: new Date()
         };

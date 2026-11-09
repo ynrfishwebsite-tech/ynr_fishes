@@ -1582,6 +1582,47 @@ const Settings = ({ user, setUser, onNavigate, onGoBack }) => {
                       </label>
                     </div>
 
+                    {/* Species Cutting Toggles */}
+                    {settings.enableCuttingCharges && (
+                      <div className="pt-2 pb-1 border-t border-slate-200">
+                        <span className="text-[11px] font-bold text-slate-700 block mb-1.5">{t("Apply cutting charges to:")}</span>
+                        <div className="flex flex-wrap gap-2">
+                          {[
+                            { key: 'fish', label: '🐟 Fish', defaultOn: true },
+                            { key: 'prawn', label: '🦐 Prawns', defaultOn: true },
+                            { key: 'crab', label: '🦀 Crabs', defaultOn: true }
+                          ].map(sp => {
+                            const isOn = settings.cuttingSpeciesToggles?.[sp.key] !== undefined 
+                              ? settings.cuttingSpeciesToggles[sp.key] 
+                              : sp.defaultOn;
+                            return (
+                              <button
+                                key={sp.key}
+                                type="button"
+                                onClick={() => handleInputChange('cuttingSpeciesToggles', {
+                                  ...settings.cuttingSpeciesToggles,
+                                  fish: settings.cuttingSpeciesToggles?.fish !== undefined ? settings.cuttingSpeciesToggles.fish : true,
+                                  prawn: settings.cuttingSpeciesToggles?.prawn !== undefined ? settings.cuttingSpeciesToggles.prawn : true,
+                                  crab: settings.cuttingSpeciesToggles?.crab !== undefined ? settings.cuttingSpeciesToggles.crab : true,
+                                  [sp.key]: !isOn
+                                })}
+                                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold border transition-all ${
+                                  isOn 
+                                    ? 'bg-amber-100 text-amber-900 border-amber-300 shadow-sm' 
+                                    : 'bg-slate-100 text-slate-400 border-slate-200'
+                                }`}
+                              >
+                                <span>{sp.label}</span>
+                                <span className={`text-[9px] font-black px-1.5 py-0.5 rounded-full ${isOn ? 'bg-emerald-500 text-white' : 'bg-slate-300 text-white'}`}>
+                                  {isOn ? 'ON' : 'OFF'}
+                                </span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+
                     {/* Rate Input & Friendly Slab Breakdown */}
                     <div className={`space-y-3 pt-3 border-t border-slate-200 transition-opacity ${settings.enableCuttingCharges ? 'opacity-100' : 'opacity-70'}`}>
                       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
@@ -1607,9 +1648,15 @@ const Settings = ({ user, setUser, onNavigate, onGoBack }) => {
                         </div>
                       </div>
 
-                      {/* Visual Slab Cards: 100% User-Friendly */}
+                      {/* Visual Slab Cards: Editable Tiers */}
                       {(() => {
                         const rate = Number(settings.cuttingChargePerKg) || 10;
+                        const tiers = settings.cuttingTiers || [
+                          { label: 'Tier 1', maxKg: 1.5, multiplier: 1 },
+                          { label: 'Tier 2', maxKg: 2.5, multiplier: 2 },
+                          { label: 'Tier 3', maxKg: 3.5, multiplier: 3 },
+                          { label: 'Extra', extraPerKg: true, multiplier: 1 }
+                        ];
                         return (
                           <div className="bg-[#FAF0E4]/80 border border-[#E8DCCB] rounded-xl p-2.5 sm:p-3 space-y-2">
                             <div className="flex items-center justify-between text-xs font-bold text-amber-900">
@@ -1623,38 +1670,45 @@ const Settings = ({ user, setUser, onNavigate, onGoBack }) => {
                             </div>
 
                             <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 sm:gap-2">
-                              <div className="bg-white rounded-lg p-2 border border-amber-200 text-center shadow-2xs">
-                                <span className="text-[10px] text-slate-600 font-medium block">
-                                  {t("Up to 1.5 Kg")}
-                                </span>
-                                <span className="text-sm font-black text-amber-900 font-mono mt-0.5 block">
-                                  ₹{rate}
-                                </span>
-                              </div>
-                              <div className="bg-white rounded-lg p-2 border border-amber-200 text-center shadow-2xs">
-                                <span className="text-[10px] text-slate-600 font-medium block">
-                                  {t("1.6 to 2.5 Kg")}
-                                </span>
-                                <span className="text-sm font-black text-amber-900 font-mono mt-0.5 block">
-                                  ₹{rate * 2}
-                                </span>
-                              </div>
-                              <div className="bg-white rounded-lg p-2 border border-amber-200 text-center shadow-2xs">
-                                <span className="text-[10px] text-slate-600 font-medium block">
-                                  {t("2.6 to 3.5 Kg")}
-                                </span>
-                                <span className="text-sm font-black text-amber-900 font-mono mt-0.5 block">
-                                  ₹{rate * 3}
-                                </span>
-                              </div>
-                              <div className="bg-white rounded-lg p-2 border border-amber-200 text-center shadow-2xs">
-                                <span className="text-[10px] text-slate-600 font-medium block">
-                                  {t("Extra each +1 Kg")}
-                                </span>
-                                <span className="text-sm font-black text-emerald-700 font-mono mt-0.5 block">
-                                  +₹{rate}
-                                </span>
-                              </div>
+                              {tiers.map((tier, idx) => {
+                                const isExtra = tier.extraPerKg;
+                                const prevMax = idx > 0 ? tiers[idx - 1].maxKg : 0;
+                                const displayLabel = isExtra 
+                                  ? `Extra each +1 Kg` 
+                                  : idx === 0 
+                                    ? `Up to ${tier.maxKg} Kg` 
+                                    : `${(prevMax + 0.1).toFixed(1)} to ${tier.maxKg} Kg`;
+                                const displayRate = isExtra ? `+₹${rate}` : `₹${rate * tier.multiplier}`;
+                                return (
+                                  <div key={idx} className={`bg-white rounded-lg p-2 border text-center shadow-2xs ${isExtra ? 'border-amber-400 bg-amber-50/50' : 'border-amber-200'}`}>
+                                    {!isExtra ? (
+                                      <div className="flex items-center justify-center gap-0.5 mb-0.5">
+                                        <span className="text-[9px] text-slate-500">≤</span>
+                                        <input
+                                          type="number"
+                                          min="0.1"
+                                          step="0.1"
+                                          value={tier.maxKg}
+                                          onChange={(e) => {
+                                            const newTiers = [...tiers];
+                                            newTiers[idx] = { ...newTiers[idx], maxKg: parseFloat(e.target.value) || tier.maxKg };
+                                            handleInputChange('cuttingTiers', newTiers);
+                                          }}
+                                          className="w-10 text-[10px] text-center font-bold text-slate-700 border border-slate-200 rounded px-0.5 py-0.5 bg-slate-50 focus:outline-none focus:border-amber-500"
+                                        />
+                                        <span className="text-[9px] text-slate-500">Kg</span>
+                                      </div>
+                                    ) : (
+                                      <span className="text-[10px] text-slate-600 font-medium block">
+                                        {t("Extra each +1 Kg")}
+                                      </span>
+                                    )}
+                                    <span className={`text-sm font-black font-mono mt-0.5 block ${isExtra ? 'text-amber-700' : 'text-amber-900'}`}>
+                                      {displayRate}
+                                    </span>
+                                  </div>
+                                );
+                              })}
                             </div>
                           </div>
                         );

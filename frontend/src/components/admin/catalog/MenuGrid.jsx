@@ -150,8 +150,13 @@ export const detectItemSizeGrade = (item, netKg) => {
   const isMediumOn = grades?.medium?.enabled !== false;
   const isBigOn = grades?.big?.enabled !== false;
 
-  const smallMax = parseFloat(grades?.small?.maxKg) || 1;
-  const mediumMax = parseFloat(grades?.medium?.maxKg) || 4;
+  const smallUnit = grades?.small?.unit || 'kg';
+  const smallRawMax = parseFloat(grades?.small?.maxKg) || 1;
+  const smallMax = smallUnit === 'g' ? smallRawMax / 1000 : smallRawMax;
+
+  const mediumUnit = grades?.medium?.unit || 'kg';
+  const mediumRawMax = parseFloat(grades?.medium?.maxKg) || 4;
+  const mediumMax = mediumUnit === 'g' ? mediumRawMax / 1000 : mediumRawMax;
 
   let candidate = 'small';
   if (netKg <= smallMax) candidate = 'small';
@@ -201,18 +206,24 @@ export const getGradeAverageKg = (item, gradeKey = 'medium') => {
   if (!item) return 1;
   const grades = item.sizeGrades;
   const gradeObj = grades?.[gradeKey];
+  const unit = gradeObj?.unit || 'kg';
 
   let min = 0;
   let max = 1;
   if (gradeKey === 'small') {
     min = parseFloat(gradeObj?.minKg) || 0;
-    max = parseFloat(gradeObj?.maxKg) || 1;
+    max = parseFloat(gradeObj?.maxKg) || (unit === 'g' ? 1000 : 1);
   } else if (gradeKey === 'medium') {
-    min = parseFloat(gradeObj?.minKg) || 1;
-    max = parseFloat(gradeObj?.maxKg) || 4;
+    min = parseFloat(gradeObj?.minKg) || (unit === 'g' ? 1000 : 1);
+    max = parseFloat(gradeObj?.maxKg) || (unit === 'g' ? 4000 : 4);
   } else if (gradeKey === 'big') {
-    min = parseFloat(gradeObj?.minKg) || 4;
-    max = parseFloat(gradeObj?.maxKg) || 99;
+    min = parseFloat(gradeObj?.minKg) || (unit === 'g' ? 4000 : 4);
+    max = parseFloat(gradeObj?.maxKg) || (unit === 'g' ? 99000 : 99);
+  }
+
+  if (unit === 'g') {
+    min = min / 1000;
+    max = max / 1000;
   }
 
   // Handle open-ended big grade (e.g. 4 to 99)
@@ -232,14 +243,17 @@ export const getItemSizeGrades = (item, mode = 'individual') => {
   const isMediumOn = grades?.medium?.enabled !== false;
   const isBigOn = grades?.big?.enabled !== false;
 
+  const smallUnit = grades?.small?.unit || 'kg';
   const smallMin = parseFloat(grades?.small?.minKg) || 0;
   const smallMax = parseFloat(grades?.small?.maxKg) || 1;
 
-  const mediumMin = parseFloat(grades?.medium?.minKg) || smallMax;
-  const mediumMax = parseFloat(grades?.medium?.maxKg) || 4;
+  const mediumUnit = grades?.medium?.unit || 'kg';
+  const mediumMin = parseFloat(grades?.medium?.minKg) || (smallUnit === 'g' ? smallMax : smallMax);
+  const mediumMax = parseFloat(grades?.medium?.maxKg) || (mediumUnit === 'g' ? 4000 : 4);
 
-  const bigMin = parseFloat(grades?.big?.minKg) || mediumMax;
-  const bigMax = parseFloat(grades?.big?.maxKg) || 99;
+  const bigUnit = grades?.big?.unit || 'kg';
+  const bigMin = parseFloat(grades?.big?.minKg) || (mediumUnit === 'g' ? mediumMax : mediumMax);
+  const bigMax = parseFloat(grades?.big?.maxKg) || (bigUnit === 'g' ? 99000 : 99);
 
   const list = [
     {
@@ -247,7 +261,7 @@ export const getItemSizeGrades = (item, mode = 'individual') => {
       label: 'Small',
       minKg: smallMin,
       maxKg: smallMax,
-      range: `${smallMin} to ${smallMax} Kg`,
+      range: `${smallMin} to ${smallMax} ${smallUnit === 'g' ? 'g' : 'Kg'}`,
       enabled: isSmallOn,
       price: getItemPricePerKg(item, mode, 'small')
     },
@@ -256,7 +270,7 @@ export const getItemSizeGrades = (item, mode = 'individual') => {
       label: 'Medium',
       minKg: mediumMin,
       maxKg: mediumMax,
-      range: `${mediumMin} to ${mediumMax} Kg`,
+      range: `${mediumMin} to ${mediumMax} ${mediumUnit === 'g' ? 'g' : 'Kg'}`,
       enabled: isMediumOn,
       price: getItemPricePerKg(item, mode, 'medium')
     },
@@ -265,7 +279,7 @@ export const getItemSizeGrades = (item, mode = 'individual') => {
       label: 'Big',
       minKg: bigMin,
       maxKg: bigMax,
-      range: bigMax >= 50 ? `${bigMin}+ Kg` : `${bigMin} to ${bigMax} Kg`,
+      range: bigMax >= 50 && bigUnit !== 'g' ? `${bigMin}+ Kg` : `${bigMin} to ${bigMax} ${bigUnit === 'g' ? 'g' : 'Kg'}`,
       enabled: isBigOn,
       price: getItemPricePerKg(item, mode, 'big')
     }
@@ -273,7 +287,6 @@ export const getItemSizeGrades = (item, mode = 'individual') => {
 
   return list.filter(g => g.enabled);
 };
-
 
 const getFoodCategoryVisual = (name = '', cat = '') => {
   const lower = (name + ' ' + cat).toLowerCase();

@@ -202,6 +202,13 @@ export const getRestaurantInfo = async (req, res) => {
       sgstRate: restaurantSettings.sgstRate !== undefined ? restaurantSettings.sgstRate : 2.5,
       enableCuttingCharges: restaurantSettings.enableCuttingCharges !== undefined ? restaurantSettings.enableCuttingCharges : false,
       cuttingChargePerKg: (restaurantSettings.cuttingChargePerKg !== undefined && restaurantSettings.cuttingChargePerKg !== null && restaurantSettings.cuttingChargePerKg !== '') ? Number(restaurantSettings.cuttingChargePerKg) : 10,
+      cuttingSpeciesToggles: restaurantSettings.cuttingSpeciesToggles || { fish: true, prawn: true, crab: true },
+      cuttingTiers: restaurantSettings.cuttingTiers || [
+        { label: 'Tier 1', maxKg: 1.5, multiplier: 1 },
+        { label: 'Tier 2', maxKg: 2.5, multiplier: 2 },
+        { label: 'Tier 3', maxKg: 3.5, multiplier: 3 },
+        { label: 'Extra', extraPerKg: true, multiplier: 1 }
+      ],
       enableGst: restaurantSettings.enableGst !== undefined ? restaurantSettings.enableGst : false,
       gstRate: restaurantSettings.gstRate !== undefined ? restaurantSettings.gstRate : 5,
       logo: restaurantSettings.logo === '[logo_stored]' ? '' : (restaurantSettings.logo || ''),

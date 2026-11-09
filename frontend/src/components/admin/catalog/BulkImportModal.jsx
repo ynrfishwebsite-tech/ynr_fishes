@@ -1069,6 +1069,10 @@ export const generateExcelWithStyling = async (items, filename = 'YNR_Fishes_Cat
     { header: 'Retail Price (₹/Kg)', key: 'price', minWidth: 20 },
     { header: 'Wholesale Price (₹/Kg)', key: 'wholesalePricePerKg', minWidth: 22 },
     { header: 'Export Price (₹/Kg)', key: 'exportPricePerKg', minWidth: 20 },
+    { header: 'Small Price (₹/Kg)', key: 'smallPrice', minWidth: 18 },
+    { header: 'Medium Price (₹/Kg)', key: 'mediumPrice', minWidth: 18 },
+    { header: 'Big Price (₹/Kg)', key: 'bigPrice', minWidth: 18 },
+    { header: 'Custom Cutting Charge (₹)', key: 'cuttingCharge', minWidth: 22 },
     { header: 'Description', key: 'description', minWidth: 30 },
     { header: 'Variants', key: 'variants', minWidth: 25 },
   ];
@@ -1213,6 +1217,10 @@ const BulkImportModal = ({ isOpen, onClose, onImportSuccess }) => {
       'Retail Price (₹/Kg)': i.price,
       'Wholesale Price (₹/Kg)': i.wholesalePricePerKg || Math.round(i.price * 0.85),
       'Export Price (₹/Kg)': i.exportPricePerKg || Math.round(i.price * 0.8),
+      'Small Price (₹/Kg)': i.smallPrice || i.price,
+      'Medium Price (₹/Kg)': i.mediumPrice || i.price,
+      'Big Price (₹/Kg)': i.bigPrice || i.price,
+      'Custom Cutting Charge (₹)': i.cuttingCharge || 0,
       'Description': i.description || '',
       'Variants': i.variants || ''
     })));
@@ -1343,9 +1351,16 @@ const BulkImportModal = ({ isOpen, onClose, onImportSuccess }) => {
         const exportPricePerKgRaw = getVal('Export Price', 'ExportPrice', 'Export Price (₹/Kg)', 'ExportPricePerKg');
         const waterTypeRaw = getVal('Water Type', 'WaterType', 'Water Environment');
         const speciesTypeRaw = getVal('Seafood Species', 'Species', 'Species Type', 'Seafood Type', 'SpeciesType');
-        const smallPriceRaw = getVal('Small Price', 'SmallPrice', 'Small (₹/Kg)');
-        const mediumPriceRaw = getVal('Medium Price', 'MediumPrice', 'Medium (₹/Kg)');
-        const bigPriceRaw = getVal('Big Price', 'BigPrice', 'Big (₹/Kg)');
+        const smallPriceRaw = getVal('Small Price', 'SmallPrice', 'Small (₹/Kg)', 'Small Price (₹/Kg)');
+        const mediumPriceRaw = getVal('Medium Price', 'MediumPrice', 'Medium (₹/Kg)', 'Medium Price (₹/Kg)');
+        const bigPriceRaw = getVal('Big Price', 'BigPrice', 'Big (₹/Kg)', 'Big Price (₹/Kg)');
+        const cuttingChargeRaw = getVal('Custom Cutting Charge', 'Custom Cutting Charge (₹)', 'CuttingCharge', 'Cutting Charge', 'Cutting Rate');
+        const smallCuttingChargeRaw = getVal('Small Cutting Charge', 'SmallCuttingCharge');
+        const mediumCuttingChargeRaw = getVal('Medium Cutting Charge', 'MediumCuttingCharge');
+        const bigCuttingChargeRaw = getVal('Big Cutting Charge', 'BigCuttingCharge');
+        const smallUnitRaw = getVal('Small Unit', 'SmallUnit') || 'kg';
+        const mediumUnitRaw = getVal('Medium Unit', 'MediumUnit') || 'kg';
+        const bigUnitRaw = getVal('Big Unit', 'BigUnit') || 'kg';
 
         const price = parseFloat(priceRaw) || 0;
         const wholesalePricePerKg = parseFloat(wholesalePricePerKgRaw) || price;
@@ -1354,6 +1369,7 @@ const BulkImportModal = ({ isOpen, onClose, onImportSuccess }) => {
         const openingStock = parseFloat(openingStockRaw) || 0;
         const taxRate = parseFloat(taxRateRaw) || 0;
         const pricePerKg = parseFloat(pricePerKgRaw) || 0;
+        const cuttingCharge = parseFloat(cuttingChargeRaw) || 0;
 
         const catLower = String(category || '').toLowerCase();
         const nameLower = String(name || '').toLowerCase();
@@ -1363,6 +1379,9 @@ const BulkImportModal = ({ isOpen, onClose, onImportSuccess }) => {
         const smallPrice = parseFloat(smallPriceRaw) || price;
         const mediumPrice = parseFloat(mediumPriceRaw) || price;
         const bigPrice = parseFloat(bigPriceRaw) || price;
+        const smallCuttingCharge = parseFloat(smallCuttingChargeRaw) || (cuttingCharge > 0 ? cuttingCharge : 0);
+        const mediumCuttingCharge = parseFloat(mediumCuttingChargeRaw) || (cuttingCharge > 0 ? cuttingCharge : 0);
+        const bigCuttingCharge = parseFloat(bigCuttingChargeRaw) || (cuttingCharge > 0 ? cuttingCharge : 0);
         const piecesPerKg = parseFloat(piecesPerKgRaw) || 0;
         const sellByWeight = sellByWeightRaw && String(sellByWeightRaw).toLowerCase() !== 'false' && sellByWeightRaw !== '0';
         const sellByPiece = sellByPieceRaw && String(sellByPieceRaw).toLowerCase() !== 'false' && sellByPieceRaw !== '0';
@@ -1407,10 +1426,12 @@ const BulkImportModal = ({ isOpen, onClose, onImportSuccess }) => {
           waterType,
           speciesType,
           sizeGrades: {
-            small: { minKg: 0, maxKg: 1, price: smallPrice, wholesalePrice: wholesalePricePerKg, exportPrice: exportPricePerKg },
-            medium: { minKg: 1, maxKg: 4, price: mediumPrice, wholesalePrice: wholesalePricePerKg, exportPrice: exportPricePerKg },
-            big: { minKg: 4, maxKg: 99, price: bigPrice, wholesalePrice: wholesalePricePerKg, exportPrice: exportPricePerKg }
+            small: { minKg: 0, maxKg: 1, price: smallPrice, wholesalePrice: wholesalePricePerKg, exportPrice: exportPricePerKg, unit: smallUnitRaw.toLowerCase().includes('g') ? 'g' : 'kg', cuttingCharge: smallCuttingCharge },
+            medium: { minKg: 1, maxKg: 4, price: mediumPrice, wholesalePrice: wholesalePricePerKg, exportPrice: exportPricePerKg, unit: mediumUnitRaw.toLowerCase().includes('g') ? 'g' : 'kg', cuttingCharge: mediumCuttingCharge },
+            big: { minKg: 4, maxKg: 99, price: bigPrice, wholesalePrice: wholesalePricePerKg, exportPrice: exportPricePerKg, unit: bigUnitRaw.toLowerCase().includes('g') ? 'g' : 'kg', cuttingCharge: bigCuttingCharge }
           },
+          customCuttingChargeEnabled: cuttingCharge > 0 || smallCuttingCharge > 0 || mediumCuttingCharge > 0 || bigCuttingCharge > 0,
+          cuttingCharge: cuttingCharge,
           variants: parsedVariants,
           variantsString: variantsRaw || '',
           type,

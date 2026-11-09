@@ -85,15 +85,34 @@ const BillSummary = ({
 
   const cartEndRef = React.useRef(null);
 
-  // Cutting charges slab calculation
+  // Cutting charges apply EXCLUSIVELY to Retail orders - NEVER in Wholesale or Export!
+  const isRetail = fishOrderMode === 'individual';
+
+  // Configurable & Species-Aware cutting charges slab calculation (Retail Only)
   const totalFishWeight = React.useMemo(() => {
-    return (cart || []).reduce((sum, item) => {
-      if (item.isCancelled) return sum;
-      const activeQty = Math.max(0, (Number(item.quantity) || 1) - (Number(item.cancelledQuantity) || 0));
-      const w = Number(item.netWeightKg || item.enteredWeight || item.weightKg || 0);
-      return sum + (w > 0 && w !== activeQty && w <= 1 ? w * activeQty : (w > 0 ? w : activeQty));
-    }, 0);
-  }, [cart]);
+    if (!isRetail) return 0;
+    try {
+      const s = JSON.parse(localStorage.getItem('restaurantSettings') || '{}');
+      const speciesToggles = s.cuttingSpeciesToggles || { fish: true, prawn: true, crab: true };
+      return (cart || []).reduce((sum, item) => {
+        if (item.isCancelled) return sum;
+        if (item.orderMode && item.orderMode !== 'individual') return sum;
+        const sp = (item.speciesType || 'fish').toLowerCase();
+        if (speciesToggles[sp] === false) return sum;
+        const activeQty = Math.max(0, (Number(item.quantity) || 1) - (Number(item.cancelledQuantity) || 0));
+        const w = Number(item.netWeightKg || item.enteredWeight || item.weightKg || 0);
+        return sum + (w > 0 && w !== activeQty && w <= 1 ? w * activeQty : (w > 0 ? w : activeQty));
+      }, 0);
+    } catch {
+      return (cart || []).reduce((sum, item) => {
+        if (item.isCancelled) return sum;
+        if (item.orderMode && item.orderMode !== 'individual') return sum;
+        const activeQty = Math.max(0, (Number(item.quantity) || 1) - (Number(item.cancelledQuantity) || 0));
+        const w = Number(item.netWeightKg || item.enteredWeight || item.weightKg || 0);
+        return sum + (w > 0 && w !== activeQty && w <= 1 ? w * activeQty : (w > 0 ? w : activeQty));
+      }, 0);
+    }
+  }, [cart, isRetail]);
 
   const cuttingRate = React.useMemo(() => {
     try {
@@ -105,15 +124,101 @@ const BillSummary = ({
   }, []);
 
   const calculateCuttingCharge = (w, rate = 10) => {
-    const num = Number(w) || 0;
-    const r = Number(rate) || 10;
-    if (num <= 0) return 0;
-    if (num <= 1.5) return r;
-    return (1 + Math.ceil(num - 1.5)) * r;
+    if (!isRetail) return 0;
+    try {
+      const s = JSON.parse(localStorage.getItem('restaurantSettings') || '{}');
+      const baseRate = Number(rate) || (Number(s.cuttingChargePerKg) > 0 ? Number(s.cuttingChargePerKg) : 10);
+      const tiers = s.cuttingTiers || [
+        { label: 'Tier 1', maxKg: 1.5, multiplier: 1 },
+        { label: 'Tier 2', maxKg: 2.5, multiplier: 2 },
+        { label: 'Tier 3', maxKg: 3.5, multiplier: 3 },
+        { label: 'Extra', extraPerKg: true, multiplier: 1 }
+      ];
+      const tier1Max = Number(tiers[0]?.maxKg) || 1.5;
+      const tier2Max = Number(tiers[1]?.maxKg) || 2.5;
+      const tier3Max = Number(tiers[2]?.maxKg) || 3.5;
+
+      const num = Number(w) || 0;
+      if (num <= 0) return 0;
+      if (num <= tier1Max) return baseRate;
+      if (num <= tier2Max) return baseRate * 2;
+      if (num <= tier3Max) return baseRate * 3;
+      return baseRate * (3 + Math.ceil(num - tier3Max));
+    } catch {
+      const num = Number(w) || 0;
+      const r = Number(rate) || 10;
+      if (num <= 0) return 0;
+      if (num <= 1.5) return r;
+      return (1 + Math.ceil(num - 1.5)) * r;
+    }
   };
 
+  // Strictly reset cutting charges to 0 whenever not in retail mode
+  React.useEffect(() => {
+    if (!isRetail) {
+      if ((cuttingCharge !== '0' && cuttingCharge !== 0 && cuttingCharge !== '') && setCuttingCharge) {
+        setCuttingCharge(0);
+      }
+      if (isCuttingChargeEnabled && setIsCuttingChargeEnabled) {
+        setIsCuttingChargeEnabled(false);
+      }
+    }
+  }, [isRetail, cuttingCharge, isCuttingChargeEnabled, setCuttingCharge, setIsCuttingChargeEnabled]);
+
   const cuttingTiers = totalFishWeight <= 0 ? 0 : (totalFishWeight <= 1.5 ? 1 : 1 + Math.ceil(totalFishWeight - 1.5));
-  const suggestedCuttingCharge = calculateCuttingCharge(totalFishWeight, cuttingRate);
+  const suggestedCuttingCharge = React.useMemo(() => {
+    if (!isRetail) return 0;
+    try {
+      const s = JSON.parse(localStorage.getItem('restaurantSettings') || '{}');
+      const speciesToggles = s.cuttingSpeciesToggles || { fish: true, prawn: true, crab: true };
+      const baseRate = cuttingRate;
+      const tiers = s.cuttingTiers || [
+        { label: 'Tier 1', maxKg: 1.5, multiplier: 1 },
+        { label: 'Tier 2', maxKg: 2.5, multiplier: 2 },
+        { label: 'Tier 3', maxKg: 3.5, multiplier: 3 },
+        { label: 'Extra', extraPerKg: true, multiplier: 1 }
+      ];
+      const tier1Max = Number(tiers[0]?.maxKg) || 1.5;
+      const tier2Max = Number(tiers[1]?.maxKg) || 2.5;
+      const tier3Max = Number(tiers[2]?.maxKg) || 3.5;
+
+      let customTotal = 0;
+      let standardWeight = 0;
+
+      (cart || []).forEach(item => {
+        if (item.isCancelled) return;
+        if (item.orderMode && item.orderMode !== 'individual') return;
+        const sp = (item.speciesType || 'fish').toLowerCase();
+        if (speciesToggles[sp] === false) return;
+        const w = Number(item.netWeightKg || item.enteredWeight || item.weightKg || (item.sellingUnit === 'Kg' ? item.quantity : 0) || 0);
+        if (w <= 0) return;
+
+        const gradeKey = item.sizeGrade || 'medium';
+        const gradeCut = parseFloat(item.sizeGrades?.[gradeKey]?.cuttingCharge);
+        const itemCut = parseFloat(item.cuttingCharge);
+        const cutRate = gradeCut > 0 ? gradeCut : (itemCut > 0 ? itemCut : 0);
+
+        if (item.customCuttingChargeEnabled && cutRate > 0) {
+          const steps = w <= tier1Max ? 1 : (1 + Math.ceil(w - tier1Max));
+          customTotal += steps * cutRate;
+        } else {
+          standardWeight += w;
+        }
+      });
+
+      let standardCharge = 0;
+      if (standardWeight > 0) {
+        if (standardWeight <= tier1Max) standardCharge = baseRate;
+        else if (standardWeight <= tier2Max) standardCharge = baseRate * 2;
+        else if (standardWeight <= tier3Max) standardCharge = baseRate * 3;
+        else standardCharge = baseRate * (3 + Math.ceil(standardWeight - tier3Max));
+      }
+
+      return Math.round(customTotal + standardCharge);
+    } catch {
+      return calculateCuttingCharge(totalFishWeight, cuttingRate);
+    }
+  }, [cart, totalFishWeight, cuttingRate, isRetail]);
 
   const { groupedBoxes, individualItems } = React.useMemo(() => {
     const boxes = {};
@@ -1535,35 +1640,45 @@ const BillSummary = ({
                     </div>
                   </div>
 
-                  {/* 3. Fish Cutting Charges (Slab-based) */}
-                  <div className={`p-1 sm:p-2 rounded-lg sm:rounded-xl border transition-all min-w-0 ${isCuttingChargeEnabled || Number(cuttingCharge) > 0 ? 'bg-amber-50/70 border-amber-300' : 'bg-white border-slate-300'}`}>
+                  {/* 3. Fish Cutting Charges (Retail Only) */}
+                  <div className={`p-1 sm:p-2 rounded-lg sm:rounded-xl border transition-all min-w-0 ${
+                    !isRetail 
+                      ? 'bg-slate-50/70 border-slate-200 opacity-60' 
+                      : (isCuttingChargeEnabled || Number(cuttingCharge) > 0 ? 'bg-amber-50/70 border-amber-300' : 'bg-white border-slate-300')
+                  }`}>
                     <div className="flex items-center justify-between mb-0.5 gap-0.5 min-w-0">
                       <label className="text-[10px] sm:text-[11px] font-bold text-slate-700 flex items-center gap-0.5 truncate min-w-0" title={t("Cutting Charges")}>
-                        <Scissors size={10} className="text-amber-800 shrink-0" />
+                        <Scissors size={10} className={!isRetail ? "text-slate-400 shrink-0" : "text-amber-800 shrink-0"} />
                         <span className="truncate">{t("Cutting")}</span>
                       </label>
-                      <button
-                        type="button"
-                        disabled={isLocked}
-                        onClick={() => {
-                          const nextState = !isCuttingChargeEnabled;
-                          if (setIsCuttingChargeEnabled) setIsCuttingChargeEnabled(nextState);
-                          if (setCuttingCharge) {
-                            if (nextState) {
-                              setCuttingCharge(suggestedCuttingCharge);
-                            } else {
-                              setCuttingCharge(0);
+                      {isRetail ? (
+                        <button
+                          type="button"
+                          disabled={isLocked}
+                          onClick={() => {
+                            const nextState = !isCuttingChargeEnabled;
+                            if (setIsCuttingChargeEnabled) setIsCuttingChargeEnabled(nextState);
+                            if (setCuttingCharge) {
+                              if (nextState) {
+                                setCuttingCharge(suggestedCuttingCharge);
+                              } else {
+                                setCuttingCharge(0);
+                              }
                             }
-                          }
-                        }}
-                        className={`text-[8px] sm:text-[9px] font-black px-1 py-0.2 rounded cursor-pointer transition-all shrink-0 ${
-                          isCuttingChargeEnabled || Number(cuttingCharge) > 0
-                            ? 'bg-amber-700 text-white shadow-2xs'
-                            : 'bg-slate-200 text-slate-700 hover:bg-slate-300'
-                        }`}
-                      >
-                        {isCuttingChargeEnabled || Number(cuttingCharge) > 0 ? 'ON' : 'OFF'}
-                      </button>
+                          }}
+                          className={`text-[8px] sm:text-[9px] font-black px-1 py-0.2 rounded cursor-pointer transition-all shrink-0 ${
+                            isCuttingChargeEnabled || Number(cuttingCharge) > 0
+                              ? 'bg-amber-700 text-white shadow-2xs'
+                              : 'bg-slate-200 text-slate-700 hover:bg-slate-300'
+                          }`}
+                        >
+                          {isCuttingChargeEnabled || Number(cuttingCharge) > 0 ? 'ON' : 'OFF'}
+                        </button>
+                      ) : (
+                        <span className="text-[8px] font-bold px-1 py-0.2 rounded bg-slate-200 text-slate-500 shrink-0">
+                          Retail Only
+                        </span>
+                      )}
                     </div>
 
                     <div className="flex items-center gap-0.5">
@@ -1572,11 +1687,12 @@ const BillSummary = ({
                         type="number"
                         min="0"
                         placeholder="0"
-                        disabled={isLocked}
+                        disabled={isLocked || !isRetail}
                         onWheel={(e) => e.target.blur()}
                         onKeyDown={(e) => { if (e.key === '-' || e.key === 'e' || e.key === 'E') e.preventDefault(); }}
-                        value={cuttingCharge === '0' || cuttingCharge === 0 ? '' : cuttingCharge}
+                        value={!isRetail || cuttingCharge === '0' || cuttingCharge === 0 ? '' : cuttingCharge}
                         onChange={(e) => {
+                          if (!isRetail) return;
                           const val = e.target.value === '' ? '' : Math.max(0, parseFloat(e.target.value) || 0);
                           if (setCuttingCharge) setCuttingCharge(val);
                           if (setIsCuttingChargeEnabled) {
@@ -1584,12 +1700,21 @@ const BillSummary = ({
                             else if (val === 0 || val === '') setIsCuttingChargeEnabled(false);
                           }
                         }}
-                        className="w-full bg-slate-50 border border-slate-200 rounded px-1 py-0.5 text-right font-mono font-bold text-[11px] sm:text-xs text-slate-900 focus:outline-none focus:bg-white focus:border-amber-600"
+                        className={`w-full border rounded px-1 py-0.5 text-right font-mono font-bold text-[11px] sm:text-xs focus:outline-none ${
+                          !isRetail 
+                            ? 'bg-slate-100 border-slate-200 text-slate-400 cursor-not-allowed' 
+                            : 'bg-slate-50 border-slate-200 text-slate-900 focus:bg-white focus:border-amber-600'
+                        }`}
                       />
                     </div>
-                    {suggestedCuttingCharge > 0 && (
+                    {isRetail && suggestedCuttingCharge > 0 && (
                       <div className="text-[7.5px] sm:text-[8px] text-amber-900 font-bold truncate mt-0.5">
                         {totalFishWeight.toFixed(1).replace(/\.0$/, '')}k • {currencySymbol}{suggestedCuttingCharge}
+                      </div>
+                    )}
+                    {!isRetail && (
+                      <div className="text-[7.5px] text-slate-400 font-medium truncate mt-0.5">
+                        No cutting fee for Wholesale/Export
                       </div>
                     )}
                   </div>

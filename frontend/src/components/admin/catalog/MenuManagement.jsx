@@ -132,10 +132,12 @@ const MenuManagement = ({ user, onNavigate, onGoBack }) => {
     waterType: 'sea_water',
     speciesType: 'fish',
     sizeGrades: {
-      small: { minKg: 0, maxKg: 1, enabled: true },
-      medium: { minKg: 1, maxKg: 4, enabled: true },
-      big: { minKg: 4, maxKg: 99, enabled: true }
+      small: { minKg: 0, maxKg: 1, enabled: true, price: '', wholesalePrice: '', exportPrice: '', unit: 'kg', cuttingCharge: '' },
+      medium: { minKg: 1, maxKg: 4, enabled: true, price: '', wholesalePrice: '', exportPrice: '', unit: 'kg', cuttingCharge: '' },
+      big: { minKg: 4, maxKg: 99, enabled: true, price: '', wholesalePrice: '', exportPrice: '', unit: 'kg', cuttingCharge: '' }
     },
+    customCuttingChargeEnabled: false,
+    cuttingCharge: '',
     openingStock: '',
     type: 'non-veg',
     description: '',
@@ -216,19 +218,36 @@ const MenuManagement = ({ user, onNavigate, onGoBack }) => {
           small: {
             minKg: item.sizeGrades?.small?.minKg ?? 0,
             maxKg: item.sizeGrades?.small?.maxKg ?? 1,
-            enabled: item.sizeGrades?.small?.enabled !== false
+            enabled: item.sizeGrades?.small?.enabled !== false,
+            price: item.sizeGrades?.small?.price ?? '',
+            wholesalePrice: item.sizeGrades?.small?.wholesalePrice ?? '',
+            exportPrice: item.sizeGrades?.small?.exportPrice ?? '',
+            unit: item.sizeGrades?.small?.unit || 'kg',
+            cuttingCharge: item.sizeGrades?.small?.cuttingCharge ?? ''
           },
           medium: {
             minKg: item.sizeGrades?.medium?.minKg ?? 1,
             maxKg: item.sizeGrades?.medium?.maxKg ?? 4,
-            enabled: item.sizeGrades?.medium?.enabled !== false
+            enabled: item.sizeGrades?.medium?.enabled !== false,
+            price: item.sizeGrades?.medium?.price ?? '',
+            wholesalePrice: item.sizeGrades?.medium?.wholesalePrice ?? '',
+            exportPrice: item.sizeGrades?.medium?.exportPrice ?? '',
+            unit: item.sizeGrades?.medium?.unit || 'kg',
+            cuttingCharge: item.sizeGrades?.medium?.cuttingCharge ?? ''
           },
           big: {
             minKg: item.sizeGrades?.big?.minKg ?? 4,
             maxKg: item.sizeGrades?.big?.maxKg ?? 99,
-            enabled: item.sizeGrades?.big?.enabled !== false
+            enabled: item.sizeGrades?.big?.enabled !== false,
+            price: item.sizeGrades?.big?.price ?? '',
+            wholesalePrice: item.sizeGrades?.big?.wholesalePrice ?? '',
+            exportPrice: item.sizeGrades?.big?.exportPrice ?? '',
+            unit: item.sizeGrades?.big?.unit || 'kg',
+            cuttingCharge: item.sizeGrades?.big?.cuttingCharge ?? ''
           }
         },
+        customCuttingChargeEnabled: item.customCuttingChargeEnabled || false,
+        cuttingCharge: item.cuttingCharge ?? '',
         openingStock: item.stock ?? item.openingStock ?? '',
         type: item.type || 'non-veg',
         description: item.description || '',
@@ -253,10 +272,12 @@ const MenuManagement = ({ user, onNavigate, onGoBack }) => {
         waterType: 'sea_water',
         speciesType: 'fish',
         sizeGrades: {
-          small: { minKg: 0, maxKg: 1, enabled: true },
-          medium: { minKg: 1, maxKg: 4, enabled: true },
-          big: { minKg: 4, maxKg: 99, enabled: true }
+          small: { minKg: 0, maxKg: 1, enabled: true, price: '', wholesalePrice: '', exportPrice: '', unit: 'kg', cuttingCharge: '' },
+          medium: { minKg: 1, maxKg: 4, enabled: true, price: '', wholesalePrice: '', exportPrice: '', unit: 'kg', cuttingCharge: '' },
+          big: { minKg: 4, maxKg: 99, enabled: true, price: '', wholesalePrice: '', exportPrice: '', unit: 'kg', cuttingCharge: '' }
         },
+        customCuttingChargeEnabled: false,
+        cuttingCharge: '',
         openingStock: '',
         type: 'non-veg',
         description: '',
@@ -398,27 +419,35 @@ const MenuManagement = ({ user, onNavigate, onGoBack }) => {
             minKg: parseFloat(formData.sizeGrades?.small?.minKg) || 0,
             maxKg: parseFloat(formData.sizeGrades?.small?.maxKg) || 1,
             enabled: formData.sizeGrades?.small?.enabled !== false,
-            price: price,
-            wholesalePrice: wholesalePricePerKg,
-            exportPrice: exportPricePerKg
+            price: parseFloat(formData.sizeGrades?.small?.price) || price,
+            wholesalePrice: parseFloat(formData.sizeGrades?.small?.wholesalePrice) || wholesalePricePerKg,
+            exportPrice: parseFloat(formData.sizeGrades?.small?.exportPrice) || exportPricePerKg,
+            unit: formData.sizeGrades?.small?.unit || 'kg',
+            cuttingCharge: parseFloat(formData.sizeGrades?.small?.cuttingCharge) || 0
           },
           medium: {
             minKg: parseFloat(formData.sizeGrades?.medium?.minKg) || 1,
             maxKg: parseFloat(formData.sizeGrades?.medium?.maxKg) || 4,
             enabled: formData.sizeGrades?.medium?.enabled !== false,
-            price: price,
-            wholesalePrice: wholesalePricePerKg,
-            exportPrice: exportPricePerKg
+            price: parseFloat(formData.sizeGrades?.medium?.price) || price,
+            wholesalePrice: parseFloat(formData.sizeGrades?.medium?.wholesalePrice) || wholesalePricePerKg,
+            exportPrice: parseFloat(formData.sizeGrades?.medium?.exportPrice) || exportPricePerKg,
+            unit: formData.sizeGrades?.medium?.unit || 'kg',
+            cuttingCharge: parseFloat(formData.sizeGrades?.medium?.cuttingCharge) || 0
           },
           big: {
             minKg: parseFloat(formData.sizeGrades?.big?.minKg) || 4,
             maxKg: parseFloat(formData.sizeGrades?.big?.maxKg) || 99,
             enabled: formData.sizeGrades?.big?.enabled !== false,
-            price: price,
-            wholesalePrice: wholesalePricePerKg,
-            exportPrice: exportPricePerKg
+            price: parseFloat(formData.sizeGrades?.big?.price) || price,
+            wholesalePrice: parseFloat(formData.sizeGrades?.big?.wholesalePrice) || wholesalePricePerKg,
+            exportPrice: parseFloat(formData.sizeGrades?.big?.exportPrice) || exportPricePerKg,
+            unit: formData.sizeGrades?.big?.unit || 'kg',
+            cuttingCharge: parseFloat(formData.sizeGrades?.big?.cuttingCharge) || 0
           }
         },
+        customCuttingChargeEnabled: formData.customCuttingChargeEnabled || false,
+        cuttingCharge: parseFloat(formData.cuttingCharge) || 0,
         category: finalCategory,
         image: formatImageUrl(formData.image),
         price,
@@ -554,7 +583,10 @@ const MenuManagement = ({ user, onNavigate, onGoBack }) => {
         isAvailable: row.isAvailable !== false,
         taxRate: row.taxRate || 0,
         image: row.image || '',
-        variants: Array.isArray(row.variants) ? row.variants : []
+        variants: Array.isArray(row.variants) ? row.variants : [],
+        sizeGrades: row.sizeGrades,
+        customCuttingChargeEnabled: row.customCuttingChargeEnabled || false,
+        cuttingCharge: parseFloat(row.cuttingCharge) || 0
       }));
 
       const res = await bulkAddMenuItems(itemsPayload);
@@ -2043,293 +2075,187 @@ const MenuManagement = ({ user, onNavigate, onGoBack }) => {
                 />
               </div>
 
-              {/* 10. Fish Size Grading (Small, Medium, Big) */}
+              {/* 10. Fish Size Grading (Small, Medium, Big) with Grade Prices, Unit Toggle & Cutting Charges */}
               <div className="bg-slate-50 dark:bg-slate-900/40 p-2.5 rounded-xl border border-slate-200 dark:border-slate-800 space-y-1.5">
                 <div className="flex justify-between items-center">
                   <span className="text-xs font-black text-slate-900 dark:text-white">{t("Size Grades & Availability")}</span>
-                  <span className="text-[10px] text-slate-500">{t("Set weight ranges and availability")}</span>
+                  <span className="text-[10px] text-slate-500">{t("Set weight ranges, prices and availability")}</span>
                 </div>
 
-                <div className="space-y-1 text-xs">
-                  {/* Small Grade Row */}
-                  {(() => {
-                    const isSmallOn = formData.sizeGrades?.small?.enabled !== false;
+                <div className="space-y-1.5 text-xs">
+                  {/* Reusable Grade Row */}
+                  {[
+                    { key: 'small', label: 'Small', borderColor: 'amber', badgeBg: 'amber', defaultMin: 0, defaultMax: 1 },
+                    { key: 'medium', label: 'Medium', borderColor: 'blue', badgeBg: 'blue', defaultMin: 1, defaultMax: 4 },
+                    { key: 'big', label: 'Big', borderColor: 'blue', badgeBg: 'blue', defaultMin: 4, defaultMax: 99 }
+                  ].map(grade => {
+                    const gradeData = formData.sizeGrades?.[grade.key] || {};
+                    const isOn = gradeData.enabled !== false;
+                    const currentUnit = gradeData.unit || 'kg';
                     return (
-                      <div className={`p-2 rounded-lg border transition-all ${
-                        isSmallOn ? 'bg-white dark:bg-slate-800 border-amber-300 dark:border-amber-700 shadow-2xs' : 'bg-slate-100/70 dark:bg-slate-900/40 border-slate-200 dark:border-slate-800 opacity-60'
+                      <div key={grade.key} className={`p-2 rounded-lg border transition-all ${
+                        isOn ? `bg-white dark:bg-slate-800 border-${grade.borderColor}-300 dark:border-${grade.borderColor}-700 shadow-2xs` : 'bg-slate-100/70 dark:bg-slate-900/40 border-slate-200 dark:border-slate-800 opacity-60'
                       }`}>
+                        {/* Row 1: Grade name, weight range, unit toggle, ON/OFF */}
                         <div className="flex items-center justify-between gap-2">
-                          <div className="flex items-center gap-1.5 min-w-[90px]">
-                            <span className="text-xs font-black text-slate-800 dark:text-slate-100">Small</span>
+                          <div className="flex items-center gap-1.5 min-w-[70px]">
+                            <span className="text-xs font-black text-slate-800 dark:text-slate-100">{grade.label}</span>
                             <span className={`text-[9px] px-1.5 py-0.2 rounded font-black ${
-                              isSmallOn ? 'bg-amber-100 text-amber-900 dark:bg-amber-950 dark:text-amber-200' : 'bg-slate-200 text-slate-500'
+                              isOn ? `bg-${grade.badgeBg}-100 text-${grade.badgeBg}-900 dark:bg-${grade.badgeBg}-950 dark:text-${grade.badgeBg}-200` : 'bg-slate-200 text-slate-500'
                             }`}>
-                              {isSmallOn ? 'Active' : 'Off'}
+                              {isOn ? 'Active' : 'Off'}
                             </span>
                           </div>
 
                           <div className="flex items-center gap-1 text-xs text-slate-600 dark:text-slate-400">
                             <span className="text-[10px] font-medium text-slate-400">From</span>
                             <input
-                              type="number"
-                              min="0"
-                              step="0.1"
+                              type="number" min="0" step="0.1"
                               onWheel={(e) => e.target.blur()}
                               onKeyDown={(e) => { if (e.key === '-' || e.key === 'e' || e.key === 'E') e.preventDefault(); }}
-                              disabled={!isSmallOn}
-                              value={formData.sizeGrades?.small?.minKg ?? 0}
+                              disabled={!isOn}
+                              value={gradeData.minKg ?? grade.defaultMin}
                               onChange={(e) => {
                                 const v = e.target.value;
                                 if (v === '' || parseFloat(v) >= 0) {
-                                  setFormData({
-                                    ...formData,
-                                    sizeGrades: {
-                                      ...formData.sizeGrades,
-                                      small: { ...formData.sizeGrades?.small, minKg: v }
-                                    }
-                                  });
+                                  setFormData({ ...formData, sizeGrades: { ...formData.sizeGrades, [grade.key]: { ...gradeData, minKg: v } } });
                                 }
                               }}
                               className="w-14 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded px-1.5 py-1 text-center font-bold text-xs text-slate-800 dark:text-slate-200 focus:outline-none focus:border-amber-500 disabled:opacity-50"
                             />
                             <span className="text-[10px] font-medium text-slate-400">to</span>
                             <input
-                              type="number"
-                              min="0"
-                              step="0.1"
+                              type="number" min="0" step="0.1"
                               onWheel={(e) => e.target.blur()}
                               onKeyDown={(e) => { if (e.key === '-' || e.key === 'e' || e.key === 'E') e.preventDefault(); }}
-                              disabled={!isSmallOn}
-                              value={formData.sizeGrades?.small?.maxKg ?? 1}
+                              disabled={!isOn}
+                              value={gradeData.maxKg ?? grade.defaultMax}
                               onChange={(e) => {
                                 const v = e.target.value;
                                 if (v === '' || parseFloat(v) >= 0) {
-                                  setFormData({
-                                    ...formData,
-                                    sizeGrades: {
-                                      ...formData.sizeGrades,
-                                      small: { ...formData.sizeGrades?.small, maxKg: v }
-                                    }
-                                  });
+                                  setFormData({ ...formData, sizeGrades: { ...formData.sizeGrades, [grade.key]: { ...gradeData, maxKg: v } } });
                                 }
                               }}
                               className="w-14 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded px-1.5 py-1 text-center font-bold text-xs text-slate-800 dark:text-slate-200 focus:outline-none focus:border-amber-500 disabled:opacity-50"
                             />
-                            <span className="text-[10px] font-bold text-slate-500">Kg</span>
-                          </div>
-
-                          <div className="flex items-center gap-1.5">
+                            {/* Unit Toggle: Kg / g */}
                             <button
                               type="button"
-                              onClick={() => setFormData({
-                                ...formData,
-                                sizeGrades: {
-                                  ...formData.sizeGrades,
-                                  small: { ...formData.sizeGrades?.small, enabled: !isSmallOn }
-                                }
-                              })}
-                              className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors cursor-pointer focus:outline-none ${
-                                isSmallOn ? 'bg-emerald-500' : 'bg-slate-300'
+                              disabled={!isOn}
+                              onClick={() => setFormData({ ...formData, sizeGrades: { ...formData.sizeGrades, [grade.key]: { ...gradeData, unit: currentUnit === 'kg' ? 'g' : 'kg' } } })}
+                              className={`text-[10px] font-black px-2 py-0.5 rounded-full border transition-all cursor-pointer disabled:opacity-50 ${
+                                currentUnit === 'kg' ? 'bg-slate-800 text-white border-slate-800' : 'bg-amber-100 text-amber-900 border-amber-400'
                               }`}
                             >
-                              <span
-                                className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform shadow-xs ${
-                                  isSmallOn ? 'translate-x-4.5' : 'translate-x-1'
-                                }`}
-                              />
+                              {currentUnit === 'kg' ? 'Kg' : 'g'}
                             </button>
                           </div>
+
+                          <button
+                            type="button"
+                            onClick={() => setFormData({ ...formData, sizeGrades: { ...formData.sizeGrades, [grade.key]: { ...gradeData, enabled: !isOn } } })}
+                            className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors cursor-pointer focus:outline-none ${isOn ? 'bg-emerald-500' : 'bg-slate-300'}`}
+                          >
+                            <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform shadow-xs ${isOn ? 'translate-x-4.5' : 'translate-x-1'}`} />
+                          </button>
                         </div>
-                      </div>
-                    );
-                  })()}
 
-                  {/* Medium Grade Row */}
-                  {(() => {
-                    const isMediumOn = formData.sizeGrades?.medium?.enabled !== false;
-                    return (
-                      <div className={`p-2 rounded-lg border transition-all ${
-                        isMediumOn ? 'bg-white dark:bg-slate-800 border-blue-300 dark:border-blue-700 shadow-2xs' : 'bg-slate-100/70 dark:bg-slate-900/40 border-slate-200 dark:border-slate-800 opacity-60'
-                      }`}>
-                        <div className="flex items-center justify-between gap-2">
-                          <div className="flex items-center gap-1.5 min-w-[90px]">
-                            <span className="text-xs font-black text-slate-800 dark:text-slate-100">Medium</span>
-                            <span className={`text-[9px] px-1.5 py-0.2 rounded font-black ${
-                              isMediumOn ? 'bg-blue-100 text-blue-900 dark:bg-blue-950 dark:text-blue-200' : 'bg-slate-200 text-slate-500'
-                            }`}>
-                              {isMediumOn ? 'Active' : 'Off'}
-                            </span>
-                          </div>
-
-                          <div className="flex items-center gap-1 text-xs text-slate-600 dark:text-slate-400">
-                            <span className="text-[10px] font-medium text-slate-400">From</span>
-                            <input
-                              type="number"
-                              min="0"
-                              step="0.1"
-                              onWheel={(e) => e.target.blur()}
-                              onKeyDown={(e) => { if (e.key === '-' || e.key === 'e' || e.key === 'E') e.preventDefault(); }}
-                              disabled={!isMediumOn}
-                              value={formData.sizeGrades?.medium?.minKg ?? 1}
-                              onChange={(e) => {
-                                const v = e.target.value;
-                                if (v === '' || parseFloat(v) >= 0) {
-                                  setFormData({
-                                    ...formData,
-                                    sizeGrades: {
-                                      ...formData.sizeGrades,
-                                      medium: { ...formData.sizeGrades?.medium, minKg: v }
-                                    }
-                                  });
-                                }
-                              }}
-                              className="w-14 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded px-1.5 py-1 text-center font-bold text-xs text-slate-800 dark:text-slate-200 focus:outline-none focus:border-blue-500 disabled:opacity-50"
-                            />
-                            <span className="text-[10px] font-medium text-slate-400">to</span>
-                            <input
-                              type="number"
-                              min="0"
-                              step="0.1"
-                              onWheel={(e) => e.target.blur()}
-                              onKeyDown={(e) => { if (e.key === '-' || e.key === 'e' || e.key === 'E') e.preventDefault(); }}
-                              disabled={!isMediumOn}
-                              value={formData.sizeGrades?.medium?.maxKg ?? 4}
-                              onChange={(e) => {
-                                const v = e.target.value;
-                                if (v === '' || parseFloat(v) >= 0) {
-                                  setFormData({
-                                    ...formData,
-                                    sizeGrades: {
-                                      ...formData.sizeGrades,
-                                      medium: { ...formData.sizeGrades?.medium, maxKg: v }
-                                    }
-                                  });
-                                }
-                              }}
-                              className="w-14 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded px-1.5 py-1 text-center font-bold text-xs text-slate-800 dark:text-slate-200 focus:outline-none focus:border-blue-500 disabled:opacity-50"
-                            />
-                            <span className="text-[10px] font-bold text-slate-500">Kg</span>
-                          </div>
-
-                          <div className="flex items-center gap-1.5">
-                            <button
-                              type="button"
-                              onClick={() => setFormData({
-                                ...formData,
-                                sizeGrades: {
-                                  ...formData.sizeGrades,
-                                  medium: { ...formData.sizeGrades?.medium, enabled: !isMediumOn }
-                                }
-                              })}
-                              className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors cursor-pointer focus:outline-none ${
-                                isMediumOn ? 'bg-emerald-500' : 'bg-slate-300'
-                              }`}
-                            >
-                              <span
-                                className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform shadow-xs ${
-                                  isMediumOn ? 'translate-x-4.5' : 'translate-x-1'
-                                }`}
+                        {/* Row 2: Grade-specific prices (only shown when expanded/active) */}
+                        {isOn && (
+                          <div className="mt-1.5 pt-1.5 border-t border-slate-100 dark:border-slate-700 grid grid-cols-3 gap-1.5">
+                            <div>
+                              <label className="text-[9px] font-bold text-slate-500 block mb-0.5">Retail ₹/{currentUnit === 'kg' ? 'Kg' : 'g'}</label>
+                              <input
+                                type="number" min="0" step="1"
+                                onWheel={(e) => e.target.blur()}
+                                placeholder={formData.price || '0'}
+                                value={gradeData.price ?? ''}
+                                onChange={(e) => setFormData({ ...formData, sizeGrades: { ...formData.sizeGrades, [grade.key]: { ...gradeData, price: e.target.value } } })}
+                                className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded px-1.5 py-1 text-center font-bold text-xs text-slate-800 dark:text-slate-200 focus:outline-none focus:border-amber-500"
                               />
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })()}
-
-                  {/* Big Grade Row */}
-                  {(() => {
-                    const isBigOn = formData.sizeGrades?.big?.enabled !== false;
-                    return (
-                      <div className={`p-2 rounded-lg border transition-all ${
-                        isBigOn ? 'bg-white dark:bg-slate-800 border-blue-300 dark:border-blue-700 shadow-2xs' : 'bg-slate-100/70 dark:bg-slate-900/40 border-slate-200 dark:border-slate-800 opacity-60'
-                      }`}>
-                        <div className="flex items-center justify-between gap-2">
-                          <div className="flex items-center gap-1.5 min-w-[90px]">
-                            <span className="text-xs font-black text-slate-800 dark:text-slate-100">Big</span>
-                            <span className={`text-[9px] px-1.5 py-0.2 rounded font-black ${
-                              isBigOn ? 'bg-blue-100 text-blue-900 dark:bg-blue-950 dark:text-blue-200' : 'bg-slate-200 text-slate-500'
-                            }`}>
-                              {isBigOn ? 'Active' : 'Off'}
-                            </span>
-                          </div>
-
-                          <div className="flex items-center gap-1 text-xs text-slate-600 dark:text-slate-400">
-                            <span className="text-[10px] font-medium text-slate-400">From</span>
-                            <input
-                              type="number"
-                              min="0"
-                              step="0.1"
-                              onWheel={(e) => e.target.blur()}
-                              onKeyDown={(e) => { if (e.key === '-' || e.key === 'e' || e.key === 'E') e.preventDefault(); }}
-                              disabled={!isBigOn}
-                              value={formData.sizeGrades?.big?.minKg ?? 4}
-                              onChange={(e) => {
-                                const v = e.target.value;
-                                if (v === '' || parseFloat(v) >= 0) {
-                                  setFormData({
-                                    ...formData,
-                                    sizeGrades: {
-                                      ...formData.sizeGrades,
-                                      big: { ...formData.sizeGrades?.big, minKg: v }
-                                    }
-                                  });
-                                }
-                              }}
-                              className="w-14 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded px-1.5 py-1 text-center font-bold text-xs text-slate-800 dark:text-slate-200 focus:outline-none focus:border-blue-500 disabled:opacity-50"
-                            />
-                            <span className="text-[10px] font-medium text-slate-400">to</span>
-                            <input
-                              type="number"
-                              min="0"
-                              step="0.1"
-                              onWheel={(e) => e.target.blur()}
-                              onKeyDown={(e) => { if (e.key === '-' || e.key === 'e' || e.key === 'E') e.preventDefault(); }}
-                              disabled={!isBigOn}
-                              value={formData.sizeGrades?.big?.maxKg ?? 99}
-                              onChange={(e) => {
-                                const v = e.target.value;
-                                if (v === '' || parseFloat(v) >= 0) {
-                                  setFormData({
-                                    ...formData,
-                                    sizeGrades: {
-                                      ...formData.sizeGrades,
-                                      big: { ...formData.sizeGrades?.big, maxKg: v }
-                                    }
-                                  });
-                                }
-                              }}
-                              className="w-14 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded px-1.5 py-1 text-center font-bold text-xs text-slate-800 dark:text-slate-200 focus:outline-none focus:border-blue-500 disabled:opacity-50"
-                            />
-                            <span className="text-[10px] font-bold text-slate-500">Kg</span>
-                          </div>
-
-                          <div className="flex items-center gap-1.5">
-                            <button
-                              type="button"
-                              onClick={() => setFormData({
-                                ...formData,
-                                sizeGrades: {
-                                  ...formData.sizeGrades,
-                                  big: { ...formData.sizeGrades?.big, enabled: !isBigOn }
-                                }
-                              })}
-                              className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors cursor-pointer focus:outline-none ${
-                                isBigOn ? 'bg-emerald-500' : 'bg-slate-300'
-                              }`}
-                            >
-                              <span
-                                className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform shadow-xs ${
-                                  isBigOn ? 'translate-x-4.5' : 'translate-x-1'
-                                }`}
+                            </div>
+                            <div>
+                              <label className="text-[9px] font-bold text-slate-500 block mb-0.5">Wholesale</label>
+                              <input
+                                type="number" min="0" step="1"
+                                onWheel={(e) => e.target.blur()}
+                                placeholder={formData.wholesalePricePerKg || '0'}
+                                value={gradeData.wholesalePrice ?? ''}
+                                onChange={(e) => setFormData({ ...formData, sizeGrades: { ...formData.sizeGrades, [grade.key]: { ...gradeData, wholesalePrice: e.target.value } } })}
+                                className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded px-1.5 py-1 text-center font-bold text-xs text-slate-800 dark:text-slate-200 focus:outline-none focus:border-amber-500"
                               />
-                            </button>
+                            </div>
+                            <div>
+                              <label className="text-[9px] font-bold text-slate-500 block mb-0.5">Export</label>
+                              <input
+                                type="number" min="0" step="1"
+                                onWheel={(e) => e.target.blur()}
+                                placeholder={formData.exportPricePerKg || '0'}
+                                value={gradeData.exportPrice ?? ''}
+                                onChange={(e) => setFormData({ ...formData, sizeGrades: { ...formData.sizeGrades, [grade.key]: { ...gradeData, exportPrice: e.target.value } } })}
+                                className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded px-1.5 py-1 text-center font-bold text-xs text-slate-800 dark:text-slate-200 focus:outline-none focus:border-amber-500"
+                              />
+                            </div>
                           </div>
-                        </div>
+                        )}
                       </div>
                     );
-                  })()}
+                  })}
                 </div>
+              </div>
+
+              {/* 10b. Custom Cutting Charges per Item */}
+              <div className="bg-slate-50 dark:bg-slate-900/40 p-2.5 rounded-xl border border-slate-200 dark:border-slate-800 space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-black text-slate-900 dark:text-white">{t("Custom Cutting Charges")}</span>
+                    <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-black ${formData.customCuttingChargeEnabled ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-200 text-slate-500'}`}>
+                      {formData.customCuttingChargeEnabled ? 'ON' : 'OFF'}
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setFormData({ ...formData, customCuttingChargeEnabled: !formData.customCuttingChargeEnabled })}
+                    className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors cursor-pointer focus:outline-none ${formData.customCuttingChargeEnabled ? 'bg-emerald-500' : 'bg-slate-300'}`}
+                  >
+                    <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform shadow-xs ${formData.customCuttingChargeEnabled ? 'translate-x-4.5' : 'translate-x-1'}`} />
+                  </button>
+                </div>
+                {formData.customCuttingChargeEnabled && (
+                  <div className="space-y-1.5 pt-1 border-t border-slate-200 dark:border-slate-700">
+                    <div className="flex items-center gap-2">
+                      <label className="text-[10px] font-bold text-slate-600 min-w-[80px]">{t("Base Cutting ₹")}</label>
+                      <input
+                        type="number" min="0" step="1"
+                        onWheel={(e) => e.target.blur()}
+                        placeholder="0"
+                        value={formData.cuttingCharge ?? ''}
+                        onChange={(e) => setFormData({ ...formData, cuttingCharge: e.target.value })}
+                        className="w-20 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded px-1.5 py-1 text-center font-bold text-xs text-slate-800 dark:text-slate-200 focus:outline-none focus:border-amber-500"
+                      />
+                      <span className="text-[10px] text-slate-400">{t("per step")}</span>
+                    </div>
+                    <div className="grid grid-cols-3 gap-1.5">
+                      {['small', 'medium', 'big'].map(gk => {
+                        const gd = formData.sizeGrades?.[gk] || {};
+                        if (gd.enabled === false) return null;
+                        return (
+                          <div key={gk} className="bg-white dark:bg-slate-800 rounded-lg p-1.5 border border-slate-200 dark:border-slate-700">
+                            <label className="text-[9px] font-bold text-slate-500 block mb-0.5 capitalize">{gk} ₹</label>
+                            <input
+                              type="number" min="0" step="1"
+                              onWheel={(e) => e.target.blur()}
+                              placeholder={formData.cuttingCharge || '0'}
+                              value={gd.cuttingCharge ?? ''}
+                              onChange={(e) => setFormData({ ...formData, sizeGrades: { ...formData.sizeGrades, [gk]: { ...gd, cuttingCharge: e.target.value } } })}
+                              className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded px-1.5 py-1 text-center font-bold text-xs text-slate-800 dark:text-slate-200 focus:outline-none focus:border-amber-500"
+                            />
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* 11. Variants / Variety */}

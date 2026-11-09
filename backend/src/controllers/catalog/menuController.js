@@ -381,6 +381,8 @@ export const bulkAddMenuItems = async (req, res) => {
             exportPrice: parseFloat(row.bigExportPrice) || parseFloat(row.exportPricePerKg) || parseFloat(row.price) || 0
           }
         },
+        customCuttingChargeEnabled: Boolean(row.customCuttingChargeEnabled),
+        cuttingCharge: Math.max(0, parseFloat(row.cuttingCharge) || 0),
         variants: Array.isArray(row.variants) ? row.variants : [],
         sweetConfig: row.sweetConfig || { enabled: false }
       };
