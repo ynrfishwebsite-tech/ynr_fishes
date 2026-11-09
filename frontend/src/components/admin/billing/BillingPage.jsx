@@ -403,8 +403,18 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
   const [customerPhone, setCustomerPhone] = useState('');
   const [customerName, setCustomerName] = useState('');
   const [customerInfo, setCustomerInfo] = useState(null);
-  const [customerCategory, setCustomerCategory] = useState('Retail');
-  const [exportSubCategory, setExportSubCategory] = useState(null);
+  const [customerCategory, setCustomerCategory] = useState(() => {
+    const mode = (initialFishMode && ['individual', 'bulk', 'export'].includes(initialFishMode))
+      ? initialFishMode
+      : (typeof localStorage !== 'undefined' ? (localStorage.getItem('billing_fish_order_mode') || 'individual') : 'individual');
+    return mode === 'bulk' ? 'Wholesale' : (mode === 'export' ? 'Export' : 'Retail');
+  });
+  const [exportSubCategory, setExportSubCategory] = useState(() => {
+    const mode = (initialFishMode && ['individual', 'bulk', 'export'].includes(initialFishMode))
+      ? initialFishMode
+      : (typeof localStorage !== 'undefined' ? (localStorage.getItem('billing_fish_order_mode') || 'individual') : 'individual');
+    return mode === 'export' ? 'Local' : null;
+  });
   const [customerPhoto, setCustomerPhoto] = useState('');
   const [customerAddress, setCustomerAddress] = useState('');
   const [isOrderLocked, setIsOrderLocked] = useState(false);
@@ -453,7 +463,34 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
   };
 
   const [searchTerm, setSearchTerm] = useState('');
-  const [fishOrderMode, setFishOrderMode] = useState(initialFishMode || 'individual'); // 'individual' (retail) | 'bulk' (wholesale) | 'export' (export bulk)
+  const [fishOrderMode, setFishOrderMode] = useState(() => {
+    if (initialFishMode && ['individual', 'bulk', 'export'].includes(initialFishMode) && initialFishMode !== 'individual') {
+      return initialFishMode;
+    }
+    try {
+      const saved = localStorage.getItem('billing_fish_order_mode');
+      if (saved && ['individual', 'bulk', 'export'].includes(saved)) {
+        return saved;
+      }
+    } catch (e) { }
+    return initialFishMode || 'individual';
+  });
+
+  // Persist active fishOrderMode so page refresh stays on the exact current mode
+  useEffect(() => {
+    if (fishOrderMode && ['individual', 'bulk', 'export'].includes(fishOrderMode)) {
+      try {
+        localStorage.setItem('billing_fish_order_mode', fishOrderMode);
+      } catch (e) { }
+    }
+  }, [fishOrderMode]);
+
+  // Keep fishOrderMode in sync if parent prop changes
+  useEffect(() => {
+    if (initialFishMode && ['individual', 'bulk', 'export'].includes(initialFishMode) && initialFishMode !== fishOrderMode) {
+      setFishOrderMode(initialFishMode);
+    }
+  }, [initialFishMode]);
   const [foodTypeFilter, setFoodTypeFilter] = useState('all'); // legacy compatibility
   const [sweetModeFilter, setSweetModeFilter] = useState('all');
   const [menuFilterCounts, setMenuFilterCounts] = useState({ all: 0, veg: 0, nonVeg: 0, sweet: 0 }); // live counts from MenuGrid
@@ -2938,6 +2975,9 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
   // Seamlessly switch order mode (Retail / Wholesale / Export) and navigate directly to a fresh NEW ORDER
   const handleSwitchOrderMode = useCallback((targetMode) => {
     setFishOrderMode(targetMode);
+    try {
+      localStorage.setItem('billing_fish_order_mode', targetMode);
+    } catch (e) { }
 
     // Cleanly reset order and cart so switching modes always navigates to clean New Order page
     setActiveTable('');
@@ -2974,6 +3014,7 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
 
     setMobileTab('menu');
   }, []);
+
 
   const handleGenerateBill = async (overrideItems = null) => {
     let tableToUse = activeTableRef.current || activeTable;

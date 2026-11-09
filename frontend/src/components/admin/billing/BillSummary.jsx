@@ -432,6 +432,30 @@ const BillSummary = ({
   const showDiscountInput = showDiscountDropdown;
   const setShowDiscountInput = (val) => setShowDiscountDropdown(val);
   const [settlementAmount, setSettlementAmount] = useState(() => (typeof total === 'number' && total > 0 ? total.toFixed(2) : '0'));
+  const [isNegotiatingSettlement, setIsNegotiatingSettlement] = useState(false);
+  const [tempNegotiatedSettlement, setTempNegotiatedSettlement] = useState('');
+
+  const standardTotalBeforeDiscount = Math.max(0, (typeof total === 'number' ? total : 0) + (typeof discountAmount === 'number' ? discountAmount : 0));
+
+  const handleSaveNegotiatedSettlement = () => {
+    const entered = parseFloat(tempNegotiatedSettlement);
+    if (!isNaN(entered) && entered >= 0) {
+      const diff = standardTotalBeforeDiscount - entered;
+      if (diff > 0 && setDiscount) {
+        setDiscount({ type: 'fixed', value: diff, name: 'Negotiated Discount' });
+      } else if (diff <= 0 && setDiscount) {
+        setDiscount({ type: 'percentage', value: '', name: '' });
+      }
+      setSettlementAmount(entered.toFixed(2));
+    }
+    setIsNegotiatingSettlement(false);
+  };
+
+  const handleResetNegotiatedSettlement = () => {
+    if (setDiscount) setDiscount({ type: 'percentage', value: '', name: '' });
+    setSettlementAmount(standardTotalBeforeDiscount.toFixed(2));
+    setIsNegotiatingSettlement(false);
+  };
   const [isPrintConfigOpen, setIsPrintConfigOpen] = useState(false);
 
   const [showNoteModal, setShowNoteModal] = useState(false);
@@ -1765,9 +1789,22 @@ const BillSummary = ({
             )}
           </div>
           {/* Row 3: Settlement */}
-          <div className="flex items-center justify-between px-2 sm:px-2.5 py-1 sm:py-1.5 border-b border-border w-full gap-1 min-w-0">
-            <div className="flex flex-col min-w-0">
+          <div className="relative flex items-center justify-between px-2 sm:px-2.5 py-1 sm:py-1.5 border-b border-border w-full gap-1 min-w-0">
+            <div className="flex items-center gap-1.5 min-w-0">
               <span className="text-text-muted text-[10px] sm:text-[11px] font-bold uppercase tracking-wider shrink-0">{t("Settlement Amount")}</span>
+              <button
+                type="button"
+                onClick={() => {
+                  setTempNegotiatedSettlement(settlementAmount || String(total || 0));
+                  setIsNegotiatingSettlement(true);
+                }}
+                disabled={isLocked || cart.length === 0}
+                className="px-1.5 py-0.5 rounded text-[9px] font-black bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200 transition-colors cursor-pointer flex items-center gap-0.5 disabled:opacity-40"
+                title="Negotiate Total Amount"
+              >
+                <Sparkles size={9} className="stroke-[2.5]" />
+                <span>Negotiate</span>
+              </button>
             </div>
             <div className="flex items-center gap-1 sm:gap-1.5 ml-1 shrink-0">
               <input
@@ -1775,11 +1812,31 @@ const BillSummary = ({
                 min="0"
                 placeholder="0"
                 onWheel={(e) => e.target.blur()}
-                onKeyDown={(e) => { if (e.key === '-' || e.key === 'e' || e.key === 'E') e.preventDefault(); }}
+                onKeyDown={(e) => {
+                  if (e.key === '-' || e.key === 'e' || e.key === 'E') e.preventDefault();
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    e.target.blur();
+                    const entered = parseFloat(e.target.value);
+                    if (!isNaN(entered) && entered >= 0) {
+                      const diff = standardTotalBeforeDiscount - entered;
+                      if (diff > 0 && setDiscount) {
+                        setDiscount({ type: 'fixed', value: diff, name: 'Negotiated Discount' });
+                      } else if (diff <= 0 && setDiscount) {
+                        setDiscount({ type: 'percentage', value: '', name: '' });
+                      }
+                      setSettlementAmount(entered.toFixed(2));
+                    }
+                  }
+                }}
                 value={settlementAmount}
+                onClick={() => {
+                  setTempNegotiatedSettlement(settlementAmount || String(total || 0));
+                  setIsNegotiatingSettlement(true);
+                }}
                 onChange={(e) => setSettlementAmount(e.target.value)}
                 disabled={isLocked || cart.length === 0}
-                className="w-[70px] sm:w-[85px] h-7 bg-white border border-[#E8DCCB] text-[#1e293b] text-right px-1.5 rounded-lg outline-none focus:border-[#ea580c] font-black font-mono text-xs sm:text-sm disabled:opacity-50" />
+                className="w-[70px] sm:w-[85px] h-7 bg-white border border-[#E8DCCB] text-[#1e293b] text-right px-1.5 rounded-lg outline-none focus:border-[#ea580c] font-black font-mono text-xs sm:text-sm disabled:opacity-50 cursor-pointer" />
               <button
                 onClick={(e) => {
                   e.preventDefault();
@@ -1801,6 +1858,71 @@ const BillSummary = ({
                 )}
               </button>
             </div>
+
+            {/* Floating Negotiated Total Amount Popover */}
+            {isNegotiatingSettlement && (
+              <div
+                onClick={(e) => e.stopPropagation()}
+                className="absolute z-50 right-2 bottom-full mb-1 bg-white/98 backdrop-blur-md border-2 border-emerald-400 rounded-2xl p-3 shadow-2xl w-64 animate-in fade-in zoom-in-95 duration-150"
+              >
+                <div className="flex justify-between items-center pb-1.5 mb-1.5 border-b border-emerald-100">
+                  <span className="text-xs font-black text-slate-800">Negotiated Total Amount</span>
+                  <button
+                    type="button"
+                    onClick={() => setIsNegotiatingSettlement(false)}
+                    className="w-5 h-5 rounded-full bg-slate-100 text-slate-500 hover:text-slate-900 flex items-center justify-center text-xs font-bold cursor-pointer"
+                  >
+                    ×
+                  </button>
+                </div>
+                <div className="text-[11px] text-slate-500 mb-1 flex justify-between">
+                  <span>Standard Total:</span>
+                  <span className="font-bold font-mono text-slate-700">₹{standardTotalBeforeDiscount.toFixed(2)}</span>
+                </div>
+                <div className="flex items-center gap-1.5 bg-emerald-50/80 border border-emerald-300 rounded-xl px-2.5 py-1 mb-2">
+                  <span className="text-sm font-black text-emerald-900 font-mono">₹</span>
+                  <input
+                    type="number"
+                    step="any"
+                    autoFocus
+                    value={tempNegotiatedSettlement}
+                    onChange={(e) => setTempNegotiatedSettlement(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') handleSaveNegotiatedSettlement();
+                      if (e.key === 'Escape') setIsNegotiatingSettlement(false);
+                    }}
+                    className="w-full text-base font-black font-mono text-slate-900 bg-transparent border-0 outline-none focus:outline-none"
+                    placeholder="Total ₹"
+                  />
+                </div>
+                {/* Live Discount Difference Preview */}
+                {(() => {
+                  const entered = parseFloat(tempNegotiatedSettlement);
+                  const previewDiff = !isNaN(entered) && standardTotalBeforeDiscount > entered ? standardTotalBeforeDiscount - entered : 0;
+                  return previewDiff > 0 ? (
+                    <div className="text-[11px] font-bold text-emerald-800 bg-emerald-100/90 rounded-lg px-2 py-0.5 mb-2 text-center">
+                      Auto-Discount: -₹{previewDiff.toFixed(2)}
+                    </div>
+                  ) : null;
+                })()}
+                <div className="flex gap-1.5">
+                  <button
+                    type="button"
+                    onClick={handleResetNegotiatedSettlement}
+                    className="flex-1 py-1 text-[11px] font-bold text-slate-600 hover:bg-slate-100 rounded-lg cursor-pointer transition-colors"
+                  >
+                    Reset
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleSaveNegotiatedSettlement}
+                    className="flex-1 py-1 text-[11px] font-black bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg cursor-pointer transition-colors"
+                  >
+                    Apply Total
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Row 4: Clean, Easy-to-use Unified Payment & WhatsApp/CRM Bar */}

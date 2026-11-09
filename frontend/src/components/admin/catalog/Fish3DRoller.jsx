@@ -86,9 +86,8 @@ export default function Fish3DRoller({
     const initialGrade = currentItem?.sizeGrades?.medium?.enabled !== false ? 'medium'
       : currentItem?.sizeGrades?.small?.enabled !== false ? 'small'
       : currentItem?.sizeGrades?.big?.enabled !== false ? 'big' : 'medium';
-    const avgKg = getGradeAverageKg ? getGradeAverageKg(currentItem, initialGrade) : (initialGrade === 'medium' ? 3 : initialGrade === 'big' ? 6 : 1);
     setGradeOverride(initialGrade);
-    setWeightKg((avgKg).toFixed(3));
+    setWeightKg('1.000');
     setTareGrams(0);
     if (currentItem?.boxPackingKg) {
       setBoxWeightKg(String(currentItem.boxPackingKg));
@@ -202,7 +201,7 @@ export default function Fish3DRoller({
 
     if (isBoxBasedMode) {
       if (openBoxPackerModal) {
-        openBoxPackerModal(currentItem, activeGrade);
+        openBoxPackerModal(currentItem, activeGrade, parseFloat(boxWeightKg) || 1);
       } else if (setShowBoxPacker) {
         setShowBoxPacker(true);
       }
@@ -358,7 +357,7 @@ export default function Fish3DRoller({
                 <div
                   onClick={() => {
                     if (isBoxBasedMode) {
-                      if (openBoxPackerModal) openBoxPackerModal(currentItem, activeGrade);
+                      if (openBoxPackerModal) openBoxPackerModal(currentItem, activeGrade, parseFloat(boxWeightKg) || 1);
                       else if (setShowBoxPacker) setShowBoxPacker(true);
                     }
                   }}
@@ -472,8 +471,7 @@ export default function Fish3DRoller({
                                 type="button"
                                 onClick={() => {
                                   setGradeOverride(grade.key);
-                                  const avgKg = getGradeAverageKg ? getGradeAverageKg(currentItem, grade.key) : (grade.key === 'medium' ? 3 : grade.key === 'big' ? 6 : 1);
-                                  setWeightKg((avgKg).toFixed(3));
+                                  setWeightKg('1.000');
                                 }}
                                 className={`py-0.5 md:py-1 px-1 md:px-1.5 rounded-md md:rounded-lg text-center transition-all cursor-pointer flex items-center justify-center gap-0.5 md:gap-1 ${
                                   isSelected
@@ -670,7 +668,7 @@ export default function Fish3DRoller({
                       type="button"
                       onClick={() => {
                         if (openBoxPackerModal) {
-                          openBoxPackerModal(currentItem, activeGrade);
+                          openBoxPackerModal(currentItem, activeGrade, parseFloat(boxWeightKg) || 1);
                         } else if (setShowBoxPacker) {
                           setShowBoxPacker(true);
                         }

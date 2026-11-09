@@ -166,21 +166,20 @@ export default function FishSmartwatchDial({
     const initialGrade = currentItem?.sizeGrades?.medium?.enabled !== false ? 'medium'
       : currentItem?.sizeGrades?.small?.enabled !== false ? 'small'
       : currentItem?.sizeGrades?.big?.enabled !== false ? 'big' : 'medium';
-    const avgKg = getGradeAverageKg ? getGradeAverageKg(currentItem, initialGrade) : (initialGrade === 'medium' ? 3 : initialGrade === 'big' ? 6 : 1);
     setGradeOverride(initialGrade);
-    setWeightKg((avgKg).toFixed(3));
+    setWeightKg('1.000');
     setTareGrams(0);
     if (currentItem?.boxPackingKg) {
       setBoxWeightKg(String(currentItem.boxPackingKg));
     } else {
-      setBoxWeightKg(String(avgKg));
+      setBoxWeightKg('1');
     }
     // Reset custom rate & custom total when switching fish
     setCustomRate(null);
     setIsEditingRate(false);
     setCustomTotal(null);
     setIsEditingTotal(false);
-  }, [currentItem?._id, getGradeAverageKg]);
+  }, [currentItem?._id]);
 
   // Reset custom total when weight changes
   useEffect(() => {
@@ -578,11 +577,8 @@ export default function FishSmartwatchDial({
     const nextGrade = gradesToUse[(currIdx + 1) % gradesToUse.length];
 
     setGradeOverride(nextGrade);
-    const avgKg = getGradeAverageKg
-      ? getGradeAverageKg(currentItem, nextGrade)
-      : (nextGrade === 'medium' ? 3 : nextGrade === 'big' ? 6 : 1);
-    setWeightKg((avgKg).toFixed(3));
-    setCustomTotal(null); // Recalculate total with new grade average
+    setWeightKg('1.000');
+    setCustomTotal(null);
     if (showToast) {
       const gRate = currentItem?.sizeGrades?.[nextGrade]?.price || (currentItem && getItemPricePerKg ? getItemPricePerKg(currentItem, fishOrderMode, nextGrade) : currentItem?.price || 0);
       showToast(`Grade: ${nextGrade.toUpperCase()} (₹${gRate}/Kg)`, 'info');
@@ -678,7 +674,8 @@ export default function FishSmartwatchDial({
 
     if (isBoxBasedMode) {
       if (openBoxPackerModal) {
-        openBoxPackerModal(currentItem, activeGrade);
+        const passedWeight = parseFloat(boxWeightKg) || (netGrams / 1000) || 1;
+        openBoxPackerModal(currentItem, activeGrade, passedWeight);
         return true;
       }
       if (boxFishMode === 'mixed') {
@@ -1549,6 +1546,17 @@ export default function FishSmartwatchDial({
                   onChange={(e) => {
                     setDialLock(true);
                     setBoxWeightKg(e.target.value);
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      e.target.blur();
+                      const enteredVal = parseFloat(e.target.value) || parseFloat(boxWeightKg) || 1;
+                      setBoxWeightKg(String(enteredVal));
+                      if (openBoxPackerModal) {
+                        openBoxPackerModal(currentItem, activeGrade, enteredVal);
+                      }
+                    }
                   }}
                   className="text-xs sm:text-sm font-black text-slate-900 font-mono text-center bg-transparent border-0 outline-none w-10 sm:w-12 leading-none p-0"
                 />

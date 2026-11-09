@@ -203,37 +203,7 @@ export const getItemPricePerKg = (item, mode = 'individual', sizeGrade = null) =
 };
 
 export const getGradeAverageKg = (item, gradeKey = 'medium') => {
-  if (!item) return 1;
-  const grades = item.sizeGrades;
-  const gradeObj = grades?.[gradeKey];
-  const unit = gradeObj?.unit || 'kg';
-
-  let min = 0;
-  let max = 1;
-  if (gradeKey === 'small') {
-    min = parseFloat(gradeObj?.minKg) || 0;
-    max = parseFloat(gradeObj?.maxKg) || (unit === 'g' ? 1000 : 1);
-  } else if (gradeKey === 'medium') {
-    min = parseFloat(gradeObj?.minKg) || (unit === 'g' ? 1000 : 1);
-    max = parseFloat(gradeObj?.maxKg) || (unit === 'g' ? 4000 : 4);
-  } else if (gradeKey === 'big') {
-    min = parseFloat(gradeObj?.minKg) || (unit === 'g' ? 4000 : 4);
-    max = parseFloat(gradeObj?.maxKg) || (unit === 'g' ? 99000 : 99);
-  }
-
-  if (unit === 'g') {
-    min = min / 1000;
-    max = max / 1000;
-  }
-
-  // Handle open-ended big grade (e.g. 4 to 99)
-  if (max >= 50) {
-    max = min + 4; // 4 to 8 Kg => average is 6 Kg
-  }
-
-  const avg = (min + max) / 2;
-  const rounded = Math.round(avg);
-  return Math.max(1, rounded);
+  return 1;
 };
 
 export const getItemSizeGrades = (item, mode = 'individual') => {
@@ -624,7 +594,7 @@ const MenuGrid = ({
   }, [items, fishOrderMode]);
 
   // Open the Wholesale Box Builder
-  const openBoxPackerModal = useCallback((initialFish = null, initialGradeOverride = null) => {
+  const openBoxPackerModal = useCallback((initialFish = null, initialGradeOverride = null, initialWeightKg = null) => {
     setBoxSlotCount(1);
     const availableFishes = items.filter(it => it.isAvailable !== false);
     const chosenFish = initialFish || availableFishes[0] || items[0] || null;
@@ -634,15 +604,15 @@ const MenuGrid = ({
       : chosenFish?.sizeGrades?.small?.enabled !== false ? 'small'
       : chosenFish?.sizeGrades?.big?.enabled !== false ? 'big' : 'medium';
     const chosenGrade = initialGradeOverride || chosenFish?.defaultSizeGrade || initialEnabledGrade;
-    const avgKg = getGradeAverageKg(chosenFish, chosenGrade);
     const defaultRate = getItemPricePerKg(chosenFish, fishOrderMode, chosenGrade);
+    const slotKg = (initialWeightKg && parseFloat(initialWeightKg) > 0) ? String(initialWeightKg) : '1';
 
     const initialSlots = [{
       id: `slot_0_${Date.now()}_${Math.random()}`,
       fishId: chosenFish?._id || '',
       fish: chosenFish,
       sizeGrade: chosenGrade,
-      weightKg: String(avgKg),
+      weightKg: slotKg,
       weightGrams: '',
       pricePerKg: String(defaultRate)
     }];

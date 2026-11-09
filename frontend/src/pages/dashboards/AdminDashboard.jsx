@@ -133,7 +133,15 @@ export default function AdminDashboard() {
   const [activeOrdersCount, setActiveOrdersCount] = useState(0);
   const [activeOrdersBreakdown, setActiveOrdersBreakdown] = useState({ total: 0, retail: 0, wholesale: 0, export: 0 });
   const [billingKey, setBillingKey] = useState(1);
-  const [selectedOrderMode, setSelectedOrderMode] = useState('individual');
+  const [selectedOrderMode, setSelectedOrderMode] = useState(() => {
+    try {
+      const saved = localStorage.getItem('billing_fish_order_mode');
+      if (saved && ['individual', 'bulk', 'export'].includes(saved)) {
+        return saved;
+      }
+    } catch (e) { }
+    return 'individual';
+  });
 
   // Navigate with step-by-step history tracking
   const navigateTo = (view, options = {}) => {
@@ -143,6 +151,7 @@ export default function AdminDashboard() {
     if (view === 'billing') {
       if (options.mode) {
         setSelectedOrderMode(options.mode);
+        try { localStorage.setItem('billing_fish_order_mode', options.mode); } catch (e) {}
       }
       const isNew = options.action === 'new' || options.table === 'NEW_ORDER';
       const tableToSet = isNew ? null : (options.table !== undefined ? options.table : (options.preserveTable ? selectedOrderTable : null));
