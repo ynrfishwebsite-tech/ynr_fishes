@@ -13,43 +13,58 @@ export const resolveItemQtyAndRate = (item) => {
   }
 
   const isKg = !item.sellingUnit || item.sellingUnit.toLowerCase() === 'kg';
-  let wt = Number(item.weightKg || item.enteredWeight || item.netWeightKg || 0);
-
-  // If sellingUnit is Kg and quantity was entered as the weight in kg
-  if (wt <= 0 && isKg && Number(item.quantity || 0) > 0) {
-    wt = Number(item.quantity);
-  }
-
-  // Fallback: extract weight from item name like "(Whole - 3 Kg)" or "(3 Kg)"
-  if (wt <= 0) {
-    const m = (item.name || '').match(/(\d+(?:\.\d+)?)\s*kg/i);
-    if (m) wt = parseFloat(m[1]);
-  }
-
   const activeQty = Math.max(0, (Number(item.quantity) || 1) - (Number(item.cancelledQuantity) || 0));
 
-  // Determine total line amount
+  // Determine unit rate (price per Kg or price per piece)
+  let unitRate = Number(item.pricePerKg || item.price || 0);
+
+  // Determine line total amount matching bill subtotal: price * activeQty
   let totalAmt = 0;
-  if (item.total !== undefined && item.total !== null && Number(item.total) > 0) {
+  if (Number(item.price || 0) > 0 && activeQty > 0) {
+    totalAmt = Number(item.price) * activeQty;
+  } else if (item.total !== undefined && item.total !== null && Number(item.total) > 0) {
     totalAmt = Number(item.total);
-  } else if (item.price && wt > 0 && isKg && item.pricePerKg && Number(item.price) === Number(item.pricePerKg)) {
-    totalAmt = wt * Number(item.pricePerKg);
-  } else if (item.price) {
-    totalAmt = Number(item.price) * (activeQty > 0 ? activeQty : 1);
   }
 
-  if (isKg && wt > 0) {
-    let unitRate = Number(item.pricePerKg || 0);
-    if (unitRate <= 0 && totalAmt > 0 && wt > 0) {
-      unitRate = totalAmt / wt;
-    } else if (unitRate <= 0 && Number(item.price || 0) > 0) {
-      unitRate = Number(item.price);
+  if (isKg) {
+    let wt = 0;
+    const storedWt = Number(item.netWeightKg || item.enteredWeight || item.weightKg || 0);
+
+    if (storedWt > 0) {
+      // If storedWt was per-unit (e.g. 1 Kg) and activeQty was increased to 2, line weight is 2 Kg!
+      if (activeQty > 1 && storedWt <= 1) {
+        wt = storedWt * activeQty;
+      } else if (storedWt === activeQty) {
+        wt = activeQty;
+      } else if (unitRate > 0 && totalAmt > 0 && Math.abs((totalAmt / unitRate) - activeQty) < 0.05) {
+        wt = activeQty;
+      } else {
+        wt = storedWt;
+      }
+    } else if (activeQty > 0) {
+      wt = activeQty;
+    } else if (unitRate > 0 && totalAmt > 0) {
+      wt = totalAmt / unitRate;
     }
 
-    const cleanWt = wt % 1 === 0 ? wt.toFixed(0) : (wt.toFixed(2).replace(/\.?0+$/, ''));
+    // Fallback: extract weight from item name like "(Whole - 1 Kg)" or "(1 Kg)"
+    if (wt <= 0) {
+      const m = (item.name || '').match(/(\d+(?:\.\d+)?)\s*kg/i);
+      if (m) {
+        const parsedNameWt = parseFloat(m[1]);
+        wt = parsedNameWt * (activeQty > 1 && parsedNameWt <= 1 ? activeQty : 1);
+      }
+    }
+
+    const finalWt = wt > 0 ? wt : (activeQty > 0 ? activeQty : 1);
+    if (unitRate <= 0 && totalAmt > 0 && finalWt > 0) {
+      unitRate = totalAmt / finalWt;
+    }
+
+    const cleanWt = finalWt % 1 === 0 ? finalWt.toFixed(0) : (finalWt.toFixed(2).replace(/\.?0+$/, ''));
     return {
       qtyDisplay: `${cleanWt} Kg`,
-      qtyNum: wt,
+      qtyNum: finalWt,
       rateDisplay: unitRate.toFixed(2),
       rateNum: unitRate,
       amountDisplay: totalAmt.toFixed(2),
@@ -59,7 +74,6 @@ export const resolveItemQtyAndRate = (item) => {
   }
 
   // Non-kg or piece item
-  let unitRate = Number(item.price || 0);
   if (unitRate <= 0 && totalAmt > 0 && activeQty > 0) {
     unitRate = totalAmt / activeQty;
   }

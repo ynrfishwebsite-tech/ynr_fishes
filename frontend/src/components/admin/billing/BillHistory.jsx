@@ -21,7 +21,12 @@ export const getBillTotalWeightKg = (bill) => {
       const bw = Number(b.totalWeight || 0);
       if (bw > 0) return sum + bw;
       if (Array.isArray(b.items)) {
-        return sum + b.items.reduce((s, i) => s + Number(i.weightKg || i.netWeightKg || i.enteredWeight || i.quantity || 0), 0);
+        return sum + b.items.reduce((s, i) => {
+          if (i.isCancelled) return s;
+          const activeQty = Math.max(0, (Number(i.quantity) || 1) - (Number(i.cancelledQuantity) || 0));
+          const w = Number(i.netWeightKg || i.enteredWeight || i.weightKg || 0);
+          return s + (w > 0 && w !== activeQty && w <= 1 ? w * activeQty : (w > 0 ? w : activeQty));
+        }, 0);
       }
       return sum;
     }, 0);
@@ -30,7 +35,9 @@ export const getBillTotalWeightKg = (bill) => {
   if (Array.isArray(bill.items)) {
     const w = bill.items.reduce((sum, i) => {
       if (i.isCancelled) return sum;
-      return sum + Number(i.netWeightKg || i.enteredWeight || i.weightKg || (i.sellingUnit === 'Kg' ? i.quantity : 0) || 0);
+      const activeQty = Math.max(0, (Number(i.quantity) || 1) - (Number(i.cancelledQuantity) || 0));
+      const iw = Number(i.netWeightKg || i.enteredWeight || i.weightKg || 0);
+      return sum + (iw > 0 && iw !== activeQty && iw <= 1 ? iw * activeQty : (iw > 0 ? iw : activeQty));
     }, 0);
     return Math.round(w * 10) / 10;
   }

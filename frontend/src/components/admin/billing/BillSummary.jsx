@@ -89,8 +89,9 @@ const BillSummary = ({
   const totalFishWeight = React.useMemo(() => {
     return (cart || []).reduce((sum, item) => {
       if (item.isCancelled) return sum;
-      const w = parseFloat(item.enteredWeight || item.netWeightKg || item.weightKg || (item.sellingUnit === 'Kg' ? item.quantity : 0) || 0);
-      return sum + w;
+      const activeQty = Math.max(0, (Number(item.quantity) || 1) - (Number(item.cancelledQuantity) || 0));
+      const w = Number(item.netWeightKg || item.enteredWeight || item.weightKg || 0);
+      return sum + (w > 0 && w !== activeQty && w <= 1 ? w * activeQty : (w > 0 ? w : activeQty));
     }, 0);
   }, [cart]);
 
@@ -742,7 +743,12 @@ const BillSummary = ({
             const totalBoxes = boxKeys.length;
             const individualQty = individualItems.reduce((sum, item) => sum + (parseFloat(item.quantity) || 0), 0);
             const totalBoxKg = cart.filter(i => i.boxNumber).reduce((sum, i) => sum + (Number(i.weightKg) || 0), 0);
-            const totalCartKg = cart.reduce((sum, i) => sum + Number(i.netWeightKg || i.enteredWeight || i.weightKg || (i.sellingUnit === 'Kg' ? i.quantity : 0) || 0), 0);
+            const totalCartKg = cart.reduce((sum, i) => {
+              if (i.isCancelled) return sum;
+              const activeQty = Math.max(0, (Number(i.quantity) || 1) - (Number(i.cancelledQuantity) || 0));
+              const w = Number(i.netWeightKg || i.enteredWeight || i.weightKg || 0);
+              return sum + (w > 0 && w !== activeQty && w <= 1 ? w * activeQty : (w > 0 ? w : activeQty));
+            }, 0);
 
             if (totalBoxes > 0 && individualQty > 0) {
               return (

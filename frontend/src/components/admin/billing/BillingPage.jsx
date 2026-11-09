@@ -2163,7 +2163,28 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
     let newCart;
     if (existingIndex > -1) {
       showToast(`${t('increasedQty', { defaultValue: 'Increased quantity of' })} ${item.name}`, 'success');
-      newCart = currentCart.map((i, idx) => idx === existingIndex ? { ...i, quantity: i.quantity + (item.quantity || 1), specialNote: i.specialNote || '', orderedAt: i.orderedAt || new Date().toISOString() } : i);
+      newCart = currentCart.map((i, idx) => {
+        if (idx === existingIndex) {
+          const addQty = item.quantity || 1;
+          const newQty = (i.quantity || 0) + addQty;
+          const unitPrice = Number(i.pricePerKg || i.price || 0);
+          const newTotal = Number((unitPrice * newQty).toFixed(2));
+          const baseUnitWeight = (i.quantity > 0 && i.enteredWeight) ? (Number(i.enteredWeight) / i.quantity) : Number(i.weightKg || i.enteredWeight || 1);
+          const newWeight = Number((baseUnitWeight * newQty).toFixed(3));
+          return {
+            ...i,
+            quantity: newQty,
+            total: newTotal,
+            weightKg: newWeight,
+            enteredWeight: newWeight,
+            netWeightKg: newWeight,
+            grossWeightKg: newWeight,
+            specialNote: i.specialNote || '',
+            orderedAt: i.orderedAt || new Date().toISOString()
+          };
+        }
+        return i;
+      });
     } else {
       showToast(`${t('addedToOrder', { defaultValue: 'Added to order' })} ${item.name}`, 'success');
       newCart = [...currentCart, { ...item, itemKey, quantity: item.quantity || 1, specialNote: item.specialNote || '', orderedAt: item.orderedAt || new Date().toISOString() }];
@@ -2277,7 +2298,20 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
             showToast(`${i.name} ${t('removedFromOrder')}`, 'info');
           }
         }
-        return { ...i, quantity: newRawQty, specialNote: i.specialNote || '' };
+        const unitPrice = Number(i.pricePerKg || i.price || 0);
+        const newTotal = Number((unitPrice * newActiveQty).toFixed(2));
+        const baseUnitWeight = (activeQty > 0 && i.enteredWeight) ? (Number(i.enteredWeight) / activeQty) : Number(i.weightKg || i.enteredWeight || 1);
+        const newWeight = Number((baseUnitWeight * newActiveQty).toFixed(3));
+        return {
+          ...i,
+          quantity: newRawQty,
+          total: newTotal,
+          weightKg: newWeight,
+          enteredWeight: newWeight,
+          netWeightKg: newWeight,
+          grossWeightKg: newWeight,
+          specialNote: i.specialNote || ''
+        };
       }
       return i;
     }).filter((i) => {
@@ -3882,6 +3916,9 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
               setIsOrderLocked={setIsOrderLocked}
               lockedTimestamp={lockedTimestamp}
               setLockedTimestamp={setLockedTimestamp}
+              discount={discount}
+              setDiscount={setDiscount}
+              onOpenCustomerModal={() => handleOpenCustomerModal()}
               onCustomerSelect={handlePredefinedCustomerSelect}
               onSaveOrder={(overrideItems) => handleSaveOrder(false, overrideItems)}
               onGenerateBill={(overrideItems) => handleGenerateBill(overrideItems)}

@@ -398,6 +398,9 @@ const MenuGrid = ({
   lockedTimestamp = '',
   setLockedTimestamp,
   onCustomerSelect,
+  onOpenCustomerModal,
+  discount,
+  setDiscount,
   onSaveOrder,
   onGenerateBill,
   actionLoading = null
@@ -2060,6 +2063,20 @@ const MenuGrid = ({
                   cart={cart}
                   cartTotal={cartTotal}
                   onViewOrder={onViewOrder}
+                  customerName={customerName}
+                  setCustomerName={setCustomerName}
+                  customerPhone={customerPhone}
+                  setCustomerPhone={setCustomerPhone}
+                  customerPhoto={customerPhoto}
+                  customerCategory={customerCategory}
+                  exportSubCategory={exportSubCategory}
+                  onCustomerSelect={onCustomerSelect}
+                  onOpenCustomerModal={onOpenCustomerModal}
+                  predefinedCustomers={predefinedCustomers}
+                  handleSelectCustomer={handleSelectCustomer}
+                  handleClearCustomer={handleClearCustomer}
+                  discount={discount}
+                  setDiscount={setDiscount}
                 />
               </div>
 
