@@ -17,6 +17,7 @@ import {
   ShoppingBag,
   Boxes,
   ArrowUpRight,
+  ArrowDownLeft,
   Search,
   X,
   Users,
@@ -169,7 +170,7 @@ export default function MainEntranceDashboard({
   const isPermitted = (id) => {
     if (isFullAdmin) return true;
     if (id === 'dashboard' || id === 'second-dashboard') return true;
-    if (id === 'billing-retail' || id === 'billing-wholesale' || id === 'billing-export') {
+    if (id === 'billing-retail' || id === 'billing-wholesale' || id === 'billing-export' || id === 'inventory-import') {
       return userPermitted.includes('billing') || userPermitted.includes('inventory');
     }
     if (['retail-active-orders', 'wholesale-active-orders', 'export-active-orders'].includes(id)) {
@@ -216,7 +217,7 @@ export default function MainEntranceDashboard({
       navOptions: { mode: 'bulk', table: 'NEW_ORDER', action: 'new' },
       keywords: ['wholesale', 'bulk', 'crates', 'boxes', 'wholesale mode', 'dealer order']
     },
-    // 3. Export (Navigates to Fish Inventory & Catch Ledger #inventory)
+    // 3. Export (New Order Mode - Navigates to Export Billing)
     {
       id: 'billing-export',
       title: 'Export',
@@ -226,9 +227,23 @@ export default function MainEntranceDashboard({
       iconColor: '#2563eb',
       iconBg: '#eff6ff',
       borderColor: '#bfdbfe',
+      navView: 'billing',
+      navOptions: { mode: 'export', table: 'NEW_ORDER', action: 'new' },
+      keywords: ['export', 'dam', 'local export', 'consignment', 'export mode', 'bulk export', 'export billing']
+    },
+    // 4. Import (Catch Intake & Stock - Navigates to Fish Inventory & Catch Ledger #inventory)
+    {
+      id: 'inventory-import',
+      title: 'Import',
+      subtitle: '(Catch & Intake)',
+      category: 'Inventory',
+      icon: ArrowDownLeft,
+      iconColor: '#0891b2',
+      iconBg: '#ecfeff',
+      borderColor: '#a5f3fc',
       navView: 'inventory',
       navOptions: {},
-      keywords: ['export', 'dam', 'local export', 'consignment', 'export mode', 'bulk export', 'inventory', 'stock', 'catch']
+      keywords: ['import', 'catch', 'intake', 'weighment', 'inventory', 'stock', 'landing', 'harbor', 'dam']
     },
 
     // ═══ SECONDARY (prescribed order) ═══
@@ -669,7 +684,7 @@ export default function MainEntranceDashboard({
   ];
 
   // --- PINNED PRIMARY CARDS (always shown, highlighted, never filtered out) ---
-  const PRIMARY_IDS = ['billing-retail', 'billing-wholesale', 'billing-export'];
+  const PRIMARY_IDS = ['billing-retail', 'billing-wholesale', 'billing-export', 'inventory-import'];
 
   const primaryCards = useMemo(() =>
     PRIMARY_IDS.map(id => RAW_CARDS.find(c => c.id === id)).filter(Boolean),
