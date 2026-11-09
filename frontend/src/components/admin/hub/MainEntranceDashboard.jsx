@@ -170,7 +170,7 @@ export default function MainEntranceDashboard({
     if (isFullAdmin) return true;
     if (id === 'dashboard' || id === 'second-dashboard') return true;
     if (id === 'billing-retail' || id === 'billing-wholesale' || id === 'billing-export') {
-      return userPermitted.includes('billing');
+      return userPermitted.includes('billing') || userPermitted.includes('inventory');
     }
     if (['retail-active-orders', 'wholesale-active-orders', 'export-active-orders'].includes(id)) {
       return userPermitted.includes('active-orders');
@@ -216,33 +216,19 @@ export default function MainEntranceDashboard({
       navOptions: { mode: 'bulk', table: 'NEW_ORDER', action: 'new' },
       keywords: ['wholesale', 'bulk', 'crates', 'boxes', 'wholesale mode', 'dealer order']
     },
-    // 3. Export (Bulk) (New Order Mode)
+    // 3. Export (Navigates to Fish Inventory & Catch Ledger #inventory)
     {
       id: 'billing-export',
-      title: 'Export (Bulk)',
+      title: 'Export',
       subtitle: '(New Order Mode)',
       category: 'Billing',
       icon: ArrowUpRight,
       iconColor: '#2563eb',
       iconBg: '#eff6ff',
       borderColor: '#bfdbfe',
-      navView: 'billing',
-      navOptions: { mode: 'export', table: 'NEW_ORDER', action: 'new' },
-      keywords: ['export', 'dam', 'local export', 'consignment', 'export mode', 'bulk export']
-    },
-    // 4. New Order
-    {
-      id: 'billing',
-      title: 'New Order',
-      subtitle: 'POS Terminal',
-      category: 'Billing',
-      icon: ShoppingCart,
-      iconColor: '#059669',
-      iconBg: '#ecfdf5',
-      borderColor: '#d1fae5',
-      navView: 'billing',
-      navOptions: { table: 'NEW_ORDER', action: 'new' },
-      keywords: ['new order', 'pos', 'billing', 'cart', 'sell', 'counter', 'cashier']
+      navView: 'inventory',
+      navOptions: {},
+      keywords: ['export', 'dam', 'local export', 'consignment', 'export mode', 'bulk export', 'inventory', 'stock', 'catch']
     },
 
     // ═══ SECONDARY (prescribed order) ═══
@@ -683,7 +669,7 @@ export default function MainEntranceDashboard({
   ];
 
   // --- PINNED PRIMARY CARDS (always shown, highlighted, never filtered out) ---
-  const PRIMARY_IDS = ['billing-retail', 'billing-wholesale', 'billing-export', 'billing'];
+  const PRIMARY_IDS = ['billing-retail', 'billing-wholesale', 'billing-export'];
 
   const primaryCards = useMemo(() =>
     PRIMARY_IDS.map(id => RAW_CARDS.find(c => c.id === id)).filter(Boolean),

@@ -3635,12 +3635,12 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
   return (
     <div className="h-full flex flex-col overflow-hidden bg-background">
       {/* Header Navigation & Action Bar: 2 rows on Tablet, 1 row on Desktop */}
-      <div className="flex flex-col xl:flex-row xl:h-14 xl:items-center xl:justify-between px-2 sm:px-3 lg:px-6 bg-surface border-b border-border/50 shrink-0 relative z-30 gap-1.5 py-1.5 xl:py-0">
+      <div className={`flex flex-col xl:flex-row xl:h-14 xl:items-center xl:justify-between px-2 sm:px-3 lg:px-6 bg-surface border-b border-border/50 shrink-0 relative ${isOrderDropdownOpen ? 'z-[100]' : 'z-30'} gap-1.5 py-1.5 xl:py-0`}>
 
         {/* ROW 1: (On Tablet: Back, Order Selector, New Order, Lock, Fullscreen) / (On Desktop: Left Section) */}
         <div className="flex items-center justify-between w-full xl:w-auto gap-2">
           {/* Left Section: Active / New Order Selector & Back Button */}
-          <div className="flex items-center gap-1 sm:gap-2 shrink-0 z-30">
+          <div className={`flex items-center gap-1 sm:gap-2 shrink-0 ${isOrderDropdownOpen ? 'z-[100]' : 'z-30'}`}>
             {(onGoBack || mobileTab === 'cart') && (
               <BackButton
                 onClick={() => {
@@ -3657,7 +3657,7 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
                 className="shrink-0 !px-2 sm:!px-3.5 !py-1 sm:!py-1.5 !text-xs !gap-1 sm:!gap-2"
               />
             )}
-            <div ref={orderDropdownRef} className="relative shrink-0 z-30">
+            <div ref={orderDropdownRef} className={`relative shrink-0 ${isOrderDropdownOpen ? 'z-[100]' : 'z-30'}`}>
               {/* Customized Responsive Trigger Button */}
               <button
                 type="button"
@@ -3680,10 +3680,16 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
 
               {/* Customized Animated Popup Menu */}
               {isOrderDropdownOpen && (
-                <div 
-                  className="absolute top-full left-0 mt-1.5 w-64 sm:w-72 bg-white rounded-2xl shadow-2xl border border-slate-200/90 py-1.5 z-50 overflow-hidden animate-in fade-in zoom-in-95 duration-150"
-                  style={{ maxHeight: '340px' }}
-                >
+                <>
+                  {/* Backdrop overlay to prevent underlying dial items from showing through or catching taps */}
+                  <div 
+                    className="fixed inset-0 z-[95] bg-black/10 backdrop-blur-[0.5px]"
+                    onClick={() => setIsOrderDropdownOpen(false)}
+                  />
+                  <div 
+                    className="absolute top-full left-0 mt-1.5 w-64 sm:w-72 bg-white rounded-2xl shadow-2xl border border-slate-200/90 py-1.5 z-[100] overflow-hidden animate-in fade-in zoom-in-95 duration-150"
+                    style={{ maxHeight: '340px' }}
+                  >
                   {/* Category Header */}
                   <div className="px-3 py-1.5 border-b border-slate-100 flex items-center justify-between text-[11px] font-bold text-slate-500 bg-slate-50/80">
                     <span className="uppercase tracking-wider text-[10px] font-extrabold text-slate-400">
@@ -3781,7 +3787,8 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
                     )}
                   </div>
                 </div>
-              )}
+              </>
+            )}
             </div>
           </div>
 

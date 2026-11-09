@@ -871,7 +871,7 @@ const BillSummary = ({
             }
             return (
               <span className="inline-flex items-center px-1.5 py-0.2 rounded-full text-[8px] font-black bg-orange-100 text-orange-700 border border-orange-200 shadow-2xs truncate">
-                {cart.length} ({totalCartKg > 0 ? `${totalCartKg.toFixed(1).replace(/\.0$/, '')} Kg` : `${cart.reduce((sum, item) => sum + (parseFloat(item.quantity) || 0), 0)} Qty`})
+                {cart.length} ({totalCartKg > 0 ? `${totalCartKg.toFixed(2).replace(/\.?0+$/, '')} Kg` : `${parseFloat(cart.reduce((sum, item) => sum + (parseFloat(item.quantity) || 0), 0).toFixed(2))} Qty`})
               </span>
             );
           })()}

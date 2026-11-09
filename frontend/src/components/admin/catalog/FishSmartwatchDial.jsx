@@ -117,6 +117,7 @@ export default function FishSmartwatchDial({
   // CRM Popover & Search
   const [showCrmPicker, setShowCrmPicker] = useState(false);
   const [crmSearch, setCrmSearch] = useState('');
+  const [isCrmBlinking, setIsCrmBlinking] = useState(false);
 
   // Long-press Rate Edit states
   const [customRate, setCustomRate] = useState(null);
@@ -249,9 +250,57 @@ export default function FishSmartwatchDial({
   const cartCount = cart && cart.length > 0
     ? cart.reduce((sum, item) => item.isCancelled ? sum : sum + (item.quantity || 1) - (item.cancelledQuantity || 0), 0)
     : 0;
+
+  // Format cart count to at most 2 decimal places to prevent floating point artifacts (e.g. 3.099999999999996 -> 3.10)
+  const formattedCartCount = (() => {
+    const num = Number(cartCount) || 0;
+    if (Number.isInteger(num)) return String(num);
+    return num.toFixed(2);
+  })();
+
   const computedCartTotal = cartTotal !== undefined
     ? cartTotal
     : (cart && cart.length > 0 ? cart.reduce((sum, item) => item.isCancelled ? sum : sum + (parseFloat(item.total) || 0), 0) : 0);
+
+  // Phase-by-phase handler for Enter key on mobile weight input:
+  // Phase 1: Adds item to bill with typed weight
+  // Phase 2: Blinks to CRM and scrolls to customer picker
+  const handleWeightEnterSubmit = (enteredVal) => {
+    let finalWeight = parseFloat(enteredVal);
+    if (isNaN(finalWeight) || finalWeight <= 0) {
+      finalWeight = parseFloat(weightKg) || 1.0;
+    }
+    const finalWeightStr = finalWeight.toFixed(3);
+    setWeightKg(finalWeightStr);
+
+    setTimeout(() => {
+      const success = handleAddCurrentToBill();
+      if (success) {
+        setIsDialLocked(false);
+        setTimeout(() => {
+          setIsCrmBlinking(true);
+          window.dispatchEvent(new CustomEvent('trigger-crm-blink', {
+            detail: { mode: fishOrderMode }
+          }));
+
+          const crmEl = document.getElementById('crm-customer-bar-container') ||
+                        document.querySelector('[data-crm-customer-bar]') ||
+                        document.querySelector('#crm-customer-bar-wrapper');
+          if (crmEl) {
+            crmEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          } else {
+            setShowCrmPicker(true);
+          }
+
+          if (showToast) {
+            showToast('Fish item added! Please select Customer', 'info');
+          }
+
+          setTimeout(() => setIsCrmBlinking(false), 4000);
+        }, 180);
+      }
+    }, 50);
+  };
 
   // Stepper Handlers
   const handleDecreaseWeight = (e) => {
@@ -1233,7 +1282,9 @@ export default function FishSmartwatchDial({
             e.stopPropagation();
             setShowCrmPicker((prev) => !prev);
           }}
-          className="no-dial-drag relative pointer-events-auto select-none flex flex-col items-center justify-center text-center cursor-pointer active:scale-95 transition-transform max-w-[88px] overflow-visible"
+          className={`no-dial-drag relative pointer-events-auto select-none flex flex-col items-center justify-center text-center cursor-pointer active:scale-95 transition-transform max-w-[88px] overflow-visible ${
+            isCrmBlinking ? 'ring-4 ring-amber-400 bg-amber-300/80 rounded-2xl animate-pulse scale-105 shadow-lg' : ''
+          }`}
           title="Customer CRM (Tap to select or change)"
         >
           {/* Direct Deselect / Clear Button on Petal */}
@@ -1425,6 +1476,13 @@ export default function FishSmartwatchDial({
                   onChange={(e) => {
                     setDialLock(true);
                     setWeightKg(e.target.value);
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      e.target.blur();
+                      handleWeightEnterSubmit(e.target.value);
+                    }
                   }}
                   placeholder=""
                   style={{ backgroundColor: 'transparent', boxShadow: 'none' }}
@@ -2115,7 +2173,7 @@ export default function FishSmartwatchDial({
             title="Scroll down to Current Order"
           >
             <ShoppingCart size={14} />
-            <span>Current Order ({cartCount} {cartCount === 1 ? 'item' : 'items'} • ₹{computedCartTotal.toFixed(0)})</span>
+            <span>Current Order ({formattedCartCount} {cartCount === 1 ? 'item' : 'items'} • ₹{computedCartTotal.toFixed(0)})</span>
             <ChevronDown size={14} className="stroke-[3]" />
           </button>
         </div>

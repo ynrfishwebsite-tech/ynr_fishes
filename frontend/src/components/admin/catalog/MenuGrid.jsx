@@ -2610,12 +2610,12 @@ const MenuGrid = ({
       {/* Fish Weight / Box Selection Modal (Individual Retail & Wholesale Boxes) */}
       {selectedFishItem && typeof document !== 'undefined' && createPortal(
         <div
-          className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-[9999] p-2 sm:p-3 md:p-4 animate-in fade-in duration-200"
+          className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-[9999] p-1.5 sm:p-3 md:p-4 animate-in fade-in duration-200 overflow-hidden"
           onClick={() => setSelectedFishItem(null)}
         >
           <div
             data-fish-modal="true"
-            className="bg-[#FDFBF7] w-full max-w-[560px] max-h-[96vh] sm:max-h-[92vh] rounded-2xl md:rounded-3xl shadow-2xl border-2 border-[#E8DCCB] flex flex-col overflow-hidden text-slate-800 my-auto animate-in zoom-in-95 duration-200"
+            className="bg-[#FDFBF7] w-full max-w-[560px] h-[92dvh] max-h-[92dvh] sm:h-auto sm:max-h-[88vh] rounded-2xl md:rounded-3xl shadow-2xl border-2 border-[#E8DCCB] flex flex-col overflow-hidden text-slate-800 my-auto animate-in zoom-in-95 duration-200"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Header with Mode Badge and Close Button */}
@@ -2643,7 +2643,7 @@ const MenuGrid = ({
               );
             })()}
 
-            <div className="p-2 sm:p-2.5 md:p-3 space-y-2 sm:space-y-2.5 overflow-y-auto flex-1">
+            <div className="p-2 sm:p-2.5 md:p-3 space-y-2 sm:space-y-2.5 overflow-y-auto flex-1 min-h-0 overscroll-contain">
               {/* 1. RETAIL CUSTOMER SELECTOR (OPTIONAL) */}
               <div className="bg-[#FAF0E4] border border-[#E8DCCB] rounded-xl sm:rounded-2xl p-2 sm:p-2.5 space-y-1.5">
                 <div className="flex items-center justify-between">
@@ -3365,12 +3365,12 @@ const MenuGrid = ({
       {/* Wholesale Multi-Item Box Builder Modal */}
       {showBoxPacker && typeof document !== 'undefined' && createPortal(
         <div
-          className="fixed inset-0 bg-black/75 backdrop-blur-sm flex items-center justify-center z-[9999] p-2 sm:p-3 md:p-4 animate-in fade-in duration-200"
+          className="fixed inset-0 bg-black/75 backdrop-blur-sm flex items-center justify-center z-[9999] p-1.5 sm:p-3 md:p-4 animate-in fade-in duration-200 overflow-hidden"
           onClick={() => setShowBoxPacker(false)}
         >
           <div
             data-box-packer-modal="true"
-            className="bg-[#FDFBF7] w-full max-w-[580px] max-h-[96vh] sm:max-h-[92vh] rounded-2xl md:rounded-3xl shadow-2xl border-2 border-[#E8DCCB] flex flex-col overflow-hidden text-slate-800 my-auto animate-in zoom-in-95 duration-200"
+            className="bg-[#FDFBF7] w-full max-w-[580px] h-[92dvh] max-h-[92dvh] sm:h-auto sm:max-h-[88vh] rounded-2xl md:rounded-3xl shadow-2xl border-2 border-[#E8DCCB] flex flex-col overflow-hidden text-slate-800 my-auto animate-in zoom-in-95 duration-200"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Modal Header */}
@@ -3403,7 +3403,7 @@ const MenuGrid = ({
             </div>
 
             {/* Modal Body */}
-            <div className="p-2 sm:p-2.5 md:p-3 space-y-2 overflow-y-auto flex-1">
+            <div className="p-2 sm:p-2.5 md:p-3 space-y-2 overflow-y-auto flex-1 min-h-0 overscroll-contain">
               {/* 1. COMPACT UNCROPPED FISH IMAGE & DETAILS */}
               {activeBoxFish && (
                 <div className="bg-[#FAF0E4] border border-[#E8DCCB] rounded-xl sm:rounded-2xl p-2 sm:p-2.5 flex items-center gap-2.5 sm:gap-3.5 relative overflow-hidden transition-all duration-300">
@@ -4109,33 +4109,13 @@ const MenuGrid = ({
               })()}
             </div>
 
-            {/* Modal Footer with Instant Action Buttons */}
-            <div className="p-2 sm:p-2.5 md:p-3 border-t border-[#E8DCCB] bg-[#FAF0E4] flex flex-col gap-1.5 sm:gap-2 shrink-0">
-              {/* Desktop Only: "+ Add Box to Order" button */}
-              <div className="hidden lg:flex items-center gap-2">
+            {/* Modal Footer with Instant Action Buttons - Single Compact Row */}
+            <div className="p-2 sm:p-2.5 border-t border-[#E8DCCB] bg-[#FAF0E4] shrink-0 sticky bottom-0 z-10 shadow-[0_-4px_12px_rgba(0,0,0,0.06)]">
+              <div className="flex items-center gap-1.5 sm:gap-2">
                 <button
                   type="button"
                   onClick={() => setShowBoxPacker(false)}
-                  className="px-3 py-2 rounded-xl border border-slate-300 text-slate-700 bg-white hover:bg-slate-100 font-bold text-xs transition-all cursor-pointer active:scale-95"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleAddBoxToOrder()}
-                  className="flex-1 py-2 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white font-black text-xs sm:text-sm shadow-md cursor-pointer transition-all active:scale-98 flex items-center justify-center gap-1.5"
-                >
-                  <span>+ Add Box #{currentBoxNumber} to Order</span>
-                </button>
-              </div>
-
-              {/* Action Buttons: On Mobile & Tablet, this is the clean 1-row footer with Cancel, SAVE KHATA, SAVE & PRINT */}
-              <div className="grid grid-cols-12 gap-1.5 sm:gap-2 pt-0.5 lg:pt-1 lg:border-t lg:border-[#E8DCCB]">
-                {/* On mobile and tablet: Cancel button is right here */}
-                <button
-                  type="button"
-                  onClick={() => setShowBoxPacker(false)}
-                  className="lg:hidden col-span-3 py-2 px-1 rounded-xl border border-slate-300 text-slate-700 bg-white hover:bg-slate-100 font-bold text-xs transition-all cursor-pointer active:scale-95 flex items-center justify-center"
+                  className="px-3 sm:px-4 py-2 sm:py-2.5 rounded-xl border border-slate-300 text-slate-700 bg-white hover:bg-slate-100 font-bold text-xs sm:text-sm transition-all cursor-pointer active:scale-95 shrink-0"
                 >
                   Cancel
                 </button>
@@ -4144,7 +4124,7 @@ const MenuGrid = ({
                   type="button"
                   disabled={actionLoading !== null}
                   onClick={() => handleModalSave(false)}
-                  className="col-span-4 lg:col-span-6 py-2 sm:py-2.5 px-1.5 sm:px-3 rounded-xl bg-slate-800 hover:bg-slate-900 text-white font-black text-[11px] sm:text-xs md:text-sm shadow-md active:scale-95 transition-all disabled:opacity-50 flex items-center justify-center gap-1 sm:gap-1.5 cursor-pointer"
+                  className="flex-1 py-2 sm:py-2.5 px-2 rounded-xl bg-slate-800 hover:bg-slate-900 text-white font-black text-xs sm:text-sm shadow-md active:scale-95 transition-all disabled:opacity-50 flex items-center justify-center gap-1 sm:gap-1.5 cursor-pointer"
                 >
                   {actionLoading === 'save' ? (
                     <Loader2 size={13} className="animate-spin text-white" />
@@ -4158,7 +4138,7 @@ const MenuGrid = ({
                   type="button"
                   disabled={actionLoading !== null}
                   onClick={() => handleModalSave(true)}
-                  className="col-span-5 lg:col-span-6 py-2 sm:py-2.5 px-1.5 sm:px-3 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-700 hover:to-teal-600 text-white font-black text-[11px] sm:text-xs md:text-sm shadow-md active:scale-95 transition-all disabled:opacity-50 flex items-center justify-center gap-1 sm:gap-1.5 cursor-pointer"
+                  className="flex-1 py-2 sm:py-2.5 px-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-700 hover:to-teal-600 text-white font-black text-xs sm:text-sm shadow-md active:scale-95 transition-all disabled:opacity-50 flex items-center justify-center gap-1 sm:gap-1.5 cursor-pointer"
                 >
                   {actionLoading === 'print' ? (
                     <Loader2 size={13} className="animate-spin text-white" />

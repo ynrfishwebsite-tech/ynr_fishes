@@ -50,6 +50,30 @@ export default function PredefinedCustomerBar({
   const [cropperSrc, setCropperSrc] = useState('');
   const fileInputRef = useRef(null);
   const containerRef = useRef(null);
+  const [isBlinking, setIsBlinking] = useState(false);
+
+  // Listen for trigger-crm-blink event (e.g., when user presses Enter on weight input)
+  useEffect(() => {
+    const handleTriggerCrmBlink = () => {
+      setIsBlinking(true);
+      // Ensure element is in view smoothly
+      setTimeout(() => {
+        const el = document.getElementById('crm-customer-bar-container') || containerRef.current;
+        if (el) {
+          el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+      }, 50);
+
+      // Auto-cancel blink after 4 seconds
+      const timer = setTimeout(() => {
+        setIsBlinking(false);
+      }, 4000);
+      return () => clearTimeout(timer);
+    };
+
+    window.addEventListener('trigger-crm-blink', handleTriggerCrmBlink);
+    return () => window.removeEventListener('trigger-crm-blink', handleTriggerCrmBlink);
+  }, []);
 
   // Sync category mode with quick add default
   useEffect(() => {
@@ -276,15 +300,24 @@ export default function PredefinedCustomerBar({
       />
 
       {/* Main Bar Trigger */}
-      <div className={`p-2 rounded-2xl border transition-all ${
-        selectedCustomerObj
-          ? (isLocked ? 'bg-amber-500/10 border-amber-500/30' : 'bg-[#F7EFE2] border-[#E8DCCB]')
-          : 'bg-[#FDFBF7] border-[#E8DCCB] hover:border-amber-400'
-      }`}>
+      <div 
+        id="crm-customer-bar-container"
+        ref={containerRef}
+        className={`p-2 rounded-2xl border transition-all ${
+          isBlinking
+            ? 'ring-4 ring-amber-500 shadow-xl animate-pulse bg-amber-100/90 border-amber-500'
+            : selectedCustomerObj
+              ? (isLocked ? 'bg-amber-500/10 border-amber-500/30' : 'bg-[#F7EFE2] border-[#E8DCCB]')
+              : 'bg-[#FDFBF7] border-[#E8DCCB] hover:border-amber-400'
+        }`}
+      >
         <div className="flex items-center justify-between gap-2">
           {/* Customer Identity / Selector */}
           <div 
-            onClick={() => setIsOpen(!isOpen)}
+            onClick={() => {
+              setIsBlinking(false);
+              setIsOpen(!isOpen);
+            }}
             className="flex items-center gap-2 flex-1 min-w-0 cursor-pointer"
           >
             {selectedCustomerObj?.photo ? (
