@@ -579,6 +579,7 @@ const MenuGrid = ({
     setSelectedCustomerObj(null);
     if (setCustomerName) setCustomerName('');
     if (setCustomerPhone) setCustomerPhone('');
+    if (onCustomerSelect) onCustomerSelect(null);
     if (setIsOrderLocked) setIsOrderLocked(false);
     if (setLockedTimestamp) setLockedTimestamp('');
     if (showToast) showToast('Customer selection cleared', 'info');

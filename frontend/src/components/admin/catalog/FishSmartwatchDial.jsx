@@ -15,7 +15,13 @@ import {
   Award,
   X,
   Lock,
-  Unlock
+  Unlock,
+  User,
+  Building2,
+  Globe,
+  Search,
+  Percent,
+  Edit3
 } from 'lucide-react';
 
 export default function FishSmartwatchDial({
@@ -43,7 +49,21 @@ export default function FishSmartwatchDial({
   showAnimation = true,
   cart = [],
   cartTotal,
-  onViewOrder
+  onViewOrder,
+  customerName = '',
+  setCustomerName,
+  customerPhone = '',
+  setCustomerPhone,
+  customerPhoto = '',
+  customerCategory = '',
+  exportSubCategory = null,
+  onCustomerSelect,
+  onOpenCustomerModal,
+  predefinedCustomers = [],
+  handleSelectCustomer,
+  handleClearCustomer,
+  discount,
+  setDiscount
 }) {
   // Clamp activeIndex safely
   const safeActiveIndex = items && items.length > 0
@@ -94,26 +114,51 @@ export default function FishSmartwatchDial({
     return Array.from(set).sort((a, b) => a - b);
   }, [existingBoxes, activeBoxNumber]);
 
-  // Popover menus
-  const [showGradeMenu, setShowGradeMenu] = useState(false);
-  const [showCutMenu, setShowCutMenu] = useState(false);
+  // CRM Popover & Search
+  const [showCrmPicker, setShowCrmPicker] = useState(false);
+  const [crmSearch, setCrmSearch] = useState('');
 
-  // Dial rotation state & item cycling physics
+  // Long-press Rate Edit states
+  const [customRate, setCustomRate] = useState(null);
+  const [isEditingRate, setIsEditingRate] = useState(false);
+  const [tempRateInput, setTempRateInput] = useState('');
+  const ratePressTimerRef = useRef(null);
+
+  // Long-press Total Edit & Auto-Discount states
+  const [customTotal, setCustomTotal] = useState(null);
+  const [isEditingTotal, setIsEditingTotal] = useState(false);
+  const [tempTotalInput, setTempTotalInput] = useState('');
+  const totalPressTimerRef = useRef(null);
+
+  // Dial rotation state & drag physics
   const [dialRingRotation, setDialRingRotation] = useState(0);
   const [isDialLocked, setIsDialLocked] = useState(false);
+  const isDialLockedRef = useRef(false);
+
+  const setDialLock = (locked) => {
+    isDialLockedRef.current = locked;
+    setIsDialLocked(locked);
+  };
+
+  useEffect(() => {
+    isDialLockedRef.current = isDialLocked;
+  }, [isDialLocked]);
+
   const isDraggingDialRef = useRef(false);
+  const hasMovedRef = useRef(false);
+  const dragStartPosRef = useRef(null);
   const lastAngleRef = useRef(0);
   const accumulatedAngleRef = useRef(0);
+  const wasDraggingRef = useRef(false);
   const containerRef = useRef(null);
   const dialRef = useRef(null);
   const cardRef = useRef(null);
-  const wheelLockRef = useRef(false);
   const touchStartXRef = useRef(null);
   const touchStartYRef = useRef(null);
   const touchStartTimeRef = useRef(0);
 
-  // Degrees of rotation required to switch to next/previous fish
-  const ROTATION_STEP_DEG = 28;
+  // Degrees of rotation required to switch to next/previous fish (matches item spacing)
+  const ROTATION_STEP_DEG = items && items.length > 0 ? Math.max(12, Math.min(30, Math.round(360 / items.length))) : 24;
 
   // Sync state when active item changes
   useEffect(() => {
@@ -129,7 +174,18 @@ export default function FishSmartwatchDial({
     } else {
       setBoxWeightKg(String(avgKg));
     }
+    // Reset custom rate & custom total when switching fish
+    setCustomRate(null);
+    setIsEditingRate(false);
+    setCustomTotal(null);
+    setIsEditingTotal(false);
   }, [currentItem?._id, getGradeAverageKg]);
+
+  // Reset custom total when weight changes
+  useEffect(() => {
+    setCustomTotal(null);
+    setIsEditingTotal(false);
+  }, [weightKg]);
 
   const isBoxBasedMode = fishOrderMode === 'bulk' || fishOrderMode === 'export';
 
@@ -146,7 +202,6 @@ export default function FishSmartwatchDial({
     ? getItemPricePerKg(currentItem, fishOrderMode, activeGrade)
     : (currentItem?.price || 0);
 
-  const totalAmount = parseFloat((netKg * activeRate).toFixed(2));
   const fractionLabel = formatKgFraction ? formatKgFraction(netKg) : `${netKg.toFixed(3)} Kg`;
 
   // Wholesale / Export Box Mode calculations
@@ -165,10 +220,30 @@ export default function FishSmartwatchDial({
     return (cart || []).reduce((max, it) => Math.max(max, Number(it.boxNumber || 0)), 0) + 1;
   }, [cart]);
 
-  const currentRateAmount = isBoxBasedMode ? boxRate : activeRate;
-  const currentTotalAmount = isBoxBasedMode
-    ? (boxFishMode === 'mixed' ? mixedItemTotal : totalBoxPrice)
-    : totalAmount;
+  // Base rate before manual edit
+  const baseRate = isBoxBasedMode ? boxRate : activeRate;
+  // Effective rate (custom rate if long-press edited, else base rate)
+  const effectiveRate = customRate !== null && !isNaN(parseFloat(customRate)) && parseFloat(customRate) > 0
+    ? parseFloat(customRate)
+    : baseRate;
+
+  // Standard total before manual discount
+  const standardTotal = isBoxBasedMode
+    ? (boxFishMode === 'mixed' ? parseFloat((netKg * effectiveRate).toFixed(2)) : parseFloat((totalBoxWeightKg * effectiveRate).toFixed(2)))
+    : parseFloat((netKg * effectiveRate).toFixed(2));
+
+  // Effective total (either negotiated total or standard total)
+  const effectiveTotal = customTotal !== null && !isNaN(parseFloat(customTotal)) && parseFloat(customTotal) >= 0
+    ? parseFloat(customTotal)
+    : standardTotal;
+
+  // Auto-calculated discount difference
+  const calculatedDiscount = (customTotal !== null && standardTotal > effectiveTotal)
+    ? parseFloat((standardTotal - effectiveTotal).toFixed(2))
+    : 0;
+
+  const currentRateAmount = effectiveRate;
+  const currentTotalAmount = effectiveTotal;
 
   // Cart total & item count for the unified bottom action dock
   const cartCount = cart && cart.length > 0
@@ -197,10 +272,10 @@ export default function FishSmartwatchDial({
     });
   };
 
-  // Dial touch rotation gesture - rotates dial AND cycles items like a digital crown
+  // Dial mouse & touch rotation gesture - rotates dial AND cycles items like a digital crown
   const handleDialStart = (clientX, clientY, target) => {
-    if (isDialLocked) return;
-    if (target && (target.closest('button') || target.closest('input') || target.closest('select'))) {
+    if (isDialLocked || isDialLockedRef.current) return;
+    if (target && (target.closest('input') || target.closest('select') || target.closest('.no-dial-drag'))) {
       return;
     }
     if (!dialRef.current) return;
@@ -208,12 +283,23 @@ export default function FishSmartwatchDial({
     const cx = rect.left + rect.width / 2;
     const cy = rect.top + rect.height / 2;
     lastAngleRef.current = Math.atan2(clientY - cy, clientX - cx) * (180 / Math.PI);
-    isDraggingDialRef.current = true;
+    dragStartPosRef.current = { x: clientX, y: clientY };
+    hasMovedRef.current = false;
+    isDraggingDialRef.current = false; // Never drag on pure click/tap
     accumulatedAngleRef.current = 0;
   };
 
   const handleDialMove = (clientX, clientY) => {
-    if (isDialLocked || !isDraggingDialRef.current || !dialRef.current) return;
+    if (!dialRef.current || isDialLocked || isDialLockedRef.current || !dragStartPosRef.current) return;
+
+    const dist = Math.hypot(clientX - dragStartPosRef.current.x, clientY - dragStartPosRef.current.y);
+    // Ignore micro-movements under 8px so clicks on fish badges register cleanly
+    if (!hasMovedRef.current) {
+      if (dist < 8) return;
+      hasMovedRef.current = true;
+      isDraggingDialRef.current = true;
+    }
+
     const rect = dialRef.current.getBoundingClientRect();
     const cx = rect.left + rect.width / 2;
     const cy = rect.top + rect.height / 2;
@@ -223,54 +309,70 @@ export default function FishSmartwatchDial({
     if (delta < -180) delta += 360;
     lastAngleRef.current = currentAngle;
 
-    // Rotate overall bezel ring smoothly with finger gesture!
+    // Rotate bezel ring smoothly
     setDialRingRotation((prev) => prev + delta);
 
     // Accumulate angular delta to cycle items
     accumulatedAngleRef.current += delta;
 
     if (accumulatedAngleRef.current >= ROTATION_STEP_DEG) {
-      if (items.length > 0) {
+      if (items && items.length > 0) {
         setActiveIndex((prev) => (prev < items.length - 1 ? prev + 1 : 0));
       }
-      accumulatedAngleRef.current = 0;
+      accumulatedAngleRef.current -= ROTATION_STEP_DEG;
     } else if (accumulatedAngleRef.current <= -ROTATION_STEP_DEG) {
-      if (items.length > 0) {
+      if (items && items.length > 0) {
         setActiveIndex((prev) => (prev > 0 ? prev - 1 : items.length - 1));
       }
-      accumulatedAngleRef.current = 0;
+      accumulatedAngleRef.current += ROTATION_STEP_DEG;
     }
   };
 
   const handleDialEnd = () => {
+    if (hasMovedRef.current) {
+      wasDraggingRef.current = true;
+      setTimeout(() => {
+        wasDraggingRef.current = false;
+      }, 120);
+    } else {
+      wasDraggingRef.current = false;
+    }
     isDraggingDialRef.current = false;
+    hasMovedRef.current = false;
+    dragStartPosRef.current = null;
     accumulatedAngleRef.current = 0;
   };
 
   const handleDialTouchStart = (e) => {
-    if (e.target.closest('button') || e.target.closest('input') || e.target.closest('select')) {
+    if (isDialLocked || isDialLockedRef.current) return;
+    if (e.target.closest('input') || e.target.closest('select') || e.target.closest('.no-dial-drag')) {
       return;
     }
     handleDialStart(e.touches[0].clientX, e.touches[0].clientY, e.target);
   };
 
   const handleDialTouchMove = (e) => {
-    if (!isDraggingDialRef.current) return;
-    if (e.cancelable) e.preventDefault();
+    if (isDialLocked || isDialLockedRef.current || !dragStartPosRef.current) return;
     handleDialMove(e.touches[0].clientX, e.touches[0].clientY);
+    if (hasMovedRef.current && e.cancelable) {
+      e.preventDefault();
+    }
   };
 
   const handleDialMouseDown = (e) => {
-    if (e.target.closest('button') || e.target.closest('input') || e.target.closest('select')) {
+    if (isDialLocked || isDialLockedRef.current || e.button !== 0) return;
+    if (e.target.closest('input') || e.target.closest('select') || e.target.closest('.no-dial-drag')) {
       return;
     }
     handleDialStart(e.clientX, e.clientY, e.target);
   };
 
   const handleDialMouseMove = (e) => {
-    if (!isDraggingDialRef.current) return;
-    e.preventDefault();
+    if (isDialLocked || isDialLockedRef.current || !dragStartPosRef.current) return;
     handleDialMove(e.clientX, e.clientY);
+    if (hasMovedRef.current) {
+      e.preventDefault();
+    }
   };
 
   useEffect(() => {
@@ -281,59 +383,13 @@ export default function FishSmartwatchDial({
     };
     window.addEventListener('mouseup', onGlobalEnd);
     window.addEventListener('touchend', onGlobalEnd);
+    window.addEventListener('touchcancel', onGlobalEnd);
     return () => {
       window.removeEventListener('mouseup', onGlobalEnd);
       window.removeEventListener('touchend', onGlobalEnd);
+      window.removeEventListener('touchcancel', onGlobalEnd);
     };
   }, []);
-
-  // Mouse wheel & trackpad scroll handler: rotates ring and changes fish
-  useEffect(() => {
-    const el = containerRef.current || dialRef.current;
-    if (!el) return;
-
-    const handleWheel = (e) => {
-      if (isDialLocked) return;
-      // Don't intercept when scrolling native inputs or dropdowns
-      if (e.target && (e.target.closest('input') || e.target.closest('select') || e.target.closest('textarea'))) {
-        return;
-      }
-
-      // Check dominant scroll direction (vertical or horizontal trackpad swipe)
-      const delta = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
-      if (Math.abs(delta) < 12) return;
-
-      // Prevent outer page bounce/scroll when rolling the dial
-      if (e.cancelable) e.preventDefault();
-
-      if (wheelLockRef.current) return;
-      wheelLockRef.current = true;
-
-      if (delta > 0) {
-        // Forward scroll: Advance to next fish and rotate ring clockwise
-        if (items && items.length > 0) {
-          setActiveIndex((prev) => (prev < items.length - 1 ? prev + 1 : 0));
-        }
-        setDialRingRotation((prev) => prev + ROTATION_STEP_DEG);
-      } else {
-        // Backward scroll: Go to previous fish and rotate ring counter-clockwise
-        if (items && items.length > 0) {
-          setActiveIndex((prev) => (prev > 0 ? prev - 1 : items.length - 1));
-        }
-        setDialRingRotation((prev) => prev - ROTATION_STEP_DEG);
-      }
-
-      // 150ms debounce for natural feel during continuous mouse/trackpad scrolling
-      setTimeout(() => {
-        wheelLockRef.current = false;
-      }, 150);
-    };
-
-    el.addEventListener('wheel', handleWheel, { passive: false });
-    return () => {
-      el.removeEventListener('wheel', handleWheel);
-    };
-  }, [items, setActiveIndex, isDialLocked]);
 
   // Center Disc: Tap to Add & View Order, or Swipe horizontally to switch fish
   const handleCenterImageAddAndRedirect = (e) => {
@@ -370,7 +426,7 @@ export default function FishSmartwatchDial({
 
     // Horizontal swipe gesture (> 35px) cycles fish items & ring rotates (disabled when dial is locked)
     if (Math.abs(diffX) > 35 && Math.abs(diffX) > Math.abs(diffY)) {
-      if (isDialLocked) {
+      if (isDialLocked || isDialLockedRef.current) {
         return;
       }
       if (diffX > 35 && safeActiveIndex < items.length - 1) {
@@ -450,16 +506,109 @@ export default function FishSmartwatchDial({
   // Center position of each curved sector for icon & label overlay
   const getCurvedSectorCenterStyle = (angleDeg) => {
     const angleRad = ((angleDeg - 90) * Math.PI) / 180;
-    const r = 134; // exact midpoint between rIn=110 and rOut=158
-    const x = 170 + r * Math.cos(angleRad);
-    const y = 170 + r * Math.sin(angleRad);
+    const r = 125; // exact midpoint between rIn=98 and rOut=152
+    const x = 220 + r * Math.cos(angleRad);
+    const y = 220 + r * Math.sin(angleRad);
     return {
       position: 'absolute',
-      left: `${((x / 340) * 100).toFixed(2)}%`,
-      top: `${((y / 340) * 100).toFixed(2)}%`,
+      left: `${((x / 440) * 100).toFixed(2)}%`,
+      top: `${((y / 440) * 100).toFixed(2)}%`,
       transform: 'translate(-50%, -50%)',
       zIndex: 25
     };
+  };
+
+  // 1-Tap Grade Cycle (No Popups!)
+  const handleCycleGrade = (e) => {
+    if (e) e.stopPropagation();
+    const availableGrades = ['small', 'medium', 'big'].filter(
+      (g) => currentItem?.sizeGrades?.[g]?.enabled !== false
+    );
+    const gradesToUse = availableGrades.length > 0 ? availableGrades : ['small', 'medium', 'big'];
+    const currIdx = gradesToUse.indexOf(activeGrade);
+    const nextGrade = gradesToUse[(currIdx + 1) % gradesToUse.length];
+
+    setGradeOverride(nextGrade);
+    const avgKg = getGradeAverageKg
+      ? getGradeAverageKg(currentItem, nextGrade)
+      : (nextGrade === 'medium' ? 3 : nextGrade === 'big' ? 6 : 1);
+    setWeightKg((avgKg).toFixed(3));
+    setCustomTotal(null); // Recalculate total with new grade average
+    if (showToast) {
+      const gRate = currentItem?.sizeGrades?.[nextGrade]?.price || (currentItem && getItemPricePerKg ? getItemPricePerKg(currentItem, fishOrderMode, nextGrade) : currentItem?.price || 0);
+      showToast(`Grade: ${nextGrade.toUpperCase()} (₹${gRate}/Kg)`, 'info');
+    }
+  };
+
+  // 1-Tap Cut Style Cycle (No Popups!)
+  const CUT_OPTIONS = ['Whole', 'Cleaned', 'Curry Cut', 'Fry Cut', 'Boneless Fillet'];
+  const handleCycleCut = (e) => {
+    if (e) e.stopPropagation();
+    const currIdx = CUT_OPTIONS.indexOf(selectedCutType);
+    const nextCut = CUT_OPTIONS[(currIdx + 1) % CUT_OPTIONS.length];
+    setSelectedCutType(nextCut);
+    if (showToast) {
+      showToast(`Cut: ${nextCut}`, 'info');
+    }
+  };
+
+  // Long-press Rate Handlers (> 500ms)
+  const startRateLongPress = (e) => {
+    e.stopPropagation();
+    ratePressTimerRef.current = setTimeout(() => {
+      setIsEditingRate(true);
+      setTempRateInput(String(effectiveRate));
+      if (showToast) showToast('Edit Rate Price (₹/Kg)', 'info');
+    }, 500);
+  };
+
+  const cancelRateLongPress = () => {
+    if (ratePressTimerRef.current) {
+      clearTimeout(ratePressTimerRef.current);
+      ratePressTimerRef.current = null;
+    }
+  };
+
+  const handleSaveRate = () => {
+    const parsed = parseFloat(tempRateInput);
+    if (!isNaN(parsed) && parsed > 0) {
+      setCustomRate(parsed);
+      setCustomTotal(null); // Recalculate total with custom rate
+      if (showToast) showToast(`Custom Rate set: ₹${parsed}/Kg`, 'success');
+    }
+    setIsEditingRate(false);
+  };
+
+  // Long-press Total Handlers (> 500ms) with Auto-Discount
+  const startTotalLongPress = (e) => {
+    e.stopPropagation();
+    totalPressTimerRef.current = setTimeout(() => {
+      setIsEditingTotal(true);
+      setTempTotalInput(String(Math.round(standardTotal)));
+      if (showToast) showToast('Enter Negotiated Total (Auto-Calculates Discount)', 'info');
+    }, 500);
+  };
+
+  const cancelTotalLongPress = () => {
+    if (totalPressTimerRef.current) {
+      clearTimeout(totalPressTimerRef.current);
+      totalPressTimerRef.current = null;
+    }
+  };
+
+  const handleSaveTotal = () => {
+    const entered = parseFloat(tempTotalInput);
+    if (!isNaN(entered) && entered >= 0) {
+      setCustomTotal(entered);
+      const diff = Math.max(0, standardTotal - entered);
+      if (diff > 0) {
+        if (setDiscount) {
+          setDiscount({ type: 'flat', value: diff, name: 'Discount' });
+        }
+        if (showToast) showToast(`Negotiated Total: ₹${entered} (₹${diff.toFixed(0)} Discount applied)`, 'success');
+      }
+    }
+    setIsEditingTotal(false);
   };
 
   // Add Item to Bill (returns true on success, false on validation error)
@@ -468,6 +617,14 @@ export default function FishSmartwatchDial({
     if (isLocked || (orderStatus === 'Billed' && !hasPendingChanges)) {
       if (showToast) showToast(t("Order is billed. Click EDIT to modify."), 'warning');
       return false;
+    }
+
+    const finalPricePerKg = effectiveRate;
+    const finalItemTotal = effectiveTotal;
+    const finalDiscount = calculatedDiscount;
+
+    if (finalDiscount > 0 && setDiscount) {
+      setDiscount({ type: 'flat', value: finalDiscount, name: 'Negotiated Discount' });
     }
 
     if (isBoxBasedMode) {
@@ -480,7 +637,7 @@ export default function FishSmartwatchDial({
           if (showToast) showToast(`Please enter valid weight in Kg for Box #${activeBoxNumber}`, 'error');
           return false;
         }
-        const itemPrice = mixedItemTotal;
+        const itemPrice = finalItemTotal;
         const itemToAdd = {
           ...currentItem,
           _id: currentItem._id,
@@ -497,9 +654,14 @@ export default function FishSmartwatchDial({
           enteredWeight: netKg,
           grossWeightKg: netKg,
           netWeightKg: netKg,
-          pricePerKg: boxRate,
-          price: boxRate,
+          pricePerKg: finalPricePerKg,
+          price: finalPricePerKg,
           total: itemPrice,
+          standardTotal: standardTotal,
+          originalTotal: standardTotal,
+          discount: finalDiscount,
+          discountAmount: finalDiscount,
+          itemDiscount: finalDiscount,
           sizeGrade: activeGrade,
           cutType: selectedCutType,
           orderMode: fishOrderMode,
@@ -543,9 +705,14 @@ export default function FishSmartwatchDial({
         enteredWeight: totalBoxWeightKg,
         grossWeightKg: totalBoxWeightKg,
         netWeightKg: totalBoxWeightKg,
-        pricePerKg: boxRate,
-        price: boxRate,
-        total: totalBoxPrice,
+        pricePerKg: finalPricePerKg,
+        price: finalPricePerKg,
+        total: finalItemTotal,
+        standardTotal: standardTotal,
+        originalTotal: standardTotal,
+        discount: finalDiscount,
+        discountAmount: finalDiscount,
+        itemDiscount: finalDiscount,
         sizeGrade: activeGrade,
         cutType: selectedCutType,
         orderMode: fishOrderMode,
@@ -575,24 +742,31 @@ export default function FishSmartwatchDial({
 
     const itemToAdd = {
       ...currentItem,
-      itemKey: `${currentItem._id}_${selectedCutType}_${netGrams}g_${activeGrade}_${fishOrderMode}`,
+      itemKey: `${currentItem._id}_${selectedCutType}_${netGrams}g_${activeGrade}_${fishOrderMode}_${Date.now()}`,
       menuItem: currentItem._id,
       originalId: currentItem._id,
       originalFishName: currentItem.name,
       name: `${currentItem.name} (${selectedCutType} - ${fractionLabel})`,
-      price: activeRate,
+      price: customTotal !== null && netKg > 0 ? parseFloat((finalItemTotal / netKg).toFixed(2)) : finalPricePerKg,
+      ratePerKg: finalPricePerKg,
       quantity: netKg,
-      total: totalAmount,
+      total: finalItemTotal,
+      standardTotal: standardTotal,
+      originalTotal: standardTotal,
+      discount: finalDiscount,
+      discountAmount: finalDiscount,
+      itemDiscount: finalDiscount,
       sellingUnit: 'Kg',
       enteredWeight: netKg,
       netWeightKg: netKg,
       grossWeightKg: netKg,
-      pricePerKg: activeRate,
+      pricePerKg: finalPricePerKg,
       sizeGrade: activeGrade,
       orderMode: fishOrderMode,
       cutType: selectedCutType,
       yieldFactor: 1.0,
-      tareWeightKg: (tareGrams / 1000)
+      tareWeightKg: (tareGrams / 1000),
+      specialNote: finalDiscount > 0 ? `₹${finalDiscount.toFixed(0)} Discount applied` : ''
     };
 
     if (triggerFlyAnimation && cardRef.current) {
@@ -632,12 +806,13 @@ export default function FishSmartwatchDial({
       className="relative w-full min-h-[500px] h-auto flex flex-col justify-start gap-1 sm:gap-2 items-center select-none py-1 px-1 sm:px-2 overflow-x-hidden"
     >
       {/* Popovers backdrop */}
-      {(showGradeMenu || showCutMenu) && (
+      {(showCrmPicker || isEditingRate || isEditingTotal) && (
         <div
           className="fixed inset-0 z-40 bg-black/10 backdrop-blur-2xs"
           onClick={() => {
-            setShowGradeMenu(false);
-            setShowCutMenu(false);
+            setShowCrmPicker(false);
+            setIsEditingRate(false);
+            setIsEditingTotal(false);
           }}
         />
       )}
@@ -655,15 +830,15 @@ export default function FishSmartwatchDial({
         onMouseMove={handleDialMouseMove}
         onMouseUp={handleDialEnd}
         onMouseLeave={handleDialEnd}
-        className="relative w-[340px] sm:w-[380px] md:w-[440px] lg:w-[470px] xl:w-[490px] h-[340px] sm:h-[380px] md:h-[440px] lg:h-[470px] xl:h-[490px] max-w-[min(96vw,66vh)] max-h-[min(96vw,66vh)] aspect-square mx-auto shrink-0 select-none touch-none flex items-center justify-center my-auto cursor-grab active:cursor-grabbing rounded-full"
+        className="relative w-[340px] sm:w-[380px] md:w-[440px] lg:w-[470px] xl:w-[490px] h-[340px] sm:h-[380px] md:h-[440px] lg:h-[470px] xl:h-[490px] max-w-[min(96vw,66vh)] max-h-[min(96vw,66vh)] aspect-square mx-auto shrink-0 select-none touch-none flex items-center justify-center my-auto rounded-full cursor-grab active:cursor-grabbing"
         style={{
           background: 'radial-gradient(circle at 50% 30%, #ffffff 0%, #faf6f0 55%, #f5eee3 85%, #ede2d3 100%)',
           boxShadow: '0 16px 42px -10px rgba(245, 158, 11, 0.3), inset 0 2px 10px rgba(255, 255, 255, 0.95), inset 0 -6px 14px rgba(217, 119, 6, 0.12)'
         }}
       >
-        {/* Luminous Ambient Halo Bezel Ring & 5 Curved Sector Buttons */}
+        {/* Luminous Ambient Halo Bezel Ring, Dedicated Outer Orbit Ring & 6 Curved Sector Buttons */}
         <svg
-          viewBox="0 0 340 340"
+          viewBox="0 0 440 440"
           className="absolute inset-0 w-full h-full pointer-events-none"
         >
           <defs>
@@ -679,7 +854,19 @@ export default function FishSmartwatchDial({
               <feComposite in="SourceGraphic" in2="blur" operator="over" />
             </filter>
 
-            {/* Gradients for the 5 Curved Sectors matching Image 1 */}
+            {/* Dedicated Outer Orbit Ring Track Gradient */}
+            <linearGradient id="orbitTrackGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stopColor="#fffbeb" stopOpacity="0.85" />
+              <stop offset="50%" stopColor="#fef3c7" stopOpacity="0.65" />
+              <stop offset="100%" stopColor="#ffedd5" stopOpacity="0.85" />
+            </linearGradient>
+
+            {/* Gradients for the 6 Curved Sectors */}
+            <linearGradient id="gradCRM" x1="0%" y1="0%" x2="0%" y2="100%">
+              <stop offset="0%" stopColor="#fffbeb" />
+              <stop offset="100%" stopColor="#fed7aa" />
+            </linearGradient>
+
             <linearGradient id="gradWeight" x1="0%" y1="0%" x2="0%" y2="100%">
               <stop offset="0%" stopColor="#fffbeb" />
               <stop offset="100%" stopColor="#fef08a" />
@@ -711,139 +898,241 @@ export default function FishSmartwatchDial({
           </defs>
 
           {/* ========================================================
-              LUMINOUS AMBIENT HALO BEZEL RING (Rotates with drag gesture)
+              DEDICATED OUTER ORBIT RING (Outer border on outside, images on inner track)
               ======================================================== */}
+          {/* 1. Orbit Track Background (rIn=158, rOut=214) */}
+          <path
+            d={createRoundedAnnularSector(220, 220, 158, 214, 0, 359.99, 0)}
+            fill="url(#orbitTrackGradient)"
+            stroke="#fed7aa"
+            strokeWidth="1"
+          />
+
+          {/* 2. Inner boundary dashed line separating Orbit Ring from Petals */}
+          <circle
+            cx="220"
+            cy="220"
+            r="158"
+            fill="none"
+            stroke="#f59e0b"
+            strokeWidth="1.5"
+            strokeDasharray="4 4"
+            opacity="0.8"
+          />
+
+          {/* 3. Outer Glowing Border (Outerside of dedicated ring) */}
+          <circle
+            cx="220"
+            cy="220"
+            r="214"
+            fill="none"
+            stroke="url(#haloGradient)"
+            strokeWidth="5"
+            filter="url(#haloGlow)"
+            opacity="0.85"
+          />
+          <circle
+            cx="220"
+            cy="220"
+            r="214"
+            fill="none"
+            stroke="url(#haloGradient)"
+            strokeWidth="3"
+          />
+
+          {/* 4. Luxury watch bezel tick marks along the outer border */}
           <g
-            transform={`rotate(${dialRingRotation}, 170, 170)`}
+            transform={`rotate(${dialRingRotation}, 220, 220)`}
             style={{
               transition: isDraggingDialRef.current ? 'none' : 'transform 0.25s cubic-bezier(0.2, 0.8, 0.2, 1)'
             }}
           >
-            {/* Soft outer aura glow */}
-            <circle
-              cx="170"
-              cy="170"
-              r="161"
-              fill="none"
-              stroke="url(#haloGradient)"
-              strokeWidth="8"
-              filter="url(#haloGlow)"
-              opacity="0.8"
-            />
-
-            {/* Crisp luminous ring */}
-            <circle
-              cx="170"
-              cy="170"
-              r="161"
-              fill="none"
-              stroke="url(#haloGradient)"
-              strokeWidth="5"
-            />
-
-            {/* Delicate golden inner ring */}
-            <circle
-              cx="170"
-              cy="170"
-              r="154"
-              fill="none"
-              stroke="#fed7aa"
-              strokeWidth="1.5"
-              strokeDasharray="4 4"
-              opacity="0.85"
-            />
-
-            {/* Rotating bezel tick marks for authentic smartwatch dial feedback */}
-            {Array.from({ length: 36 }).map((_, i) => {
-              const a = (i * 360) / 36;
+            {Array.from({ length: 48 }).map((_, i) => {
+              const a = (i * 360) / 48;
               const rad = ((a - 90) * Math.PI) / 180;
-              const isMajor = i % 3 === 0;
-              const r1 = isMajor ? 155 : 157;
-              const r2 = 163;
+              const isMajor = i % 4 === 0;
+              const r1 = isMajor ? 208 : 211;
+              const r2 = 217;
               return (
                 <line
                   key={i}
-                  x1={170 + r1 * Math.cos(rad)}
-                  y1={170 + r1 * Math.sin(rad)}
-                  x2={170 + r2 * Math.cos(rad)}
-                  y2={170 + r2 * Math.sin(rad)}
-                  stroke={isMajor ? "#fed7aa" : "#ffffff"}
-                  strokeWidth={isMajor ? "1.8" : "0.9"}
-                  opacity={isMajor ? "0.95" : "0.6"}
+                  x1={220 + r1 * Math.cos(rad)}
+                  y1={220 + r1 * Math.sin(rad)}
+                  x2={220 + r2 * Math.cos(rad)}
+                  y2={220 + r2 * Math.sin(rad)}
+                  stroke={isMajor ? "#f59e0b" : "#fed7aa"}
+                  strokeWidth={isMajor ? "1.8" : "1"}
+                  opacity={isMajor ? "0.95" : "0.7"}
                 />
               );
             })}
           </g>
 
           {/* ========================================================
-              5 CURVED SECTOR BUTTONS (Image 2 exact match - CONSTANT & STATIC)
+              6 CURVED SECTOR BUTTONS (Middle Zone: rIn=98, rOut=152)
               ======================================================== */}
-          {/* 1. TOP SECTOR: WEIGHT STEPPER */}
+          {/* 1. TOP SECTOR (12 o'clock / 0°): CRM (Customer / Dealer / Client) */}
           <path
-            d={createRoundedAnnularSector(170, 170, 110, 158, 332, 28, 8)}
-            fill="url(#gradWeight)"
+            d={createRoundedAnnularSector(220, 220, 98, 152, 332, 28, 8)}
+            fill="url(#gradCRM)"
             stroke="#f59e0b"
             strokeWidth="2.5"
             strokeLinejoin="round"
             filter="url(#sectorShadow)"
+            className="cursor-pointer pointer-events-auto hover:opacity-95 active:opacity-90"
+            onClick={(e) => {
+              e.stopPropagation();
+              setShowCrmPicker((prev) => !prev);
+            }}
           />
 
-          {/* 2. TOP-RIGHT SECTOR: RATE */}
+          {/* 2. TOP-RIGHT SECTOR (2 o'clock / 63°): RATE (Long-press to edit) */}
           <path
-            d={createRoundedAnnularSector(170, 170, 110, 158, 40, 92, 8)}
+            d={createRoundedAnnularSector(220, 220, 98, 152, 38, 88, 8)}
             fill="url(#gradRate)"
             stroke="#fb923c"
             strokeWidth="2.5"
             strokeLinejoin="round"
             filter="url(#sectorShadow)"
+            className="cursor-pointer pointer-events-auto hover:opacity-95 active:opacity-90"
+            onMouseDown={startRateLongPress}
+            onMouseUp={cancelRateLongPress}
+            onMouseLeave={cancelRateLongPress}
+            onTouchStart={startRateLongPress}
+            onTouchEnd={cancelRateLongPress}
+            onTouchCancel={cancelRateLongPress}
+            onClick={(e) => {
+              e.stopPropagation();
+              if (!isEditingRate && showToast) {
+                showToast('Hold (long-press) to edit rate price', 'info');
+              }
+            }}
           />
 
-          {/* 3. BOTTOM-RIGHT SECTOR: TOTAL */}
+          {/* 3. BOTTOM-RIGHT SECTOR (4 o'clock / 121.5°): TOTAL (Long-press to edit total & apply discount) */}
           <path
-            d={createRoundedAnnularSector(170, 170, 110, 158, 104, 152, 8)}
+            d={createRoundedAnnularSector(220, 220, 98, 152, 98, 145, 8)}
             fill="url(#gradTotal)"
             stroke="#4ade80"
             strokeWidth="2.5"
             strokeLinejoin="round"
             filter="url(#sectorShadow)"
+            className="cursor-pointer pointer-events-auto hover:opacity-95 active:opacity-90"
+            onMouseDown={startTotalLongPress}
+            onMouseUp={cancelTotalLongPress}
+            onMouseLeave={cancelTotalLongPress}
+            onTouchStart={startTotalLongPress}
+            onTouchEnd={cancelTotalLongPress}
+            onTouchCancel={cancelTotalLongPress}
+            onClick={(e) => {
+              e.stopPropagation();
+              if (!isEditingTotal && showToast) {
+                showToast('Hold (long-press) to enter negotiated total & apply discount', 'info');
+              }
+            }}
           />
 
-          {/* 4. BOTTOM-LEFT SECTOR: CUTTING STYLE */}
+          {/* 4. BOTTOM SECTOR (6 o'clock / 180°): WEIGHT STEPPER PETAL */}
           <path
-            d={createRoundedAnnularSector(170, 170, 110, 158, 208, 256, 8)}
+            d={createRoundedAnnularSector(220, 220, 98, 152, 155, 205, 8)}
+            fill="url(#gradWeight)"
+            stroke="#f59e0b"
+            strokeWidth="2.5"
+            strokeLinejoin="round"
+            filter="url(#sectorShadow)"
+            className="cursor-pointer pointer-events-auto hover:opacity-95 active:opacity-90"
+          />
+
+          {/* 5. BOTTOM-LEFT SECTOR (8 o'clock / 238.5°): CUTTING STYLE (1-Tap Cycle) */}
+          <path
+            d={createRoundedAnnularSector(220, 220, 98, 152, 215, 262, 8)}
             fill="url(#gradCut)"
             stroke="#60a5fa"
             strokeWidth="2.5"
             strokeLinejoin="round"
             filter="url(#sectorShadow)"
             className="cursor-pointer pointer-events-auto hover:opacity-95 active:opacity-90"
-            onClick={(e) => {
-              e.stopPropagation();
-              if (!isBoxBasedMode) {
-                setShowGradeMenu(false);
-                setShowCutMenu((prev) => !prev);
-              }
-            }}
+            onClick={handleCycleCut}
           />
 
-          {/* 5. TOP-LEFT SECTOR: GRADE */}
+          {/* 6. TOP-LEFT SECTOR (10 o'clock / 297°): GRADE (1-Tap Cycle) */}
           <path
-            d={createRoundedAnnularSector(170, 170, 110, 158, 268, 320, 8)}
+            d={createRoundedAnnularSector(220, 220, 98, 152, 272, 322, 8)}
             fill="url(#gradGrade)"
             stroke="#c084fc"
             strokeWidth="2.5"
             strokeLinejoin="round"
             filter="url(#sectorShadow)"
             className="cursor-pointer pointer-events-auto hover:opacity-95 active:opacity-90"
-            onClick={(e) => {
-              e.stopPropagation();
-              if (!isBoxBasedMode) {
-                setShowCutMenu(false);
-                setShowGradeMenu((prev) => !prev);
-              }
-            }}
+            onClick={handleCycleGrade}
           />
         </svg>
+
+        {/* ========================================================
+            DEDICATED OUTER ORBIT: ALL MATCHING FISH IMAGES (Locked on Orbit, Never Drift To Center)
+            ======================================================== */}
+        {items && items.length > 0 && (
+          <div
+            className="absolute inset-0 w-full h-full pointer-events-none z-30"
+            style={{
+              transform: `rotate(${dialRingRotation}deg)`,
+              transformOrigin: '50% 50%',
+              transition: isDraggingDialRef.current ? 'none' : 'transform 0.25s cubic-bezier(0.2, 0.8, 0.2, 1)'
+            }}
+          >
+            {items.map((item, idx) => {
+              const N = items.length;
+              const baseAngle = idx * (360 / Math.max(1, N));
+              const rad = ((baseAngle - 90) * Math.PI) / 180;
+              const r = 186; // Cleanly centered inside the dedicated orbit ring (between r=158 and r=214)
+              const x = 220 + r * Math.cos(rad);
+              const y = 220 + r * Math.sin(rad);
+              const isSelected = idx === safeActiveIndex;
+
+              return (
+                <button
+                  key={item._id || idx}
+                  type="button"
+                  onPointerUp={(e) => {
+                    if (isDialLocked || isDialLockedRef.current) return;
+                    if (wasDraggingRef.current || hasMovedRef.current) return;
+                    e.stopPropagation();
+                    setActiveIndex(idx);
+                  }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (isDialLocked || isDialLockedRef.current) return;
+                    if (wasDraggingRef.current || hasMovedRef.current) return;
+                    setActiveIndex(idx);
+                  }}
+                  style={{
+                    position: 'absolute',
+                    left: `${((x / 440) * 100).toFixed(2)}%`,
+                    top: `${((y / 440) * 100).toFixed(2)}%`,
+                    transform: `translate(-50%, -50%) rotate(${-dialRingRotation}deg)`,
+                    transition: isDraggingDialRef.current ? 'none' : 'transform 0.25s cubic-bezier(0.2, 0.8, 0.2, 1)',
+                    pointerEvents: 'auto'
+                  }}
+                  className={`overflow-hidden flex items-center justify-center rounded-full ${
+                    isDialLocked ? 'cursor-not-allowed opacity-90' : 'cursor-pointer'
+                  } ${
+                    isSelected
+                      ? 'w-12 h-12 sm:w-13 sm:h-13 md:w-14 md:h-14 bg-white rounded-full ring-2 ring-amber-500 border-2 border-amber-600 shadow-xl scale-110 z-40'
+                      : 'w-9 h-9 sm:w-10 sm:h-10 md:w-11 md:h-11 bg-white/95 rounded-full border border-amber-300 shadow-xs hover:scale-120 hover:border-amber-500 hover:shadow-md z-30'
+                  }`}
+                  title={isDialLocked ? "Dial is locked. Tap Unlock to change fish" : `${item.name} (₹${item.price || 0}/Kg)`}
+                >
+                  <img
+                    src={formatImageUrl(item.image)}
+                    alt={item.name}
+                    className="w-full h-full object-contain p-1 rounded-full pointer-events-none"
+                    loading="lazy"
+                  />
+                </button>
+              );
+            })}
+          </div>
+        )}
 
         {/* ========================================================
             NAVIGATION ARROWS (9 o'clock & 3 o'clock)
@@ -851,48 +1140,48 @@ export default function FishSmartwatchDial({
             ======================================================== */}
         <button
           type="button"
-          disabled={safeActiveIndex === 0 || isDialLocked}
+          disabled={safeActiveIndex === 0 || isDialLocked || isDialLockedRef.current}
           onClick={(e) => {
             e.stopPropagation();
-            if (isDialLocked) return;
+            if (isDialLocked || isDialLockedRef.current) return;
             setActiveIndex(Math.max(0, safeActiveIndex - 1));
             setDialRingRotation((prev) => prev - ROTATION_STEP_DEG);
           }}
           style={{
             position: 'absolute',
-            left: '19%',
+            left: '27%',
             top: '50%',
             transform: 'translate(-50%, -50%)',
             zIndex: 35
           }}
-          className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-white shadow-md border border-slate-200/90 flex items-center justify-center text-slate-800 hover:bg-amber-50 active:scale-90 transition-all ${
-            isDialLocked ? 'opacity-30 cursor-not-allowed' : 'disabled:opacity-20 cursor-pointer'
+          className={`no-dial-drag w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-white shadow-md border border-slate-200/90 flex items-center justify-center text-slate-800 hover:bg-amber-50 active:scale-90 transition-all ${
+            (isDialLocked || isDialLockedRef.current) ? 'opacity-30 cursor-not-allowed' : 'disabled:opacity-20 cursor-pointer'
           }`}
-          title={isDialLocked ? "Dial is locked" : "Previous Fish"}
+          title={(isDialLocked || isDialLockedRef.current) ? "Dial is locked" : "Previous Fish"}
         >
           <ChevronLeft size={18} className="text-slate-800 stroke-[2.5]" />
         </button>
 
         <button
           type="button"
-          disabled={safeActiveIndex >= items.length - 1 || isDialLocked}
+          disabled={safeActiveIndex >= items.length - 1 || isDialLocked || isDialLockedRef.current}
           onClick={(e) => {
             e.stopPropagation();
-            if (isDialLocked) return;
+            if (isDialLocked || isDialLockedRef.current) return;
             setActiveIndex(Math.min(items.length - 1, safeActiveIndex + 1));
             setDialRingRotation((prev) => prev + ROTATION_STEP_DEG);
           }}
           style={{
             position: 'absolute',
-            left: '81%',
+            left: '73%',
             top: '50%',
             transform: 'translate(-50%, -50%)',
             zIndex: 35
           }}
-          className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-white shadow-md border border-slate-200/90 flex items-center justify-center text-slate-800 hover:bg-amber-50 active:scale-90 transition-all ${
-            isDialLocked ? 'opacity-30 cursor-not-allowed' : 'disabled:opacity-20 cursor-pointer'
+          className={`no-dial-drag w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-white shadow-md border border-slate-200/90 flex items-center justify-center text-slate-800 hover:bg-amber-50 active:scale-90 transition-all ${
+            (isDialLocked || isDialLockedRef.current) ? 'opacity-30 cursor-not-allowed' : 'disabled:opacity-20 cursor-pointer'
           }`}
-          title={isDialLocked ? "Dial is locked" : "Next Fish"}
+          title={(isDialLocked || isDialLockedRef.current) ? "Dial is locked" : "Next Fish"}
         >
           <ChevronRight size={18} className="text-slate-800 stroke-[2.5]" />
         </button>
@@ -905,9 +1194,9 @@ export default function FishSmartwatchDial({
           onTouchStart={handleCenterTouchStart}
           onTouchEnd={handleCenterTouchEnd}
           onClick={handleCenterClick}
-          className="relative w-[64%] h-[64%] rounded-full border-[3.5px] border-[#fdba74] shadow-xl overflow-hidden z-20 select-none cursor-pointer active:scale-95 transition-transform bg-white flex items-center justify-center"
+          className="no-dial-drag relative w-[44%] h-[44%] rounded-full border-[3px] border-[#fdba74] shadow-lg overflow-hidden z-20 select-none cursor-pointer active:scale-95 transition-transform bg-white flex items-center justify-center"
           style={{
-            boxShadow: '0 8px 24px -2px rgba(245, 158, 11, 0.22), inset 0 2px 6px rgba(255, 255, 255, 0.95)'
+            boxShadow: '0 6px 20px -2px rgba(245, 158, 11, 0.22), inset 0 2px 6px rgba(255, 255, 255, 0.95)'
           }}
         >
           {/* Fish Image fits full circle preserving entire fish without cropping */}
@@ -915,7 +1204,7 @@ export default function FishSmartwatchDial({
             <img
               src={formatImageUrl(currentItem.image)}
               alt={currentItem.name}
-              className="absolute inset-0 w-full h-full object-contain object-center p-3 sm:p-4 pointer-events-none transition-transform duration-300"
+              className="absolute inset-0 w-full h-full object-contain object-center p-2 sm:p-2.5 pointer-events-none transition-transform duration-300"
             />
           ) : (
             <div className="absolute inset-0 w-full h-full bg-gradient-to-b from-sky-50 to-amber-50 flex items-center justify-center">
@@ -924,8 +1213,8 @@ export default function FishSmartwatchDial({
           )}
 
           {/* Fish Name Overlay: Centered clear-corridor badge (never overlaps petals or crops) */}
-          <div className="absolute bottom-2 sm:bottom-3 left-1/2 -translate-x-1/2 z-10 w-[84%] max-w-[130px] sm:max-w-[145px] flex flex-col items-center justify-center text-center pointer-events-none">
-            <div className="bg-white/94 backdrop-blur-xs px-2 sm:px-2.5 py-0.5 sm:py-1 rounded-xl shadow-xs border border-amber-200/80 max-w-full">
+          <div className="absolute bottom-2 sm:bottom-2.5 left-1/2 -translate-x-1/2 z-10 w-[88%] max-w-[125px] sm:max-w-[140px] flex flex-col items-center justify-center text-center pointer-events-none">
+            <div className="bg-white/94 backdrop-blur-xs px-2 py-0.5 rounded-xl shadow-xs border border-amber-200/80 max-w-full">
               <h3 className="text-[10px] sm:text-[11px] font-black text-slate-900 leading-tight text-center whitespace-normal break-words line-clamp-2">
                 {(language !== 'en' && currentItem.nameTranslations?.[language]) || currentItem.name}
               </h3>
@@ -934,36 +1223,166 @@ export default function FishSmartwatchDial({
         </div>
 
         {/* ========================================================
-            5 CURVED SECTOR BUTTON OVERLAYS (Image 2 exact match)
+            6 CURVED SECTOR BUTTON OVERLAYS (Symmetrically positioned)
             ======================================================== */}
 
-        {/* 1. TOP CURVED BUTTON (12 o'clock / 0°): WEIGHT STEPPER OR BOX COUNT */}
+        {/* 1. TOP CURVED BUTTON (12 o'clock / 0°): CRM PETAL */}
         <div
           style={getCurvedSectorCenterStyle(0)}
-          className="pointer-events-auto select-none flex flex-col items-center justify-center text-center"
+          onClick={(e) => {
+            e.stopPropagation();
+            setShowCrmPicker((prev) => !prev);
+          }}
+          className="no-dial-drag relative pointer-events-auto select-none flex flex-col items-center justify-center text-center cursor-pointer active:scale-95 transition-transform max-w-[88px] overflow-visible"
+          title="Customer CRM (Tap to select or change)"
         >
+          {/* Direct Deselect / Clear Button on Petal */}
+          {Boolean(customerName || customerPhone) && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                if (handleClearCustomer) handleClearCustomer();
+                if (setCustomerName) setCustomerName('');
+                if (setCustomerPhone) setCustomerPhone('');
+                if (onCustomerSelect) onCustomerSelect(null);
+                if (showToast) showToast('Customer cleared / deselected', 'info');
+              }}
+              className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-rose-600 hover:bg-rose-700 active:scale-90 text-white flex items-center justify-center shadow-md cursor-pointer z-40 transition-transform border border-white"
+              title="Clear / Deselect Customer"
+            >
+              <X size={10} className="stroke-[3]" />
+            </button>
+          )}
+
           <div className="flex items-center gap-1 mb-0.5">
-            {isDialLocked ? (
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setIsDialLocked(false);
-                }}
-                className="inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded-full text-[8.5px] font-black bg-amber-600 text-white shadow-2xs hover:bg-amber-700 active:scale-95 transition-all cursor-pointer"
-                title="Dial is locked. Tap to unlock"
-              >
-                <Lock size={9} className="stroke-[3]" />
-                <span>Locked</span>
-              </button>
+            {customerPhoto ? (
+              <img
+                src={customerPhoto}
+                alt={customerName || 'Customer'}
+                className="w-4 h-4 rounded-full object-cover border border-amber-500 shrink-0"
+              />
+            ) : fishOrderMode === 'bulk' ? (
+              <Building2 size={13} className="text-amber-800 stroke-[2.5]" />
+            ) : fishOrderMode === 'export' ? (
+              <Globe size={13} className="text-indigo-800 stroke-[2.5]" />
             ) : (
-              <ShoppingBag size={14} className="text-[#92400e] stroke-[2.5]" />
+              <User size={13} className="text-amber-800 stroke-[2.5]" />
             )}
           </div>
+          <span className="text-[8px] sm:text-[9px] font-bold text-amber-900 leading-none whitespace-nowrap">
+            {fishOrderMode === 'bulk' ? 'Dealer' : fishOrderMode === 'export' ? 'Client' : 'Customer'}
+          </span>
+          <span className="text-[9.5px] sm:text-[10.5px] font-black text-slate-900 font-mono leading-tight mt-0.5 truncate max-w-[76px]">
+            {customerName || customerPhone ? (
+              <span>{customerName || customerPhone}</span>
+            ) : (
+              <span className="text-amber-700/80 text-[8.5px] font-bold underline decoration-dotted">Select</span>
+            )}
+          </span>
+        </div>
+
+        {/* 2. TOP-LEFT CURVED BUTTON (10 o'clock / 297°): GRADE BUTTON (1-Tap Cycle, No Popups) */}
+        <div
+          style={getCurvedSectorCenterStyle(297)}
+          className="no-dial-drag pointer-events-auto select-none flex flex-col items-center justify-center text-center cursor-pointer active:scale-95 transition-transform max-w-[62px] overflow-hidden"
+          onClick={handleCycleGrade}
+          title="Tap to cycle Grade (Small -> Medium -> Big)"
+        >
+          <Award size={14} className="text-[#7e22ce] stroke-[2.5] mb-0.5" />
+          <span className="text-[8.5px] sm:text-[9.5px] font-bold text-slate-700 leading-none">Grade</span>
+          <span className="text-[10px] sm:text-xs font-black text-slate-900 leading-tight capitalize mt-0.5 truncate max-w-[54px]">
+            {activeGrade}
+          </span>
+        </div>
+
+        {/* 3. TOP-RIGHT CURVED SECTOR (2 o'clock / 63°): RATE DISPLAY (Long-press to Edit) */}
+        <div
+          style={getCurvedSectorCenterStyle(63)}
+          onMouseDown={startRateLongPress}
+          onMouseUp={cancelRateLongPress}
+          onMouseLeave={cancelRateLongPress}
+          onTouchStart={startRateLongPress}
+          onTouchEnd={cancelRateLongPress}
+          onTouchCancel={cancelRateLongPress}
+          onClick={(e) => {
+            e.stopPropagation();
+            if (!isEditingRate && showToast) {
+              showToast('Hold (long press) to edit rate price', 'info');
+            }
+          }}
+          className="no-dial-drag pointer-events-auto select-none flex flex-col items-center justify-center text-center max-w-[66px] overflow-hidden px-0.5 cursor-pointer active:scale-95 transition-transform"
+          title="Long-press to edit rate"
+        >
+          <Tag size={13} className="text-[#c2410c] stroke-[2.5] mb-0.5 shrink-0" />
+          <span className="text-[8px] sm:text-[9px] font-bold text-[#9a3412] leading-none whitespace-nowrap">
+            Rate {customRate !== null && <span className="text-emerald-700 font-black">*</span>}
+          </span>
+          <span className="text-[9.5px] sm:text-[10.5px] font-black text-[#c2410c] font-mono leading-tight mt-0.5 whitespace-nowrap tracking-tight">
+            ₹{currentRateAmount}/Kg
+          </span>
+        </div>
+
+        {/* 4. BOTTOM-LEFT CURVED BUTTON (8 o'clock / 238.5°): CUTTING STYLE BUTTON (1-Tap Cycle, No Popups) */}
+        <div
+          style={getCurvedSectorCenterStyle(238.5)}
+          className="no-dial-drag pointer-events-auto select-none flex flex-col items-center justify-center text-center cursor-pointer active:scale-95 transition-transform max-w-[64px] overflow-hidden"
+          onClick={handleCycleCut}
+          title="Tap to cycle Cutting Style"
+        >
+          <Scissors size={14} className="text-[#0369a1] stroke-[2.5] mb-0.5" />
+          <span className="text-[8.5px] sm:text-[9.5px] font-bold text-slate-700 leading-none">Cut</span>
+          <span className="text-[10px] sm:text-xs font-black text-slate-900 leading-tight mt-0.5 truncate max-w-[56px]">
+            {selectedCutType}
+          </span>
+        </div>
+
+        {/* 5. BOTTOM-RIGHT CURVED SECTOR (4 o'clock / 121.5°): LIVE TOTAL DISPLAY (Long-press to Edit & Auto-Discount) */}
+        <div
+          style={getCurvedSectorCenterStyle(121.5)}
+          onMouseDown={startTotalLongPress}
+          onMouseUp={cancelTotalLongPress}
+          onMouseLeave={cancelTotalLongPress}
+          onTouchStart={startTotalLongPress}
+          onTouchEnd={cancelTotalLongPress}
+          onTouchCancel={cancelTotalLongPress}
+          onClick={(e) => {
+            e.stopPropagation();
+            if (!isEditingTotal && showToast) {
+              showToast('Hold (long press) to enter negotiated total & apply discount', 'info');
+            }
+          }}
+          className="no-dial-drag pointer-events-auto select-none flex flex-col items-center justify-center text-center max-w-[66px] overflow-hidden px-0.5 cursor-pointer active:scale-95 transition-transform"
+          title="Long-press to enter negotiated total"
+        >
+          <Layers size={13} className="text-[#15803d] stroke-[2.5] mb-0.5 shrink-0" />
+          <span className="text-[8px] sm:text-[9px] font-bold text-[#166534] leading-none whitespace-nowrap">
+            Total {calculatedDiscount > 0 && <span className="text-rose-600 font-black">(-₹{calculatedDiscount.toFixed(0)})</span>}
+          </span>
+          <span className={`font-black text-[#15803d] font-mono leading-tight mt-0.5 whitespace-nowrap tracking-tight ${
+            currentTotalAmount >= 10000 ? 'text-[9px] sm:text-[9.5px]' : 'text-[10px] sm:text-[10.5px]'
+          }`}>
+            ₹{currentTotalAmount >= 1000 ? Math.round(currentTotalAmount) : currentTotalAmount.toFixed(2)}
+          </span>
+        </div>
+
+        {/* 6. BOTTOM CURVED SECTOR (6 o'clock / 180°): WEIGHT STEPPER PETAL */}
+        <div
+          style={getCurvedSectorCenterStyle(180)}
+          className="no-dial-drag pointer-events-auto select-none flex flex-col items-center justify-center text-center max-w-[110px] sm:max-w-[125px] overflow-hidden px-0.5"
+          title="Weight Stepper (Tap - / + or enter weight)"
+        >
+          <div className="flex items-center gap-1 mb-0.5">
+            <ShoppingBag size={11} className="text-[#92400e] stroke-[2.5]" />
+            <span className="text-[7.5px] sm:text-[8.5px] font-bold text-[#92400e] leading-none whitespace-nowrap">
+              {isBoxBasedMode && boxFishMode === 'single' ? 'Box Wt' : 'Weight'}
+            </span>
+          </div>
+
           {(!isBoxBasedMode || boxFishMode === 'mixed') ? (
             <div
               onClick={(e) => e.stopPropagation()}
-              className="flex items-center gap-1 shrink-0"
+              className="flex items-center gap-0.5 sm:gap-1 shrink-0"
             >
               <button
                 type="button"
@@ -982,8 +1401,20 @@ export default function FishSmartwatchDial({
                   value={weightKg === '0' || weightKg === 0 ? '' : weightKg}
                   onFocus={(e) => {
                     e.target.select();
-                    setIsDialLocked(true);
+                    setDialLock(true);
                     setWeightKg('');
+                  }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setDialLock(true);
+                  }}
+                  onPointerDown={(e) => {
+                    e.stopPropagation();
+                    setDialLock(true);
+                  }}
+                  onTouchStart={(e) => {
+                    e.stopPropagation();
+                    setDialLock(true);
                   }}
                   onBlur={(e) => {
                     const parsed = parseFloat(e.target.value);
@@ -991,12 +1422,15 @@ export default function FishSmartwatchDial({
                       setWeightKg('1.000');
                     }
                   }}
-                  onChange={(e) => setWeightKg(e.target.value)}
+                  onChange={(e) => {
+                    setDialLock(true);
+                    setWeightKg(e.target.value);
+                  }}
                   placeholder=""
                   style={{ backgroundColor: 'transparent', boxShadow: 'none' }}
-                  className="text-xs sm:text-sm font-black text-slate-900 font-mono text-center bg-transparent border-0 outline-none shadow-none focus:outline-none focus:ring-0 w-11 sm:w-12 leading-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                  className="text-xs sm:text-sm font-black text-slate-900 font-mono text-center bg-transparent border-0 outline-none shadow-none focus:outline-none focus:ring-0 w-11 sm:w-13 leading-none p-0 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                 />
-                <span className="text-[10px] font-bold text-slate-700">Kg</span>
+                <span className="text-[9px] sm:text-[10px] font-black text-slate-800">Kg</span>
               </div>
 
               <button
@@ -1011,13 +1445,12 @@ export default function FishSmartwatchDial({
           ) : (
             <div
               onClick={(e) => e.stopPropagation()}
-              className="flex items-center gap-1 shrink-0"
+              className="flex items-center gap-0.5 sm:gap-1 shrink-0"
             >
               <button
                 type="button"
                 onClick={() => setBoxWeightKg((prev) => String(Math.max(1, (parseFloat(prev) || 1) - 1)))}
                 className="w-5 h-5 sm:w-6 sm:h-6 rounded-full bg-white/95 hover:bg-white active:scale-90 text-amber-950 flex items-center justify-center font-black cursor-pointer border border-amber-300 shadow-2xs transition-transform"
-                title="Decrease box weight (-1 Kg)"
               >
                 <Minus size={11} className="stroke-[3]" />
               </button>
@@ -1030,8 +1463,20 @@ export default function FishSmartwatchDial({
                   value={boxWeightKg === '0' || boxWeightKg === 0 ? '' : boxWeightKg}
                   onFocus={(e) => {
                     e.target.select();
-                    setIsDialLocked(true);
+                    setDialLock(true);
                     setBoxWeightKg('');
+                  }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setDialLock(true);
+                  }}
+                  onPointerDown={(e) => {
+                    e.stopPropagation();
+                    setDialLock(true);
+                  }}
+                  onTouchStart={(e) => {
+                    e.stopPropagation();
+                    setDialLock(true);
                   }}
                   onBlur={(e) => {
                     const parsed = parseFloat(e.target.value);
@@ -1039,19 +1484,19 @@ export default function FishSmartwatchDial({
                       setBoxWeightKg('20');
                     }
                   }}
-                  onChange={(e) => setBoxWeightKg(e.target.value)}
-                  placeholder=""
-                  style={{ backgroundColor: 'transparent', boxShadow: 'none' }}
-                  className="text-xs sm:text-sm font-black text-slate-900 font-mono text-center bg-transparent border-0 outline-none shadow-none focus:outline-none focus:ring-0 w-10 sm:w-11 leading-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                  onChange={(e) => {
+                    setDialLock(true);
+                    setBoxWeightKg(e.target.value);
+                  }}
+                  className="text-xs sm:text-sm font-black text-slate-900 font-mono text-center bg-transparent border-0 outline-none w-10 sm:w-12 leading-none p-0"
                 />
-                <span className="text-[10px] font-bold text-slate-700">Kg/Box</span>
+                <span className="text-[9px] sm:text-[10px] font-black text-slate-800">Kg</span>
               </div>
 
               <button
                 type="button"
                 onClick={() => setBoxWeightKg((prev) => String((parseFloat(prev) || 1) + 1))}
                 className="w-5 h-5 sm:w-6 sm:h-6 rounded-full bg-white/95 hover:bg-white active:scale-90 text-amber-950 flex items-center justify-center font-black cursor-pointer border border-amber-300 shadow-2xs transition-transform"
-                title="Increase box weight (+1 Kg)"
               >
                 <Plus size={11} className="stroke-[3]" />
               </button>
@@ -1059,171 +1504,352 @@ export default function FishSmartwatchDial({
           )}
         </div>
 
-        {/* 2. TOP-LEFT CURVED BUTTON (10 o'clock / 294°): GRADE BUTTON (No dropdown arrow) */}
-        <div
-          style={getCurvedSectorCenterStyle(294)}
-          className="pointer-events-auto select-none flex flex-col items-center justify-center text-center cursor-pointer active:scale-95 transition-transform max-w-[62px] overflow-hidden"
-          onClick={(e) => {
-            e.stopPropagation();
-            setShowCutMenu(false);
-            setShowGradeMenu((prev) => !prev);
-          }}
-          title="Change Grade"
-        >
-          <Award size={14} className="text-[#7e22ce] stroke-[2.5] mb-0.5" />
-          <span className="text-[8.5px] sm:text-[9.5px] font-bold text-slate-700 leading-none">Grade</span>
-          <span className="text-[10px] sm:text-xs font-black text-slate-900 leading-tight capitalize mt-0.5 truncate max-w-[54px]">
-            {activeGrade}
-          </span>
-        </div>
-
-        {/* 3. TOP-RIGHT CURVED SECTOR (2 o'clock / 66°): RATE DISPLAY (Static Petal) */}
-        <div
-          style={getCurvedSectorCenterStyle(66)}
-          className="pointer-events-none select-none flex flex-col items-center justify-center text-center max-w-[60px] overflow-hidden px-0.5"
-        >
-          <Tag size={13} className="text-[#c2410c] stroke-[2.5] mb-0.5 shrink-0" />
-          <span className="text-[8px] sm:text-[9px] font-bold text-[#9a3412] leading-none whitespace-nowrap">Rate</span>
-          <span className="text-[9.5px] sm:text-[10.5px] font-black text-[#c2410c] font-mono leading-tight mt-0.5 whitespace-nowrap tracking-tight">
-            ₹{currentRateAmount}/Kg
-          </span>
-        </div>
-
-        {/* 4. BOTTOM-LEFT CURVED BUTTON (8 o'clock / 232°): CUTTING STYLE BUTTON (No dropdown arrow) */}
-        <div
-          style={getCurvedSectorCenterStyle(232)}
-          className="pointer-events-auto select-none flex flex-col items-center justify-center text-center cursor-pointer active:scale-95 transition-transform max-w-[64px] overflow-hidden"
-          onClick={(e) => {
-            e.stopPropagation();
-            setShowGradeMenu(false);
-            setShowCutMenu((prev) => !prev);
-          }}
-          title="Change Cutting Style"
-        >
-          <Scissors size={14} className="text-[#0369a1] stroke-[2.5] mb-0.5" />
-          <span className="text-[8.5px] sm:text-[9.5px] font-bold text-slate-700 leading-none">Cut</span>
-          <span className="text-[10px] sm:text-xs font-black text-slate-900 leading-tight mt-0.5 truncate max-w-[56px]">
-            {selectedCutType}
-          </span>
-        </div>
-
-        {/* 5. BOTTOM-RIGHT CURVED SECTOR (4 o'clock / 128°): LIVE TOTAL DISPLAY (Static Petal) */}
-        <div
-          style={getCurvedSectorCenterStyle(128)}
-          className="pointer-events-none select-none flex flex-col items-center justify-center text-center max-w-[62px] overflow-hidden px-0.5"
-        >
-          <Layers size={13} className="text-[#15803d] stroke-[2.5] mb-0.5 shrink-0" />
-          <span className="text-[8px] sm:text-[9px] font-bold text-[#166534] leading-none whitespace-nowrap">Total</span>
-          <span className={`font-black text-[#15803d] font-mono leading-tight mt-0.5 whitespace-nowrap tracking-tight ${
-            currentTotalAmount >= 10000 ? 'text-[9px] sm:text-[9.5px]' : 'text-[10px] sm:text-[10.5px]'
-          }`}>
-            ₹{currentTotalAmount >= 1000 ? Math.round(currentTotalAmount) : currentTotalAmount.toFixed(2)}
-          </span>
-        </div>
-
-        {/* GRADE PICKER POPOVER */}
-        {showGradeMenu && (
+        {/* ========================================================
+            CRM CUSTOMER / DEALER SELECTION POPOVER
+            ======================================================== */}
+        {showCrmPicker && (
           <div
             onClick={(e) => e.stopPropagation()}
-            className="absolute z-50 top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-white/98 backdrop-blur-md border-2 border-amber-400 rounded-2xl p-2.5 shadow-2xl w-56 animate-in fade-in zoom-in-95 duration-150"
+            className="no-dial-drag absolute z-50 top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-white/98 backdrop-blur-md border-2 border-amber-400 rounded-2xl p-3 shadow-2xl w-72 sm:w-80 max-w-[94vw] animate-in fade-in zoom-in-95 duration-150"
           >
-            <div className="flex justify-between items-center pb-1.5 mb-1.5 border-b border-amber-100">
-              <span className="text-xs font-black text-slate-800">Select Size Grade</span>
+            <div className="flex justify-between items-center pb-2 mb-2 border-b border-amber-100">
+              <div className="flex items-center gap-1.5">
+                <User size={15} className="text-amber-700" />
+                <span className="text-xs font-black text-slate-800">
+                  {fishOrderMode === 'bulk' ? 'Select Dealer' : fishOrderMode === 'export' ? 'Select Client' : 'Select Customer'}
+                </span>
+              </div>
               <button
-                onClick={() => setShowGradeMenu(false)}
+                type="button"
+                onClick={() => setShowCrmPicker(false)}
                 className="w-5 h-5 rounded-full bg-slate-100 text-slate-500 hover:text-slate-900 flex items-center justify-center text-xs font-bold cursor-pointer"
               >
                 ×
               </button>
             </div>
-            <div className="space-y-1">
-              {[
-                { key: 'small', label: 'Small', range: `0-${smallMax}k`, rate: currentItem?.sizeGrades?.small?.price || activeRate, enabled: currentItem?.sizeGrades?.small?.enabled !== false },
-                { key: 'medium', label: 'Medium', range: `${smallMax}-${mediumMax}k`, rate: currentItem?.sizeGrades?.medium?.price || activeRate, enabled: currentItem?.sizeGrades?.medium?.enabled !== false },
-                { key: 'big', label: 'Big', range: `${mediumMax}+k`, rate: currentItem?.sizeGrades?.big?.price || activeRate, enabled: currentItem?.sizeGrades?.big?.enabled !== false }
-              ].filter(g => g.enabled).map((g) => {
-                const isSelected = activeGrade === g.key;
-                return (
-                  <button
-                    key={g.key}
-                    type="button"
-                    onClick={() => {
-                      setGradeOverride(g.key);
-                      const avgKg = getGradeAverageKg ? getGradeAverageKg(currentItem, g.key) : (g.key === 'medium' ? 3 : g.key === 'big' ? 6 : 1);
-                      setWeightKg((avgKg).toFixed(3));
-                      setShowGradeMenu(false);
-                    }}
-                    className={`w-full py-1.5 px-2 rounded-xl text-left flex items-center justify-between text-xs transition-colors cursor-pointer ${
-                      isSelected ? 'bg-amber-600 text-white font-black' : 'hover:bg-amber-50 text-slate-700 font-bold'
-                    }`}
-                  >
-                    <div className="flex items-center gap-1.5">
-                      {isSelected && <Check size={13} className="shrink-0" />}
-                      <span>{g.label} ({g.range})</span>
+
+            {/* Currently Selected Customer Banner with Clear / Deselect Button */}
+            {(customerName || customerPhone) && (
+              <div className="mb-2 p-2 bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-300 rounded-xl flex items-center justify-between gap-2 shadow-2xs">
+                <div className="flex items-center gap-2 min-w-0">
+                  {customerPhoto ? (
+                    <img
+                      src={customerPhoto}
+                      alt={customerName || 'Customer'}
+                      className="w-10 h-10 rounded-full object-cover border-2 border-amber-500 shrink-0 shadow-xs"
+                    />
+                  ) : (
+                    <div className="w-10 h-10 rounded-full bg-gradient-to-br from-amber-500 to-orange-600 text-white font-black text-sm flex items-center justify-center shrink-0 shadow-xs">
+                      {(customerName || customerPhone || 'C').charAt(0).toUpperCase()}
                     </div>
-                    <span className={`font-mono ${isSelected ? 'text-white' : 'text-emerald-700 font-black'}`}>₹{g.rate}/Kg</span>
-                  </button>
-                );
-              })}
+                  )}
+                  <div className="min-w-0 truncate">
+                    <div className="text-[9px] uppercase font-bold tracking-wider text-amber-700">Active Customer</div>
+                    <div className="text-xs font-black text-slate-900 truncate">{customerName || 'Customer'}</div>
+                    {customerPhone && <div className="text-[10px] font-mono text-slate-600 truncate">{customerPhone}</div>}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (handleClearCustomer) handleClearCustomer();
+                    if (setCustomerName) setCustomerName('');
+                    if (setCustomerPhone) setCustomerPhone('');
+                    if (onCustomerSelect) onCustomerSelect(null);
+                    setShowCrmPicker(false);
+                    if (showToast) showToast('Customer cleared / deselected', 'info');
+                  }}
+                  className="px-2 py-1 text-[11px] font-black text-rose-600 hover:text-white bg-rose-50 hover:bg-rose-600 border border-rose-200 hover:border-rose-600 rounded-lg cursor-pointer transition-all shrink-0 flex items-center gap-1 shadow-2xs"
+                  title="Deselect Customer"
+                >
+                  <X size={11} className="stroke-[3]" />
+                  <span>Clear</span>
+                </button>
+              </div>
+            )}
+
+            {/* Search Input */}
+            <div className="relative mb-2">
+              <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+              <input
+                type="text"
+                placeholder="Search name or phone..."
+                value={crmSearch}
+                onChange={(e) => setCrmSearch(e.target.value)}
+                className="w-full pl-7 pr-2 py-1.5 bg-amber-50/70 border border-amber-200 rounded-lg text-xs font-bold text-slate-800 focus:outline-none focus:border-amber-500"
+              />
+            </div>
+
+            {/* Predefined Customers List with BIG Images */}
+            <div className="space-y-1.5 max-h-48 overflow-y-auto no-scrollbar">
+              {(predefinedCustomers || [])
+                .filter((c) => {
+                  if (!c) return false;
+                  if (!crmSearch) return true;
+                  const s = crmSearch.toLowerCase();
+                  return (
+                    (c.name && c.name.toLowerCase().includes(s)) ||
+                    (c.phone && c.phone.includes(s)) ||
+                    (c.businessName && c.businessName.toLowerCase().includes(s))
+                  );
+                })
+                .slice(0, 10)
+                .map((c, i) => {
+                  const photoUrl = c.photo || c.image || c.avatar;
+                  const isCurSelected = (customerPhone && c.phone === customerPhone) || (customerName && c.name === customerName);
+                  return (
+                    <button
+                      key={c._id || i}
+                      type="button"
+                      onClick={() => {
+                        if (isCurSelected) {
+                          if (handleClearCustomer) handleClearCustomer();
+                          if (setCustomerName) setCustomerName('');
+                          if (setCustomerPhone) setCustomerPhone('');
+                          if (onCustomerSelect) onCustomerSelect(null);
+                          if (showToast) showToast('Customer deselected', 'info');
+                        } else {
+                          if (handleSelectCustomer) handleSelectCustomer(c);
+                          else if (onCustomerSelect) onCustomerSelect(c);
+                          if (showToast) showToast(`Selected ${c.name || 'Customer'}`, 'success');
+                        }
+                        setShowCrmPicker(false);
+                      }}
+                      className={`w-full p-1.5 rounded-xl text-left flex items-center justify-between gap-2.5 transition-all cursor-pointer ${
+                        isCurSelected
+                          ? 'bg-amber-600 text-white shadow-md ring-2 ring-amber-400 font-bold'
+                          : 'hover:bg-amber-50/90 text-slate-800 border border-slate-100 hover:border-amber-200 bg-white'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        {/* Big Customer Photo / Avatar */}
+                        {photoUrl ? (
+                          <img
+                            src={photoUrl}
+                            alt={c.name || 'Customer'}
+                            className={`w-11 h-11 sm:w-12 sm:h-12 rounded-full object-cover shrink-0 shadow-sm ${
+                              isCurSelected ? 'border-2 border-white ring-2 ring-amber-300' : 'border-2 border-amber-300'
+                            }`}
+                          />
+                        ) : (
+                          <div
+                            className={`w-11 h-11 sm:w-12 sm:h-12 rounded-full font-black text-sm flex items-center justify-center shrink-0 shadow-sm ${
+                              isCurSelected
+                                ? 'bg-white text-amber-700'
+                                : 'bg-gradient-to-br from-amber-400 to-orange-500 text-white'
+                            }`}
+                          >
+                            {(c.name || c.phone || 'C').charAt(0).toUpperCase()}
+                          </div>
+                        )}
+
+                        <div className="min-w-0 truncate">
+                          <div className={`font-black text-xs sm:text-[13px] truncate ${isCurSelected ? 'text-white' : 'text-slate-900'}`}>
+                            {c.name || 'Unnamed'}
+                          </div>
+                          <div className={`text-[10px] sm:text-[11px] font-mono truncate mt-0.5 ${isCurSelected ? 'text-amber-100' : 'text-slate-500'}`}>
+                            {c.phone || c.businessName || ''}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="shrink-0">
+                        {isCurSelected && (
+                          <div className="w-5 h-5 rounded-full bg-white text-amber-700 flex items-center justify-center shadow-xs">
+                            <Check size={13} className="stroke-[3]" />
+                          </div>
+                        )}
+                      </div>
+                    </button>
+                  );
+                })}
+            </div>
+
+            {/* Bottom Actions: Clear Selection or Open Full Customer Modal */}
+            <div className="pt-2 mt-2 border-t border-amber-100 flex items-center justify-between gap-1">
+              {(customerName || customerPhone) && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (handleClearCustomer) handleClearCustomer();
+                    if (setCustomerName) setCustomerName('');
+                    if (setCustomerPhone) setCustomerPhone('');
+                    if (onCustomerSelect) onCustomerSelect(null);
+                    setShowCrmPicker(false);
+                    if (showToast) showToast('Customer cleared / deselected', 'info');
+                  }}
+                  className="px-2.5 py-1 text-[11px] font-black text-rose-600 hover:bg-rose-50 rounded-lg cursor-pointer transition-colors"
+                >
+                  Clear Selection
+                </button>
+              )}
+              {onOpenCustomerModal && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowCrmPicker(false);
+                    onOpenCustomerModal();
+                  }}
+                  className="ml-auto px-2.5 py-1 text-[11px] font-black bg-amber-600 hover:bg-amber-700 text-white rounded-lg cursor-pointer transition-colors shadow-2xs"
+                >
+                  + Add / Full CRM
+                </button>
+              )}
             </div>
           </div>
         )}
 
-        {/* CUTTING STYLE PICKER POPOVER */}
-        {showCutMenu && (
+        {/* ========================================================
+            INLINE RATE EDIT POPOVER (Long-press triggered)
+            ======================================================== */}
+        {isEditingRate && (
           <div
             onClick={(e) => e.stopPropagation()}
-            className="absolute z-50 top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-white/98 backdrop-blur-md border-2 border-amber-400 rounded-2xl p-2.5 shadow-2xl w-56 animate-in fade-in zoom-in-95 duration-150"
+            className="no-dial-drag absolute z-50 top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-white/98 backdrop-blur-md border-2 border-orange-400 rounded-2xl p-3 shadow-2xl w-56 animate-in fade-in zoom-in-95 duration-150"
           >
-            <div className="flex justify-between items-center pb-1.5 mb-1.5 border-b border-amber-100">
-              <span className="text-xs font-black text-slate-800">Select Cutting Style</span>
+            <div className="flex justify-between items-center pb-1.5 mb-2 border-b border-orange-100">
+              <span className="text-xs font-black text-slate-800">Edit Rate Price (₹/Kg)</span>
               <button
-                onClick={() => setShowCutMenu(false)}
+                type="button"
+                onClick={() => setIsEditingRate(false)}
                 className="w-5 h-5 rounded-full bg-slate-100 text-slate-500 hover:text-slate-900 flex items-center justify-center text-xs font-bold cursor-pointer"
               >
                 ×
               </button>
             </div>
-            <div className="space-y-1">
-              {[
-                { name: 'Whole', label: 'Whole (No Cut)' },
-                { name: 'Cleaned', label: 'Cleaned Only' },
-                { name: 'Curry Cut', label: 'Curry Cut Pieces' },
-                { name: 'Fry Cut', label: 'Fry Cut Slices' },
-                { name: 'Boneless Fillet', label: 'Boneless Fillet' }
-              ].map((c) => {
-                const isSelected = selectedCutType === c.name;
-                return (
-                  <button
-                    key={c.name}
-                    type="button"
-                    onClick={() => {
-                      setSelectedCutType(c.name);
-                      setShowCutMenu(false);
-                    }}
-                    className={`w-full py-1.5 px-2 rounded-xl text-left flex items-center justify-between text-xs transition-colors cursor-pointer ${
-                      isSelected ? 'bg-amber-800 text-white font-black' : 'hover:bg-amber-50 text-slate-700 font-bold'
-                    }`}
-                  >
-                    <div className="flex items-center gap-1.5">
-                      {isSelected && <Check size={13} className="shrink-0" />}
-                      <span>{c.label}</span>
-                    </div>
-                  </button>
-                );
-              })}
+            <div className="flex items-center gap-1.5 bg-orange-50/80 border border-orange-300 rounded-xl px-2.5 py-1 mb-2.5">
+              <span className="text-sm font-black text-orange-900 font-mono">₹</span>
+              <input
+                type="number"
+                step="any"
+                autoFocus
+                value={tempRateInput}
+                onChange={(e) => setTempRateInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') handleSaveRate();
+                  if (e.key === 'Escape') setIsEditingRate(false);
+                }}
+                className="w-full text-base font-black font-mono text-slate-900 bg-transparent border-0 outline-none focus:outline-none"
+                placeholder="Rate/Kg"
+              />
+              <span className="text-[10px] font-bold text-slate-600">/Kg</span>
+            </div>
+            <div className="flex gap-1.5">
+              <button
+                type="button"
+                onClick={() => {
+                  setCustomRate(null);
+                  setIsEditingRate(false);
+                  if (showToast) showToast('Reset to catalog rate', 'info');
+                }}
+                className="flex-1 py-1 text-[11px] font-bold text-slate-600 hover:bg-slate-100 rounded-lg cursor-pointer transition-colors"
+              >
+                Reset
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveRate}
+                className="flex-1 py-1 text-[11px] font-black bg-orange-600 hover:bg-orange-700 text-white rounded-lg cursor-pointer transition-colors"
+              >
+                Save Rate
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* ========================================================
+            INLINE NEGOTIATED TOTAL POPOVER (Long-press triggered)
+            ======================================================== */}
+        {isEditingTotal && (
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="no-dial-drag absolute z-50 top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-white/98 backdrop-blur-md border-2 border-emerald-400 rounded-2xl p-3 shadow-2xl w-60 animate-in fade-in zoom-in-95 duration-150"
+          >
+            <div className="flex justify-between items-center pb-1.5 mb-1.5 border-b border-emerald-100">
+              <span className="text-xs font-black text-slate-800">Negotiated Total Amount</span>
+              <button
+                type="button"
+                onClick={() => setIsEditingTotal(false)}
+                className="w-5 h-5 rounded-full bg-slate-100 text-slate-500 hover:text-slate-900 flex items-center justify-center text-xs font-bold cursor-pointer"
+              >
+                ×
+              </button>
+            </div>
+            <div className="text-[11px] text-slate-500 mb-1 flex justify-between">
+              <span>Standard Total:</span>
+              <span className="font-bold font-mono text-slate-700">₹{standardTotal.toFixed(2)}</span>
+            </div>
+            <div className="flex items-center gap-1.5 bg-emerald-50/80 border border-emerald-300 rounded-xl px-2.5 py-1 mb-2">
+              <span className="text-sm font-black text-emerald-900 font-mono">₹</span>
+              <input
+                type="number"
+                step="any"
+                autoFocus
+                value={tempTotalInput}
+                onChange={(e) => setTempTotalInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') handleSaveTotal();
+                  if (e.key === 'Escape') setIsEditingTotal(false);
+                }}
+                className="w-full text-base font-black font-mono text-slate-900 bg-transparent border-0 outline-none focus:outline-none"
+                placeholder="Total ₹"
+              />
+            </div>
+            {/* Live Discount Difference Preview */}
+            {(() => {
+              const entered = parseFloat(tempTotalInput);
+              const previewDiff = !isNaN(entered) && standardTotal > entered ? standardTotal - entered : 0;
+              return previewDiff > 0 ? (
+                <div className="text-[11px] font-bold text-emerald-800 bg-emerald-100/90 rounded-lg px-2 py-0.5 mb-2 text-center">
+                  Auto-Discount: -₹{previewDiff.toFixed(2)}
+                </div>
+              ) : null;
+            })()}
+            <div className="flex gap-1.5">
+              <button
+                type="button"
+                onClick={() => {
+                  setCustomTotal(null);
+                  setIsEditingTotal(false);
+                  if (showToast) showToast('Reset to standard calculated total', 'info');
+                }}
+                className="flex-1 py-1 text-[11px] font-bold text-slate-600 hover:bg-slate-100 rounded-lg cursor-pointer transition-colors"
+              >
+                Reset
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveTotal}
+                className="flex-1 py-1 text-[11px] font-black bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg cursor-pointer transition-colors"
+              >
+                Apply Total
+              </button>
             </div>
           </div>
         )}
       </div>
 
       {/* ========================================================
-          2. QUICK WEIGHT PRESETS & TARE ROWS (Fully Responsive Across All Screens)
+          2. QUICK WEIGHT PRESETS & TARE ROWS (Below the Dial)
           ======================================================== */}
       {!isBoxBasedMode ? (
         <div className="w-full max-w-sm sm:max-w-md md:max-w-lg mx-auto flex flex-col items-center justify-center gap-1 sm:gap-1.5 px-1 py-0.5 shrink-0 my-1">
-          {/* Row 1: Common Weight Presets & Fractions */}
+          {/* Row 1: Dial Lock & Common Weight Presets */}
           <div className="flex items-center justify-center gap-1 sm:gap-1.5 flex-wrap">
+            <button
+              type="button"
+              onClick={() => setDialLock(!isDialLocked)}
+              className={`px-2 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1 ${
+                isDialLocked ? 'bg-amber-600 text-white shadow-2xs' : 'bg-white/95 text-slate-600 hover:bg-slate-100 border border-slate-200/90 shadow-2xs'
+              }`}
+              title={isDialLocked ? "Dial is locked. Tap to unlock" : "Tap to lock dial"}
+            >
+              {isDialLocked ? <Lock size={12} className="stroke-[3]" /> : <Unlock size={12} />}
+              <span className="text-[10px] sm:text-[11px] font-black">{isDialLocked ? 'Locked' : 'Lock'}</span>
+            </button>
+
+            <div className="h-4 w-px bg-slate-300 mx-0.5 shrink-0" />
+
             {['1', '2', '5', '10'].map((kgVal) => {
               const isSelected = parseFloat(weightKg) === parseFloat(kgVal);
               return (
@@ -1231,7 +1857,7 @@ export default function FishSmartwatchDial({
                   key={kgVal}
                   type="button"
                   onClick={() => {
-                    setIsDialLocked(false);
+                    setDialLock(false);
                     setWeightKg(parseFloat(kgVal).toFixed(3));
                   }}
                   className={`px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-lg text-xs sm:text-sm font-bold shrink-0 transition-all cursor-pointer ${
@@ -1256,7 +1882,7 @@ export default function FishSmartwatchDial({
                 type="button"
                 onClick={() => {
                   const base = Math.floor(parseFloat(weightKg) || 0);
-                  setIsDialLocked(false);
+                  setDialLock(false);
                   setWeightKg((base + frac.g).toFixed(3));
                 }}
                 className="px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-lg text-xs sm:text-sm font-bold shrink-0 bg-white/95 text-slate-700 hover:bg-amber-50 border border-slate-200/90 shadow-2xs transition-all cursor-pointer"
@@ -1322,6 +1948,20 @@ export default function FishSmartwatchDial({
           {/* Quick Preset Buttons: Box Weight for Single mode, or Fish Weight for Mixed mode */}
           {boxFishMode === 'single' ? (
             <div className="flex items-center justify-center gap-1 sm:gap-1.5 md:gap-2 py-1 px-1 text-xs shrink-0 my-1">
+              <button
+                type="button"
+                onClick={() => setDialLock(!isDialLocked)}
+                className={`px-2 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1 ${
+                  isDialLocked ? 'bg-amber-600 text-white shadow-2xs' : 'bg-white/95 text-slate-600 hover:bg-slate-100 border border-slate-200/90 shadow-2xs'
+                }`}
+                title={isDialLocked ? "Dial is locked. Tap to unlock" : "Tap to lock dial"}
+              >
+                {isDialLocked ? <Lock size={12} className="stroke-[3]" /> : <Unlock size={12} />}
+                <span className="text-[10px] sm:text-[11px] font-black">{isDialLocked ? 'Locked' : 'Lock'}</span>
+              </button>
+
+              <div className="h-4 w-px bg-slate-300 mx-0.5 shrink-0" />
+
               {['20', '30', '40', '50', '60'].map((wVal) => {
                 const isSelected = parseFloat(boxWeightKg) === parseFloat(wVal);
                 return (
@@ -1329,7 +1969,7 @@ export default function FishSmartwatchDial({
                     key={wVal}
                     type="button"
                     onClick={() => {
-                      setIsDialLocked(false);
+                      setDialLock(false);
                       setBoxWeightKg(wVal);
                     }}
                     className={`px-2.5 sm:px-3 py-1 rounded-lg font-bold transition-all cursor-pointer ${
@@ -1345,6 +1985,20 @@ export default function FishSmartwatchDial({
             </div>
           ) : (
             <div className="flex items-center justify-center gap-1 sm:gap-1.5 md:gap-2 py-1 px-1 text-xs shrink-0 my-1">
+              <button
+                type="button"
+                onClick={() => setDialLock(!isDialLocked)}
+                className={`px-2 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1 ${
+                  isDialLocked ? 'bg-amber-600 text-white shadow-2xs' : 'bg-white/95 text-slate-600 hover:bg-slate-100 border border-slate-200/90 shadow-2xs'
+                }`}
+                title={isDialLocked ? "Dial is locked. Tap to unlock" : "Tap to lock dial"}
+              >
+                {isDialLocked ? <Lock size={12} className="stroke-[3]" /> : <Unlock size={12} />}
+                <span className="text-[10px] sm:text-[11px] font-black">{isDialLocked ? 'Locked' : 'Lock'}</span>
+              </button>
+
+              <div className="h-4 w-px bg-slate-300 mx-0.5 shrink-0" />
+
               {['2', '5', '10', '20', '30', '50'].map((kgVal) => {
                 const isSelected = parseFloat(weightKg) === parseFloat(kgVal);
                 return (
@@ -1352,7 +2006,7 @@ export default function FishSmartwatchDial({
                     key={kgVal}
                     type="button"
                     onClick={() => {
-                      setIsDialLocked(false);
+                      setDialLock(false);
                       setWeightKg(parseFloat(kgVal).toFixed(3));
                     }}
                     className={`px-2 sm:px-2.5 py-1 rounded-lg font-bold transition-all cursor-pointer ${
