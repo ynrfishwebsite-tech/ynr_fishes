@@ -2096,68 +2096,90 @@ const MenuManagement = ({ user, onNavigate, onGoBack }) => {
                       <div key={grade.key} className={`p-2 rounded-lg border transition-all ${
                         isOn ? `bg-white dark:bg-slate-800 border-${grade.borderColor}-300 dark:border-${grade.borderColor}-700 shadow-2xs` : 'bg-slate-100/70 dark:bg-slate-900/40 border-slate-200 dark:border-slate-800 opacity-60'
                       }`}>
-                        {/* Row 1: Grade name, weight range, unit toggle, ON/OFF */}
-                        <div className="flex items-center justify-between gap-2">
-                          <div className="flex items-center gap-1.5 min-w-[70px]">
-                            <span className="text-xs font-black text-slate-800 dark:text-slate-100">{grade.label}</span>
-                            <span className={`text-[9px] px-1.5 py-0.2 rounded font-black ${
-                              isOn ? `bg-${grade.badgeBg}-100 text-${grade.badgeBg}-900 dark:bg-${grade.badgeBg}-950 dark:text-${grade.badgeBg}-200` : 'bg-slate-200 text-slate-500'
-                            }`}>
-                              {isOn ? 'Active' : 'Off'}
-                            </span>
+                        {/* Row 1: Grade name, weight range, unit toggle, ON/OFF (Fully Responsive for Mobile & Desktop) */}
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 sm:gap-2">
+                          {/* Left: Grade Label + Status Badge (with toggle switch right-aligned on mobile) */}
+                          <div className="flex items-center justify-between sm:justify-start gap-2 w-full sm:w-auto">
+                            <div className="flex items-center gap-1.5 shrink-0">
+                              <span className="text-xs font-black text-slate-800 dark:text-slate-100">{grade.label}</span>
+                              <span className={`text-[9px] px-1.5 py-0.2 rounded font-black ${
+                                isOn ? `bg-${grade.badgeBg}-100 text-${grade.badgeBg}-900 dark:bg-${grade.badgeBg}-950 dark:text-${grade.badgeBg}-200` : 'bg-slate-200 text-slate-500'
+                              }`}>
+                                {isOn ? 'Active' : 'Off'}
+                              </span>
+                            </div>
+
+                            {/* Mobile-only toggle switch aligned to right */}
+                            <div className="sm:hidden flex items-center shrink-0">
+                              <button
+                                type="button"
+                                onClick={() => setFormData({ ...formData, sizeGrades: { ...formData.sizeGrades, [grade.key]: { ...gradeData, enabled: !isOn } } })}
+                                className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors cursor-pointer focus:outline-none ${isOn ? 'bg-emerald-500' : 'bg-slate-300'}`}
+                              >
+                                <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform shadow-xs ${isOn ? 'translate-x-4.5' : 'translate-x-1'}`} />
+                              </button>
+                            </div>
                           </div>
 
-                          <div className="flex items-center gap-1 text-xs text-slate-600 dark:text-slate-400">
-                            <span className="text-[10px] font-medium text-slate-400">From</span>
-                            <input
-                              type="number" min="0" step="0.1"
-                              onWheel={(e) => e.target.blur()}
-                              onKeyDown={(e) => { if (e.key === '-' || e.key === 'e' || e.key === 'E') e.preventDefault(); }}
-                              disabled={!isOn}
-                              value={gradeData.minKg ?? grade.defaultMin}
-                              onChange={(e) => {
-                                const v = e.target.value;
-                                if (v === '' || parseFloat(v) >= 0) {
-                                  setFormData({ ...formData, sizeGrades: { ...formData.sizeGrades, [grade.key]: { ...gradeData, minKg: v } } });
-                                }
-                              }}
-                              className="w-14 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded px-1.5 py-1 text-center font-bold text-xs text-slate-800 dark:text-slate-200 focus:outline-none focus:border-amber-500 disabled:opacity-50"
-                            />
-                            <span className="text-[10px] font-medium text-slate-400">to</span>
-                            <input
-                              type="number" min="0" step="0.1"
-                              onWheel={(e) => e.target.blur()}
-                              onKeyDown={(e) => { if (e.key === '-' || e.key === 'e' || e.key === 'E') e.preventDefault(); }}
-                              disabled={!isOn}
-                              value={gradeData.maxKg ?? grade.defaultMax}
-                              onChange={(e) => {
-                                const v = e.target.value;
-                                if (v === '' || parseFloat(v) >= 0) {
-                                  setFormData({ ...formData, sizeGrades: { ...formData.sizeGrades, [grade.key]: { ...gradeData, maxKg: v } } });
-                                }
-                              }}
-                              className="w-14 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded px-1.5 py-1 text-center font-bold text-xs text-slate-800 dark:text-slate-200 focus:outline-none focus:border-amber-500 disabled:opacity-50"
-                            />
+                          {/* Middle: From / to Weight Range Inputs & Unit Toggle Button */}
+                          <div className="flex items-center justify-between sm:justify-center gap-1.5 text-xs text-slate-600 dark:text-slate-400 w-full sm:w-auto">
+                            <div className="flex items-center gap-1">
+                              <span className="text-[10px] font-medium text-slate-400">From</span>
+                              <input
+                                type="number" min="0" step="0.1"
+                                onWheel={(e) => e.target.blur()}
+                                onKeyDown={(e) => { if (e.key === '-' || e.key === 'e' || e.key === 'E') e.preventDefault(); }}
+                                disabled={!isOn}
+                                value={gradeData.minKg ?? grade.defaultMin}
+                                onChange={(e) => {
+                                  const v = e.target.value;
+                                  if (v === '' || parseFloat(v) >= 0) {
+                                    setFormData({ ...formData, sizeGrades: { ...formData.sizeGrades, [grade.key]: { ...gradeData, minKg: v } } });
+                                  }
+                                }}
+                                className="w-14 sm:w-16 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded px-1.5 py-1 text-center font-bold text-xs text-slate-800 dark:text-slate-200 focus:outline-none focus:border-amber-500 disabled:opacity-50"
+                              />
+                              <span className="text-[10px] font-medium text-slate-400">to</span>
+                              <input
+                                type="number" min="0" step="0.1"
+                                onWheel={(e) => e.target.blur()}
+                                onKeyDown={(e) => { if (e.key === '-' || e.key === 'e' || e.key === 'E') e.preventDefault(); }}
+                                disabled={!isOn}
+                                value={gradeData.maxKg ?? grade.defaultMax}
+                                onChange={(e) => {
+                                  const v = e.target.value;
+                                  if (v === '' || parseFloat(v) >= 0) {
+                                    setFormData({ ...formData, sizeGrades: { ...formData.sizeGrades, [grade.key]: { ...gradeData, maxKg: v } } });
+                                  }
+                                }}
+                                className="w-14 sm:w-16 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded px-1.5 py-1 text-center font-bold text-xs text-slate-800 dark:text-slate-200 focus:outline-none focus:border-amber-500 disabled:opacity-50"
+                              />
+                            </div>
+
                             {/* Unit Toggle: Kg / g */}
                             <button
                               type="button"
                               disabled={!isOn}
                               onClick={() => setFormData({ ...formData, sizeGrades: { ...formData.sizeGrades, [grade.key]: { ...gradeData, unit: currentUnit === 'kg' ? 'g' : 'kg' } } })}
-                              className={`text-[10px] font-black px-2 py-0.5 rounded-full border transition-all cursor-pointer disabled:opacity-50 ${
+                              className={`text-[10px] font-black px-2.5 py-0.5 rounded-full border transition-all cursor-pointer disabled:opacity-50 shrink-0 ${
                                 currentUnit === 'kg' ? 'bg-slate-800 text-white border-slate-800' : 'bg-amber-100 text-amber-900 border-amber-400'
                               }`}
+                              title="Toggle unit between Kg and g"
                             >
                               {currentUnit === 'kg' ? 'Kg' : 'g'}
                             </button>
                           </div>
 
-                          <button
-                            type="button"
-                            onClick={() => setFormData({ ...formData, sizeGrades: { ...formData.sizeGrades, [grade.key]: { ...gradeData, enabled: !isOn } } })}
-                            className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors cursor-pointer focus:outline-none ${isOn ? 'bg-emerald-500' : 'bg-slate-300'}`}
-                          >
-                            <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform shadow-xs ${isOn ? 'translate-x-4.5' : 'translate-x-1'}`} />
-                          </button>
+                          {/* Desktop-only toggle switch */}
+                          <div className="hidden sm:flex items-center shrink-0">
+                            <button
+                              type="button"
+                              onClick={() => setFormData({ ...formData, sizeGrades: { ...formData.sizeGrades, [grade.key]: { ...gradeData, enabled: !isOn } } })}
+                              className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors cursor-pointer focus:outline-none ${isOn ? 'bg-emerald-500' : 'bg-slate-300'}`}
+                            >
+                              <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform shadow-xs ${isOn ? 'translate-x-4.5' : 'translate-x-1'}`} />
+                            </button>
+                          </div>
                         </div>
 
                         {/* Row 2: Grade-specific prices (only shown when expanded/active) */}
@@ -2221,6 +2243,11 @@ const MenuManagement = ({ user, onNavigate, onGoBack }) => {
                     <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform shadow-xs ${formData.customCuttingChargeEnabled ? 'translate-x-4.5' : 'translate-x-1'}`} />
                   </button>
                 </div>
+                {!formData.customCuttingChargeEnabled && (
+                  <p className="text-[10px] text-slate-400 font-medium">
+                    {t("Cutting charges are stopped / disabled for this fish.")}
+                  </p>
+                )}
                 {formData.customCuttingChargeEnabled && (
                   <div className="space-y-1.5 pt-1 border-t border-slate-200 dark:border-slate-700">
                     <div className="flex items-center gap-2">

@@ -2748,6 +2748,19 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
         if (item.orderMode && item.orderMode !== 'individual') return sum;
         const sp = (item.speciesType || 'fish').toLowerCase();
         if (speciesToggles[sp] === false) return sum;
+
+        // 1. Skip Whole / uncut fish (bought whole without cutting)
+        const cut = (item.cutType || item.cuttingStyle || '').toLowerCase();
+        const rawName = (item.name || '').toLowerCase();
+        if (cut.includes('whole') || rawName.includes('(whole') || rawName.includes('- whole')) {
+          return sum;
+        }
+
+        // 2. Skip if cutting charges are explicitly toggled OFF / stopped for this fish
+        if (item.customCuttingChargeEnabled === false) {
+          return sum;
+        }
+
         const w = parseFloat(item.enteredWeight || item.netWeightKg || item.weightKg || (item.sellingUnit === 'Kg' ? item.quantity : 0) || 0);
         return sum + w;
       }, 0);
@@ -2755,6 +2768,10 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
       return cart.reduce((sum, item) => {
         if (item.isCancelled) return sum;
         if (item.orderMode && item.orderMode !== 'individual') return sum;
+        const cut = (item.cutType || item.cuttingStyle || '').toLowerCase();
+        const rawName = (item.name || '').toLowerCase();
+        if (cut.includes('whole') || rawName.includes('(whole') || rawName.includes('- whole')) return sum;
+        if (item.customCuttingChargeEnabled === false) return sum;
         const w = parseFloat(item.enteredWeight || item.netWeightKg || item.weightKg || (item.sellingUnit === 'Kg' ? item.quantity : 0) || 0);
         return sum + w;
       }, 0);
@@ -2792,6 +2809,14 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
       return;
     }
 
+    // If no eligible fish weight for cutting in cart (or whole fish / stopped fish), force 0 cutting charge
+    if (totalCartFishWeight === 0) {
+      if (cuttingCharge !== '0' && cuttingCharge !== 0 && cuttingCharge !== '') {
+        setCuttingCharge('0');
+      }
+      return;
+    }
+
     if (isCuttingChargeEnabled && totalCartFishWeight > 0) {
       // Calculate taking into account custom per-item / per-grade cutting charges
       try {
@@ -2816,6 +2841,19 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
           if (item.orderMode && item.orderMode !== 'individual') return;
           const sp = (item.speciesType || 'fish').toLowerCase();
           if (speciesToggles[sp] === false) return;
+
+          // 1. Whole fish is uncut - strictly 0 cutting charge
+          const cut = (item.cutType || item.cuttingStyle || '').toLowerCase();
+          const rawName = (item.name || '').toLowerCase();
+          if (cut.includes('whole') || rawName.includes('(whole') || rawName.includes('- whole')) {
+            return;
+          }
+
+          // 2. Explicitly toggled OFF / stopped for this fish
+          if (item.customCuttingChargeEnabled === false) {
+            return;
+          }
+
           const w = parseFloat(item.enteredWeight || item.netWeightKg || item.weightKg || (item.sellingUnit === 'Kg' ? item.quantity : 0) || 0);
           if (w <= 0) return;
 
@@ -2824,9 +2862,14 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
           const itemCut = parseFloat(item.cuttingCharge);
           const cutRate = gradeCut > 0 ? gradeCut : (itemCut > 0 ? itemCut : 0);
 
-          if (item.customCuttingChargeEnabled && cutRate > 0) {
-            const steps = w <= tier1Max ? 1 : (1 + Math.ceil(w - tier1Max));
-            customTotal += steps * cutRate;
+          if (item.customCuttingChargeEnabled) {
+            if (cutRate > 0) {
+              const steps = w <= tier1Max ? 1 : (1 + Math.ceil(w - tier1Max));
+              customTotal += steps * cutRate;
+            } else {
+              // Explicitly 0 cutting charge for this item
+              return;
+            }
           } else {
             standardWeight += w;
           }

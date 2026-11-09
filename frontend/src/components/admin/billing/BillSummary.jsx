@@ -99,6 +99,19 @@ const BillSummary = ({
         if (item.orderMode && item.orderMode !== 'individual') return sum;
         const sp = (item.speciesType || 'fish').toLowerCase();
         if (speciesToggles[sp] === false) return sum;
+
+        // 1. Skip Whole / uncut fish (bought whole without cutting)
+        const cut = (item.cutType || item.cuttingStyle || '').toLowerCase();
+        const rawName = (item.name || '').toLowerCase();
+        if (cut.includes('whole') || rawName.includes('(whole') || rawName.includes('- whole')) {
+          return sum;
+        }
+
+        // 2. Skip if cutting charges are explicitly toggled OFF / stopped for this fish
+        if (item.customCuttingChargeEnabled === false) {
+          return sum;
+        }
+
         const activeQty = Math.max(0, (Number(item.quantity) || 1) - (Number(item.cancelledQuantity) || 0));
         const w = Number(item.netWeightKg || item.enteredWeight || item.weightKg || 0);
         return sum + (w > 0 && w !== activeQty && w <= 1 ? w * activeQty : (w > 0 ? w : activeQty));
@@ -107,6 +120,10 @@ const BillSummary = ({
       return (cart || []).reduce((sum, item) => {
         if (item.isCancelled) return sum;
         if (item.orderMode && item.orderMode !== 'individual') return sum;
+        const cut = (item.cutType || item.cuttingStyle || '').toLowerCase();
+        const rawName = (item.name || '').toLowerCase();
+        if (cut.includes('whole') || rawName.includes('(whole') || rawName.includes('- whole')) return sum;
+        if (item.customCuttingChargeEnabled === false) return sum;
         const activeQty = Math.max(0, (Number(item.quantity) || 1) - (Number(item.cancelledQuantity) || 0));
         const w = Number(item.netWeightKg || item.enteredWeight || item.weightKg || 0);
         return sum + (w > 0 && w !== activeQty && w <= 1 ? w * activeQty : (w > 0 ? w : activeQty));
@@ -167,7 +184,7 @@ const BillSummary = ({
 
   const cuttingTiers = totalFishWeight <= 0 ? 0 : (totalFishWeight <= 1.5 ? 1 : 1 + Math.ceil(totalFishWeight - 1.5));
   const suggestedCuttingCharge = React.useMemo(() => {
-    if (!isRetail) return 0;
+    if (!isRetail || totalFishWeight <= 0) return 0;
     try {
       const s = JSON.parse(localStorage.getItem('restaurantSettings') || '{}');
       const speciesToggles = s.cuttingSpeciesToggles || { fish: true, prawn: true, crab: true };
@@ -190,6 +207,19 @@ const BillSummary = ({
         if (item.orderMode && item.orderMode !== 'individual') return;
         const sp = (item.speciesType || 'fish').toLowerCase();
         if (speciesToggles[sp] === false) return;
+
+        // 1. Skip Whole / uncut fish (bought whole without cutting)
+        const cut = (item.cutType || item.cuttingStyle || '').toLowerCase();
+        const rawName = (item.name || '').toLowerCase();
+        if (cut.includes('whole') || rawName.includes('(whole') || rawName.includes('- whole')) {
+          return;
+        }
+
+        // 2. Skip if cutting charges are explicitly toggled OFF / stopped for this fish
+        if (item.customCuttingChargeEnabled === false) {
+          return;
+        }
+
         const w = Number(item.netWeightKg || item.enteredWeight || item.weightKg || (item.sellingUnit === 'Kg' ? item.quantity : 0) || 0);
         if (w <= 0) return;
 
@@ -198,9 +228,14 @@ const BillSummary = ({
         const itemCut = parseFloat(item.cuttingCharge);
         const cutRate = gradeCut > 0 ? gradeCut : (itemCut > 0 ? itemCut : 0);
 
-        if (item.customCuttingChargeEnabled && cutRate > 0) {
-          const steps = w <= tier1Max ? 1 : (1 + Math.ceil(w - tier1Max));
-          customTotal += steps * cutRate;
+        if (item.customCuttingChargeEnabled) {
+          if (cutRate > 0) {
+            const steps = w <= tier1Max ? 1 : (1 + Math.ceil(w - tier1Max));
+            customTotal += steps * cutRate;
+          } else {
+            // Explicitly 0 cutting charge for this item
+            return;
+          }
         } else {
           standardWeight += w;
         }
@@ -1644,7 +1679,7 @@ const BillSummary = ({
                   <div className={`p-1 sm:p-2 rounded-lg sm:rounded-xl border transition-all min-w-0 ${
                     !isRetail 
                       ? 'bg-slate-50/70 border-slate-200 opacity-60' 
-                      : (isCuttingChargeEnabled || Number(cuttingCharge) > 0 ? 'bg-amber-50/70 border-amber-300' : 'bg-white border-slate-300')
+                      : ((isCuttingChargeEnabled && totalFishWeight > 0) || Number(cuttingCharge) > 0 ? 'bg-amber-50/70 border-amber-300' : 'bg-white border-slate-300')
                   }`}>
                     <div className="flex items-center justify-between mb-0.5 gap-0.5 min-w-0">
                       <label className="text-[10px] sm:text-[11px] font-bold text-slate-700 flex items-center gap-0.5 truncate min-w-0" title={t("Cutting Charges")}>
@@ -1667,12 +1702,12 @@ const BillSummary = ({
                             }
                           }}
                           className={`text-[8px] sm:text-[9px] font-black px-1 py-0.2 rounded cursor-pointer transition-all shrink-0 ${
-                            isCuttingChargeEnabled || Number(cuttingCharge) > 0
+                            (isCuttingChargeEnabled && totalFishWeight > 0) || Number(cuttingCharge) > 0
                               ? 'bg-amber-700 text-white shadow-2xs'
                               : 'bg-slate-200 text-slate-700 hover:bg-slate-300'
                           }`}
                         >
-                          {isCuttingChargeEnabled || Number(cuttingCharge) > 0 ? 'ON' : 'OFF'}
+                          {(isCuttingChargeEnabled && totalFishWeight > 0) || Number(cuttingCharge) > 0 ? 'ON' : 'OFF'}
                         </button>
                       ) : (
                         <span className="text-[8px] font-bold px-1 py-0.2 rounded bg-slate-200 text-slate-500 shrink-0">

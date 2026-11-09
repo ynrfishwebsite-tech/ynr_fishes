@@ -216,6 +216,10 @@ export default function Fish3DRoller({
 
     const itemToAdd = {
       ...currentItem,
+      speciesType: currentItem.speciesType || 'fish',
+      customCuttingChargeEnabled: currentItem.customCuttingChargeEnabled,
+      cuttingCharge: currentItem.cuttingCharge,
+      sizeGrades: currentItem.sizeGrades,
       itemKey: `${currentItem._id}_${selectedCutType}_${netGrams}g_${activeGrade}_${fishOrderMode}`,
       menuItem: currentItem._id,
       originalId: currentItem._id,
