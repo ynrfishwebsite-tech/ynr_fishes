@@ -6,7 +6,7 @@ import { getCachedMenuItems, getCachedCategories } from '../../../db/offlineDb';
 import { getInventory } from '../../../api/inventory/inventory';
 import realtimeService from '../../../services/realtimeService';
 import Papa from 'papaparse';
-import { Plus, Edit2, Trash2, X, Search, FolderPlus, Folder, FolderOpen, ChevronLeft, ChevronRight, Eye, Download, Upload, ToggleLeft, Loader2, RefreshCw, MoreVertical, Tag, Percent, Hash } from 'lucide-react';
+import { Plus, Edit2, Trash2, X, Search, FolderPlus, Folder, FolderOpen, ChevronLeft, ChevronRight, Eye, Download, Upload, ToggleLeft, Loader2, RefreshCw, MoreVertical, Tag, Percent, Hash, Scissors, Scale, Package, Layers, Info } from 'lucide-react';
 import ConfirmationModal from '../system/ConfirmationModal';
 import Toast from '../system/Toast';
 import BackButton from '../common/BackButton';
@@ -107,7 +107,10 @@ const MenuManagement = ({ user, onNavigate, onGoBack }) => {
   const [currentPage, setCurrentPage] = useState(1);
   const [sortBy, setSortBy] = useState('latest');
   const [selectedWaterType, setSelectedWaterType] = useState('all'); // 'all' | 'sea_water' | 'fresh_water'
-  const [selectedSpeciesType, setSelectedSpeciesType] = useState('all'); // 'all' | 'fish' | 'prawn' | 'crab'
+  const [selectedSpeciesType, setSelectedSpeciesType] = useState('all'); // 'all' | 'fish' | 'prawn' | 'crab' | custom
+  const [selectedStockFilter, setSelectedStockFilter] = useState('all'); // 'all' | 'in_stock' | 'out_of_stock' | 'low_stock'
+  const [customSpeciesInput, setCustomSpeciesInput] = useState('');
+  const [isCustomSpeciesActive, setIsCustomSpeciesActive] = useState(false);
   const [isBulkImportModalOpen, setIsBulkImportModalOpen] = useState(false);
   const [showMobileActions, setShowMobileActions] = useState(false);
   const [activeDescTooltip, setActiveDescTooltip] = useState(null);
@@ -117,7 +120,7 @@ const MenuManagement = ({ user, onNavigate, onGoBack }) => {
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchTerm, selectedWaterType, selectedSpeciesType]);
+  }, [searchTerm, selectedWaterType, selectedSpeciesType, selectedStockFilter]);
   const itemsPerPage = 20;
 
   // Form State
@@ -201,6 +204,9 @@ const MenuManagement = ({ user, onNavigate, onGoBack }) => {
       const itemName = String(item.name || '').toLowerCase();
       const inferredWater = item.waterType || (catName.includes('fresh') || catName.includes('river') || catName.includes('sweet') ? 'fresh_water' : 'sea_water');
       const inferredSpecies = item.speciesType || (itemName.includes('prawn') || catName.includes('prawn') || itemName.includes('shrimp') ? 'prawn' : itemName.includes('crab') || catName.includes('crab') ? 'crab' : 'fish');
+      const isKnown = ['fish', 'prawn', 'crab', 'other'].includes(String(inferredSpecies || '').toLowerCase());
+      setIsCustomSpeciesActive(!isKnown && Boolean(inferredSpecies));
+      setCustomSpeciesInput(!isKnown ? inferredSpecies : '');
 
       setFormData({
         name: item.name || '',
@@ -258,6 +264,8 @@ const MenuManagement = ({ user, onNavigate, onGoBack }) => {
       });
     } else {
       setCurrentItem(null);
+      setIsCustomSpeciesActive(false);
+      setCustomSpeciesInput('');
       setFormData({
         name: '',
         scientificName: '',
@@ -505,21 +513,38 @@ const MenuManagement = ({ user, onNavigate, onGoBack }) => {
 
   const handleExportExcel = async () => {
     try {
-      const exportItems = items.map((item) => ({
-        name: item.name,
-        scientificName: item.scientificName || '',
-        category: item.category?.name || item.category,
-        speciesType: item.speciesType || (item.name?.toLowerCase().includes('prawn') ? 'Prawn' : item.name?.toLowerCase().includes('crab') ? 'Crab' : 'Fish'),
-        sellingUnit: item.sellingUnit || 'Kg',
-        price: item.price,
-        wholesalePricePerKg: item.wholesalePricePerKg || item.price,
-        exportPricePerKg: item.exportPricePerKg || item.wholesalePricePerKg || item.price,
-        type: item.type === 'veg' ? 'Veg' : item.type === 'non-veg' ? 'Non-Veg' : 'Egg',
-        description: item.description || '',
-        isAvailable: item.isAvailable ? 'TRUE' : 'FALSE',
-        taxRate: item.taxRate || 0,
-        image: item.image || ''
-      }));
+      const exportItems = items.map((item) => {
+        const catName = item.category?.name || item.category || (item.waterType === 'fresh_water' ? 'Fresh Water' : 'Sea Water');
+        const species = item.speciesType || (item.name?.toLowerCase().includes('prawn') ? 'Prawn' : item.name?.toLowerCase().includes('crab') ? 'Crab' : 'Fish');
+        
+        return {
+          name: item.name || '',
+          scientificName: item.scientificName || '',
+          image: item.image || '',
+          category: catName,
+          speciesType: species.charAt(0).toUpperCase() + species.slice(1),
+          sellingUnit: item.sellingUnit || 'Kg',
+          price: Number(item.price) || 0,
+          wholesalePricePerKg: Number(item.wholesalePricePerKg ?? item.price ?? 0),
+          exportPricePerKg: Number(item.exportPricePerKg ?? item.wholesalePricePerKg ?? item.price ?? 0),
+          smallPrice: Number(item.sizeGrades?.small?.price ?? item.price ?? 0),
+          smallWholesalePrice: Number(item.sizeGrades?.small?.wholesalePrice ?? item.wholesalePricePerKg ?? item.price ?? 0),
+          smallExportPrice: Number(item.sizeGrades?.small?.exportPrice ?? item.exportPricePerKg ?? item.wholesalePricePerKg ?? item.price ?? 0),
+          mediumPrice: Number(item.sizeGrades?.medium?.price ?? (item.price ? Math.round(item.price * 1.1 / 10) * 10 : 0)),
+          mediumWholesalePrice: Number(item.sizeGrades?.medium?.wholesalePrice ?? (item.wholesalePricePerKg ? Math.round(item.wholesalePricePerKg * 1.1 / 10) * 10 : 0)),
+          mediumExportPrice: Number(item.sizeGrades?.medium?.exportPrice ?? (item.exportPricePerKg ? Math.round(item.exportPricePerKg * 1.1 / 10) * 10 : 0)),
+          bigPrice: Number(item.sizeGrades?.big?.price ?? (item.price ? Math.round(item.price * 1.25 / 10) * 10 : 0)),
+          bigWholesalePrice: Number(item.sizeGrades?.big?.wholesalePrice ?? (item.wholesalePricePerKg ? Math.round(item.wholesalePricePerKg * 1.25 / 10) * 10 : 0)),
+          bigExportPrice: Number(item.sizeGrades?.big?.exportPrice ?? (item.exportPricePerKg ? Math.round(item.exportPricePerKg * 1.25 / 10) * 10 : 0)),
+          cuttingEnabled: item.customCuttingChargeEnabled ? 'TRUE' : 'FALSE',
+          cuttingCharge: Number(item.cuttingCharge || 0),
+          smallCuttingCharge: Number(item.sizeGrades?.small?.cuttingCharge ?? item.cuttingCharge ?? 0),
+          mediumCuttingCharge: Number(item.sizeGrades?.medium?.cuttingCharge ?? item.cuttingCharge ?? 0),
+          bigCuttingCharge: Number(item.sizeGrades?.big?.cuttingCharge ?? item.cuttingCharge ?? 0),
+          openingStock: Number(item.stock ?? item.openingStock ?? 0),
+          description: item.description || ''
+        };
+      });
 
       await generateExcelWithStyling(exportItems, 'YNR_Fishes_Catalog_Export.xlsx');
       setToast({ message: 'Fish catalog exported to Excel successfully!', type: 'success' });
@@ -531,21 +556,38 @@ const MenuManagement = ({ user, onNavigate, onGoBack }) => {
   };
 
   const handleExportCSV = () => {
-    const csvData = items.map((item) => ({
-      'Fish Name': item.name,
-      'Scientific Name': item.scientificName || '',
-      'Water Environment': item.category?.name || item.category,
-      'Seafood Species': item.speciesType || (item.name?.toLowerCase().includes('prawn') ? 'Prawn' : item.name?.toLowerCase().includes('crab') ? 'Crab' : 'Fish'),
-      'Selling Unit': item.sellingUnit || 'Kg',
-      'Retail Price (₹/Kg)': item.price,
-      'Wholesale Price (₹/Kg)': item.wholesalePricePerKg || item.price,
-      'Export Price (₹/Kg)': item.exportPricePerKg || item.wholesalePricePerKg || item.price,
-      Type: item.type === 'veg' ? 'Veg' : item.type === 'non-veg' ? 'Non-Veg' : 'Egg',
-      Description: item.description || '',
-      'Is Available': item.isAvailable ? 'Yes' : 'No',
-      'Tax Rate': item.taxRate || 0,
-      'Image URL': item.image || ''
-    }));
+    const csvData = items.map((item) => {
+      const catName = item.category?.name || item.category || (item.waterType === 'fresh_water' ? 'Fresh Water' : 'Sea Water');
+      const species = item.speciesType || (item.name?.toLowerCase().includes('prawn') ? 'Prawn' : item.name?.toLowerCase().includes('crab') ? 'Crab' : 'Fish');
+      
+      return {
+        'Fish Name': item.name || '',
+        'Scientific Name': item.scientificName || '',
+        'Item Image': item.image || '',
+        'Water Environment': catName,
+        'Seafood Species': species.charAt(0).toUpperCase() + species.slice(1),
+        'Selling Unit': item.sellingUnit || 'Kg',
+        'Retail Price (₹/Kg)': Number(item.price) || 0,
+        'Wholesale Price (₹/Kg)': Number(item.wholesalePricePerKg ?? item.price ?? 0),
+        'Export Price (₹/Kg)': Number(item.exportPricePerKg ?? item.wholesalePricePerKg ?? item.price ?? 0),
+        'Small Retail (₹/Kg)': Number(item.sizeGrades?.small?.price ?? item.price ?? 0),
+        'Small Wholesale (₹/Kg)': Number(item.sizeGrades?.small?.wholesalePrice ?? item.wholesalePricePerKg ?? item.price ?? 0),
+        'Small Export (₹/Kg)': Number(item.sizeGrades?.small?.exportPrice ?? item.exportPricePerKg ?? item.wholesalePricePerKg ?? item.price ?? 0),
+        'Medium Retail (₹/Kg)': Number(item.sizeGrades?.medium?.price ?? (item.price ? Math.round(item.price * 1.1 / 10) * 10 : 0)),
+        'Medium Wholesale (₹/Kg)': Number(item.sizeGrades?.medium?.wholesalePrice ?? (item.wholesalePricePerKg ? Math.round(item.wholesalePricePerKg * 1.1 / 10) * 10 : 0)),
+        'Medium Export (₹/Kg)': Number(item.sizeGrades?.medium?.exportPrice ?? (item.exportPricePerKg ? Math.round(item.exportPricePerKg * 1.1 / 10) * 10 : 0)),
+        'Big Retail (₹/Kg)': Number(item.sizeGrades?.big?.price ?? (item.price ? Math.round(item.price * 1.25 / 10) * 10 : 0)),
+        'Big Wholesale (₹/Kg)': Number(item.sizeGrades?.big?.wholesalePrice ?? (item.wholesalePricePerKg ? Math.round(item.wholesalePricePerKg * 1.25 / 10) * 10 : 0)),
+        'Big Export (₹/Kg)': Number(item.sizeGrades?.big?.exportPrice ?? (item.exportPricePerKg ? Math.round(item.exportPricePerKg * 1.25 / 10) * 10 : 0)),
+        'Cutting Charges Enabled': item.customCuttingChargeEnabled ? 'TRUE' : 'FALSE',
+        'Base Cutting Charge (₹)': Number(item.cuttingCharge || 0),
+        'Small Cutting Charge (₹)': Number(item.sizeGrades?.small?.cuttingCharge ?? item.cuttingCharge ?? 0),
+        'Medium Cutting Charge (₹)': Number(item.sizeGrades?.medium?.cuttingCharge ?? item.cuttingCharge ?? 0),
+        'Big Cutting Charge (₹)': Number(item.sizeGrades?.big?.cuttingCharge ?? item.cuttingCharge ?? 0),
+        'Opening Stock': Number(item.stock ?? item.openingStock ?? 0),
+        'Description': item.description || ''
+      };
+    });
 
     const csv = Papa.unparse(csvData);
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
@@ -786,6 +828,16 @@ const MenuManagement = ({ user, onNavigate, onGoBack }) => {
     setDeleteModal({ isOpen: true, itemId: null, categoryId: id });
   };
 
+  // Available species dynamically collected from catalog items
+  const availableSpeciesList = React.useMemo(() => {
+    const set = new Set(['fish', 'prawn', 'crab']);
+    (items || []).forEach(it => {
+      const sp = (it.speciesType || '').trim().toLowerCase();
+      if (sp) set.add(sp);
+    });
+    return Array.from(set);
+  }, [items]);
+
   const filteredItems = items.filter((item) => {
     // Water Type filter
     if (selectedWaterType !== 'all') {
@@ -796,8 +848,16 @@ const MenuManagement = ({ user, onNavigate, onGoBack }) => {
 
     // Species filter
     if (selectedSpeciesType !== 'all') {
-      const itemSpecies = (item.speciesType || '').toLowerCase();
+      const itemSpecies = (item.speciesType || 'fish').toLowerCase();
       if (itemSpecies !== selectedSpeciesType) return false;
+    }
+
+    // Stock Level filter
+    if (selectedStockFilter !== 'all') {
+      const stockVal = Number(item.stock ?? item.openingStock ?? 0);
+      if (selectedStockFilter === 'in_stock' && stockVal <= 0) return false;
+      if (selectedStockFilter === 'out_of_stock' && stockVal > 0) return false;
+      if (selectedStockFilter === 'low_stock' && (stockVal <= 0 || stockVal > 10)) return false;
     }
 
     const term = searchTerm.toLowerCase().trim();
@@ -805,7 +865,8 @@ const MenuManagement = ({ user, onNavigate, onGoBack }) => {
     return (
       item.name.toLowerCase().includes(term) ||
       (item.scientificName || '').toLowerCase().includes(term) ||
-      (item.category?.name || item.category || '').toLowerCase().includes(term)
+      (item.category?.name || item.category || '').toLowerCase().includes(term) ||
+      (item.speciesType || '').toLowerCase().includes(term)
     );
   }).sort((a, b) => {
     switch (sortBy) {
@@ -835,19 +896,34 @@ const MenuManagement = ({ user, onNavigate, onGoBack }) => {
   const filterCounts = React.useMemo(() => {
     const seaWaterCount = items.filter(i => (i.waterType || '').toLowerCase() === 'sea_water').length;
     const freshWaterCount = items.filter(i => (i.waterType || '').toLowerCase() === 'fresh_water').length;
-    const fishCount = items.filter(i => (i.speciesType || 'fish').toLowerCase() === 'fish').length;
-    const prawnCount = items.filter(i => (i.speciesType || '').toLowerCase() === 'prawn').length;
-    const crabCount = items.filter(i => (i.speciesType || '').toLowerCase() === 'crab').length;
+
+    // Dynamic species counts
+    const speciesMap = {};
+    availableSpeciesList.forEach(sp => {
+      speciesMap[sp] = items.filter(i => (i.speciesType || 'fish').toLowerCase() === sp).length;
+    });
+
+    // Stock counts
+    const inStockCount = items.filter(i => Number(i.stock ?? i.openingStock ?? 0) > 0).length;
+    const outOfStockCount = items.filter(i => Number(i.stock ?? i.openingStock ?? 0) <= 0).length;
+    const lowStockCount = items.filter(i => {
+      const s = Number(i.stock ?? i.openingStock ?? 0);
+      return s > 0 && s <= 10;
+    }).length;
 
     return {
       all: items.length,
       seaWater: seaWaterCount,
       freshWater: freshWaterCount,
-      fish: fishCount,
-      prawn: prawnCount,
-      crab: crabCount
+      speciesMap,
+      fish: speciesMap.fish || 0,
+      prawn: speciesMap.prawn || 0,
+      crab: speciesMap.crab || 0,
+      inStock: inStockCount,
+      outOfStock: outOfStockCount,
+      lowStock: lowStockCount
     };
-  }, [items]);
+  }, [items, availableSpeciesList]);
 
   // Pagination logic
   const itemsTotalPages = Math.ceil(filteredItems.length / itemsPerPage);
@@ -873,34 +949,21 @@ const MenuManagement = ({ user, onNavigate, onGoBack }) => {
             <BackButton onClick={onGoBack} className="shrink-0 scale-90 sm:scale-100" />
             <div className="min-w-0">
               <h1 className="text-xs sm:text-base md:text-lg font-bold text-text-main leading-tight whitespace-nowrap truncate">{t("Menu Management")}</h1>
-              <p className="text-[10px] sm:text-xs text-text-muted hidden sm:block">{t("Manage your restaurant's menu items and categories")}</p>
+              <p className="text-[10px] sm:text-xs text-text-muted hidden sm:block">{t("Manage your fish and seafood menu catalog")}</p>
             </div>
           </div>
           
-          {/* Mobile Right: Tab Switcher + 3 Dots Button */}
+          {/* Mobile Right: Add Item + 3 Dots Button */}
           <div className="flex sm:hidden items-center gap-1.5 shrink-0">
-            <div className="flex bg-background p-0.5 rounded-xl border border-border shrink-0">
+            {isAdmin && (
               <button
-                onClick={() => setActiveTab('items')}
-                className={`px-2 py-0.5 rounded-lg text-[11px] font-bold transition-all cursor-pointer whitespace-nowrap ${
-                  activeTab === 'items'
-                    ? 'bg-primary text-white shadow-xs'
-                    : 'text-text-muted hover:text-text-main hover:bg-surface'
-                }`}
+                onClick={() => handleOpenModal()}
+                className="flex items-center gap-1 bg-primary text-white px-2.5 py-1 rounded-xl hover:bg-primary-hover transition-colors shadow-xs text-xs font-bold whitespace-nowrap cursor-pointer"
               >
-                {t("Items")}
+                <Plus size={14} />
+                <span>{t("Add Item")}</span>
               </button>
-              <button
-                onClick={() => setActiveTab('categories')}
-                className={`px-2 py-0.5 rounded-lg text-[11px] font-bold transition-all cursor-pointer whitespace-nowrap ${
-                  activeTab === 'categories'
-                    ? 'bg-primary text-white shadow-xs'
-                    : 'text-text-muted hover:text-text-main hover:bg-surface'
-                }`}
-              >
-                {t("Categories")}
-              </button>
-            </div>
+            )}
 
             <button 
               onClick={() => setShowMobileActions(!showMobileActions)}
@@ -914,30 +977,6 @@ const MenuManagement = ({ user, onNavigate, onGoBack }) => {
 
         {/* Desktop & Tablet Action Controls Toolbar (Hidden on Mobile) */}
         <div className="hidden sm:flex flex-wrap items-center justify-end gap-1.5 sm:gap-2 w-auto">
-          {/* Tab Switcher Pills */}
-          <div className="flex bg-background p-0.5 rounded-xl border border-border shrink-0">
-            <button
-              onClick={() => setActiveTab('items')}
-              className={`px-2.5 py-1 md:px-3 md:py-1.5 rounded-lg text-xs md:text-sm font-bold transition-all cursor-pointer whitespace-nowrap ${
-                activeTab === 'items'
-                  ? 'bg-primary text-white shadow-xs'
-                  : 'text-text-muted hover:text-text-main hover:bg-surface'
-              }`}
-            >
-              {t("Menu Items")}
-            </button>
-            <button
-              onClick={() => setActiveTab('categories')}
-              className={`px-2.5 py-1 md:px-3 md:py-1.5 rounded-lg text-xs md:text-sm font-bold transition-all cursor-pointer whitespace-nowrap ${
-                activeTab === 'categories'
-                  ? 'bg-primary text-white shadow-xs'
-                  : 'text-text-muted hover:text-text-main hover:bg-surface'
-              }`}
-            >
-              {t("Categories")}
-            </button>
-          </div>
-
           {/* Action Buttons: Compact */}
           <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
             <input
@@ -947,7 +986,7 @@ const MenuManagement = ({ user, onNavigate, onGoBack }) => {
               onChange={handleImportCSV}
               className="hidden" />
 
-            {isAdmin && activeTab === 'items' && (
+            {isAdmin && (
               <>
                 <button
                   onClick={() => setIsBulkImportModalOpen(true)}
@@ -973,27 +1012,14 @@ const MenuManagement = ({ user, onNavigate, onGoBack }) => {
                   <Trash2 size={15} className="w-3.5 h-3.5 md:w-4 md:h-4" />
                   <span className="hidden sm:inline">{t("Delete All")}</span>
                 </button>
+                <button
+                  onClick={() => handleOpenModal()}
+                  className="flex items-center gap-1 bg-primary text-white px-2.5 sm:px-3 py-1 md:px-4 md:py-1.5 rounded-xl hover:bg-primary-hover transition-colors shadow-xs text-xs md:text-sm font-bold whitespace-nowrap cursor-pointer"
+                >
+                  <Plus size={16} className="w-3.5 h-3.5 md:w-4 md:h-4" />
+                  <span>{t("Add Item")}</span>
+                </button>
               </>
-            )}
-
-            {isAdmin && activeTab === 'items' && (
-              <button
-                onClick={() => handleOpenModal()}
-                className="flex items-center gap-1 bg-primary text-white px-2.5 sm:px-3 py-1 md:px-4 md:py-1.5 rounded-xl hover:bg-primary-hover transition-colors shadow-xs text-xs md:text-sm font-bold whitespace-nowrap cursor-pointer"
-              >
-                <Plus size={16} className="w-3.5 h-3.5 md:w-4 md:h-4" />
-                <span>{t("Add Item")}</span>
-              </button>
-            )}
-
-            {isAdmin && activeTab === 'categories' && (
-              <button
-                onClick={() => handleOpenCategoryModal()}
-                className="flex items-center gap-1 bg-secondary text-white px-2.5 sm:px-3 py-1 md:px-4 md:py-1.5 rounded-xl hover:bg-accent transition-colors shadow-xs text-xs md:text-sm font-bold whitespace-nowrap cursor-pointer"
-              >
-                <FolderPlus size={16} className="w-3.5 h-3.5 md:w-4 md:h-4" />
-                <span>{t("Add Category")}</span>
-              </button>
             )}
           </div>
         </div>
@@ -1001,7 +1027,7 @@ const MenuManagement = ({ user, onNavigate, onGoBack }) => {
         {/* Mobile Dropdown Actions Drawer when 3 dots toggled */}
         {showMobileActions && (
           <div className="sm:hidden flex flex-wrap gap-1.5 w-full pt-2 border-t border-border mt-1 animate-in fade-in slide-in-from-top-1">
-            {isAdmin && activeTab === 'items' && (
+            {isAdmin && (
               <>
                 <button
                   onClick={() => { setIsBulkImportModalOpen(true); setShowMobileActions(false); }}
@@ -1027,23 +1053,13 @@ const MenuManagement = ({ user, onNavigate, onGoBack }) => {
               </>
             )}
 
-            {isAdmin && activeTab === 'items' && (
+            {isAdmin && (
               <button
                 onClick={() => { handleOpenModal(); setShowMobileActions(false); }}
                 className="w-full flex items-center justify-center gap-1 bg-primary text-white py-1.5 rounded-xl hover:bg-primary-hover transition-colors shadow-xs text-xs font-bold cursor-pointer"
               >
                 <Plus size={14} />
                 <span>{t("Add Item")}</span>
-              </button>
-            )}
-
-            {isAdmin && activeTab === 'categories' && (
-              <button
-                onClick={() => { handleOpenCategoryModal(); setShowMobileActions(false); }}
-                className="w-full flex items-center justify-center gap-1 bg-secondary text-white py-1.5 rounded-xl hover:bg-accent transition-colors shadow-xs text-xs font-bold cursor-pointer"
-              >
-                <FolderPlus size={14} />
-                <span>{t("Add Category")}</span>
               </button>
             )}
           </div>
@@ -1065,30 +1081,28 @@ const MenuManagement = ({ user, onNavigate, onGoBack }) => {
             autoCapitalize="off"
             spellCheck="false"
             aria-autocomplete="none"
-            placeholder={`Search ${activeTab === 'items' ? 'items' : 'categories'}...`}
+            placeholder={t("Search menu items...")}
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="w-full pl-8 md:pl-10 pr-3 md:pr-4 py-1.5 md:py-2 bg-surface border border-border rounded-xl focus:outline-none focus:border-primary transition-colors text-xs md:text-sm text-text-main shadow-2xs font-medium" />
         </div>
 
         {/* Sort Filter */}
-        {activeTab === 'items' && (
-          <select 
-            value={sortBy}
-            onChange={(e) => setSortBy(e.target.value)}
-            className="w-28 sm:w-36 md:w-48 px-2.5 py-1.5 md:px-3 md:py-2 border border-border rounded-xl bg-surface text-text-main text-xs md:text-sm focus:outline-none focus:border-primary transition-colors shadow-2xs cursor-pointer shrink-0 font-medium"
-          >
-            <option value="latest">{t("Added: Latest")}</option>
-            <option value="oldest">{t("Added: Oldest")}</option>
-            <option value="alphaAsc">{t("Alphabetical (A-Z)")}</option>
-            <option value="alphaDesc">{t("Alphabetical (Z-A)")}</option>
-            <option value="priceAsc">{t("Price: Low to High")}</option>
-            <option value="priceDesc">{t("Price: High to Low")}</option>
-          </select>
-        )}
+        <select 
+          value={sortBy}
+          onChange={(e) => setSortBy(e.target.value)}
+          className="w-28 sm:w-36 md:w-48 px-2.5 py-1.5 md:px-3 md:py-2 border border-border rounded-xl bg-surface text-text-main text-xs md:text-sm focus:outline-none focus:border-primary transition-colors shadow-2xs cursor-pointer shrink-0 font-medium"
+        >
+          <option value="latest">{t("Added: Latest")}</option>
+          <option value="oldest">{t("Added: Oldest")}</option>
+          <option value="alphaAsc">{t("Alphabetical (A-Z)")}</option>
+          <option value="alphaDesc">{t("Alphabetical (Z-A)")}</option>
+          <option value="priceAsc">{t("Price: Low to High")}</option>
+          <option value="priceDesc">{t("Price: High to Low")}</option>
+        </select>
 
         {/* Top Pagination Controls */}
-        {(activeTab === 'items' ? itemsTotalPages : categoriesTotalPages) > 1 && (
+        {itemsTotalPages > 1 && (
           <div className="flex items-center gap-0.5 bg-surface border border-border rounded-xl px-1.5 py-1 shrink-0 shadow-2xs">
             <button 
               onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
@@ -1099,11 +1113,11 @@ const MenuManagement = ({ user, onNavigate, onGoBack }) => {
               <ChevronLeft size={13} />
             </button>
             <span className="text-[10px] sm:text-[11px] font-bold text-text-main px-1 select-none whitespace-nowrap">
-              {currentPage} / {activeTab === 'items' ? itemsTotalPages : categoriesTotalPages}
+              {currentPage} / {itemsTotalPages}
             </span>
             <button 
-              onClick={() => setCurrentPage(p => Math.min(activeTab === 'items' ? itemsTotalPages : categoriesTotalPages, p + 1))}
-              disabled={currentPage === (activeTab === 'items' ? itemsTotalPages : categoriesTotalPages)}
+              onClick={() => setCurrentPage(p => Math.min(itemsTotalPages, p + 1))}
+              disabled={currentPage === itemsTotalPages}
               className="p-0.5 rounded-lg text-text-muted hover:text-text-main hover:bg-background disabled:opacity-30 disabled:cursor-not-allowed transition-all cursor-pointer"
               title={t("Next Page")}
             >
@@ -1113,151 +1127,193 @@ const MenuManagement = ({ user, onNavigate, onGoBack }) => {
         )}
         </div>{/* end Row 1 */}
 
-        {/* Row 2: Filter Pills — only for items tab, shown on all screen sizes */}
-        {activeTab === 'items' && (
-          <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar flex-nowrap py-1">
-            <span className="text-[10px] md:text-xs font-bold text-text-muted uppercase tracking-wider shrink-0 hidden sm:inline">{t("Filter")}:</span>
-            
-            {/* All */}
-            <button
-              type="button"
-              onClick={() => { setSelectedWaterType('all'); setSelectedSpeciesType('all'); setCurrentPage(1); }}
-              className={`px-3 py-1 md:px-3.5 md:py-1.5 rounded-full text-[11px] md:text-xs font-bold transition-all border cursor-pointer flex items-center gap-1.5 shrink-0 whitespace-nowrap ${
-                selectedWaterType === 'all' && selectedSpeciesType === 'all'
-                  ? 'bg-primary text-white border-primary shadow-xs'
-                  : 'bg-surface text-text-main border-border hover:bg-surface-hover'
-              }`}
-            >
-              {t("All")}
-              <span className={`text-[9px] font-extrabold px-1.5 py-0.5 rounded-full leading-none ${
-                selectedWaterType === 'all' && selectedSpeciesType === 'all' ? 'bg-white/25 text-white' : 'bg-surface-hover text-text-muted'
-              }`}>
-                {items.length}
-              </span>
-            </button>
-
-            {/* Separator */}
-            <div className="h-4 w-px bg-border mx-0.5 shrink-0" />
-
-            {/* Sea Water */}
-            <button
-              type="button"
-              onClick={() => { setSelectedWaterType(prev => prev === 'sea_water' ? 'all' : 'sea_water'); setCurrentPage(1); }}
-              className={`px-2.5 py-1 md:px-3 md:py-1.5 rounded-full text-[11px] md:text-xs font-bold transition-all border cursor-pointer flex items-center gap-1.5 shrink-0 whitespace-nowrap ${
-                selectedWaterType === 'sea_water'
-                  ? 'bg-sky-600 text-white border-sky-600 shadow-xs'
-                  : 'bg-sky-50 dark:bg-sky-950/40 text-sky-800 dark:text-sky-300 border-sky-200 dark:border-sky-800 hover:bg-sky-100'
-              }`}
-            >
-              {t("Sea Water")}
-              <span className={`text-[9px] font-extrabold px-1.5 py-0.5 rounded-full leading-none ${
-                selectedWaterType === 'sea_water' ? 'bg-white/25 text-white' : 'bg-sky-200/70 dark:bg-sky-900 text-sky-900 dark:text-sky-200'
-              }`}>
-                {filterCounts.seaWater}
-              </span>
-            </button>
-
-            {/* Fresh Water */}
-            <button
-              type="button"
-              onClick={() => { setSelectedWaterType(prev => prev === 'fresh_water' ? 'all' : 'fresh_water'); setCurrentPage(1); }}
-              className={`px-2.5 py-1 md:px-3 md:py-1.5 rounded-full text-[11px] md:text-xs font-bold transition-all border cursor-pointer flex items-center gap-1.5 shrink-0 whitespace-nowrap ${
-                selectedWaterType === 'fresh_water'
-                  ? 'bg-teal-600 text-white border-teal-600 shadow-xs'
-                  : 'bg-teal-50 dark:bg-teal-950/40 text-teal-800 dark:text-teal-300 border-teal-200 dark:border-teal-800 hover:bg-teal-100'
-              }`}
-            >
-              {t("Fresh Water")}
-              <span className={`text-[9px] font-extrabold px-1.5 py-0.5 rounded-full leading-none ${
-                selectedWaterType === 'fresh_water' ? 'bg-white/25 text-white' : 'bg-teal-200/70 dark:bg-teal-900 text-teal-900 dark:text-teal-200'
-              }`}>
-                {filterCounts.freshWater}
-              </span>
-            </button>
-
-            {/* Separator */}
-            <div className="h-4 w-px bg-border mx-0.5 shrink-0" />
-
-            {/* Fish */}
-            <button
-              type="button"
-              onClick={() => { setSelectedSpeciesType(prev => prev === 'fish' ? 'all' : 'fish'); setCurrentPage(1); }}
-              className={`px-2.5 py-1 md:px-3 md:py-1.5 rounded-full text-[11px] md:text-xs font-bold transition-all border cursor-pointer flex items-center gap-1.5 shrink-0 whitespace-nowrap ${
-                selectedSpeciesType === 'fish'
-                  ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs'
-                  : 'bg-indigo-50 dark:bg-indigo-950/40 text-indigo-800 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800 hover:bg-indigo-100'
-              }`}
-            >
-              {t("Fish")}
-              <span className={`text-[9px] font-extrabold px-1.5 py-0.5 rounded-full leading-none ${
-                selectedSpeciesType === 'fish' ? 'bg-white/25 text-white' : 'bg-indigo-200/70 dark:bg-indigo-900 text-indigo-900 dark:text-indigo-200'
-              }`}>
-                {filterCounts.fish}
-              </span>
-            </button>
-
-            {/* Prawn */}
-            <button
-              type="button"
-              onClick={() => { setSelectedSpeciesType(prev => prev === 'prawn' ? 'all' : 'prawn'); setCurrentPage(1); }}
-              className={`px-2.5 py-1 md:px-3 md:py-1.5 rounded-full text-[11px] md:text-xs font-bold transition-all border cursor-pointer flex items-center gap-1.5 shrink-0 whitespace-nowrap ${
-                selectedSpeciesType === 'prawn'
-                  ? 'bg-rose-600 text-white border-rose-600 shadow-xs'
-                  : 'bg-rose-50 dark:bg-rose-950/40 text-rose-800 dark:text-rose-300 border-rose-200 dark:border-rose-800 hover:bg-rose-100'
-              }`}
-            >
-              {t("Prawn")}
-              <span className={`text-[9px] font-extrabold px-1.5 py-0.5 rounded-full leading-none ${
-                selectedSpeciesType === 'prawn' ? 'bg-white/25 text-white' : 'bg-rose-200/70 dark:bg-rose-900 text-rose-900 dark:text-rose-200'
-              }`}>
-                {filterCounts.prawn}
-              </span>
-            </button>
-
-            {/* Crab */}
-            <button
-              type="button"
-              onClick={() => { setSelectedSpeciesType(prev => prev === 'crab' ? 'all' : 'crab'); setCurrentPage(1); }}
-              className={`px-2.5 py-1 md:px-3 md:py-1.5 rounded-full text-[11px] md:text-xs font-bold transition-all border cursor-pointer flex items-center gap-1.5 shrink-0 whitespace-nowrap ${
-                selectedSpeciesType === 'crab'
-                  ? 'bg-amber-600 text-white border-amber-600 shadow-xs'
-                  : 'bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 border-amber-200 dark:border-amber-800 hover:bg-amber-100'
-              }`}
-            >
-              {t("Crab")}
-              <span className={`text-[9px] font-extrabold px-1.5 py-0.5 rounded-full leading-none ${
-                selectedSpeciesType === 'crab' ? 'bg-white/25 text-white' : 'bg-amber-200/70 dark:bg-amber-900 text-amber-900 dark:text-amber-200'
-              }`}>
-                {filterCounts.crab}
-              </span>
-            </button>
-
-            <span className="text-[10px] md:text-xs text-text-muted font-medium ml-1 shrink-0">
-              ({filteredItems.length} {t("items")})
+        {/* Row 2: Filter Pills — All screen sizes */}
+        <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar flex-nowrap py-1">
+          <span className="text-[10px] md:text-xs font-bold text-text-muted uppercase tracking-wider shrink-0 hidden sm:inline">{t("Filter")}:</span>
+          
+          {/* All */}
+          <button
+            type="button"
+            onClick={() => { setSelectedWaterType('all'); setSelectedSpeciesType('all'); setSelectedStockFilter('all'); setCurrentPage(1); }}
+            className={`px-3 py-1 md:px-3.5 md:py-1.5 rounded-full text-[11px] md:text-xs font-bold transition-all border cursor-pointer flex items-center gap-1.5 shrink-0 whitespace-nowrap ${
+              selectedWaterType === 'all' && selectedSpeciesType === 'all' && selectedStockFilter === 'all'
+                ? 'bg-primary text-white border-primary shadow-xs'
+                : 'bg-surface text-text-main border-border hover:bg-surface-hover'
+            }`}
+          >
+            {t("All")}
+            <span className={`text-[9px] font-extrabold px-1.5 py-0.5 rounded-full leading-none ${
+              selectedWaterType === 'all' && selectedSpeciesType === 'all' && selectedStockFilter === 'all' ? 'bg-white/25 text-white' : 'bg-surface-hover text-text-muted'
+            }`}>
+              {items.length}
             </span>
-          </div>
-        )}
+          </button>
+
+          {/* Separator */}
+          <div className="h-4 w-px bg-border mx-0.5 shrink-0" />
+
+          {/* Sea Water */}
+          <button
+            type="button"
+            onClick={() => { setSelectedWaterType(prev => prev === 'sea_water' ? 'all' : 'sea_water'); setCurrentPage(1); }}
+            className={`px-2.5 py-1 md:px-3 md:py-1.5 rounded-full text-[11px] md:text-xs font-bold transition-all border cursor-pointer flex items-center gap-1.5 shrink-0 whitespace-nowrap ${
+              selectedWaterType === 'sea_water'
+                ? 'bg-sky-600 text-white border-sky-600 shadow-xs'
+                : 'bg-sky-100 text-sky-900 border-sky-300 hover:bg-sky-200'
+            }`}
+          >
+            {t("Sea Water")}
+            <span className={`text-[9px] font-extrabold px-1.5 py-0.5 rounded-full leading-none ${
+              selectedWaterType === 'sea_water' ? 'bg-white/25 text-white' : 'bg-sky-200 text-sky-950 font-black'
+            }`}>
+              {filterCounts.seaWater}
+            </span>
+          </button>
+
+          {/* Fresh Water */}
+          <button
+            type="button"
+            onClick={() => { setSelectedWaterType(prev => prev === 'fresh_water' ? 'all' : 'fresh_water'); setCurrentPage(1); }}
+            className={`px-2.5 py-1 md:px-3 md:py-1.5 rounded-full text-[11px] md:text-xs font-bold transition-all border cursor-pointer flex items-center gap-1.5 shrink-0 whitespace-nowrap ${
+              selectedWaterType === 'fresh_water'
+                ? 'bg-teal-600 text-white border-teal-600 shadow-xs'
+                : 'bg-teal-100 text-teal-900 border-teal-300 hover:bg-teal-200'
+            }`}
+          >
+            {t("Fresh Water")}
+            <span className={`text-[9px] font-extrabold px-1.5 py-0.5 rounded-full leading-none ${
+              selectedWaterType === 'fresh_water' ? 'bg-white/25 text-white' : 'bg-teal-200 text-teal-950 font-black'
+            }`}>
+              {filterCounts.freshWater}
+            </span>
+          </button>
+
+          {/* Separator */}
+          <div className="h-4 w-px bg-border mx-0.5 shrink-0" />
+
+          {/* Dynamic Species Pills (Fish, Prawn, Crab, and any custom species) */}
+          {availableSpeciesList.map(sp => {
+            const count = filterCounts.speciesMap?.[sp] || 0;
+            const isSelected = selectedSpeciesType === sp;
+            const label = sp === 'fish' ? t('Fish') : sp === 'prawn' ? t('Prawn') : sp === 'crab' ? t('Crab') : sp.charAt(0).toUpperCase() + sp.slice(1);
+            const colorClass = sp === 'fish' 
+              ? (isSelected ? 'bg-blue-600 text-white border-blue-600 shadow-xs' : 'bg-blue-100 text-blue-900 border-blue-300 hover:bg-blue-200')
+              : sp === 'prawn'
+              ? (isSelected ? 'bg-rose-600 text-white border-rose-600 shadow-xs' : 'bg-rose-100 text-rose-900 border-rose-300 hover:bg-rose-200')
+              : sp === 'crab'
+              ? (isSelected ? 'bg-amber-600 text-white border-amber-600 shadow-xs' : 'bg-amber-100 text-amber-900 border-amber-300 hover:bg-amber-200')
+              : (isSelected ? 'bg-purple-600 text-white border-purple-600 shadow-xs' : 'bg-purple-100 text-purple-900 border-purple-300 hover:bg-purple-200');
+
+            const badgeCountColor = sp === 'fish'
+              ? 'bg-blue-200 text-blue-950'
+              : sp === 'prawn'
+              ? 'bg-rose-200 text-rose-950'
+              : sp === 'crab'
+              ? 'bg-amber-200 text-amber-950'
+              : 'bg-purple-200 text-purple-950';
+
+            return (
+              <button
+                key={sp}
+                type="button"
+                onClick={() => { setSelectedSpeciesType(prev => prev === sp ? 'all' : sp); setCurrentPage(1); }}
+                className={`px-2.5 py-1 md:px-3 md:py-1.5 rounded-full text-[11px] md:text-xs font-bold transition-all border cursor-pointer flex items-center gap-1.5 shrink-0 whitespace-nowrap ${colorClass}`}
+              >
+                {label}
+                <span className={`text-[9px] font-extrabold px-1.5 py-0.5 rounded-full leading-none ${
+                  isSelected ? 'bg-white/25 text-white' : `${badgeCountColor} font-black`
+                }`}>
+                  {count}
+                </span>
+              </button>
+            );
+          })}
+
+          {/* Separator */}
+          <div className="h-4 w-px bg-border mx-0.5 shrink-0" />
+
+          {/* Stock Level Filter Pills */}
+          {/* In Stock */}
+          <button
+            type="button"
+            onClick={() => { setSelectedStockFilter(prev => prev === 'in_stock' ? 'all' : 'in_stock'); setCurrentPage(1); }}
+            className={`px-2.5 py-1 md:px-3 md:py-1.5 rounded-full text-[11px] md:text-xs font-bold transition-all border cursor-pointer flex items-center gap-1.5 shrink-0 whitespace-nowrap ${
+              selectedStockFilter === 'in_stock'
+                ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
+                : 'bg-emerald-100 text-emerald-900 border-emerald-300 hover:bg-emerald-200'
+            }`}
+            title="Filter items with stock > 0"
+          >
+            <span>{t("In Stock (>0)")}</span>
+            <span className={`text-[9px] font-extrabold px-1.5 py-0.5 rounded-full leading-none ${
+              selectedStockFilter === 'in_stock' ? 'bg-white/25 text-white' : 'bg-emerald-200 text-emerald-950 font-black'
+            }`}>
+              {filterCounts.inStock}
+            </span>
+          </button>
+
+          {/* Out of Stock */}
+          <button
+            type="button"
+            onClick={() => { setSelectedStockFilter(prev => prev === 'out_of_stock' ? 'all' : 'out_of_stock'); setCurrentPage(1); }}
+            className={`px-2.5 py-1 md:px-3 md:py-1.5 rounded-full text-[11px] md:text-xs font-bold transition-all border cursor-pointer flex items-center gap-1.5 shrink-0 whitespace-nowrap ${
+              selectedStockFilter === 'out_of_stock'
+                ? 'bg-rose-600 text-white border-rose-600 shadow-xs'
+                : 'bg-rose-100 text-rose-900 border-rose-300 hover:bg-rose-200'
+            }`}
+            title="Filter items with stock = 0"
+          >
+            <span>{t("Out of Stock (0)")}</span>
+            <span className={`text-[9px] font-extrabold px-1.5 py-0.5 rounded-full leading-none ${
+              selectedStockFilter === 'out_of_stock' ? 'bg-white/25 text-white' : 'bg-rose-200 text-rose-950 font-black'
+            }`}>
+              {filterCounts.outOfStock}
+            </span>
+          </button>
+
+          {/* Low Stock */}
+          <button
+            type="button"
+            onClick={() => { setSelectedStockFilter(prev => prev === 'low_stock' ? 'all' : 'low_stock'); setCurrentPage(1); }}
+            className={`px-2.5 py-1 md:px-3 md:py-1.5 rounded-full text-[11px] md:text-xs font-bold transition-all border cursor-pointer flex items-center gap-1.5 shrink-0 whitespace-nowrap ${
+              selectedStockFilter === 'low_stock'
+                ? 'bg-amber-600 text-white border-amber-600 shadow-xs'
+                : 'bg-amber-100 text-amber-900 border-amber-300 hover:bg-amber-200'
+            }`}
+            title="Filter items with stock <= 10 Kg"
+          >
+            <span>{t("Low Stock (≤10)")}</span>
+            <span className={`text-[9px] font-extrabold px-1.5 py-0.5 rounded-full leading-none ${
+              selectedStockFilter === 'low_stock' ? 'bg-white/25 text-white' : 'bg-amber-200 text-amber-950 font-black'
+            }`}>
+              {filterCounts.lowStock}
+            </span>
+          </button>
+
+          <span className="text-[10px] md:text-xs text-text-muted font-medium ml-1 shrink-0">
+            ({filteredItems.length} {t("items")})
+          </span>
+        </div>
       </div>
 
       {/* Table Container */}
       <div className="bg-surface border border-border rounded-xl overflow-hidden flex-1 flex flex-col shadow-sm">
         <div className="overflow-x-auto overflow-y-auto flex-1 custom-scrollbar">
           <div className="min-w-[1050px]">
-            {activeTab === 'items' ? (
-              <table className="w-full text-left border-collapse">
-                <thead className="bg-[#FAF6F0] dark:bg-slate-900 sticky top-0 z-10 border-b-2 border-border shadow-xs">
+            <table className="w-full text-left border-collapse">
+                <thead className="bg-[#FAF0E4] sticky top-0 z-10 border-b-2 border-[#E8DCCB] shadow-xs">
                   <tr>
-                    <th className="px-3 md:px-4 py-2.5 text-xs font-black text-slate-800 dark:text-slate-200 uppercase tracking-wider">{t("Fish Name")}</th>
-                    <th className="px-3 md:px-4 py-2.5 text-xs font-black text-slate-800 dark:text-slate-200 uppercase tracking-wider">{t("Water Type")}</th>
-                    <th className="px-3 md:px-4 py-2.5 text-xs font-black text-slate-800 dark:text-slate-200 uppercase tracking-wider">{t("Seafood Species")}</th>
-                    <th className="px-3 md:px-4 py-2.5 text-xs font-black text-slate-800 dark:text-slate-200 uppercase tracking-wider">{t("Unit")}</th>
-                    <th className="px-3 md:px-4 py-2.5 text-xs font-black text-emerald-800 dark:text-emerald-400 uppercase tracking-wider bg-emerald-50/50 dark:bg-emerald-950/20">{t("Retail (₹/Kg)")}</th>
-                    <th className="px-3 md:px-4 py-2.5 text-xs font-black text-amber-800 dark:text-amber-400 uppercase tracking-wider bg-amber-50/50 dark:bg-amber-950/20">{t("Wholesale (₹/Kg)")}</th>
-                    <th className="px-3 md:px-4 py-2.5 text-xs font-black text-blue-800 dark:text-blue-400 uppercase tracking-wider bg-blue-50/50 dark:bg-blue-950/20">{t("Export (₹/Kg)")}</th>
-                    <th className="px-3 md:px-4 py-2.5 text-xs font-black text-slate-800 dark:text-slate-200 uppercase tracking-wider">{t("Size Grades & Availability")}</th>
-                    <th className="px-3 md:px-4 py-2.5 text-xs font-black text-indigo-800 dark:text-indigo-400 uppercase tracking-wider bg-indigo-50/50 dark:bg-indigo-950/20 whitespace-nowrap">{t("Cutting Charges (₹)")}</th>
-                    <th className="px-3 md:px-4 py-2.5 text-xs font-black text-slate-800 dark:text-slate-200 uppercase tracking-wider">{t("Stock")}</th>
-                    <th className="px-3 md:px-4 py-2.5 text-xs font-black text-slate-800 dark:text-slate-200 uppercase tracking-wider text-right">{t("Actions")}</th>
+                    <th className="px-3 md:px-4 py-2.5 text-xs font-black text-slate-800 uppercase tracking-wider">{t("Fish Name")}</th>
+                    <th className="px-3 md:px-4 py-2.5 text-xs font-black text-slate-800 uppercase tracking-wider">{t("Water Type")}</th>
+                    <th className="px-3 md:px-4 py-2.5 text-xs font-black text-slate-800 uppercase tracking-wider">{t("Seafood Species")}</th>
+                    <th className="px-3 md:px-4 py-2.5 text-xs font-black text-slate-800 uppercase tracking-wider">{t("Unit")}</th>
+                    <th className="px-3 md:px-4 py-2.5 text-xs font-black text-emerald-900 uppercase tracking-wider bg-emerald-100/60">{t("Retail (₹/Kg)")}</th>
+                    <th className="px-3 md:px-4 py-2.5 text-xs font-black text-amber-900 uppercase tracking-wider bg-amber-100/60">{t("Wholesale (₹/Kg)")}</th>
+                    <th className="px-3 md:px-4 py-2.5 text-xs font-black text-blue-900 uppercase tracking-wider bg-blue-100/60">{t("Export (₹/Kg)")}</th>
+                    <th className="px-3 md:px-4 py-2.5 text-xs font-black text-slate-800 uppercase tracking-wider">{t("Size Grades & Availability")}</th>
+                    <th className="px-3 md:px-4 py-2.5 text-xs font-black text-indigo-900 uppercase tracking-wider bg-indigo-100/60 whitespace-nowrap">{t("Cutting Charges (₹)")}</th>
+                    <th className="px-3 md:px-4 py-2.5 text-xs font-black text-slate-800 uppercase tracking-wider">{t("Stock")}</th>
+                    <th className="px-3 md:px-4 py-2.5 text-xs font-black text-slate-800 uppercase tracking-wider text-right">{t("Actions")}</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border text-xs">
@@ -1332,11 +1388,11 @@ const MenuManagement = ({ user, onNavigate, onGoBack }) => {
                         {/* Water Type */}
                         <td className="px-3 md:px-4 py-2.5 whitespace-nowrap">
                           {item.waterType === 'sea_water' || (!item.waterType && (item.category?.name || item.category || '').toLowerCase().includes('sea')) ? (
-                            <span className="inline-block px-2.5 py-0.5 rounded-md text-xs font-black bg-sky-100 text-sky-800 border border-sky-300 dark:bg-sky-950 dark:text-sky-300 dark:border-sky-700 shadow-2xs">
+                            <span className="inline-block px-2.5 py-0.5 rounded-md text-xs font-black bg-sky-100 text-sky-800 border border-sky-300 shadow-2xs">
                               {t("Sea Water")}
                             </span>
                           ) : (
-                            <span className="inline-block px-2.5 py-0.5 rounded-md text-xs font-black bg-emerald-100 text-emerald-800 border border-emerald-300 dark:bg-emerald-950 dark:text-emerald-300 dark:border-emerald-700 shadow-2xs">
+                            <span className="inline-block px-2.5 py-0.5 rounded-md text-xs font-black bg-emerald-100 text-emerald-800 border border-emerald-300 shadow-2xs">
                               {t("Fresh Water")}
                             </span>
                           )}
@@ -1348,20 +1404,27 @@ const MenuManagement = ({ user, onNavigate, onGoBack }) => {
                             const nameCat = `${item.name || ''} ${item.category?.name || item.category || ''}`.toLowerCase();
                             if (sp === 'prawn' || nameCat.includes('prawn') || nameCat.includes('రొయ్యలు')) {
                               return (
-                                <span className="inline-block px-2.5 py-0.5 rounded-md text-xs font-black bg-amber-100 text-amber-900 border border-amber-300 dark:bg-amber-950 dark:text-amber-300 dark:border-amber-700 shadow-2xs">
+                                <span className="inline-block px-2.5 py-0.5 rounded-md text-xs font-black bg-rose-100 text-rose-900 border border-rose-300 shadow-2xs">
                                   {t("Prawn")}
                                 </span>
                               );
                             }
                             if (sp === 'crab' || nameCat.includes('crab') || nameCat.includes('పీతలు')) {
                               return (
-                                <span className="inline-block px-2.5 py-0.5 rounded-md text-xs font-black bg-rose-100 text-rose-900 border border-rose-300 dark:bg-rose-950 dark:text-rose-300 dark:border-rose-700 shadow-2xs">
+                                <span className="inline-block px-2.5 py-0.5 rounded-md text-xs font-black bg-amber-100 text-amber-900 border border-amber-300 shadow-2xs">
                                   {t("Crab")}
                                 </span>
                               );
                             }
+                            if (sp && sp !== 'fish' && sp !== 'other') {
+                              return (
+                                <span className="inline-block px-2.5 py-0.5 rounded-md text-xs font-black bg-purple-100 text-purple-900 border border-purple-300 shadow-2xs capitalize">
+                                  {sp}
+                                </span>
+                              );
+                            }
                             return (
-                              <span className="inline-block px-2.5 py-0.5 rounded-md text-xs font-black bg-blue-100 text-blue-900 border border-blue-300 dark:bg-blue-950 dark:text-blue-300 dark:border-blue-700 shadow-2xs">
+                              <span className="inline-block px-2.5 py-0.5 rounded-md text-xs font-black bg-blue-100 text-blue-900 border border-blue-300 shadow-2xs">
                                 {t("Fish")}
                               </span>
                             );
@@ -1369,20 +1432,20 @@ const MenuManagement = ({ user, onNavigate, onGoBack }) => {
                         </td>
                         {/* Unit */}
                         <td className="px-3 md:px-4 py-2.5 whitespace-nowrap">
-                          <span className="px-2 py-0.5 rounded-md text-xs font-bold bg-slate-100 text-slate-800 border border-slate-300 dark:bg-slate-800 dark:text-slate-200 dark:border-slate-700">
+                          <span className="px-2 py-0.5 rounded-md text-xs font-bold bg-slate-100 text-slate-800 border border-slate-300">
                             {item.sellingUnit || 'Kg'}
                           </span>
                         </td>
                         {/* Retail Price (₹/Kg) */}
-                        <td className="px-3 md:px-4 py-2.5 font-black text-emerald-800 dark:text-emerald-400 whitespace-nowrap text-sm bg-emerald-50/20 dark:bg-emerald-950/10">
+                        <td className="px-3 md:px-4 py-2.5 font-black text-emerald-800 whitespace-nowrap text-sm bg-emerald-50/20">
                           ₹{Number(item.price || 0).toFixed(2)}
                         </td>
                         {/* Wholesale Price (₹/Kg) */}
-                        <td className="px-3 md:px-4 py-2.5 font-black text-amber-800 dark:text-amber-400 whitespace-nowrap text-sm bg-amber-50/20 dark:bg-amber-950/10">
+                        <td className="px-3 md:px-4 py-2.5 font-black text-amber-800 whitespace-nowrap text-sm bg-amber-50/20">
                           ₹{Number(item.wholesalePricePerKg || item.price || 0).toFixed(2)}
                         </td>
                         {/* Export Price (₹/Kg) */}
-                        <td className="px-3 md:px-4 py-2.5 font-black text-blue-800 dark:text-blue-400 whitespace-nowrap text-sm bg-blue-50/20 dark:bg-blue-950/10">
+                        <td className="px-3 md:px-4 py-2.5 font-black text-blue-800 whitespace-nowrap text-sm bg-blue-50/20">
                           ₹{Number(item.exportPricePerKg || item.wholesalePricePerKg || item.price || 0).toFixed(2)}
                         </td>
                         {/* Size Grades & Availability */}
@@ -1393,11 +1456,11 @@ const MenuManagement = ({ user, onNavigate, onGoBack }) => {
                               title={`Small (${item.sizeGrades?.small?.minKg ?? 0}-${item.sizeGrades?.small?.maxKg ?? 1} Kg): Retail ₹${item.sizeGrades?.small?.price || item.price}, Wholesale ₹${item.sizeGrades?.small?.wholesalePrice || item.wholesalePricePerKg || '-'}, Export ₹${item.sizeGrades?.small?.exportPrice || item.exportPricePerKg || '-'}`}
                               className={`px-2 py-0.5 rounded text-[11px] font-black border transition-colors flex items-center gap-1 ${
                                 item.sizeGrades?.small?.enabled !== false 
-                                  ? 'bg-emerald-100 text-emerald-900 border-emerald-300 dark:bg-emerald-950 dark:text-emerald-300 dark:border-emerald-700' 
+                                  ? 'bg-emerald-100 text-emerald-900 border-emerald-300' 
                                   : 'bg-slate-100 text-slate-400 border-slate-200 line-through'
                               }`}
                             >
-                              S <span className="font-mono text-[10px] font-semibold text-emerald-800 dark:text-emerald-300">₹{item.sizeGrades?.small?.price || item.price}</span>
+                              S <span className="font-mono text-[10px] font-semibold text-emerald-800">₹{item.sizeGrades?.small?.price || item.price}</span>
                             </span>
 
                             {/* Medium */}
@@ -1405,11 +1468,11 @@ const MenuManagement = ({ user, onNavigate, onGoBack }) => {
                               title={`Medium (${item.sizeGrades?.medium?.minKg ?? 1}-${item.sizeGrades?.medium?.maxKg ?? 4} Kg): Retail ₹${item.sizeGrades?.medium?.price || item.price}, Wholesale ₹${item.sizeGrades?.medium?.wholesalePrice || item.wholesalePricePerKg || '-'}, Export ₹${item.sizeGrades?.medium?.exportPrice || item.exportPricePerKg || '-'}`}
                               className={`px-2 py-0.5 rounded text-[11px] font-black border transition-colors flex items-center gap-1 ${
                                 item.sizeGrades?.medium?.enabled !== false 
-                                  ? 'bg-amber-100 text-amber-900 border-amber-300 dark:bg-amber-950 dark:text-amber-300 dark:border-amber-700' 
+                                  ? 'bg-amber-100 text-amber-900 border-amber-300' 
                                   : 'bg-slate-100 text-slate-400 border-slate-200 line-through'
                               }`}
                             >
-                              M <span className="font-mono text-[10px] font-semibold text-amber-800 dark:text-amber-300">₹{item.sizeGrades?.medium?.price || item.price}</span>
+                              M <span className="font-mono text-[10px] font-semibold text-amber-800">₹{item.sizeGrades?.medium?.price || item.price}</span>
                             </span>
 
                             {/* Big */}
@@ -1417,22 +1480,22 @@ const MenuManagement = ({ user, onNavigate, onGoBack }) => {
                               title={`Big (${item.sizeGrades?.big?.minKg ?? 4}+ Kg): Retail ₹${item.sizeGrades?.big?.price || item.price}, Wholesale ₹${item.sizeGrades?.big?.wholesalePrice || item.wholesalePricePerKg || '-'}, Export ₹${item.sizeGrades?.big?.exportPrice || item.exportPricePerKg || '-'}`}
                               className={`px-2 py-0.5 rounded text-[11px] font-black border transition-colors flex items-center gap-1 ${
                                 item.sizeGrades?.big?.enabled !== false 
-                                  ? 'bg-blue-100 text-blue-900 border-blue-300 dark:bg-blue-950 dark:text-blue-300 dark:border-blue-700' 
+                                  ? 'bg-blue-100 text-blue-900 border-blue-300' 
                                   : 'bg-slate-100 text-slate-400 border-slate-200 line-through'
                               }`}
                             >
-                              B <span className="font-mono text-[10px] font-semibold text-blue-800 dark:text-blue-300">₹{item.sizeGrades?.big?.price || item.price}</span>
+                              B <span className="font-mono text-[10px] font-semibold text-blue-800">₹{item.sizeGrades?.big?.price || item.price}</span>
                             </span>
                           </div>
                         </td>
                         {/* Cutting Charges (₹) */}
-                        <td className="px-3 md:px-4 py-2.5 whitespace-nowrap bg-indigo-50/20 dark:bg-indigo-950/10">
+                        <td className="px-3 md:px-4 py-2.5 whitespace-nowrap bg-indigo-50/20">
                           <div className="flex items-center gap-2">
                             <button
                               onClick={() => handleToggleCuttingCharge(item)}
                               title={item.customCuttingChargeEnabled ? t("Turn Cutting Charges OFF") : t("Turn Cutting Charges ON")}
                               className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none shrink-0 cursor-pointer ${
-                                item.customCuttingChargeEnabled ? 'bg-emerald-500' : 'bg-slate-300 dark:bg-slate-700'
+                                item.customCuttingChargeEnabled ? 'bg-emerald-500' : 'bg-slate-300'
                               }`}
                             >
                               <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow-sm transition-transform ${
@@ -1441,8 +1504,8 @@ const MenuManagement = ({ user, onNavigate, onGoBack }) => {
                             </button>
                             {item.customCuttingChargeEnabled ? (
                               <div className="flex flex-col text-[11px] leading-tight">
-                                <span className="font-bold text-emerald-700 dark:text-emerald-400">
-                                  ON <span className="font-semibold text-slate-700 dark:text-slate-300 font-mono">(Base: ₹{item.cuttingCharge || 0})</span>
+                                <span className="font-bold text-emerald-700">
+                                  ON <span className="font-semibold text-slate-700 font-mono">(Base: ₹{item.cuttingCharge || 0})</span>
                                 </span>
                                 <span className="text-[10px] text-slate-500 dark:text-slate-400 font-mono">
                                   S:₹{item.sizeGrades?.small?.cuttingCharge ?? item.cuttingCharge ?? 0} • M:₹{item.sizeGrades?.medium?.cuttingCharge ?? item.cuttingCharge ?? 0} • B:₹{item.sizeGrades?.big?.cuttingCharge ?? item.cuttingCharge ?? 0}
@@ -1503,106 +1566,52 @@ const MenuManagement = ({ user, onNavigate, onGoBack }) => {
                   )}
                 </tbody>
               </table>
-            ) : (
-              <table className="w-full text-left border-collapse">
-                <thead className="bg-background sticky top-0 z-10">
-                  <tr>
-                    <th className="px-3 py-2 text-[11px] font-bold text-text-muted uppercase tracking-wider border-b border-border">{t("Name")}</th>
-                    <th className="px-3 py-2 text-[11px] font-bold text-text-muted uppercase tracking-wider border-b border-border">{t("Description")}</th>
-                    <th className="px-3 py-2 text-[11px] font-bold text-text-muted uppercase tracking-wider border-b border-border">{t("Sort Order")}</th>
-                    <th className="px-3 py-2 text-[11px] font-bold text-text-muted uppercase tracking-wider border-b border-border">{t("Status")}</th>
-                    <th className="px-3 py-2 text-[11px] font-bold text-text-muted uppercase tracking-wider border-b border-border text-right">{t("Actions")}</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border text-xs">
-                  {paginatedCategories.map((category) => (
-                    <tr key={category._id} className="hover:bg-surface-hover transition-colors group">
-                      <td className="px-3 py-2 font-semibold text-text-main whitespace-nowrap">{category.name}</td>
-                      <td className="px-3 py-2 text-text-muted max-w-[200px] truncate">{category.description || '-'}</td>
-                      <td className="px-3 py-2 text-text-muted whitespace-nowrap">{category.sortOrder}</td>
-                      <td className="px-3 py-2 whitespace-nowrap">
-                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${category.isActive ? 'bg-success/10 text-success' : 'bg-danger/10 text-danger'}`}>
-                          {category.isActive ? 'Active' : 'Inactive'}
-                        </span>
-                      </td>
-                      <td className="px-3 py-2 text-right whitespace-nowrap">
-                        <div className="flex justify-end gap-1.5">
-                          <button
-                            onClick={() => handleOpenCategoryModal(category, true)}
-                            className="p-1 hover:bg-background rounded-lg text-primary transition-colors" title={t("View Details")}>
-                            <Eye size={15} />
-                          </button>
-                          {isAdmin && (
-                            <>
-                              <button
-                                onClick={() => handleOpenCategoryModal(category, false)}
-                                className="p-1 hover:bg-background rounded-lg text-primary transition-colors cursor-pointer" title={t("Edit Category")}>
-                                <Edit2 size={15} />
-                              </button>
-                              <button
-                                onClick={() => handleDeleteCategoryClick(category._id)}
-                                className="p-1 hover:bg-background rounded-lg text-danger transition-colors cursor-pointer" title={t("Delete Category")}>
-                                <Trash2 size={15} />
-                              </button>
-                            </>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
           </div>
         </div>
 
         {/* Pagination Controls - Visible on desktop, mobile uses compact top toolbar pagination */}
-        {(activeTab === 'items' && itemsTotalPages > 1 || activeTab === 'categories' && categoriesTotalPages > 1) && (
+        {itemsTotalPages > 1 && (
           <div className="hidden md:flex p-3 border-t border-border items-center justify-between bg-background text-xs">
             <div className="text-text-muted font-medium">
               {t("Showing")}{' '}
-              {activeTab === 'items' ? itemsStartIndex + 1 : categoriesStartIndex + 1} {t("to")}{' '}
-              {activeTab === 'items'
-                ? Math.min(itemsEndIndex, filteredItems.length)
-                : Math.min(categoriesEndIndex, filteredCategories.length)
-              } {t("of")}{' '}
-              {activeTab === 'items' ? filteredItems.length : filteredCategories.length}{' '}
-              {activeTab === 'items' ? t('items') : t('categories')}
+              {itemsStartIndex + 1} {t("to")}{' '}
+              {Math.min(itemsEndIndex, filteredItems.length)} {t("of")}{' '}
+              {filteredItems.length} {t('items')}
             </div>
             <div className="flex items-center gap-2">
               <button
-              onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
-              disabled={currentPage === 1}
-              className="p-2 rounded-lg border border-border bg-surface text-text-main disabled:opacity-50 disabled:cursor-not-allowed hover:bg-surface-hover transition-colors">
-              
+                onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
+                disabled={currentPage === 1}
+                className="p-2 rounded-lg border border-border bg-surface text-text-main disabled:opacity-50 disabled:cursor-not-allowed hover:bg-surface-hover transition-colors"
+              >
                 <ChevronLeft size={18} />
               </button>
               <div className="flex items-center gap-1">
-                {[...Array(activeTab === 'items' ? itemsTotalPages : categoriesTotalPages)].map((_, i) => {
-                const page = i + 1;
-                const totalPages = activeTab === 'items' ? itemsTotalPages : categoriesTotalPages;
-                if (
-                page === 1 ||
-                page === totalPages ||
-                page >= currentPage - 1 && page <= currentPage + 1)
-                {
-                  return (
-                    <button
-                      key={page}
-                      onClick={() => setCurrentPage(page)}
-                      className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${currentPage === page ?
-                      'bg-primary text-white' :
-                      'bg-surface text-text-muted hover:bg-surface-hover hover:text-text-main border border-border'}`
-                      }>
-                      
+                {[...Array(itemsTotalPages)].map((_, i) => {
+                  const page = i + 1;
+                  if (
+                    page === 1 ||
+                    page === itemsTotalPages ||
+                    (page >= currentPage - 1 && page <= currentPage + 1)
+                  ) {
+                    return (
+                      <button
+                        key={page}
+                        onClick={() => setCurrentPage(page)}
+                        className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                          currentPage === page
+                            ? 'bg-primary text-white'
+                            : 'bg-surface text-text-muted hover:bg-surface-hover hover:text-text-main border border-border'
+                        }`}
+                      >
                         {page}
-                      </button>);
-
-                } else if (page === currentPage - 2 || page === currentPage + 2) {
-                  return <span key={page} className="px-2 text-text-muted">...</span>;
-                }
-                return null;
-              })}
+                      </button>
+                    );
+                  } else if (page === currentPage - 2 || page === currentPage + 2) {
+                    return <span key={page} className="px-2 text-text-muted">...</span>;
+                  }
+                  return null;
+                })}
               </div>
               <button
               onClick={() => setCurrentPage((prev) => Math.min(activeTab === 'items' ? itemsTotalPages : categoriesTotalPages, prev + 1))}
@@ -1619,14 +1628,14 @@ const MenuManagement = ({ user, onNavigate, onGoBack }) => {
       {/* Product Overview Modal (View Mode) */}
       {isModalOpen && isViewMode && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-[99999] p-3 sm:p-4 animate-in fade-in duration-150">
-          <div className="bg-surface w-full max-w-md rounded-2xl shadow-2xl border border-border flex flex-col overflow-hidden animate-in zoom-in-95 duration-150">
+          <div className="bg-surface w-full max-w-xl rounded-2xl shadow-2xl border border-border flex flex-col max-h-[92vh] overflow-hidden animate-in zoom-in-95 duration-150">
             {/* Header */}
-            <div className="flex justify-between items-center px-4 py-2.5 border-b border-border bg-background/50">
+            <div className="flex justify-between items-center px-4 py-2.5 border-b border-[#E8DCCB] bg-[#FAF0E4] shrink-0">
               <div className="flex items-center gap-2">
                 <span className="p-1 bg-primary/10 text-primary rounded-lg">
-                  
+                  <Eye size={16} />
                 </span>
-                <h2 className="text-sm sm:text-base font-bold text-text-main">
+                <h2 className="text-sm sm:text-base font-black text-slate-900">
                   {t("Product Overview")}
                 </h2>
               </div>
@@ -1638,10 +1647,10 @@ const MenuManagement = ({ user, onNavigate, onGoBack }) => {
               </button>
             </div>
 
-            {/* Content Body - Structured & Compact without scrolling */}
-            <div className="p-3.5 space-y-2.5">
+            {/* Content Body - Scrollable with all product details */}
+            <div className="p-3.5 sm:p-4 space-y-3 overflow-y-auto custom-scrollbar flex-1">
               {/* Visual Hero Showcase */}
-              <div className="relative w-full h-48 sm:h-56 rounded-xl overflow-hidden bg-background border border-border flex items-center justify-center shadow-inner group">
+              <div className="relative w-full h-44 sm:h-52 rounded-xl overflow-hidden bg-background border border-border flex items-center justify-center shadow-inner group">
                 {formatImageUrl(formData.image || currentItem?.image) ? (
                   <img
                     src={formatImageUrl(formData.image || currentItem?.image)}
@@ -1654,7 +1663,7 @@ const MenuManagement = ({ user, onNavigate, onGoBack }) => {
                   />
                 ) : (
                   <div className="flex flex-col items-center justify-center gap-1 text-primary/80">
-                    <div className="w-11 h-11 rounded-xl bg-primary/10 flex items-center justify-center font-black text-xl">
+                    <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center font-black text-2xl">
                       {(formData.name || currentItem?.name || 'M').charAt(0).toUpperCase()}
                     </div>
                     <span className="text-[10px] text-text-muted font-medium">{t("No image uploaded")}</span>
@@ -1662,13 +1671,18 @@ const MenuManagement = ({ user, onNavigate, onGoBack }) => {
                 )}
 
                 {/* Overlays on Image */}
-                <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/20 to-black/30 pointer-events-none" />
+                <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/25 to-black/30 pointer-events-none" />
 
                 {/* Top Badges */}
-                <div className="absolute top-2 left-2.5 right-2.5 flex items-center justify-between pointer-events-none">
-                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold shadow-sm backdrop-blur-md bg-sky-600/90 text-white">
-                    {formData.category || currentItem?.category?.name || currentItem?.category || 'Fish'}
-                  </span>
+                <div className="absolute top-2.5 left-2.5 right-2.5 flex items-center justify-between pointer-events-none">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold shadow-sm backdrop-blur-md bg-sky-600/90 text-white">
+                      {(currentItem?.waterType || formData.waterType) === 'sea_water' ? 'Sea Water' : 'Fresh Water'}
+                    </span>
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold shadow-sm backdrop-blur-md bg-amber-600/90 text-white capitalize">
+                      {currentItem?.speciesType || formData.speciesType || 'Fish'}
+                    </span>
+                  </div>
 
                   <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold shadow-sm backdrop-blur-md ${
                     (formData.isAvailable ?? currentItem?.isAvailable ?? true)
@@ -1679,37 +1693,81 @@ const MenuManagement = ({ user, onNavigate, onGoBack }) => {
                   </span>
                 </div>
 
-                {/* Bottom Overlay Title & Price */}
-                <div className="absolute bottom-2 left-2.5 right-2.5 flex items-end justify-between text-white">
+                {/* Bottom Overlay: Title, Scientific Name & Price */}
+                <div className="absolute bottom-2.5 left-3 right-3 flex items-end justify-between text-white">
                   <div className="min-w-0 pr-2">
-                    <h3 className="text-sm sm:text-base font-bold truncate leading-tight drop-shadow-md">
+                    <h3 className="text-base sm:text-lg font-black truncate leading-tight drop-shadow-md">
                       {formData.name || currentItem?.name}
                     </h3>
-                    <p className="text-[11px] text-white/80 font-medium truncate">
-                      {formData.category || currentItem?.category?.name || currentItem?.category || t('General')}
-                    </p>
-                  </div>
-                  <div className="text-right shrink-0 bg-black/60 backdrop-blur-md px-2.5 py-1 rounded-xl border border-white/20 shadow-sm">
-                    {currentItem?.sweetConfig?.enabled ? (
-                      <span className="text-xs sm:text-sm font-black text-amber-300">
-                        ₹{parseFloat(currentItem.sweetConfig.pricePerKg || 0).toFixed(2)}<span className="text-[10px] text-amber-300/80">/Kg</span>
-                      </span>
+                    {(formData.scientificName || currentItem?.scientificName) ? (
+                      <p className="text-xs text-amber-200/90 font-medium italic truncate drop-shadow-xs">
+                        {formData.scientificName || currentItem?.scientificName}
+                      </p>
                     ) : (
-                      <span className="text-xs sm:text-sm font-black text-amber-300">
-                        ₹{parseFloat(formData.price || currentItem?.price || 0).toFixed(2)}
-                      </span>
+                      <p className="text-[11px] text-white/80 font-medium truncate">
+                        {formData.category || currentItem?.category?.name || currentItem?.category || t('General')}
+                      </p>
                     )}
+                  </div>
+                  <div className="text-right shrink-0 bg-black/70 backdrop-blur-md px-3 py-1.5 rounded-xl border border-white/20 shadow-md">
+                    <span className="text-xs text-white/80 block leading-none font-medium">Retail Rate</span>
+                    <span className="text-sm sm:text-base font-black text-amber-300">
+                      ₹{parseFloat(formData.price || currentItem?.price || 0).toFixed(2)}
+                      <span className="text-[10px] text-amber-200/80 font-semibold ml-0.5">/{formData.sellingUnit || currentItem?.sellingUnit || 'Kg'}</span>
+                    </span>
                   </div>
                 </div>
               </div>
 
-              {/* Information Grid: Compact Stat Pills */}
+              {/* 1. Standard Selling Rates (3 Cards: Retail, Wholesale, Export) */}
+              <div className="bg-[#FAF0E4]/70 p-2.5 rounded-xl border border-[#E8DCCB] space-y-1.5">
+                <div className="flex justify-between items-center">
+                  <span className="text-xs font-black text-slate-900">{t("Standard Selling Rates (₹ / Kg)")}</span>
+                  <span className="text-[10px] text-slate-500 font-semibold">{t("Base rates per sale mode")}</span>
+                </div>
+                <div className="grid grid-cols-3 gap-2">
+                  {/* Retail Rate Card */}
+                  <div className="bg-emerald-50/80 dark:bg-emerald-950/30 p-2 rounded-xl border border-emerald-300 dark:border-emerald-700/50 flex flex-col justify-center shadow-2xs">
+                    <span className="text-[10px] text-emerald-800 dark:text-emerald-300 font-bold">{t("Retail Rate")}</span>
+                    <span className="text-xs sm:text-sm font-black text-emerald-950 dark:text-emerald-100 mt-0.5">
+                      ₹{parseFloat(formData.price || currentItem?.price || 0).toFixed(2)}
+                    </span>
+                    <span className="text-[9px] text-emerald-700/80 dark:text-emerald-400 font-medium">
+                      per {formData.sellingUnit || currentItem?.sellingUnit || 'Kg'}
+                    </span>
+                  </div>
+
+                  {/* Wholesale Rate Card */}
+                  <div className="bg-amber-50/80 dark:bg-amber-950/30 p-2 rounded-xl border border-amber-300 dark:border-amber-700/50 flex flex-col justify-center shadow-2xs">
+                    <span className="text-[10px] text-amber-800 dark:text-amber-300 font-bold">{t("Wholesale Rate")}</span>
+                    <span className="text-xs sm:text-sm font-black text-amber-950 dark:text-amber-100 mt-0.5">
+                      ₹{parseFloat(currentItem?.wholesalePricePerKg || formData.wholesalePricePerKg || currentItem?.price || 0).toFixed(2)}
+                    </span>
+                    <span className="text-[9px] text-amber-700/80 dark:text-amber-400 font-medium">
+                      per {formData.sellingUnit || currentItem?.sellingUnit || 'Kg'}
+                    </span>
+                  </div>
+
+                  {/* Export Rate Card */}
+                  <div className="bg-blue-50/80 dark:bg-blue-950/30 p-2 rounded-xl border border-blue-300 dark:border-blue-700/50 flex flex-col justify-center shadow-2xs">
+                    <span className="text-[10px] text-blue-800 dark:text-blue-300 font-bold">{t("Export Rate")}</span>
+                    <span className="text-xs sm:text-sm font-black text-blue-950 dark:text-blue-100 mt-0.5">
+                      ₹{parseFloat(currentItem?.exportPricePerKg || formData.exportPricePerKg || currentItem?.wholesalePricePerKg || currentItem?.price || 0).toFixed(2)}
+                    </span>
+                    <span className="text-[9px] text-blue-700/80 dark:text-blue-400 font-medium">
+                      per {formData.sellingUnit || currentItem?.sellingUnit || 'Kg'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* 2. Key Attributes Grid: Water Type, Species, Unit, Stock */}
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                 {/* Water Environment */}
                 <div className="bg-background p-2 rounded-xl border border-border flex flex-col justify-center shadow-2xs">
                   <span className="text-[10px] text-text-muted font-bold">Water Type</span>
                   <span className="text-xs font-black text-sky-800 dark:text-sky-300 mt-0.5">
-                    {currentItem?.waterType === 'sea_water' ? 'Sea Water' : 'Fresh Water'}
+                    {(currentItem?.waterType || formData.waterType) === 'sea_water' ? 'Sea Water' : (currentItem?.waterType || formData.waterType) === 'all' ? 'All / General' : 'Fresh Water'}
                   </span>
                 </div>
 
@@ -1717,48 +1775,172 @@ const MenuManagement = ({ user, onNavigate, onGoBack }) => {
                 <div className="bg-background p-2 rounded-xl border border-border flex flex-col justify-center shadow-2xs">
                   <span className="text-[10px] text-text-muted font-bold">Species</span>
                   <span className="text-xs font-black text-amber-800 dark:text-amber-300 capitalize mt-0.5">
-                    {currentItem?.speciesType || 'Fish'}
+                    {currentItem?.speciesType || formData.speciesType || 'Fish'}
                   </span>
                 </div>
 
-                {/* Wholesale Rate */}
-                <div className="bg-background p-2 rounded-xl border border-amber-300/40 flex flex-col justify-center shadow-2xs">
-                  <span className="text-[10px] text-text-muted font-bold">Wholesale Rate</span>
-                  <span className="text-xs font-black text-amber-800 dark:text-amber-400 mt-0.5">
-                    ₹{parseFloat(currentItem?.wholesalePricePerKg || currentItem?.price || 0).toFixed(2)} / Kg
+                {/* Selling Unit */}
+                <div className="bg-background p-2 rounded-xl border border-border flex flex-col justify-center shadow-2xs">
+                  <span className="text-[10px] text-text-muted font-bold">Selling Unit</span>
+                  <span className="text-xs font-black text-slate-800 dark:text-slate-200 mt-0.5">
+                    {formData.sellingUnit || currentItem?.sellingUnit || 'Kg'} ({formData.sellingUnit === 'Piece' ? 'Count' : 'Kilogram'})
                   </span>
                 </div>
 
-                {/* Export Rate */}
-                <div className="bg-background p-2 rounded-xl border border-blue-300/40 flex flex-col justify-center shadow-2xs">
-                  <span className="text-[10px] text-text-muted font-bold">Export Rate</span>
-                  <span className="text-xs font-black text-blue-800 dark:text-blue-400 mt-0.5">
-                    ₹{parseFloat(currentItem?.exportPricePerKg || currentItem?.wholesalePricePerKg || currentItem?.price || 0).toFixed(2)} / Kg
-                  </span>
+                {/* Current Stock */}
+                <div className="bg-background p-2 rounded-xl border border-border flex flex-col justify-center shadow-2xs">
+                  <span className="text-[10px] text-text-muted font-bold">Current Stock</span>
+                  <div className="flex items-center gap-1 mt-0.5">
+                    <span className={`text-xs font-black ${
+                      Number(currentItem?.stock ?? currentItem?.openingStock ?? formData.openingStock ?? 0) <= 0
+                        ? 'text-rose-600 dark:text-rose-400'
+                        : Number(currentItem?.stock ?? currentItem?.openingStock ?? formData.openingStock ?? 0) <= 10
+                          ? 'text-amber-600 dark:text-amber-400'
+                          : 'text-emerald-700 dark:text-emerald-400'
+                    }`}>
+                      {currentItem?.stock ?? currentItem?.openingStock ?? formData.openingStock ?? 0} {formData.sellingUnit || currentItem?.sellingUnit || 'Kg'}
+                    </span>
+                    <span className={`text-[9px] px-1.5 py-0.2 rounded font-black ${
+                      Number(currentItem?.stock ?? currentItem?.openingStock ?? formData.openingStock ?? 0) <= 0
+                        ? 'bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-200'
+                        : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-200'
+                    }`}>
+                      {Number(currentItem?.stock ?? currentItem?.openingStock ?? formData.openingStock ?? 0) <= 0 ? 'Out' : 'In Stock'}
+                    </span>
+                  </div>
                 </div>
               </div>
 
-              {/* Description (if available) */}
+              {/* 3. Size Grades & Availability Breakdown */}
+              <div className="bg-[#FAF0E4]/70 p-2.5 rounded-xl border border-[#E8DCCB] space-y-1.5">
+                <div className="flex justify-between items-center">
+                  <span className="text-xs font-black text-slate-900">{t("Size Grades & Availability")}</span>
+                  <span className="text-[10px] text-slate-500 font-semibold">{t("Weight ranges and tier pricing")}</span>
+                </div>
+
+                <div className="space-y-1.5 text-xs">
+                  {[
+                    { key: 'small', label: 'Small', borderColor: 'amber', badgeBg: 'amber', defaultMin: 0, defaultMax: 1 },
+                    { key: 'medium', label: 'Medium', borderColor: 'blue', badgeBg: 'blue', defaultMin: 1, defaultMax: 4 },
+                    { key: 'big', label: 'Big', borderColor: 'indigo', badgeBg: 'indigo', defaultMin: 4, defaultMax: 99 }
+                  ].map(grade => {
+                    const gradeData = currentItem?.sizeGrades?.[grade.key] || formData.sizeGrades?.[grade.key] || {};
+                    const isOn = gradeData.enabled !== false;
+                    const gradeUnit = gradeData.unit || 'Kg';
+                    const baseRetail = parseFloat(formData.price || currentItem?.price || 0);
+                    const baseWholesale = parseFloat(currentItem?.wholesalePricePerKg || formData.wholesalePricePerKg || baseRetail);
+                    const baseExport = parseFloat(currentItem?.exportPricePerKg || formData.exportPricePerKg || baseWholesale);
+                    const retailPrice = gradeData.price !== undefined && gradeData.price !== '' ? gradeData.price : baseRetail;
+                    const wholesalePrice = gradeData.wholesalePrice !== undefined && gradeData.wholesalePrice !== '' ? gradeData.wholesalePrice : baseWholesale;
+                    const exportPrice = gradeData.exportPrice !== undefined && gradeData.exportPrice !== '' ? gradeData.exportPrice : baseExport;
+
+                    return (
+                      <div
+                        key={grade.key}
+                        className={`p-2 rounded-lg border transition-all ${
+                          isOn
+                            ? 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 shadow-2xs'
+                            : 'bg-slate-100/60 dark:bg-slate-900/30 border-slate-200 dark:border-slate-800 opacity-60'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-xs font-black text-slate-800 dark:text-slate-100">{grade.label}</span>
+                            <span className={`text-[9px] px-1.5 py-0.2 rounded font-black ${
+                              isOn
+                                ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-200'
+                                : 'bg-slate-200 text-slate-500'
+                            }`}>
+                              {isOn ? 'Active' : 'Off'}
+                            </span>
+                            <span className="text-[10px] text-slate-500 dark:text-slate-400 font-medium">
+                              ({gradeData.minKg ?? grade.defaultMin} - {gradeData.maxKg ?? grade.defaultMax} {gradeUnit})
+                            </span>
+                          </div>
+
+                          {isOn ? (
+                            <div className="flex items-center gap-2 text-[10px] font-bold">
+                              <span className="text-emerald-800 dark:text-emerald-400">Retail: ₹{retailPrice}</span>
+                              <span className="text-amber-800 dark:text-amber-400">Wholesale: ₹{wholesalePrice}</span>
+                              <span className="text-blue-800 dark:text-blue-400">Export: ₹{exportPrice}</span>
+                            </div>
+                          ) : (
+                            <span className="text-[10px] text-slate-400 italic">Not available in this size</span>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* 4. Custom Cutting Charges */}
+              <div className="bg-[#FAF0E4]/70 p-2.5 rounded-xl border border-[#E8DCCB] space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-black text-slate-900">{t("Custom Cutting Charges")}</span>
+                    <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-black ${
+                      (currentItem?.customCuttingChargeEnabled ?? formData.customCuttingChargeEnabled)
+                        ? 'bg-emerald-100 text-emerald-800'
+                        : 'bg-slate-200 text-slate-500'
+                    }`}>
+                      {(currentItem?.customCuttingChargeEnabled ?? formData.customCuttingChargeEnabled) ? 'ON' : 'OFF'}
+                    </span>
+                  </div>
+                  {(currentItem?.customCuttingChargeEnabled ?? formData.customCuttingChargeEnabled) && (
+                    <span className="text-xs font-black text-emerald-800 dark:text-emerald-400 font-mono">
+                      Base: ₹{currentItem?.cuttingCharge ?? formData.cuttingCharge ?? 0} / Kg
+                    </span>
+                  )}
+                </div>
+
+                {(currentItem?.customCuttingChargeEnabled ?? formData.customCuttingChargeEnabled) ? (
+                  <div className="pt-1 border-t border-slate-200 dark:border-slate-700 grid grid-cols-3 gap-1.5 text-center">
+                    <div className="bg-white dark:bg-slate-800 p-1.5 rounded-lg border border-slate-200 dark:border-slate-700">
+                      <span className="text-[9px] font-bold text-slate-500 block">Small</span>
+                      <span className="text-xs font-black text-slate-800 dark:text-slate-100">
+                        ₹{currentItem?.sizeGrades?.small?.cuttingCharge ?? formData.sizeGrades?.small?.cuttingCharge ?? currentItem?.cuttingCharge ?? formData.cuttingCharge ?? 0}
+                      </span>
+                    </div>
+                    <div className="bg-white dark:bg-slate-800 p-1.5 rounded-lg border border-slate-200 dark:border-slate-700">
+                      <span className="text-[9px] font-bold text-slate-500 block">Medium</span>
+                      <span className="text-xs font-black text-slate-800 dark:text-slate-100">
+                        ₹{currentItem?.sizeGrades?.medium?.cuttingCharge ?? formData.sizeGrades?.medium?.cuttingCharge ?? currentItem?.cuttingCharge ?? formData.cuttingCharge ?? 0}
+                      </span>
+                    </div>
+                    <div className="bg-white dark:bg-slate-800 p-1.5 rounded-lg border border-slate-200 dark:border-slate-700">
+                      <span className="text-[9px] font-bold text-slate-500 block">Big</span>
+                      <span className="text-xs font-black text-slate-800 dark:text-slate-100">
+                        ₹{currentItem?.sizeGrades?.big?.cuttingCharge ?? formData.sizeGrades?.big?.cuttingCharge ?? currentItem?.cuttingCharge ?? formData.cuttingCharge ?? 0}
+                      </span>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-[10px] text-slate-400 font-medium italic">
+                    {t("Cutting charges are stopped / disabled for this fish.")}
+                  </p>
+                )}
+              </div>
+
+              {/* 5. Description (if available) */}
               {(formData.description || currentItem?.description) && (
-                <div className="bg-background p-2 rounded-xl border border-border">
-                  <span className="text-[10px] text-text-muted font-semibold block mb-0.5">
-                    {t("Description")}
+                <div className="bg-background p-2.5 rounded-xl border border-border">
+                  <span className="text-[10px] text-text-muted font-bold uppercase tracking-wider block mb-0.5">
+                    {t("Description & Cut Notes")}
                   </span>
-                  <p className="text-xs text-text-main line-clamp-2 italic">
+                  <p className="text-xs text-text-main italic leading-relaxed">
                     "{formData.description || currentItem?.description}"
                   </p>
                 </div>
               )}
 
-              {/* Raw Materials Recipe (if available) */}
+              {/* 6. Raw Materials Recipe (if available) */}
               {(() => {
                 const recipeList = formData.recipe?.length ? formData.recipe : (currentItem?.recipe || []);
                 // Filter only entries that have a meaningful ingredient reference
                 const visibleRecipe = recipeList.filter(r => {
                   if (!r) return false;
-                  // Inventory-linked (could be populated object or just id string)
                   if (r.ingredientId) return true;
-                  // Custom-name ingredient
                   if (r.customName) return true;
                   return false;
                 });
@@ -1770,7 +1952,6 @@ const MenuManagement = ({ user, onNavigate, onGoBack }) => {
                     </span>
                     <div className="flex flex-wrap gap-1">
                       {visibleRecipe.map((r, idx) => {
-                        // Handle populated object (DB returns { _id, name, unit }) or plain id string
                         const populated = typeof r.ingredientId === 'object' && r.ingredientId !== null && r.ingredientId.name;
                         let label;
                         if (populated) {
@@ -1797,14 +1978,13 @@ const MenuManagement = ({ user, onNavigate, onGoBack }) => {
             </div>
 
             {/* Modal Actions Footer */}
-            <div className="p-2.5 sm:p-3 border-t border-border bg-background/50 flex items-center justify-between gap-2">
+            <div className="p-2.5 sm:p-3 border-t border-[#E8DCCB] bg-[#FAF0E4] flex items-center justify-between gap-2 shrink-0">
               <div className="flex items-center gap-2">
                 <button
                   onClick={async () => {
                     const item = currentItem;
                     if (!item?._id) return;
                     const newVal = !(formData.isAvailable ?? item.isAvailable ?? true);
-                    // Optimistic update — both form state and currentItem
                     setFormData(prev => ({ ...prev, isAvailable: newVal }));
                     setCurrentItem(prev => ({ ...prev, isAvailable: newVal }));
                     try {
@@ -1812,13 +1992,12 @@ const MenuManagement = ({ user, onNavigate, onGoBack }) => {
                       setItems(prev => prev.map(i => i._id === item._id ? { ...i, isAvailable: newVal } : i));
                       setToast({ message: `"${item.name}" marked as ${newVal ? 'Available' : 'Unavailable'}`, type: 'success' });
                     } catch (err) {
-                      // Revert on failure
                       setFormData(prev => ({ ...prev, isAvailable: !newVal }));
                       setCurrentItem(prev => ({ ...prev, isAvailable: !newVal }));
                       setToast({ message: 'Failed to update availability', type: 'error' });
                     }
                   }}
-                  className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-xs font-bold transition-all border shadow-2xs cursor-pointer ${
+                  className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-bold transition-all border shadow-2xs cursor-pointer ${
                     (formData.isAvailable ?? currentItem?.isAvailable ?? true)
                       ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100'
                       : 'bg-red-50 text-red-700 border-red-200 hover:bg-red-100'
@@ -1831,19 +2010,19 @@ const MenuManagement = ({ user, onNavigate, onGoBack }) => {
                 </button>
               </div>
 
-              <div className="flex items-center gap-1.5">
+              <div className="flex items-center gap-2">
                 {isAdmin && (
                   <button
                     onClick={() => setIsViewMode(false)}
-                    className="flex items-center gap-1 bg-primary text-white px-3 py-1 rounded-xl hover:bg-primary-hover transition-colors text-xs font-bold shadow-xs cursor-pointer"
+                    className="flex items-center gap-1 bg-primary text-white px-3.5 py-1.5 rounded-xl hover:bg-primary-hover transition-colors text-xs font-bold shadow-xs cursor-pointer"
                   >
-                    <Edit2 size={12} />
+                    <Edit2 size={13} />
                     <span>{t("Edit Item")}</span>
                   </button>
                 )}
                 <button
                   onClick={() => setIsModalOpen(false)}
-                  className="px-3 py-1 bg-surface text-text-main border border-border hover:bg-surface-hover rounded-xl text-xs font-semibold transition-colors cursor-pointer"
+                  className="px-3.5 py-1.5 bg-surface text-text-main border border-border hover:bg-surface-hover rounded-xl text-xs font-semibold transition-colors cursor-pointer"
                 >
                   {t("Close")}
                 </button>
@@ -1858,8 +2037,8 @@ const MenuManagement = ({ user, onNavigate, onGoBack }) => {
         <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-[99999] p-2 sm:p-4 animate-in fade-in duration-150">
           <div className="bg-surface w-full max-w-2xl rounded-2xl shadow-2xl border border-border flex flex-col max-h-[94vh] animate-in zoom-in-95 duration-150">
             {/* Modal Header */}
-            <div className="flex justify-between items-center px-4 py-2.5 border-b border-border bg-[#FAF6F0] dark:bg-slate-900 rounded-t-2xl shrink-0">
-              <h2 className="text-sm sm:text-base font-black text-slate-900 dark:text-white">
+            <div className="flex justify-between items-center px-4 py-2.5 border-b border-[#E8DCCB] bg-[#FAF0E4] rounded-t-2xl shrink-0">
+              <h2 className="text-sm sm:text-base font-black text-slate-900">
                 {currentItem ? t('Edit Item') : t('Add New Item')}
               </h2>
               <button
@@ -1987,7 +2166,7 @@ const MenuManagement = ({ user, onNavigate, onGoBack }) => {
               </div>
 
               {/* 4. Water Environment & 5. Seafood Species & Selling Unit */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 bg-[#FAF6F0] dark:bg-slate-900/60 p-2.5 rounded-xl border border-border">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 bg-[#FAF0E4] p-2.5 rounded-xl border border-[#E8DCCB]">
                 <div className="space-y-0.5">
                   <label className="text-[11px] font-black text-slate-800 dark:text-slate-200">{t("Water Environment")}</label>
                   <select
@@ -2001,17 +2180,58 @@ const MenuManagement = ({ user, onNavigate, onGoBack }) => {
                   </select>
                 </div>
                 <div className="space-y-0.5">
-                  <label className="text-[11px] font-black text-slate-800 dark:text-slate-200">{t("Seafood Species")}</label>
-                  <select
-                    value={formData.speciesType || 'fish'}
-                    onChange={(e) => setFormData({ ...formData, speciesType: e.target.value })}
-                    className="w-full bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg px-2 py-1.5 text-xs text-slate-800 dark:text-white font-bold focus:outline-none focus:border-primary"
-                  >
-                    <option value="fish">Fish (Fish Varieties)</option>
-                    <option value="prawn">Prawns & Shrimps</option>
-                    <option value="crab">Crabs & Shellfish</option>
-                    <option value="other">Other Seafood</option>
-                  </select>
+                  <div className="flex items-center justify-between">
+                    <label className="text-[11px] font-black text-slate-800 dark:text-slate-200">{t("Seafood Species")}</label>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const nextState = !isCustomSpeciesActive;
+                        setIsCustomSpeciesActive(nextState);
+                        if (!nextState) {
+                          setFormData(prev => ({ ...prev, speciesType: 'fish' }));
+                        }
+                      }}
+                      className="text-[10px] text-amber-700 dark:text-amber-400 font-bold hover:underline cursor-pointer"
+                    >
+                      {isCustomSpeciesActive ? t("Choose Standard") : t("+ Add Custom Species")}
+                    </button>
+                  </div>
+                  {isCustomSpeciesActive ? (
+                    <input
+                      type="text"
+                      autoFocus
+                      placeholder="e.g. Lobster, Squid, Octopus..."
+                      value={customSpeciesInput}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setCustomSpeciesInput(val);
+                        setFormData(prev => ({ ...prev, speciesType: val.trim().toLowerCase() || 'fish' }));
+                      }}
+                      className="w-full bg-white dark:bg-slate-800 border-2 border-amber-500 rounded-lg px-2 py-1.5 text-xs text-slate-800 dark:text-white font-bold focus:outline-none shadow-2xs"
+                    />
+                  ) : (
+                    <select
+                      value={formData.speciesType || 'fish'}
+                      onChange={(e) => {
+                        if (e.target.value === '__custom__') {
+                          setIsCustomSpeciesActive(true);
+                          setCustomSpeciesInput('');
+                        } else {
+                          setFormData({ ...formData, speciesType: e.target.value });
+                        }
+                      }}
+                      className="w-full bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg px-2 py-1.5 text-xs text-slate-800 dark:text-white font-bold focus:outline-none focus:border-primary"
+                    >
+                      <option value="fish">Fish (Fish Varieties)</option>
+                      <option value="prawn">Prawns & Shrimps</option>
+                      <option value="crab">Crabs & Shellfish</option>
+                      {availableSpeciesList.filter(s => !['fish', 'prawn', 'crab', 'other'].includes(s)).map(s => (
+                        <option key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)} (Custom)</option>
+                      ))}
+                      <option value="other">Other Seafood</option>
+                      <option value="__custom__">+ Add Custom Species...</option>
+                    </select>
+                  )}
                 </div>
                 <div className="space-y-0.5">
                   <label className="text-[11px] font-black text-slate-800 dark:text-slate-200">{t("Selling Unit")} *</label>
@@ -2027,9 +2247,9 @@ const MenuManagement = ({ user, onNavigate, onGoBack }) => {
               </div>
 
               {/* 6. Retail (₹/Kg) *, 7. Wholesale (₹/Kg), 8. Export (₹/Kg) */}
-              <div className="bg-amber-50/40 dark:bg-amber-950/20 p-2.5 rounded-xl border border-amber-200/80 dark:border-amber-900/40 space-y-1.5">
+              <div className="bg-amber-50/60 p-2.5 rounded-xl border border-amber-200 space-y-1.5">
                 <div className="flex justify-between items-center">
-                  <span className="text-xs font-black text-slate-900 dark:text-white">{t("Standard Selling Rates (₹ / Kg)")}</span>
+                  <span className="text-xs font-black text-slate-900">{t("Standard Selling Rates (₹ / Kg)")}</span>
                   <span className="text-[10px] text-slate-500 font-semibold">{t("Base rates per sale mode")}</span>
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
@@ -2109,9 +2329,9 @@ const MenuManagement = ({ user, onNavigate, onGoBack }) => {
               </div>
 
               {/* 10. Fish Size Grading (Small, Medium, Big) with Grade Prices, Unit Toggle & Cutting Charges */}
-              <div className="bg-slate-50 dark:bg-slate-900/40 p-2.5 rounded-xl border border-slate-200 dark:border-slate-800 space-y-1.5">
+              <div className="bg-[#FAF0E4]/70 p-2.5 rounded-xl border border-[#E8DCCB] space-y-1.5">
                 <div className="flex justify-between items-center">
-                  <span className="text-xs font-black text-slate-900 dark:text-white">{t("Size Grades & Availability")}</span>
+                  <span className="text-xs font-black text-slate-900">{t("Size Grades & Availability")}</span>
                   <span className="text-[10px] text-slate-500">{t("Set weight ranges, prices and availability")}</span>
                 </div>
 
@@ -2260,10 +2480,10 @@ const MenuManagement = ({ user, onNavigate, onGoBack }) => {
               </div>
 
               {/* 10b. Custom Cutting Charges per Item */}
-              <div className="bg-slate-50 dark:bg-slate-900/40 p-2.5 rounded-xl border border-slate-200 dark:border-slate-800 space-y-1.5">
+              <div className="bg-[#FAF0E4]/70 p-2.5 rounded-xl border border-[#E8DCCB] space-y-1.5">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <span className="text-xs font-black text-slate-900 dark:text-white">{t("Custom Cutting Charges")}</span>
+                    <span className="text-xs font-black text-slate-900">{t("Custom Cutting Charges")}</span>
                     <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-black ${formData.customCuttingChargeEnabled ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-200 text-slate-500'}`}>
                       {formData.customCuttingChargeEnabled ? 'ON' : 'OFF'}
                     </span>

@@ -1,6 +1,8 @@
 @import "tailwindcss";
 @import "./skeuomorphic-terminal.css";
 
+@custom-variant dark (&:where(.dark, .dark *));
+
 @theme {
   --color-background: #F7EFE2;
   --color-surface: #FDFBF7;

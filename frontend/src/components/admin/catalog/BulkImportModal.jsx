@@ -5,16 +5,16 @@ import Papa from 'papaparse';
 import { useLanguage } from '../../../context/LanguageContext';
 
 const SAMPLE_10_ITEMS = [
-  { name: 'Rohu (రోహు)', scientificName: 'Labeo rohita', category: 'Fresh Water', speciesType: 'Fish', sellingUnit: 'Kg', price: 150, wholesalePricePerKg: 110, exportPricePerKg: 110, smallPrice: 150, smallWholesalePrice: 110, smallExportPrice: 110, mediumPrice: 170, mediumWholesalePrice: 120, mediumExportPrice: 120, bigPrice: 190, bigWholesalePrice: 140, bigExportPrice: 140, cuttingEnabled: 'TRUE', cuttingCharge: 15, smallCuttingCharge: 10, mediumCuttingCharge: 15, bigCuttingCharge: 20, description: 'Fresh river Rohu fish, sweet water catch', isAvailable: 'TRUE', image: 'https://ik.imagekit.io/uy5estwss/menus/rohu.png' },
-  { name: 'Katla (బొచ్చె / కాట్లా)', scientificName: 'Gibelion catla', category: 'Fresh Water', speciesType: 'Fish', sellingUnit: 'Kg', price: 220, wholesalePricePerKg: 170, exportPricePerKg: 150, smallPrice: 220, smallWholesalePrice: 170, smallExportPrice: 150, mediumPrice: 240, mediumWholesalePrice: 190, mediumExportPrice: 170, bigPrice: 280, bigWholesalePrice: 210, bigExportPrice: 190, cuttingEnabled: 'TRUE', cuttingCharge: 15, smallCuttingCharge: 10, mediumCuttingCharge: 15, bigCuttingCharge: 20, description: 'Live sweet water Katla, premium weight', isAvailable: 'TRUE', image: 'https://ik.imagekit.io/uy5estwss/menus/katla.png' },
-  { name: 'Red Prawns / రొయ్యలు', scientificName: 'Penaeus monodon', category: 'Sea Water', speciesType: 'Prawn', sellingUnit: 'Kg', price: 350, wholesalePricePerKg: 260, exportPricePerKg: 240, smallPrice: 350, smallWholesalePrice: 260, smallExportPrice: 240, mediumPrice: 390, mediumWholesalePrice: 290, mediumExportPrice: 260, bigPrice: 440, bigWholesalePrice: 330, bigExportPrice: 300, cuttingEnabled: 'FALSE', cuttingCharge: 0, smallCuttingCharge: 0, mediumCuttingCharge: 0, bigCuttingCharge: 0, description: 'Sea & river fresh prawns, counts 20/30/40', isAvailable: 'TRUE', image: 'https://ik.imagekit.io/uy5estwss/menus/red_prawns.jpg' },
-  { name: 'Basa Fish / పంగస్', scientificName: 'Pangasius bocourti', category: 'Fresh Water', speciesType: 'Fish', sellingUnit: 'Kg', price: 150, wholesalePricePerKg: 110, exportPricePerKg: 110, smallPrice: 150, smallWholesalePrice: 110, smallExportPrice: 110, mediumPrice: 170, mediumWholesalePrice: 120, mediumExportPrice: 120, bigPrice: 190, bigWholesalePrice: 140, bigExportPrice: 140, cuttingEnabled: 'TRUE', cuttingCharge: 10, smallCuttingCharge: 10, mediumCuttingCharge: 10, bigCuttingCharge: 15, description: 'Boneless white meat Pangas/Basa fish', isAvailable: 'TRUE', image: 'https://ik.imagekit.io/uy5estwss/menus/basa_pangas.png' },
-  { name: 'White Pomfret (తెల్ల చందువా)', scientificName: 'Pampus argenteus', category: 'Sea Water', speciesType: 'Fish', sellingUnit: 'Kg', price: 1500, wholesalePricePerKg: 1130, exportPricePerKg: 1050, smallPrice: 1500, smallWholesalePrice: 1130, smallExportPrice: 1050, mediumPrice: 1650, mediumWholesalePrice: 1240, mediumExportPrice: 1160, bigPrice: 1880, bigWholesalePrice: 1410, bigExportPrice: 1310, cuttingEnabled: 'TRUE', cuttingCharge: 20, smallCuttingCharge: 20, mediumCuttingCharge: 25, bigCuttingCharge: 30, description: 'Premium grade white pomfret, Vizag harbor direct', isAvailable: 'TRUE', image: 'https://ik.imagekit.io/uy5estwss/menus/white_pomfret.png' },
-  { name: 'Vanjaram / King Fish (వంజరం)', scientificName: 'Scomberomorus commerson', category: 'Sea Water', speciesType: 'Fish', sellingUnit: 'Kg', price: 850, wholesalePricePerKg: 720, exportPricePerKg: 680, smallPrice: 850, smallWholesalePrice: 720, smallExportPrice: 680, mediumPrice: 950, mediumWholesalePrice: 800, mediumExportPrice: 750, bigPrice: 1100, bigWholesalePrice: 900, bigExportPrice: 850, cuttingEnabled: 'TRUE', cuttingCharge: 25, smallCuttingCharge: 20, mediumCuttingCharge: 25, bigCuttingCharge: 35, description: 'King mackerel large catch, ideal for fry & curry', isAvailable: 'TRUE', image: 'https://ik.imagekit.io/uy5estwss/menus/vanjaram_kingfish.jpg' },
-  { name: 'Tilapia / Pilot (తిలాపియా)', scientificName: 'Oreochromis niloticus', category: 'Fresh Water', speciesType: 'Fish', sellingUnit: 'Kg', price: 100, wholesalePricePerKg: 85, exportPricePerKg: 80, smallPrice: 100, smallWholesalePrice: 85, smallExportPrice: 80, mediumPrice: 110, mediumWholesalePrice: 95, mediumExportPrice: 90, bigPrice: 130, bigWholesalePrice: 110, bigExportPrice: 100, cuttingEnabled: 'TRUE', cuttingCharge: 10, smallCuttingCharge: 10, mediumCuttingCharge: 10, bigCuttingCharge: 15, description: 'Firm fresh water Tilapia/Jilebi fish', isAvailable: 'TRUE', image: 'https://ik.imagekit.io/uy5estwss/menus/tilapia_jalebi.png' },
-  { name: 'Korramenu / Murrel Live (కొర్రమీను)', scientificName: 'Channa striata', category: 'Fresh Water', speciesType: 'Fish', sellingUnit: 'Kg', price: 400, wholesalePricePerKg: 340, exportPricePerKg: 320, smallPrice: 400, smallWholesalePrice: 340, smallExportPrice: 320, mediumPrice: 450, mediumWholesalePrice: 380, mediumExportPrice: 360, bigPrice: 500, bigWholesalePrice: 420, bigExportPrice: 400, cuttingEnabled: 'TRUE', cuttingCharge: 20, smallCuttingCharge: 20, mediumCuttingCharge: 20, bigCuttingCharge: 20, description: 'High-protein predatory live Murrel fish', isAvailable: 'TRUE', image: 'https://ik.imagekit.io/uy5estwss/menus/korramenu_murrel.png' },
-  { name: 'Sea Crabs / పీతలు', scientificName: 'Portunus pelagicus', category: 'Sea Water', speciesType: 'Crab', sellingUnit: 'Kg', price: 350, wholesalePricePerKg: 300, exportPricePerKg: 280, smallPrice: 350, smallWholesalePrice: 300, smallExportPrice: 280, mediumPrice: 390, mediumWholesalePrice: 330, mediumExportPrice: 310, bigPrice: 450, bigWholesalePrice: 380, bigExportPrice: 350, cuttingEnabled: 'FALSE', cuttingCharge: 0, smallCuttingCharge: 0, mediumCuttingCharge: 0, bigCuttingCharge: 0, description: 'Live blue swimming sea crabs', isAvailable: 'TRUE', image: 'https://ik.imagekit.io/uy5estwss/menus/sea_crabs.jpg' },
-  { name: 'Wallago / వాలగ (ఆల)', scientificName: 'Wallago attu', category: 'Fresh Water', speciesType: 'Fish', sellingUnit: 'Kg', price: 200, wholesalePricePerKg: 170, exportPricePerKg: 160, smallPrice: 200, smallWholesalePrice: 170, smallExportPrice: 160, mediumPrice: 230, mediumWholesalePrice: 190, mediumExportPrice: 180, bigPrice: 260, bigWholesalePrice: 220, bigExportPrice: 200, cuttingEnabled: 'TRUE', cuttingCharge: 15, smallCuttingCharge: 10, mediumCuttingCharge: 15, bigCuttingCharge: 20, description: 'Fresh water river shark Wallago / Valuga fish', isAvailable: 'TRUE', image: 'https://ik.imagekit.io/uy5estwss/menus/wallago_valuga.png' }
+  { name: 'Rohu (రోహు)', scientificName: 'Labeo rohita', category: 'Fresh Water', speciesType: 'Fish', sellingUnit: 'Kg', price: 150, wholesalePricePerKg: 110, exportPricePerKg: 110, smallPrice: 150, smallWholesalePrice: 110, smallExportPrice: 110, mediumPrice: 170, mediumWholesalePrice: 120, mediumExportPrice: 120, bigPrice: 190, bigWholesalePrice: 140, bigExportPrice: 140, cuttingEnabled: 'TRUE', cuttingCharge: 15, smallCuttingCharge: 10, mediumCuttingCharge: 15, bigCuttingCharge: 20, openingStock: 150, description: 'Fresh river Rohu fish, sweet water catch', isAvailable: 'TRUE', image: 'https://ik.imagekit.io/uy5estwss/menus/rohu.png' },
+  { name: 'Katla (బొచ్చె / కాట్లా)', scientificName: 'Gibelion catla', category: 'Fresh Water', speciesType: 'Fish', sellingUnit: 'Kg', price: 220, wholesalePricePerKg: 170, exportPricePerKg: 150, smallPrice: 220, smallWholesalePrice: 170, smallExportPrice: 150, mediumPrice: 240, mediumWholesalePrice: 190, mediumExportPrice: 170, bigPrice: 280, bigWholesalePrice: 210, bigExportPrice: 190, cuttingEnabled: 'TRUE', cuttingCharge: 15, smallCuttingCharge: 10, mediumCuttingCharge: 15, bigCuttingCharge: 20, openingStock: 80, description: 'Live sweet water Katla, premium weight', isAvailable: 'TRUE', image: 'https://ik.imagekit.io/uy5estwss/menus/katla.png' },
+  { name: 'Red Prawns / రొయ్యలు', scientificName: 'Penaeus monodon', category: 'Sea Water', speciesType: 'Prawn', sellingUnit: 'Kg', price: 350, wholesalePricePerKg: 260, exportPricePerKg: 240, smallPrice: 350, smallWholesalePrice: 260, smallExportPrice: 240, mediumPrice: 390, mediumWholesalePrice: 290, mediumExportPrice: 260, bigPrice: 440, bigWholesalePrice: 330, bigExportPrice: 300, cuttingEnabled: 'FALSE', cuttingCharge: 0, smallCuttingCharge: 0, mediumCuttingCharge: 0, bigCuttingCharge: 0, openingStock: 50, description: 'Sea & river fresh prawns, counts 20/30/40', isAvailable: 'TRUE', image: 'https://ik.imagekit.io/uy5estwss/menus/red_prawns.jpg' },
+  { name: 'Basa Fish / పంగస్', scientificName: 'Pangasius bocourti', category: 'Fresh Water', speciesType: 'Fish', sellingUnit: 'Kg', price: 150, wholesalePricePerKg: 110, exportPricePerKg: 110, smallPrice: 150, smallWholesalePrice: 110, smallExportPrice: 110, mediumPrice: 170, mediumWholesalePrice: 120, mediumExportPrice: 120, bigPrice: 190, bigWholesalePrice: 140, bigExportPrice: 140, cuttingEnabled: 'TRUE', cuttingCharge: 10, smallCuttingCharge: 10, mediumCuttingCharge: 10, bigCuttingCharge: 15, openingStock: 120, description: 'Boneless white meat Pangas/Basa fish', isAvailable: 'TRUE', image: 'https://ik.imagekit.io/uy5estwss/menus/basa_pangas.png' },
+  { name: 'White Pomfret (తెల్ల చందువా)', scientificName: 'Pampus argenteus', category: 'Sea Water', speciesType: 'Fish', sellingUnit: 'Kg', price: 1500, wholesalePricePerKg: 1130, exportPricePerKg: 1050, smallPrice: 1500, smallWholesalePrice: 1130, smallExportPrice: 1050, mediumPrice: 1650, mediumWholesalePrice: 1240, mediumExportPrice: 1160, bigPrice: 1880, bigWholesalePrice: 1410, bigExportPrice: 1310, cuttingEnabled: 'TRUE', cuttingCharge: 20, smallCuttingCharge: 20, mediumCuttingCharge: 25, bigCuttingCharge: 30, openingStock: 35, description: 'Premium grade white pomfret, Vizag harbor direct', isAvailable: 'TRUE', image: 'https://ik.imagekit.io/uy5estwss/menus/white_pomfret.png' },
+  { name: 'Vanjaram / King Fish (వంజరం)', scientificName: 'Scomberomorus commerson', category: 'Sea Water', speciesType: 'Fish', sellingUnit: 'Kg', price: 850, wholesalePricePerKg: 720, exportPricePerKg: 680, smallPrice: 850, smallWholesalePrice: 720, smallExportPrice: 680, mediumPrice: 950, mediumWholesalePrice: 800, mediumExportPrice: 750, bigPrice: 1100, bigWholesalePrice: 900, bigExportPrice: 850, cuttingEnabled: 'TRUE', cuttingCharge: 25, smallCuttingCharge: 20, mediumCuttingCharge: 25, bigCuttingCharge: 35, openingStock: 40, description: 'King mackerel large catch, ideal for fry & curry', isAvailable: 'TRUE', image: 'https://ik.imagekit.io/uy5estwss/menus/vanjaram_kingfish.jpg' },
+  { name: 'Tilapia / Pilot (తిలాపియా)', scientificName: 'Oreochromis niloticus', category: 'Fresh Water', speciesType: 'Fish', sellingUnit: 'Kg', price: 100, wholesalePricePerKg: 85, exportPricePerKg: 80, smallPrice: 100, smallWholesalePrice: 85, smallExportPrice: 80, mediumPrice: 110, mediumWholesalePrice: 95, mediumExportPrice: 90, bigPrice: 130, bigWholesalePrice: 110, bigExportPrice: 100, cuttingEnabled: 'TRUE', cuttingCharge: 10, smallCuttingCharge: 10, mediumCuttingCharge: 10, bigCuttingCharge: 15, openingStock: 160, description: 'Firm fresh water Tilapia/Jilebi fish', isAvailable: 'TRUE', image: 'https://ik.imagekit.io/uy5estwss/menus/tilapia_jalebi.png' },
+  { name: 'Korramenu / Murrel Live (కొర్రమీను)', scientificName: 'Channa striata', category: 'Fresh Water', speciesType: 'Fish', sellingUnit: 'Kg', price: 400, wholesalePricePerKg: 340, exportPricePerKg: 320, smallPrice: 400, smallWholesalePrice: 340, smallExportPrice: 320, mediumPrice: 450, mediumWholesalePrice: 380, mediumExportPrice: 360, bigPrice: 500, bigWholesalePrice: 420, bigExportPrice: 400, cuttingEnabled: 'TRUE', cuttingCharge: 20, smallCuttingCharge: 20, mediumCuttingCharge: 20, bigCuttingCharge: 20, openingStock: 65, description: 'High-protein predatory live Murrel fish', isAvailable: 'TRUE', image: 'https://ik.imagekit.io/uy5estwss/menus/korramenu_murrel.png' },
+  { name: 'Sea Crabs / పీతలు', scientificName: 'Portunus pelagicus', category: 'Sea Water', speciesType: 'Crab', sellingUnit: 'Kg', price: 350, wholesalePricePerKg: 300, exportPricePerKg: 280, smallPrice: 350, smallWholesalePrice: 300, smallExportPrice: 280, mediumPrice: 390, mediumWholesalePrice: 330, mediumExportPrice: 310, bigPrice: 450, bigWholesalePrice: 380, bigExportPrice: 350, cuttingEnabled: 'FALSE', cuttingCharge: 0, smallCuttingCharge: 0, mediumCuttingCharge: 0, bigCuttingCharge: 0, openingStock: 45, description: 'Live blue swimming sea crabs', isAvailable: 'TRUE', image: 'https://ik.imagekit.io/uy5estwss/menus/sea_crabs.jpg' },
+  { name: 'Wallago / వాలగ (ఆల)', scientificName: 'Wallago attu', category: 'Fresh Water', speciesType: 'Fish', sellingUnit: 'Kg', price: 200, wholesalePricePerKg: 170, exportPricePerKg: 160, smallPrice: 200, smallWholesalePrice: 170, smallExportPrice: 160, mediumPrice: 230, mediumWholesalePrice: 190, mediumExportPrice: 180, bigPrice: 260, bigWholesalePrice: 220, bigExportPrice: 200, cuttingEnabled: 'TRUE', cuttingCharge: 15, smallCuttingCharge: 10, mediumCuttingCharge: 15, bigCuttingCharge: 20, openingStock: 90, description: 'Fresh water river shark Wallago / Valuga fish', isAvailable: 'TRUE', image: 'https://ik.imagekit.io/uy5estwss/menus/wallago_valuga.png' }
 ];
 
 const SAMPLE_SWEETS = [
@@ -1070,6 +1070,7 @@ export const generateExcelWithStyling = async (items, filename = 'YNR_Fishes_Cat
     { header: 'Small Cutting Charge (₹)', key: 'smallCuttingCharge', minWidth: 22 },
     { header: 'Medium Cutting Charge (₹)', key: 'mediumCuttingCharge', minWidth: 24 },
     { header: 'Big Cutting Charge (₹)', key: 'bigCuttingCharge', minWidth: 22 },
+    { header: 'Opening Stock', key: 'openingStock', minWidth: 16 },
     { header: 'Description', key: 'description', minWidth: 30 },
   ];
 
@@ -1108,9 +1109,9 @@ export const generateExcelWithStyling = async (items, filename = 'YNR_Fishes_Cat
       cell.font = { name: 'Calibri', size: 10, color: { argb: '0F172A' } };
       cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: rowBgColor } };
       
-      // Numbers right-aligned, units/status centered, names left-aligned
-      const isNumeric = colNumber === 5 || colNumber === 6 || colNumber === 8 || colNumber === 9;
-      const isCenter = colNumber === 4 || colNumber === 11;
+      // Numbers right-aligned (cols 7..18, 20..24), status/units centered (cols 4, 5, 6, 19), text left-aligned (cols 1, 2, 3, 25)
+      const isNumeric = (colNumber >= 7 && colNumber <= 18) || (colNumber >= 20 && colNumber <= 24);
+      const isCenter = colNumber === 4 || colNumber === 5 || colNumber === 6 || colNumber === 19;
       cell.alignment = {
         vertical: 'middle',
         horizontal: isNumeric ? 'right' : isCenter ? 'center' : 'left',
@@ -1130,14 +1131,15 @@ export const generateExcelWithStyling = async (items, filename = 'YNR_Fishes_Cat
   worksheet.columns.forEach((column) => {
     let maxContentLen = 0;
     column.eachCell({ includeEmpty: false }, (cell) => {
-      const cellVal = cell.value ? String(cell.value) : '';
+      const cellVal = cell.value !== undefined && cell.value !== null ? String(cell.value) : '';
       if (cellVal.length > maxContentLen) {
         maxContentLen = cellVal.length;
       }
     });
-    // Set dynamic width with safety bounds [min, max 60]
-    const calculatedWidth = Math.max(maxContentLen + 4, column.width || 15);
-    column.width = Math.min(calculatedWidth, 60);
+    const headerLen = column.header ? String(column.header).length : 10;
+    const effectiveMax = Math.max(maxContentLen, headerLen);
+    const calculatedWidth = Math.max(effectiveMax + 4, column.width || 15);
+    column.width = Math.min(calculatedWidth, 55);
   });
 
   const buffer = await workbook.xlsx.writeBuffer();
@@ -1228,6 +1230,7 @@ const BulkImportModal = ({ isOpen, onClose, onImportSuccess }) => {
       'Small Cutting Charge (₹)': i.smallCuttingCharge || i.cuttingCharge || 0,
       'Medium Cutting Charge (₹)': i.mediumCuttingCharge || i.cuttingCharge || 0,
       'Big Cutting Charge (₹)': i.bigCuttingCharge || i.cuttingCharge || 0,
+      'Opening Stock': i.openingStock || 50,
       'Description': i.description || ''
     })));
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
@@ -1589,49 +1592,49 @@ const BulkImportModal = ({ isOpen, onClose, onImportSuccess }) => {
 
             {/* Quick Field Info Pills in Strict Requested Order */}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs pt-1">
-              <div className="p-2 bg-white dark:bg-slate-800 rounded-lg border border-slate-300 dark:border-slate-700 shadow-2xs">
-                <span className="font-black text-slate-900 dark:text-white block">1. Fish Name *</span>
-                <span className="text-[11px] text-slate-600 dark:text-slate-400 font-medium">e.g. Silver Pomfret, Vanjaram</span>
+              <div className="p-2 bg-white rounded-lg border border-[#E8DCCB] shadow-2xs">
+                <span className="font-black text-slate-900 block">1. Fish Name *</span>
+                <span className="text-[11px] text-slate-600 font-medium">e.g. Silver Pomfret, Vanjaram</span>
               </div>
-              <div className="p-2 bg-white dark:bg-slate-800 rounded-lg border border-slate-300 dark:border-slate-700 shadow-2xs">
-                <span className="font-bold text-slate-800 dark:text-slate-200 block">2. Scientific Name</span>
-                <span className="text-[11px] text-slate-600 dark:text-slate-400 italic">e.g. Pampus argenteus</span>
+              <div className="p-2 bg-white rounded-lg border border-[#E8DCCB] shadow-2xs">
+                <span className="font-bold text-slate-800 block">2. Scientific Name</span>
+                <span className="text-[11px] text-slate-600 italic">e.g. Pampus argenteus</span>
               </div>
-              <div className="p-2 bg-white dark:bg-slate-800 rounded-lg border border-slate-300 dark:border-slate-700 shadow-2xs">
-                <span className="font-bold text-slate-800 dark:text-slate-200 block">3. Item Image (Optional)</span>
-                <span className="text-[11px] text-slate-600 dark:text-slate-400 font-medium">Direct Image URL link</span>
+              <div className="p-2 bg-white rounded-lg border border-[#E8DCCB] shadow-2xs">
+                <span className="font-bold text-slate-800 block">3. Item Image (Optional)</span>
+                <span className="text-[11px] text-slate-600 font-medium">Direct Image URL link</span>
               </div>
-              <div className="p-2 bg-sky-50/70 dark:bg-sky-950/40 rounded-lg border border-sky-300 dark:border-sky-800 shadow-2xs">
-                <span className="font-black text-sky-800 dark:text-sky-300 block">4. Water Environment *</span>
-                <span className="text-[11px] text-sky-700 dark:text-sky-400 font-medium">Sea Water or Fresh Water</span>
+              <div className="p-2 bg-sky-50/70 rounded-lg border border-sky-300 shadow-2xs">
+                <span className="font-black text-sky-800 block">4. Water Environment *</span>
+                <span className="text-[11px] text-sky-700 font-medium">Sea Water or Fresh Water</span>
               </div>
-              <div className="p-2 bg-amber-50/70 dark:bg-amber-950/40 rounded-lg border border-amber-300 dark:border-amber-800 shadow-2xs">
-                <span className="font-black text-amber-800 dark:text-amber-300 block">5. Seafood Species</span>
-                <span className="text-[11px] text-amber-700 dark:text-amber-400 font-medium">Fish, Prawn, Crab, etc.</span>
+              <div className="p-2 bg-amber-50/70 rounded-lg border border-amber-300 shadow-2xs">
+                <span className="font-black text-amber-800 block">5. Seafood Species</span>
+                <span className="text-[11px] text-amber-700 font-medium">Fish, Prawn, Crab, etc.</span>
               </div>
-              <div className="p-2 bg-emerald-50/70 dark:bg-emerald-950/40 rounded-lg border border-emerald-300 dark:border-emerald-800 shadow-2xs">
-                <span className="font-black text-emerald-800 dark:text-emerald-400 block">6. Retail Price (₹/Kg) *</span>
-                <span className="text-[11px] text-emerald-700 dark:text-emerald-400 font-medium">Walk-in counter selling rate</span>
+              <div className="p-2 bg-emerald-50/70 rounded-lg border border-emerald-300 shadow-2xs">
+                <span className="font-black text-emerald-800 block">6. Retail Price (₹/Kg) *</span>
+                <span className="text-[11px] text-emerald-700 font-medium">Walk-in counter selling rate</span>
               </div>
-              <div className="p-2 bg-amber-50/70 dark:bg-amber-950/40 rounded-lg border border-amber-300 dark:border-amber-800 shadow-2xs">
-                <span className="font-black text-amber-800 dark:text-amber-400 block">7. Wholesale Price (₹/Kg)</span>
-                <span className="text-[11px] text-amber-700 dark:text-amber-400 font-medium">Market dealer price per Kg</span>
+              <div className="p-2 bg-amber-50/70 rounded-lg border border-amber-300 shadow-2xs">
+                <span className="font-black text-amber-800 block">7. Wholesale Price (₹/Kg)</span>
+                <span className="text-[11px] text-amber-700 font-medium">Market dealer price per Kg</span>
               </div>
-              <div className="p-2 bg-blue-50/70 dark:bg-blue-950/40 rounded-lg border border-blue-300 dark:border-blue-800 shadow-2xs">
-                <span className="font-black text-blue-800 dark:text-blue-400 block">8. Export Price (₹/Kg)</span>
-                <span className="text-[11px] text-blue-700 dark:text-blue-400 font-medium">Interstate consignment rate</span>
+              <div className="p-2 bg-blue-50/70 rounded-lg border border-blue-300 shadow-2xs">
+                <span className="font-black text-blue-800 block">8. Export Price (₹/Kg)</span>
+                <span className="text-[11px] text-blue-700 font-medium">Interstate consignment rate</span>
               </div>
-              <div className="p-2 bg-white dark:bg-slate-800 rounded-lg border border-slate-300 dark:border-slate-700 shadow-2xs">
-                <span className="font-bold text-slate-800 dark:text-slate-200 block">9. Description</span>
-                <span className="text-[11px] text-slate-600 dark:text-slate-400 font-medium">Item notes & cut details</span>
+              <div className="p-2 bg-white rounded-lg border border-[#E8DCCB] shadow-2xs">
+                <span className="font-bold text-slate-800 block">9. Description</span>
+                <span className="text-[11px] text-slate-600 font-medium">Item notes & cut details</span>
               </div>
-              <div className="p-2 bg-purple-50/70 dark:bg-purple-950/40 rounded-lg border border-purple-300 dark:border-purple-800 shadow-2xs">
-                <span className="font-black text-purple-800 dark:text-purple-300 block">10. Size Grades & Prices</span>
-                <span className="text-[11px] text-purple-700 dark:text-purple-400 font-medium">Small, Medium, Big (Retail, Wholesale, Export)</span>
+              <div className="p-2 bg-purple-50/70 rounded-lg border border-purple-300 shadow-2xs">
+                <span className="font-black text-purple-800 block">10. Size Grades & Prices</span>
+                <span className="text-[11px] text-purple-700 font-medium">Small, Medium, Big (Retail, Wholesale, Export)</span>
               </div>
-              <div className="p-2 bg-indigo-50/70 dark:bg-indigo-950/40 rounded-lg border border-indigo-300 dark:border-indigo-800 shadow-2xs col-span-2">
-                <span className="font-black text-indigo-800 dark:text-indigo-300 block">11. Cutting & Cleaning Fees</span>
-                <span className="text-[11px] text-indigo-700 dark:text-indigo-400 font-medium">Enabled (TRUE/FALSE), Base rate & Grade fees</span>
+              <div className="p-2 bg-indigo-50/70 rounded-lg border border-indigo-300 shadow-2xs col-span-2">
+                <span className="font-black text-indigo-800 block">11. Cutting & Cleaning Fees</span>
+                <span className="text-[11px] text-indigo-700 font-medium">Enabled (TRUE/FALSE), Base rate & Grade fees</span>
               </div>
             </div>
           </div>
@@ -1714,20 +1717,20 @@ const BulkImportModal = ({ isOpen, onClose, onImportSuccess }) => {
                 <div className="border border-[#E8DCCB] rounded-xl overflow-hidden shadow-xs max-h-[360px] overflow-y-auto overflow-x-auto overscroll-contain bg-white">
                   <table className="min-w-[1100px] w-full text-left text-xs border-collapse">
                     <thead>
-                      <tr className="bg-[#FAF6F0] dark:bg-slate-900 text-slate-800 dark:text-slate-200 font-black text-xs uppercase tracking-wider sticky top-0 z-20 border-b-2 border-border shadow-xs">
-                        <th className="py-2.5 px-3 w-10 text-center sticky left-0 z-30 bg-[#FAF6F0] dark:bg-slate-900 shadow-[1px_0_0_#eedecb]">#</th>
+                      <tr className="bg-[#FAF0E4] text-slate-800 font-black text-xs uppercase tracking-wider sticky top-0 z-20 border-b-2 border-[#E8DCCB] shadow-xs">
+                        <th className="py-2.5 px-3 w-10 text-center sticky left-0 z-30 bg-[#FAF0E4] shadow-[1px_0_0_#eedecb]">#</th>
                         <th className="py-2.5 px-3 w-20 text-center">{t("Status")}</th>
                         <th className="py-2.5 px-3 min-w-[150px]">{t("Fish Name")}</th>
                         <th className="py-2.5 px-3 min-w-[130px]">Scientific Name</th>
                         <th className="py-2.5 px-3 text-center w-16">Image</th>
                         <th className="py-2.5 px-3 min-w-[120px]">{t("Water Environment")}</th>
                         <th className="py-2.5 px-3 text-center w-24">Seafood Species</th>
-                        <th className="py-2.5 px-3 text-right w-24 text-emerald-800 dark:text-emerald-400 bg-emerald-50/40 dark:bg-emerald-950/20">{t("Retail (₹/Kg)")}</th>
-                        <th className="py-2.5 px-3 text-right w-24 text-amber-800 dark:text-amber-400 bg-amber-50/40 dark:bg-amber-950/20">{t("Wholesale (₹/Kg)")}</th>
-                        <th className="py-2.5 px-3 text-right w-24 text-blue-800 dark:text-blue-400 bg-blue-50/40 dark:bg-blue-950/20">{t("Export (₹/Kg)")}</th>
+                        <th className="py-2.5 px-3 text-right w-24 text-emerald-900 bg-emerald-100/60">{t("Retail (₹/Kg)")}</th>
+                        <th className="py-2.5 px-3 text-right w-24 text-amber-900 bg-amber-100/60">{t("Wholesale (₹/Kg)")}</th>
+                        <th className="py-2.5 px-3 text-right w-24 text-blue-900 bg-blue-100/60">{t("Export (₹/Kg)")}</th>
                         <th className="py-2.5 px-3 min-w-[140px]">{t("Description")}</th>
-                        <th className="py-2.5 px-3 min-w-[170px] text-purple-700 dark:text-purple-300 bg-purple-50/40 dark:bg-purple-950/20">{t("Size Grades (S / M / B)")}</th>
-                        <th className="py-2.5 px-3 min-w-[150px] text-indigo-700 dark:text-indigo-300 bg-indigo-50/40 dark:bg-indigo-950/20">{t("Cutting Charges")}</th>
+                        <th className="py-2.5 px-3 min-w-[170px] text-purple-900 bg-purple-100/60">{t("Size Grades (S / M / B)")}</th>
+                        <th className="py-2.5 px-3 min-w-[150px] text-indigo-900 bg-indigo-100/60">{t("Cutting Charges")}</th>
                       </tr>
                     </thead>
                   <tbody>

@@ -5,7 +5,8 @@ import {
   createOrUpdateCustomer, 
   updateCustomerType, 
   searchCustomers,
-  deleteCustomer
+  deleteCustomer,
+  markCustomerPresence
 } from '../../controllers/crm/customerController.js';
 import { tenantMiddleware } from '../../middleware/tenant.js';
 import { authenticateToken as protect } from '../../middleware/auth.js';
@@ -13,6 +14,10 @@ import { authenticateToken as protect } from '../../middleware/auth.js';
 const router = express.Router();
 
 router.use(tenantMiddleware);
+
+// Daily Presence / Attendance (Wholesale / Dealer)
+router.post('/presence', protect, markCustomerPresence);
+router.post('/:phone/presence', protect, markCustomerPresence);
 
 // Get all customers with filters (Admin/Manager/Cashier - CRM access)
 router.get('/', protect, getAllCustomers);

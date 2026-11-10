@@ -454,6 +454,11 @@ export const saveOrder = async (req, res) => {
       showLogo
     } = req.body;
 
+    // Safely resolve customer address to string even if an object is sent
+    const resolvedCustomerAddress = typeof customerAddress === 'object' && customerAddress !== null
+      ? (customerAddress.fullAddress || [customerAddress.line1, customerAddress.area, customerAddress.city, customerAddress.district, customerAddress.state, customerAddress.pincode].filter(Boolean).join(', ') || '')
+      : (typeof customerAddress === 'string' ? customerAddress : '');
+
     // Assign default daily counter order number in IST if no tableNo provided
     let effectiveTableNo = tableNo || req.body.orderNo;
     if (!effectiveTableNo || effectiveTableNo === 'NEW_ORDER' || effectiveTableNo === 'DEL-NEW' || effectiveTableNo === 'TAK-NEW') {
@@ -564,6 +569,18 @@ export const saveOrder = async (req, res) => {
           isWholesaleBox: Boolean(item.isWholesaleBox || item.boxNumber),
           pricePerKg: Number(item.pricePerKg || item.price || 0),
           weightKg: Number(item.weightKg || netWeightKg || enteredWeight || 0),
+          iceCharges: Number(item.iceCharges || 0),
+          boxCharges: Number(item.boxCharges || 0),
+          transportCharges: Number(item.transportCharges || 0),
+          additionalCharges: Array.isArray(item.additionalCharges)
+            ? item.additionalCharges
+                .filter(c => Number(c?.amount) > 0)
+                .map(c => ({
+                  name: String(c.name || '').trim(),
+                  amount: Number(c.amount) || 0,
+                  type: c.type === 'Dr' ? 'Dr' : 'Cr'
+                }))
+            : [],
           total: Number(item.total !== undefined ? item.total : (Number(item.price || 0) * activeQty)),
           specialNote: item.specialNote !== undefined ? item.specialNote : undefined,
           status: item.status || 'Pending',
@@ -803,7 +820,7 @@ export const saveOrder = async (req, res) => {
       if (customerCategory) order.customerCategory = customerCategory;
       if (exportSubCategory !== undefined) order.exportSubCategory = exportSubCategory;
       if (customerPhoto !== undefined) order.customerPhoto = customerPhoto;
-      if (customerAddress !== undefined) order.customerAddress = customerAddress;
+      if (customerAddress !== undefined) order.customerAddress = resolvedCustomerAddress;
       if (isOrderLocked !== undefined) order.isOrderLocked = isOrderLocked;
       if (orderLockedAt !== undefined) order.orderLockedAt = orderLockedAt;
       if (orderDateFormatted) order.orderDateFormatted = orderDateFormatted;
@@ -847,6 +864,30 @@ export const saveOrder = async (req, res) => {
 
       syncOrderKotsWithItems(order);
 
+      if (req.body.iceCharges !== undefined) order.iceCharges = Number(req.body.iceCharges) || 0;
+      if (req.body.boxCharges !== undefined) order.boxCharges = Number(req.body.boxCharges) || 0;
+      if (req.body.transportCharges !== undefined) order.transportCharges = Number(req.body.transportCharges) || 0;
+      if (req.body.additionalCharges !== undefined) {
+        order.additionalCharges = Array.isArray(req.body.additionalCharges)
+          ? req.body.additionalCharges.filter(c => Number(c?.amount) > 0)
+          : [];
+        order.markModified('additionalCharges');
+      }
+      if (req.body.netAdjustment !== undefined) order.netAdjustment = Number(req.body.netAdjustment) || 0;
+      if (req.body.customSettlements !== undefined) {
+        order.customSettlements = req.body.customSettlements;
+        order.markModified('customSettlements');
+      }
+      if (req.body.partialPaymentHistory !== undefined) {
+        order.partialPaymentHistory = req.body.partialPaymentHistory;
+        order.markModified('partialPaymentHistory');
+      }
+      if (req.body.paidAmount !== undefined) order.paidAmount = Number(req.body.paidAmount) || 0;
+      if (req.body.dueAmount !== undefined) order.dueAmount = Number(req.body.dueAmount) || 0;
+      if (req.body.total !== undefined && (req.body.netAdjustment !== undefined || req.body.iceCharges !== undefined || req.body.boxCharges !== undefined || req.body.transportCharges !== undefined)) {
+        order.total = Number(req.body.total);
+      }
+
       const boxSummary = computeBoxesSummary(updatedItems);
       order.boxes = boxSummary.boxes;
       order.totalBoxes = boxSummary.totalBoxes;
@@ -886,7 +927,21 @@ export const saveOrder = async (req, res) => {
             freshOrder.deliveryCharge = dCharge;
             freshOrder.containerCharge = cCharge;
             freshOrder.cuttingCharge = cutCharge;
-            freshOrder.total = calculatedTotal;
+            if (req.body.iceCharges !== undefined) freshOrder.iceCharges = Number(req.body.iceCharges) || 0;
+            if (req.body.boxCharges !== undefined) freshOrder.boxCharges = Number(req.body.boxCharges) || 0;
+            if (req.body.transportCharges !== undefined) freshOrder.transportCharges = Number(req.body.transportCharges) || 0;
+            if (req.body.additionalCharges !== undefined) {
+              freshOrder.additionalCharges = Array.isArray(req.body.additionalCharges)
+                ? req.body.additionalCharges.filter(c => Number(c?.amount) > 0)
+                : [];
+              freshOrder.markModified('additionalCharges');
+            }
+            if (req.body.netAdjustment !== undefined) freshOrder.netAdjustment = Number(req.body.netAdjustment) || 0;
+            if (req.body.customSettlements !== undefined) freshOrder.customSettlements = req.body.customSettlements;
+            if (req.body.partialPaymentHistory !== undefined) freshOrder.partialPaymentHistory = req.body.partialPaymentHistory;
+            if (req.body.paidAmount !== undefined) freshOrder.paidAmount = Number(req.body.paidAmount) || 0;
+            if (req.body.dueAmount !== undefined) freshOrder.dueAmount = Number(req.body.dueAmount) || 0;
+            freshOrder.total = req.body.total !== undefined ? Number(req.body.total) : calculatedTotal;
             if (freshOrder.status !== 'Billed' && freshOrder.status !== 'Paid') {
               freshOrder.status = 'Open';
             }
@@ -989,7 +1044,18 @@ export const saveOrder = async (req, res) => {
         deliveryCharge: dChargeNew,
         containerCharge: cChargeNew,
         cuttingCharge: cutChargeNew,
-        total: calculatedTotal,
+        iceCharges: Number(req.body.iceCharges) || 0,
+        boxCharges: Number(req.body.boxCharges) || 0,
+        transportCharges: Number(req.body.transportCharges) || 0,
+        additionalCharges: Array.isArray(req.body.additionalCharges)
+          ? req.body.additionalCharges.filter(c => Number(c?.amount) > 0)
+          : [],
+        netAdjustment: Number(req.body.netAdjustment) || 0,
+        customSettlements: req.body.customSettlements || [],
+        partialPaymentHistory: req.body.partialPaymentHistory || [],
+        paidAmount: Number(req.body.paidAmount) || 0,
+        dueAmount: Number(req.body.dueAmount) || 0,
+        total: req.body.total !== undefined ? Number(req.body.total) : calculatedTotal,
         status: 'Open',
         billType: billType || 'Retail',
         customerName,
@@ -997,7 +1063,7 @@ export const saveOrder = async (req, res) => {
         customerCategory: customerCategory || (billType === 'Wholesale' ? 'Wholesale' : (billType === 'Export' ? 'Export' : 'Retail')),
         exportSubCategory: exportSubCategory || null,
         customerPhoto: customerPhoto || '',
-        customerAddress: customerAddress || '',
+        customerAddress: resolvedCustomerAddress,
         isOrderLocked: isOrderLocked || false,
         orderLockedAt: orderLockedAt || (isOrderLocked ? new Date() : null),
         orderDateFormatted: orderDateFormatted || '',
@@ -1640,7 +1706,7 @@ export const getOpenOrders = async (req, res) => {
     const orders = await Bill.find({
       status: { $in: ['Open', 'Billed'] }
     })
-      .select('tableNo orderNo items total subtotal tax discount discountType discountValue discountName applicableTo targetCategory customerCategory orderMode orderChannel exportSubCategory totalBoxes boxes deliveryCharge containerCharge cuttingCharge customerName customerPhone customerPhoto customerAddress isOrderLocked orderLockedAt orderDateFormatted orderTimeFormatted status billNumber billType orderSource queueNumber tokenNo createdAt')
+      .select('tableNo orderNo items total subtotal tax discount discountType discountValue discountName applicableTo targetCategory customerCategory orderMode orderChannel exportSubCategory totalBoxes boxes deliveryCharge containerCharge cuttingCharge iceCharges boxCharges transportCharges netAdjustment customSettlements partialPaymentHistory paidAmount dueAmount customerName customerPhone customerPhoto customerAddress isOrderLocked orderLockedAt orderDateFormatted orderTimeFormatted status billNumber billType orderSource queueNumber tokenNo createdAt')
       .sort({ createdAt: -1 })
       .limit(100)
       .lean();

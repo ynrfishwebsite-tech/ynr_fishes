@@ -46,7 +46,7 @@ const getCategoryIcon = (catName, isSelected = false) => {
   return <IconComponent size={20} className={`shrink-0 ${isSelected ? 'text-white' : colorClass}`} />;
 };
 
-const formatImageUrl = (url) => {
+export const formatImageUrl = (url) => {
   if (!url) return '';
   let trimmed = url.trim();
 
@@ -386,7 +386,8 @@ const MenuGrid = ({
   setDiscount,
   onSaveOrder,
   onGenerateBill,
-  actionLoading = null
+  actionLoading = null,
+  onOpenWholesaleWizard = null
 }) => {
   const { t, language } = useLanguage();
   const [items, setItems] = useState([]);
@@ -593,8 +594,12 @@ const MenuGrid = ({
     });
   }, [items, fishOrderMode]);
 
-  // Open the Wholesale Box Builder
+  // Open the Wholesale Box Builder / Wholesale Wizard
   const openBoxPackerModal = useCallback((initialFish = null, initialGradeOverride = null, initialWeightKg = null) => {
+    if (onOpenWholesaleWizard && (fishOrderMode === 'bulk' || fishOrderMode === 'export')) {
+      onOpenWholesaleWizard(initialFish, items, initialGradeOverride, initialWeightKg);
+      return;
+    }
     setBoxSlotCount(1);
     const availableFishes = items.filter(it => it.isAvailable !== false);
     const chosenFish = initialFish || availableFishes[0] || items[0] || null;
@@ -630,7 +635,7 @@ const MenuGrid = ({
     }];
     setBoxSlots(initialSlots);
     setShowBoxPacker(true);
-  }, [items, fishOrderMode]);
+  }, [items, fishOrderMode, onOpenWholesaleWizard]);
 
   // Handle changing the number of items in this box (1 to 10)
   const handleSlotCountChange = (newCount) => {
@@ -2182,7 +2187,7 @@ const MenuGrid = ({
 
                       // In Wholesale (Boxes) or Export (Bulk) mode, open the Bulk / Box Packer Modal
                       if (fishOrderMode === 'bulk' || fishOrderMode === 'export') {
-                        openBoxPackerModal(item);
+                        openBoxPackerModal(item, null, inputKg || 1);
                         return;
                       }
 
@@ -3859,8 +3864,24 @@ const MenuGrid = ({
                                   handleSlotWeightKgChange(index, '');
                                 }}
                                 onBlur={(e) => {
-                                  if (!e.target.value || isNaN(parseFloat(e.target.value)) || parseFloat(e.target.value) <= 0) {
+                                  const val = e.target.value;
+                                  if (val && String(val).includes('.')) {
+                                    const parts = String(val).split('.');
+                                    const wholeKg = parts[0] || '1';
+                                    const fracStr = (parts[1] || '').slice(0, 3);
+                                    const fracGrams = fracStr ? Math.round(parseFloat(`0.${fracStr}`) * 1000) : 0;
+                                    handleSlotWeightKgChange(index, wholeKg);
+                                    if (fracGrams > 0) {
+                                      handleSlotWeightGramsChange(index, String(fracGrams));
+                                    }
+                                  } else if (!val || isNaN(parseFloat(val)) || parseFloat(val) <= 0) {
                                     handleSlotWeightKgChange(index, '1');
+                                  }
+                                }}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') {
+                                    e.preventDefault();
+                                    e.target.blur();
                                   }
                                 }}
                                 onChange={(e) => handleSlotWeightKgChange(index, e.target.value)}

@@ -8,7 +8,8 @@ import {
   Settings as SettingsIcon,
   User,
   ArrowLeft,
-  Home
+  Home,
+  Calculator
 } from 'lucide-react';
 
 // Imported Admin Components
@@ -609,8 +610,33 @@ export default function AdminDashboard() {
                     </div>
                   </div>
 
-                  {/* Profile Actions: Settings & Logout */}
+                  {/* Profile Actions: Calculator, Settings & Logout */}
                   <div style={{ marginTop: '12px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    <button
+                      onClick={() => {
+                        setShowProfileMenu(false);
+                        setShowCalculator(true);
+                      }}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '10px',
+                        width: '100%',
+                        padding: '9px 12px',
+                        background: '#FAF0E4',
+                        border: '1px solid #E8DCCB',
+                        borderRadius: '10px',
+                        color: '#475569',
+                        fontSize: '0.82rem',
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                        transition: 'all 0.15s ease'
+                      }}
+                    >
+                      <Calculator size={16} strokeWidth={2.2} style={{ color: '#ea580c' }} />
+                      <span>Calculator</span>
+                    </button>
+
                     <button
                       onClick={() => {
                         setShowProfileMenu(false);

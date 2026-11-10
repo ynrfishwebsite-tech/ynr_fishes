@@ -164,8 +164,100 @@ export const getAllCustomers = async (req, res) => {
       }
     }
 
+    // Determine real daily attendance / presence for today from database & active bills
+    try {
+      const startOfToday = new Date();
+      startOfToday.setHours(0, 0, 0, 0);
+      const todayStr = startOfToday.toISOString().split('T')[0];
+
+      const todayBills = await Bill.find({
+        createdAt: { $gte: startOfToday },
+        status: { $nin: ['Cancelled', 'Deleted'] }
+      }).select('customerPhone').lean();
+
+      const todayActivePhoneSet = new Set(
+        todayBills.map(b => String(b.customerPhone || '').replace(/\D/g, '').slice(-10)).filter(Boolean)
+      );
+
+      customers.forEach(c => {
+        const cp = String(c.phone || '').replace(/\D/g, '').slice(-10);
+        const hasTodayBill = todayActivePhoneSet.has(cp);
+        const presenceRecord = Array.isArray(c.dailyPresence) ? c.dailyPresence.find(p => p.date === todayStr) : null;
+
+        if (presenceRecord) {
+          c.isPresentToday = presenceRecord.status === 'Present';
+        } else if (hasTodayBill) {
+          c.isPresentToday = true;
+        } else {
+          c.isPresentToday = false;
+        }
+      });
+    } catch (presenceErr) {
+      console.warn('Could not compute customer daily presence:', presenceErr.message);
+    }
+
     res.status(200).json(customers);
   } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+/**
+ * Mark Dealer / Customer Daily Presence (Present vs Absent)
+ * Stored persistently in MongoDB under customer.dailyPresence
+ */
+export const markCustomerPresence = async (req, res) => {
+  try {
+    const { customerId, phone, date, status } = req.body;
+    const Customer = getTenantModel(req, 'Customer', CustomerSchema);
+
+    const targetDate = date || new Date().toISOString().split('T')[0];
+    const targetStatus = status === 'Absent' ? 'Absent' : 'Present';
+
+    let query = {};
+    if (customerId) {
+      query._id = customerId;
+    } else if (phone || req.params.phone) {
+      const p = (phone || req.params.phone).trim().replace(/\D/g, '').slice(-10);
+      query.phone = new RegExp(p + '$');
+    } else {
+      return res.status(400).json({ message: 'customerId or phone is required' });
+    }
+
+    let customer = await Customer.findOne(query);
+    if (!customer) {
+      return res.status(404).json({ message: 'Customer not found' });
+    }
+
+    if (!Array.isArray(customer.dailyPresence)) {
+      customer.dailyPresence = [];
+    }
+
+    const existingIdx = customer.dailyPresence.findIndex(p => p.date === targetDate);
+    if (existingIdx >= 0) {
+      customer.dailyPresence[existingIdx].status = targetStatus;
+      customer.dailyPresence[existingIdx].markedAt = new Date();
+    } else {
+      customer.dailyPresence.push({
+        date: targetDate,
+        status: targetStatus,
+        markedAt: new Date()
+      });
+    }
+
+    await customer.save();
+
+    res.json({
+      success: true,
+      message: `Customer marked ${targetStatus} for ${targetDate}`,
+      customerId: customer._id,
+      phone: customer.phone,
+      date: targetDate,
+      status: targetStatus,
+      isPresentToday: targetStatus === 'Present'
+    });
+  } catch (error) {
+    console.error('Error marking customer presence:', error);
     res.status(500).json({ message: error.message });
   }
 };
@@ -203,6 +295,24 @@ export const syncCustomer = async (req, phone, name, orderType = 'Retail', categ
           customer.exportSubCategory = exportSubCategory || customer.exportSubCategory || 'Local';
         }
       }
+
+      // Auto-record presence for today
+      const todayStr = new Date().toISOString().split('T')[0];
+      if (!Array.isArray(customer.dailyPresence)) {
+        customer.dailyPresence = [];
+      }
+      const pIdx = customer.dailyPresence.findIndex(p => p.date === todayStr);
+      if (pIdx >= 0) {
+        customer.dailyPresence[pIdx].status = 'Present';
+        customer.dailyPresence[pIdx].markedAt = new Date();
+      } else {
+        customer.dailyPresence.push({
+          date: todayStr,
+          status: 'Present',
+          markedAt: new Date()
+        });
+      }
+
       await customer.save();
     }
   } catch (error) {
@@ -284,6 +394,23 @@ export const updateCustomerFromBill = async (req, bill) => {
     customer.favoriteItems.sort((a, b) => b.count - a.count);
     if (customer.favoriteItems.length > 20) {
       customer.favoriteItems = customer.favoriteItems.slice(0, 20);
+    }
+
+    // Auto-record presence for today
+    const todayStr = new Date().toISOString().split('T')[0];
+    if (!Array.isArray(customer.dailyPresence)) {
+      customer.dailyPresence = [];
+    }
+    const existIdx = customer.dailyPresence.findIndex(p => p.date === todayStr);
+    if (existIdx >= 0) {
+      customer.dailyPresence[existIdx].status = 'Present';
+      customer.dailyPresence[existIdx].markedAt = new Date();
+    } else {
+      customer.dailyPresence.push({
+        date: todayStr,
+        status: 'Present',
+        markedAt: new Date()
+      });
     }
 
     await customer.save();

@@ -2,6 +2,8 @@ import { getApiUrl } from "../../../config.js";
 import { useLanguage } from "../../../context/LanguageContext";
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import BackButton from '../common/BackButton';
+import api from '../../../api/system/axios';
+import WholesaleOrderFinancialsModal from './WholesaleOrderFinancialsModal';
 import { getOpenOrders } from '../../../api/billing/billing';
 import { getCachedOpenOrders } from '../../../db/offlineDb';
 import { getCachedCustomers, fetchPredefinedCustomers } from '../../../api/crm/customerApi';
@@ -107,6 +109,8 @@ const ActiveOrders = ({
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState('All'); // 'All' | 'Billed' | 'Open'
   const [channelFilter, setChannelFilter] = useState((lockChannel && initialChannel) ? initialChannel : (initialChannel || 'All'));
+  const [dateScopeFilter, setDateScopeFilter] = useState('all'); // 'all' | 'today' | 'yesterday'
+  const [financialsOrder, setFinancialsOrder] = useState(null);
 
   // Customized Person Dropdown & Search Filters
   const [selectedPerson, setSelectedPerson] = useState('All');
@@ -334,6 +338,31 @@ const ActiveOrders = ({
       // Status check
       if (statusFilter !== 'All' && o.status !== statusFilter) return false;
 
+      // Date scope check (all | today | yesterday)
+      if (dateScopeFilter !== 'all') {
+        const now = new Date();
+        const istOffset = 5.5 * 60 * 60 * 1000;
+        const todayIstStr = new Date(now.getTime() + istOffset).toISOString().split('T')[0];
+        const yestDate = new Date(now.getTime() - 24 * 60 * 60 * 1000 + istOffset);
+        const yestIstStr = yestDate.toISOString().split('T')[0];
+
+        let orderDateStr = '';
+        if (o.orderDateFormatted) {
+          const parts = o.orderDateFormatted.split('-');
+          if (parts.length === 3 && parts[0].length === 4) orderDateStr = o.orderDateFormatted;
+          else if (parts.length === 3 && parts[2].length === 4) orderDateStr = `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
+        } else if (o.createdAt) {
+          orderDateStr = new Date(new Date(o.createdAt).getTime() + istOffset).toISOString().split('T')[0];
+        }
+
+        if (dateScopeFilter === 'today' && orderDateStr && orderDateStr !== todayIstStr) {
+          return false;
+        }
+        if (dateScopeFilter === 'yesterday' && orderDateStr && orderDateStr !== yestIstStr) {
+          return false;
+        }
+      }
+
       // Person check
       if (selectedPerson !== 'All') {
         const oName = (o.customerName || '').trim() || 'Counter Walk-in';
@@ -360,7 +389,7 @@ const ActiveOrders = ({
 
       return true;
     });
-  }, [channelScopedOrders, statusFilter, selectedPerson, searchTerm]);
+  }, [channelScopedOrders, statusFilter, selectedPerson, searchTerm, dateScopeFilter]);
 
   // Channel-scoped status counts
   const typeCounts = useMemo(() => ({
@@ -460,6 +489,26 @@ const ActiveOrders = ({
     }
   };
 
+  // Fetch yesterday's bills when Yesterday date scope is selected
+  useEffect(() => {
+    if (dateScopeFilter === 'yesterday') {
+      const now = new Date();
+      const istOffset = 5.5 * 60 * 60 * 1000;
+      const yest = new Date(now.getTime() - 24 * 60 * 60 * 1000 + istOffset);
+      const yestStr = yest.toISOString().split('T')[0];
+      api.get(`/bills?startDate=${yestStr}&endDate=${yestStr}&limit=100`).then((res) => {
+        const bills = res.data?.bills || (Array.isArray(res.data) ? res.data : []);
+        if (bills.length > 0) {
+          setOrders(prev => {
+            const existingIds = new Set(prev.map(p => p._id));
+            const newBills = bills.filter(b => !existingIds.has(b._id));
+            return [...prev, ...newBills];
+          });
+        }
+      }).catch(err => console.warn('Could not fetch yesterday bills:', err));
+    }
+  }, [dateScopeFilter]);
+
   const getChannelBadge = (order) => {
     const cat = getOrderCategory(order);
     const sub = order.exportSubCategory || 'Local';
@@ -557,8 +606,45 @@ const ActiveOrders = ({
             </div>
           </div>
 
-          {/* Right: Compact Status Toggle Pills & Refresh */}
-          <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
+          {/* Right: Date Scope & Compact Status Toggle Pills & Refresh */}
+          <div className="flex items-center gap-1 sm:gap-1.5 shrink-0 flex-wrap sm:flex-nowrap">
+            {/* Date Scope Pills: All, Today, Yesterday */}
+            <div className="flex items-center gap-0.5 bg-[#FAF0E4] p-0.5 rounded-full border border-[#E8DCCB] shrink-0">
+              <button
+                type="button"
+                onClick={() => setDateScopeFilter('all')}
+                className={`px-1.5 sm:px-2 py-0.5 rounded-full text-[9.5px] sm:text-[10.5px] font-bold transition-all cursor-pointer ${
+                  dateScopeFilter === 'all'
+                    ? 'bg-slate-800 text-white shadow-2xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                {t("All")}
+              </button>
+              <button
+                type="button"
+                onClick={() => setDateScopeFilter('today')}
+                className={`px-1.5 sm:px-2 py-0.5 rounded-full text-[9.5px] sm:text-[10.5px] font-bold transition-all cursor-pointer ${
+                  dateScopeFilter === 'today'
+                    ? 'bg-amber-600 text-white shadow-2xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                {t("Today")}
+              </button>
+              <button
+                type="button"
+                onClick={() => setDateScopeFilter('yesterday')}
+                className={`px-1.5 sm:px-2 py-0.5 rounded-full text-[9.5px] sm:text-[10.5px] font-bold transition-all cursor-pointer ${
+                  dateScopeFilter === 'yesterday'
+                    ? 'bg-[#ea580c] text-white shadow-2xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                {t("Yesterday")}
+              </button>
+            </div>
+
             <button
               type="button"
               onClick={() => setStatusFilter(statusFilter === 'Billed' ? 'All' : 'Billed')}
@@ -982,7 +1068,21 @@ const ActiveOrders = ({
                     </div>
 
                     <div className="flex items-center gap-1.5 shrink-0 ml-auto flex-wrap">
-                      {/* Consignment Vehicle Dispatch button hidden per user request */}
+                      {/* Wholesale / Export Financials & Adjustments Button */}
+                      {(getOrderCategory(order) === 'Wholesale' || getOrderCategory(order) === 'Export') && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setFinancialsOrder(order);
+                          }}
+                          className="py-1.5 px-2.5 rounded-lg font-black text-xs flex items-center gap-1 bg-amber-100 hover:bg-amber-200 text-amber-950 border border-amber-300 shadow-2xs transition-all cursor-pointer shrink-0"
+                          title={t("Dr/Cr adjustments, bill charges, partial payment & ledger")}
+                        >
+                          <Scale size={12} className="text-amber-800 shrink-0" />
+                          <span>{t("Dr/Cr & Charges")}</span>
+                        </button>
+                      )}
 
                       {/* Main Action Button */}
                       <button
@@ -1178,6 +1278,20 @@ const ActiveOrders = ({
             </div>
           </div>
         </div>
+      )}
+
+      {/* Wholesale & Export Financials & Adjustments Modal */}
+      {financialsOrder && (
+        <WholesaleOrderFinancialsModal
+          isOpen={Boolean(financialsOrder)}
+          onClose={() => setFinancialsOrder(null)}
+          order={financialsOrder}
+          onOrderUpdated={() => fetchOrders(false)}
+          showToast={(msg, type) => {
+            setDispatchToast(msg);
+            setTimeout(() => setDispatchToast(null), 4000);
+          }}
+        />
       )}
     </div>
   );

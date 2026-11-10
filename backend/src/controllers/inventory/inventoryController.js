@@ -476,11 +476,138 @@ export const recordProcurement = async (req, res) => {
   }
 };
 
-// 15. Real-time Fish Stock Overview
+// 15. Real-time Fish Stock Overview (Supports Date Range & Catch Source Filtering from Database)
 export const getFishInventory = async (req, res) => {
   try {
-    const { Menu } = getModels(req);
-    const fishItems = await Menu.find({ isAvailable: true })
+    const { Menu, StockLog } = getModels(req);
+    const { startDate, endDate, source = 'all', search = '' } = req.query;
+
+    const baseMenuQuery = { isAvailable: true };
+
+    if (search && search.trim()) {
+      const q = search.trim();
+      baseMenuQuery.$or = [
+        { name: { $regex: q, $options: 'i' } },
+        { scientificName: { $regex: q, $options: 'i' } }
+      ];
+    }
+
+    const hasSourceFilter = source && source !== 'all' && source !== 'All';
+    const hasDateFilter = Boolean(startDate || endDate);
+
+    // If Date or Source filters are applied, query StockLog records from database
+    if (hasSourceFilter || hasDateFilter) {
+      const logMatch = {
+        $or: [
+          { type: { $regex: 'Stock-In|Procurement|Consignment', $options: 'i' } },
+          { quantityChange: { $gt: 0 } }
+        ]
+      };
+
+      if (hasSourceFilter) {
+        const srcLower = source.toLowerCase();
+        if (srcLower === 'local') {
+          logMatch.$and = logMatch.$and || [];
+          logMatch.$and.push({
+            $or: [
+              { intakeMode: 'local' },
+              { notes: { $regex: 'Local', $options: 'i' } },
+              { invoiceNo: { $regex: 'LOC', $options: 'i' } }
+            ]
+          });
+        } else if (srcLower === 'dam') {
+          logMatch.$and = logMatch.$and || [];
+          logMatch.$and.push({
+            $or: [
+              { intakeMode: 'dam' },
+              { notes: { $regex: 'DAM', $options: 'i' } },
+              { invoiceNo: { $regex: 'DAM', $options: 'i' } }
+            ]
+          });
+        }
+      }
+
+      if (startDate || endDate) {
+        const dateCond = {};
+        if (startDate) {
+          const s = new Date(startDate);
+          s.setHours(0, 0, 0, 0);
+          dateCond.$gte = s;
+        }
+        if (endDate) {
+          const e = new Date(endDate);
+          e.setHours(23, 59, 59, 999);
+          dateCond.$lte = e;
+        }
+        logMatch.createdAt = dateCond;
+      }
+
+      const matchingLogs = await StockLog.find(logMatch)
+        .select('fishItem itemName intakeMode quantityChange createdAt supplierName')
+        .lean();
+
+      if (!matchingLogs || matchingLogs.length === 0) {
+        return res.status(200).json([]);
+      }
+
+      const matchedFishIds = new Set();
+      const matchedNames = new Set();
+      const intakeSummaryByFish = {};
+
+      matchingLogs.forEach(log => {
+        if (log.fishItem) matchedFishIds.add(log.fishItem.toString());
+        if (log.itemName) matchedNames.add(log.itemName.trim().toLowerCase());
+
+        const key = log.fishItem ? log.fishItem.toString() : (log.itemName ? log.itemName.trim().toLowerCase() : null);
+        if (key) {
+          if (!intakeSummaryByFish[key]) {
+            intakeSummaryByFish[key] = {
+              totalIntakeKg: 0,
+              intakeCount: 0,
+              lastIntakeDate: log.createdAt,
+              lastSupplier: log.supplierName || ''
+            };
+          }
+          intakeSummaryByFish[key].totalIntakeKg += Number(log.quantityChange || 0);
+          intakeSummaryByFish[key].intakeCount += 1;
+        }
+      });
+
+      const orConditions = [];
+      if (matchedFishIds.size > 0) {
+        orConditions.push({ _id: { $in: Array.from(matchedFishIds) } });
+      }
+      if (matchedNames.size > 0) {
+        orConditions.push({ name: { $in: Array.from(matchedNames).map(n => new RegExp(`^${n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i')) } });
+      }
+
+      if (orConditions.length === 0) {
+        return res.status(200).json([]);
+      }
+
+      baseMenuQuery.$and = baseMenuQuery.$and || [];
+      baseMenuQuery.$and.push({ $or: orConditions });
+
+      const fishItems = await Menu.find(baseMenuQuery)
+        .select('name scientificName category price purchasePrice stock openingStock boxPackingKg boxTareWeightKg boxNetFishKg minStockAlertKg cuts')
+        .populate('category', 'name')
+        .sort({ name: 1 })
+        .lean();
+
+      const enrichedItems = fishItems.map(item => {
+        const stats = intakeSummaryByFish[item._id.toString()] || intakeSummaryByFish[item.name.trim().toLowerCase()] || {};
+        return {
+          ...item,
+          periodIntakeKg: stats.totalIntakeKg ? Number(stats.totalIntakeKg.toFixed(2)) : 0,
+          periodIntakeCount: stats.intakeCount || 0,
+          lastSupplier: stats.lastSupplier || item.lastSupplier || ''
+        };
+      });
+
+      return res.status(200).json(enrichedItems);
+    }
+
+    const fishItems = await Menu.find(baseMenuQuery)
       .select('name scientificName category price purchasePrice stock openingStock boxPackingKg boxTareWeightKg boxNetFishKg minStockAlertKg cuts')
       .populate('category', 'name')
       .sort({ name: 1 })

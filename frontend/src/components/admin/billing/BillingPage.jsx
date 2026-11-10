@@ -1,6 +1,8 @@
 import { getApiUrl, getSuperadminApiUrl } from "../../../config.js";
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import MenuGrid from '../catalog/MenuGrid';
+import WholesaleOrderWizardModal from './WholesaleOrderWizardModal';
+import { fetchPredefinedCustomers } from '../../../api/crm/customerApi';
 import BillSummary from './BillSummary';
 import PaymentModal from './PaymentModal';
 import PaymentSuccessScreen from './PaymentSuccessScreen';
@@ -9,7 +11,7 @@ import { getActiveOrder, saveOrder, generateBill, settleBill, apiReopenOrder, ap
 import { sendWhatsAppBill, getWhatsAppStatus } from '../../../api/communication/whatsapp';
 import api from '../../../api/system/axios';
 import { getCachedOpenOrders, upsertCachedOpenOrder, removeCachedOpenOrder } from '../../../db/offlineDb';
-import { Search, UtensilsCrossed, Maximize, Minimize, TrendingUp, ShoppingBag, LayoutGrid, Menu, ChevronLeft, ChevronRight, ChevronDown, Lock, Unlock, X, User, UserPlus, Phone, Loader2, Plus, Check,Printer } from 'lucide-react';
+import { Search, UtensilsCrossed, Maximize, Minimize, TrendingUp, ShoppingBag, ShoppingCart, LayoutGrid, Menu, ChevronLeft, ChevronRight, ChevronDown, Lock, Unlock, X, User, UserPlus, Phone, Loader2, Plus, Check, Printer } from 'lucide-react';
 import useDebounce from '../../../hooks/useDebounce';
 import Invoice from './Invoice';
 import { getBillTotalWeightKg, resolveItemQtyAndRate } from './BillHistory';
@@ -445,6 +447,26 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
   const [crmCustomerFound, setCrmCustomerFound] = useState(null);
   const [crmSuggestions, setCrmSuggestions] = useState([]);
   const [showCrmSuggestions, setShowCrmSuggestions] = useState(false);
+
+  // Wholesale & Export Order Wizard States
+  const [showWholesaleWizard, setShowWholesaleWizard] = useState(false);
+  const [wholesaleWizardFish, setWholesaleWizardFish] = useState(null);
+  const [wholesaleAvailableFish, setWholesaleAvailableFish] = useState([]);
+  const [crmCustomers, setCrmCustomers] = useState([]);
+
+  useEffect(() => {
+    fetchPredefinedCustomers('All', 'All', true).then((custs) => {
+      if (Array.isArray(custs)) setCrmCustomers(custs);
+    }).catch(() => {});
+
+    const handleCustRefresh = () => {
+      fetchPredefinedCustomers('All', 'All', true).then((custs) => {
+        if (Array.isArray(custs)) setCrmCustomers(custs);
+      }).catch(() => {});
+    };
+    window.addEventListener('customersUpdated', handleCustRefresh);
+    return () => window.removeEventListener('customersUpdated', handleCustRefresh);
+  }, []);
 
   const searchInputRef = useRef(null);
   const isViewingInvoiceRef = useRef(false);
@@ -2508,6 +2530,195 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
   };
   // ─────────────────────────────────────────────────────────────────────────────
 
+  /**
+   * Wholesale & Export Wizard Order Saver
+   * Saves or groups an item into the customer's active daily bill
+   */
+  const handleSaveItemToCustomerOrder = async (itemPayload, customerObj, existingOrderInfo) => {
+    const isExport = fishOrderMode === 'export';
+    const channelName = isExport ? 'Export' : 'Wholesale';
+
+    const custPhone = (customerObj?.phone || '').replace(/\D/g, '').slice(-10);
+    const custName = (customerObj?.name || '').trim().toLowerCase();
+
+    // Find if customer already has an active order today in this channel
+    let targetOrder = null;
+    if (openOrdersList && Array.isArray(openOrdersList)) {
+      targetOrder = openOrdersList.find(o => {
+        if (!o || o.status === 'Paid' || o.status === 'Cancelled') return false;
+        if (existingOrderInfo && (o._id === existingOrderInfo.orderId || o.tableNo === existingOrderInfo.tableNo)) return true;
+
+        const oExp = o.customerCategory === 'Export' || o.orderMode === 'export' || String(o.tableNo || '').startsWith('EXP-');
+        const oWs = !oExp && (o.customerCategory === 'Wholesale' || o.orderMode === 'bulk' || String(o.tableNo || '').startsWith('WS-'));
+        if (isExport && !oExp) return false;
+        if (!isExport && !oWs) return false;
+
+        const oPhone = (o.customerPhone || '').replace(/\D/g, '').slice(-10);
+        if (custPhone && oPhone && custPhone === oPhone) return true;
+        const oName = (o.customerName || '').trim().toLowerCase();
+        return custName && oName && custName === oName;
+      });
+    }
+
+    const itemTotal = Number(itemPayload.total) || ((Number(itemPayload.price || itemPayload.pricePerKg || 0)) * (Number(itemPayload.quantity || 1)));
+
+    if (targetOrder) {
+      // Grouping Strategy: Append item to today's existing active bill for this customer
+      const existingItems = Array.isArray(targetOrder.items) ? targetOrder.items : [];
+      const updatedItems = [...existingItems, itemPayload];
+      const currentBoxes = Number(targetOrder.totalBoxes || 0);
+      const addedBoxes = Number(itemPayload.boxesCount || itemPayload.boxCount || 1);
+      const updatedTotalBoxes = Math.max(currentBoxes, currentBoxes + addedBoxes);
+
+      const subtotal = updatedItems.reduce((acc, it) => {
+        if (it.isCancelled) return acc;
+        const qty = Number(it.quantity || it.weight || it.weightKg || it.enteredWeight || 1);
+        const pr = Number(it.price || it.pricePerKg || it.rate || 0);
+        return acc + (pr * qty);
+      }, 0);
+
+      const existingIce = Number(targetOrder.iceCharges || 0);
+      const existingBox = Number(targetOrder.boxCharges || 0);
+      const existingTrans = Number(targetOrder.transportCharges || 0);
+
+      const newIce = existingIce + (Number(itemPayload.iceCharges) || 0);
+      const newBox = existingBox + (Number(itemPayload.boxCharges) || 0);
+      const newTrans = existingTrans + (Number(itemPayload.transportCharges) || 0);
+
+      // Collect all assigned additional charges (> 0) from all items in this bill
+      const allAssignedCharges = updatedItems.flatMap(it => 
+        Array.isArray(it.additionalCharges) ? it.additionalCharges.filter(c => Number(c?.amount) > 0) : []
+      );
+      const netAdditional = allAssignedCharges.reduce((sum, c) => {
+        const amt = Number(c.amount) || 0;
+        return c.type === 'Dr' ? sum - amt : sum + amt;
+      }, 0);
+
+      // Accumulate any item-level discounts
+      const totalItemDiscounts = updatedItems.reduce((sum, it) => sum + (Number(it.discount) || 0), 0);
+      const totalOrderDiscount = Math.max(Number(targetOrder.discount || 0), totalItemDiscounts);
+
+      const resolvedCustomerAddress = typeof customerObj?.address === 'object' && customerObj.address !== null
+        ? (customerObj.address.fullAddress || [customerObj.address.line1, customerObj.address.area, customerObj.address.city, customerObj.address.district, customerObj.address.state, customerObj.address.pincode].filter(Boolean).join(', ') || '')
+        : (typeof customerObj?.address === 'string' ? customerObj.address : (targetOrder.customerAddress || ''));
+
+      await saveOrder({
+        id: targetOrder._id,
+        tableNo: targetOrder.tableNo,
+        items: updatedItems,
+        customerName: customerObj.name || targetOrder.customerName,
+        customerPhone: customerObj.phone || targetOrder.customerPhone,
+        customerPhoto: customerObj.photo || targetOrder.customerPhoto,
+        customerAddress: resolvedCustomerAddress,
+        customerCategory: channelName,
+        exportSubCategory: customerObj.exportSubCategory || targetOrder.exportSubCategory,
+        billType: channelName,
+        orderMode: isExport ? 'export' : 'bulk',
+        totalBoxes: updatedTotalBoxes,
+        iceCharges: newIce,
+        boxCharges: newBox,
+        transportCharges: newTrans,
+        additionalCharges: allAssignedCharges,
+        discount: totalOrderDiscount,
+        discountType: itemPayload.discountType || 'flat',
+        discountValue: itemPayload.discountValue !== undefined ? itemPayload.discountValue : totalOrderDiscount,
+        subtotal: subtotal,
+        total: Math.max(0, subtotal + netAdditional - totalOrderDiscount)
+      });
+    } else {
+      // New customer today: Generate new sequential bill number (e.g. WS-01 or EXP-01)
+      const nextTableNo = generateSequentialOrderNo(channelName);
+      const itemIce = Number(itemPayload.iceCharges) || 0;
+      const itemBox = Number(itemPayload.boxCharges) || 0;
+      const itemTrans = Number(itemPayload.transportCharges) || 0;
+      const itemDiscount = Number(itemPayload.discount) || 0;
+      const assignedItemCharges = Array.isArray(itemPayload.additionalCharges) 
+        ? itemPayload.additionalCharges.filter(c => Number(c?.amount) > 0) 
+        : [];
+      const baseSubtotal = (Number(itemPayload.price || itemPayload.pricePerKg || 0) * Number(itemPayload.quantity || 1));
+      const resolvedCustomerAddress = typeof customerObj?.address === 'object' && customerObj.address !== null
+        ? (customerObj.address.fullAddress || [customerObj.address.line1, customerObj.address.area, customerObj.address.city, customerObj.address.district, customerObj.address.state, customerObj.address.pincode].filter(Boolean).join(', ') || '')
+        : (typeof customerObj?.address === 'string' ? customerObj.address : '');
+
+      await saveOrder({
+        tableNo: nextTableNo,
+        items: [itemPayload],
+        customerName: customerObj.name,
+        customerPhone: customerObj.phone,
+        customerPhoto: customerObj.photo || '',
+        customerAddress: resolvedCustomerAddress,
+        customerCategory: channelName,
+        exportSubCategory: customerObj.exportSubCategory || null,
+        billType: channelName,
+        orderMode: isExport ? 'export' : 'bulk',
+        totalBoxes: Number(itemPayload.boxesCount || itemPayload.boxCount || 1),
+        iceCharges: itemIce,
+        boxCharges: itemBox,
+        transportCharges: itemTrans,
+        additionalCharges: assignedItemCharges,
+        discount: itemDiscount,
+        discountType: itemPayload.discountType || 'flat',
+        discountValue: itemPayload.discountValue !== undefined ? itemPayload.discountValue : itemDiscount,
+        subtotal: baseSubtotal,
+        total: itemTotal
+      });
+    }
+
+    await fetchOpenOrdersList();
+    try {
+      realtimeService.emit('orderUpdated', { status: 'Open' });
+      window.dispatchEvent(new CustomEvent('ordersUpdated'));
+    } catch (_) {}
+
+    if (showToast) {
+      showToast(`Saved ${itemPayload.name} to ${customerObj.name}'s ${channelName} Bill!`, 'success');
+    }
+    return true;
+  };
+
+  /**
+   * Wholesale & Export Wizard - Clear a customer's active daily bill
+   */
+  const handleClearCustomerOrder = async (customerObj) => {
+    const custPhone = (customerObj?.phone || '').replace(/\D/g, '').slice(-10);
+    const custName = (customerObj?.name || '').trim().toLowerCase();
+
+    const targetOrder = openOrdersList.find(o => {
+      if (!o || o.status === 'Paid' || o.status === 'Cancelled') return false;
+      const isExp = o.customerCategory === 'Export' || o.orderMode === 'export' || String(o.tableNo || '').startsWith('EXP-');
+      const isWs = !isExp && (o.customerCategory === 'Wholesale' || o.orderMode === 'bulk' || String(o.tableNo || '').startsWith('WS-'));
+      if (fishOrderMode === 'export' && !isExp) return false;
+      if (fishOrderMode !== 'export' && !isWs) return false;
+
+      const oPhone = (o.customerPhone || '').replace(/\D/g, '').slice(-10);
+      if (custPhone && oPhone && custPhone === oPhone) return true;
+      const oName = (o.customerName || '').trim().toLowerCase();
+      return custName && oName && custName === oName;
+    });
+
+    if (targetOrder) {
+      if (window.confirm(`Are you sure you want to clear active order #${targetOrder.tableNo} for ${customerObj.name}?`)) {
+        try {
+          await apiCancelOrder(targetOrder._id, 'Cleared by user from Wholesale Order Page');
+          await fetchOpenOrdersList();
+          try {
+            realtimeService.emit('orderUpdated', { status: 'Cancelled', tableNo: targetOrder.tableNo });
+            window.dispatchEvent(new CustomEvent('ordersUpdated'));
+          } catch (_) {}
+          showToast(`Cleared today's bill for ${customerObj.name}`, 'info');
+          return true;
+        } catch (err) {
+          console.error('Failed to clear bill:', err);
+          showToast('Failed to clear bill: ' + (err.message || 'Error'), 'error');
+          return false;
+        }
+      }
+    } else {
+      showToast(`No active bill found today for ${customerObj.name}`, 'info');
+    }
+    return false;
+  };
+
   const handleSaveOrder = async (isHold = false, overrideItems = null) => {
     const isHoldStrict = isHold === true;
     setActionLoading(isHoldStrict ? 'hold' : 'save');
@@ -2884,7 +3095,6 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
     setContainerCharge('');
     setCuttingCharge('');
     setIsCuttingChargeEnabled(false);
-    setIsPaid(false);
 
     try {
       sessionStorage.removeItem('ms_initial_table');
@@ -2930,13 +3140,15 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
     setContainerCharge('');
     setCuttingCharge('');
     setIsCuttingChargeEnabled(false);
-    setIsPaid(false);
 
     try {
       sessionStorage.removeItem('ms_initial_table');
       sessionStorage.setItem('ms_initial_action', 'new');
     } catch (e) { }
 
+    if (targetMode === 'individual') {
+      setShowWholesaleWizard(false);
+    }
     setMobileTab('menu');
   }, []);
 
@@ -3684,7 +3896,8 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
   return (
     <div className="h-full flex flex-col overflow-hidden bg-background">
       {/* Header Navigation & Action Bar: 2 rows on Tablet, 1 row on Desktop */}
-      <div className={`flex flex-col xl:flex-row xl:h-14 xl:items-center xl:justify-between px-2 sm:px-3 lg:px-6 bg-surface border-b border-border/50 shrink-0 relative ${isOrderDropdownOpen ? 'z-[100]' : 'z-30'} gap-1.5 py-1.5 xl:py-0`}>
+      {!(showWholesaleWizard && (fishOrderMode === 'bulk' || fishOrderMode === 'export')) && (
+      <div className={`flex flex-col xl:flex-row xl:h-14 xl:items-center xl:justify-between px-2 sm:px-3 lg:px-6 bg-surface border-b border-border/50 shrink-0 relative ${isOrderDropdownOpen ? 'z-[100]' : 'z-30'} gap-1.5 py-1.5 xl:py-0 ${mobileTab === 'cart' ? 'hidden xl:flex' : 'flex'}`}>
 
         {/* ROW 1: (On Tablet: Back, Order Selector, New Order, Lock, Fullscreen) / (On Desktop: Left Section) */}
         <div className="flex items-center justify-between w-full xl:w-auto gap-2">
@@ -3986,122 +4199,156 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
           </div>
         </div>
       </div>
+      )}
 
-      <div className="flex flex-col md:hidden px-3 pt-2 gap-2 shrink-0 bg-background border-b border-border/50 pb-2.5">
-        {/* Mobile Dealer / Customer Pill Bar (Retail only or when non-bulk/export) */}
-        {!(fishOrderMode === 'bulk' || fishOrderMode === 'export') && customerName && (
-          <div
-            className={`px-3 py-1.5 rounded-xl border flex items-center justify-between text-xs transition-all ${isOrderLocked
-                ? 'bg-amber-500/10 border-amber-500/30 text-amber-900 shadow-xs'
-                : 'bg-[#FAF0E4] border-[#E8DCCB] text-slate-700'
-              }`}
-          >
-            <div className="flex items-center gap-1.5 min-w-0">
-              <span className="font-bold truncate text-[11px] text-slate-800">
-                {customerName}
-              </span>
-            </div>
-            <div className="flex items-center gap-1 shrink-0 text-[10px] font-bold">
-              {isOrderLocked ? (
-                <span className="text-emerald-700 font-extrabold flex items-center gap-0.5">
-                  🔒 {lockedTimestamp ? (lockedTimestamp.split(',')[1] || 'Locked') : 'Locked'}
-                </span>
-              ) : (
-                <span className="text-[#ea580c] font-black">{customerName}</span>
-              )}
-            </div>
-          </div>
-        )}
-
-        {(mobileTab === 'menu' || fishOrderMode === 'bulk' || fishOrderMode === 'export') && (
-          <div className="flex items-center gap-2 w-full mt-0.5">
-            <div className="relative group flex-1">
-              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-text-muted group-focus-within:text-primary transition-colors" size={16} />
-              <input
-                type="text"
-                placeholder={t('searchDishes') === 'searchDishes' ? 'Search Dishes...' : (t('searchDishes') || 'Search Dishes...')}
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-10 pr-8 py-2 bg-surface border border-border rounded-xl focus:outline-none focus:border-primary text-xs text-text-main transition-all shadow-inner"
-              />
-              {searchTerm && (
-                <button
-                  type="button"
-                  onClick={() => setSearchTerm('')}
-                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-text-muted bg-gray-200 rounded-full p-1 transition-all cursor-pointer"
-                  title={t("Clear search")}
-                >
-                  <X size={11} />
-                </button>
-              )}
-            </div>
-
-            {/* Mobile New Order (+) button replacing old Sales button on mobile */}
-            <button
-              type="button"
-              onClick={handleCreateNewOrder}
-              className="flex sm:hidden items-center justify-center gap-1 bg-gradient-to-r from-emerald-600 to-teal-600 active:from-emerald-700 active:to-teal-700 text-white px-2.5 py-1.5 rounded-xl font-bold text-xs shadow-xs active:scale-95 transition-all cursor-pointer shrink-0 select-none"
-              title={t('Start a brand new empty order')}
+      {!(showWholesaleWizard && (fishOrderMode === 'bulk' || fishOrderMode === 'export')) && mobileTab !== 'cart' && (
+        <div className="flex flex-col md:hidden px-3 pt-2 gap-2 shrink-0 bg-background border-b border-border/50 pb-2.5">
+          {/* Mobile Dealer / Customer Pill Bar (Retail only or when non-bulk/export) */}
+          {!(fishOrderMode === 'bulk' || fishOrderMode === 'export') && customerName && (
+            <div
+              className={`px-3 py-1.5 rounded-xl border flex items-center justify-between text-xs transition-all ${isOrderLocked
+                  ? 'bg-amber-500/10 border-amber-500/30 text-amber-900 shadow-xs'
+                  : 'bg-[#FAF0E4] border-[#E8DCCB] text-slate-700'
+                }`}
             >
-              <Plus size={15} strokeWidth={2.5} />
-              <span className="text-[11px] font-black">{t('New')}</span>
-            </button>
-          </div>
-        )}
-      </div>
+              <div className="flex items-center gap-1.5 min-w-0">
+                <span className="font-bold truncate text-[11px] text-slate-800">
+                  {customerName}
+                </span>
+              </div>
+              <div className="flex items-center gap-1 shrink-0 text-[10px] font-bold">
+                {isOrderLocked ? (
+                  <span className="text-emerald-700 font-extrabold flex items-center gap-0.5">
+                    🔒 {lockedTimestamp ? (lockedTimestamp.split(',')[1] || 'Locked') : 'Locked'}
+                  </span>
+                ) : (
+                  <span className="text-[#ea580c] font-black">{customerName}</span>
+                )}
+              </div>
+            </div>
+          )}
+
+          {(mobileTab === 'menu' || fishOrderMode === 'bulk' || fishOrderMode === 'export') && (
+            <div className="flex items-center gap-2 w-full mt-0.5">
+              <div className="relative group flex-1">
+                <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-text-muted group-focus-within:text-primary transition-colors" size={16} />
+                <input
+                  type="text"
+                  placeholder={t('searchDishes') === 'searchDishes' ? 'Search Dishes...' : (t('searchDishes') || 'Search Dishes...')}
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="w-full pl-10 pr-8 py-2 bg-surface border border-border rounded-xl focus:outline-none focus:border-primary text-xs text-text-main transition-all shadow-inner"
+                />
+                {searchTerm && (
+                  <button
+                    type="button"
+                    onClick={() => setSearchTerm('')}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-text-muted bg-gray-200 rounded-full p-1 transition-all cursor-pointer"
+                    title={t("Clear search")}
+                  >
+                    <X size={11} />
+                  </button>
+                )}
+              </div>
+
+              {/* Mobile New Order (+) button replacing old Sales button on mobile */}
+              <button
+                type="button"
+                onClick={handleCreateNewOrder}
+                className="flex sm:hidden items-center justify-center gap-1 bg-gradient-to-r from-emerald-600 to-teal-600 active:from-emerald-700 active:to-teal-700 text-white px-2.5 py-1.5 rounded-xl font-bold text-xs shadow-xs active:scale-95 transition-all cursor-pointer shrink-0 select-none"
+                title={t('Start a brand new empty order')}
+              >
+                <Plus size={15} strokeWidth={2.5} />
+                <span className="text-[11px] font-black">{t('New')}</span>
+              </button>
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="flex-1 flex flex-col overflow-hidden">
-        <div id="billing-main-scroll-area" className="flex-1 flex flex-col xl:flex-row overflow-y-auto xl:overflow-hidden relative scroll-smooth">
-          <div id="billing-menu-grid-container" className="flex flex-col bg-surface border-b xl:border-b-0 xl:border-r border-border/50 flex w-full xl:min-h-0 xl:flex-1 shrink-0 xl:shrink transition-all duration-300">
-            <MenuGrid
-              onSelectItem={addToCart}
-              onAddBox={addBoxToCart}
-              cart={cart}
-              cartTotal={total}
-              onViewOrder={() => {
-                setTimeout(() => {
-                  const cartEl = document.querySelector('#billing-cart-summary-container') || document.querySelector('.bill-summary-container') || document.querySelector('.counter-sale-cart');
-                  if (cartEl) {
-                    cartEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        <div id="billing-main-scroll-area" className={`flex-1 flex flex-col xl:flex-row relative scroll-smooth ${
+          (showWholesaleWizard && (fishOrderMode === 'bulk' || fishOrderMode === 'export'))
+            ? 'overflow-hidden h-full'
+            : 'overflow-y-auto xl:overflow-hidden'
+        }`}>
+          <div
+            id="billing-menu-grid-container"
+            className={`flex flex-col bg-surface flex-1 shrink-0 xl:shrink transition-all duration-300 border-b xl:border-b-0 xl:border-r border-border/50 w-full xl:min-h-0 ${
+              mobileTab === 'cart' ? 'hidden xl:flex' : 'flex'
+            }`}
+          >
+            {showWholesaleWizard && (fishOrderMode === 'bulk' || fishOrderMode === 'export') ? (
+              <WholesaleOrderWizardModal
+                isOpen={true}
+                onClose={() => setShowWholesaleWizard(false)}
+                fishOrderMode={fishOrderMode}
+                initialFish={wholesaleWizardFish}
+                availableFishList={wholesaleAvailableFish}
+                customersList={crmCustomers}
+                openOrdersList={openOrdersList}
+                onSaveItemToCustomerOrder={handleSaveItemToCustomerOrder}
+                onClearCustomerOrder={handleClearCustomerOrder}
+                showToast={showToast}
+              />
+            ) : (
+              <MenuGrid
+                onSelectItem={addToCart}
+                onAddBox={addBoxToCart}
+                cart={cart}
+                cartTotal={total}
+                onViewOrder={() => {
+                  setTimeout(() => {
+                    const cartEl = document.querySelector('#billing-cart-summary-container') || document.querySelector('.bill-summary-container') || document.querySelector('.counter-sale-cart');
+                    if (cartEl) {
+                      cartEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    }
+                  }, 80);
+                }}
+                activeTable={activeTable}
+                billType={billType}
+                fishOrderMode={fishOrderMode}
+                searchTerm={searchTerm}
+                onSearchChange={setSearchTerm}
+                foodTypeFilter={foodTypeFilter}
+                onFoodTypeFilterChange={setFoodTypeFilter}
+                sweetModeFilter={sweetModeFilter}
+                onSweetModeFilterChange={setSweetModeFilter}
+                onFilterCounts={setMenuFilterCounts}
+                isLayoutLocked={isLayoutLocked}
+                onNavigate={onNavigate}
+                userRole={userRole}
+                isLocked={orderStatus === 'Paid' || orderStatus === 'Cancelled' || (orderStatus === 'Billed' && !hasPendingLocalChanges.current)}
+                orderStatus={orderStatus}
+                hasPendingChanges={hasPendingLocalChanges.current}
+                showToast={showToast}
+                customerName={customerName}
+                setCustomerName={setCustomerName}
+                customerPhone={customerPhone}
+                setCustomerPhone={setCustomerPhone}
+                customerPhoto={customerPhoto}
+                customerCategory={customerCategory}
+                exportSubCategory={exportSubCategory}
+                isOrderLocked={isOrderLocked}
+                setIsOrderLocked={setIsOrderLocked}
+                lockedTimestamp={lockedTimestamp}
+                setLockedTimestamp={setLockedTimestamp}
+                discount={discount}
+                setDiscount={setDiscount}
+                onOpenCustomerModal={() => handleOpenCustomerModal()}
+                onCustomerSelect={handlePredefinedCustomerSelect}
+                onSaveOrder={(overrideItems) => handleSaveOrder(false, overrideItems)}
+                onGenerateBill={(overrideItems) => handleGenerateBill(overrideItems)}
+                actionLoading={actionLoading}
+                onOpenWholesaleWizard={(fish, itemsList) => {
+                  setWholesaleWizardFish(fish);
+                  if (itemsList && itemsList.length > 0) {
+                    setWholesaleAvailableFish(itemsList);
                   }
-                }, 80);
-              }}
-              activeTable={activeTable}
-              billType={billType}
-              fishOrderMode={fishOrderMode}
-              searchTerm={searchTerm}
-              onSearchChange={setSearchTerm}
-              foodTypeFilter={foodTypeFilter}
-              onFoodTypeFilterChange={setFoodTypeFilter}
-              sweetModeFilter={sweetModeFilter}
-              onSweetModeFilterChange={setSweetModeFilter}
-              onFilterCounts={setMenuFilterCounts}
-              isLayoutLocked={isLayoutLocked}
-              onNavigate={onNavigate}
-              userRole={userRole}
-              isLocked={orderStatus === 'Paid' || orderStatus === 'Cancelled' || (orderStatus === 'Billed' && !hasPendingLocalChanges.current)}
-              orderStatus={orderStatus}
-              hasPendingChanges={hasPendingLocalChanges.current}
-              showToast={showToast}
-              customerName={customerName}
-              setCustomerName={setCustomerName}
-              customerPhone={customerPhone}
-              setCustomerPhone={setCustomerPhone}
-              customerPhoto={customerPhoto}
-              customerCategory={customerCategory}
-              exportSubCategory={exportSubCategory}
-              isOrderLocked={isOrderLocked}
-              setIsOrderLocked={setIsOrderLocked}
-              lockedTimestamp={lockedTimestamp}
-              setLockedTimestamp={setLockedTimestamp}
-              discount={discount}
-              setDiscount={setDiscount}
-              onOpenCustomerModal={() => handleOpenCustomerModal()}
-              onCustomerSelect={handlePredefinedCustomerSelect}
-              onSaveOrder={(overrideItems) => handleSaveOrder(false, overrideItems)}
-              onGenerateBill={(overrideItems) => handleGenerateBill(overrideItems)}
-              actionLoading={actionLoading}
-            />
+                  setShowWholesaleWizard(true);
+                }}
+              />
+            )}
           </div>
 
           <div
@@ -4111,128 +4358,131 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
               maxWidth: '45vw',
               minWidth: isCartCollapsed ? 0 : '360px'
             } : { width: '100%', maxWidth: '100vw' }}
-            className={`flex flex-col bg-surface ${isCartCollapsed ? 'xl:w-0 border-none opacity-0 xl:opacity-100 overflow-visible' : 'border-t md:border-t-2 xl:border-t-0 xl:border-l border-border/50 overflow-visible'} shrink-0 w-full xl:w-auto xl:h-full transition-none relative`}>
+            className={`flex flex-col bg-surface ${isCartCollapsed ? 'xl:w-0 border-none opacity-0 xl:opacity-100 overflow-visible' : 'border-t md:border-t-2 xl:border-t-0 xl:border-l border-border/50 overflow-visible'} shrink-0 w-full xl:w-auto xl:h-full transition-none relative ${
+              mobileTab === 'cart' ? 'flex' : 'hidden xl:flex'
+            }`}>
 
 
-            {/* Drag Handle (Desktop only) */}
-            {!isCartCollapsed && !isLayoutLocked &&
-              <div
-                onMouseDown={startResizing}
-                className="hidden xl:block absolute left-0 top-0 bottom-0 w-1.5 cursor-col-resize hover:bg-primary/50 bg-transparent z-40 transition-colors" />
+              {/* Drag Handle (Desktop only) */}
+              {!isCartCollapsed && !isLayoutLocked &&
+                <div
+                  onMouseDown={startResizing}
+                  className="hidden xl:block absolute left-0 top-0 bottom-0 w-1.5 cursor-col-resize hover:bg-primary/50 bg-transparent z-40 transition-colors" />
 
-            }
+              }
 
-            <button
-              type="button"
-              onClick={() => setIsCartCollapsed(!isCartCollapsed)}
-              className={`hidden xl:flex absolute top-1/2 -translate-y-1/2 z-30 bg-white/95 text-slate-700 hover:text-[#8b4513] hover:bg-[#FAF0E4] shadow-md rounded-l-xl py-2.5 px-1.5 transition-all items-center border-y border-l border-[#E8DCCB] cursor-pointer group ${isCartCollapsed ? 'right-0' : 'left-0 -translate-x-full'
-                }`}
-              title={isCartCollapsed ? t('expandCart') : t('collapseCart')}>
-              {isCartCollapsed ? (
-                <ChevronLeft size={18} className="transition-transform group-hover:-translate-x-0.5" />
-              ) : (
-                <ChevronRight size={18} className="transition-transform group-hover:translate-x-0.5" />
-              )}
-            </button>
-            <div className={`bill-summary-container w-full h-full flex flex-col overflow-hidden ${isCartCollapsed ? 'hidden' : 'flex'}`}>
-              <BillSummary
-                orderId={orderId}
-                cart={cart}
-                onBackToMenu={() => {
-                  const scrollParent = document.querySelector('#billing-main-scroll-area') || window;
-                  if (scrollParent && scrollParent.scrollTo) {
-                    scrollParent.scrollTo({ top: 0, behavior: 'smooth' });
-                  }
-                  const menuEl = document.querySelector('#billing-menu-grid-container');
-                  if (menuEl) {
-                    menuEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                  }
-                }}
-                hasUnprintedItems={hasUnprintedItems}
-                updateQuantity={updateQuantity}
-                removeBoxFromCart={removeBoxFromCart}
-                updateItemNote={updateItemNote}
-                updateItemPrice={updateItemPrice}
-                subtotal={subtotal}
-                taxAmount={taxAmount}
-                discountAmount={discountAmount}
-                total={total}
-                userRole={userRole}
+              <button
+                type="button"
+                onClick={() => setIsCartCollapsed(!isCartCollapsed)}
+                className={`hidden xl:flex absolute top-1/2 -translate-y-1/2 z-30 bg-white/95 text-slate-700 hover:text-[#8b4513] hover:bg-[#FAF0E4] shadow-md rounded-l-xl py-2.5 px-1.5 transition-all items-center border-y border-l border-[#E8DCCB] cursor-pointer group ${isCartCollapsed ? 'right-0' : 'left-0 -translate-x-full'
+                  }`}
+                title={isCartCollapsed ? t('expandCart') : t('collapseCart')}>
+                {isCartCollapsed ? (
+                  <ChevronLeft size={18} className="transition-transform group-hover:-translate-x-0.5" />
+                ) : (
+                  <ChevronRight size={18} className="transition-transform group-hover:translate-x-0.5" />
+                )}
+              </button>
+              <div className={`bill-summary-container w-full h-full flex flex-col overflow-hidden ${isCartCollapsed ? 'hidden' : 'flex'}`}>
+                <BillSummary
+                  orderId={orderId}
+                  cart={cart}
+                  onBackToMenu={() => {
+                    setMobileTab('menu');
+                    const scrollParent = document.querySelector('#billing-main-scroll-area') || window;
+                    if (scrollParent && scrollParent.scrollTo) {
+                      scrollParent.scrollTo({ top: 0, behavior: 'smooth' });
+                    }
+                    const menuEl = document.querySelector('#billing-menu-grid-container');
+                    if (menuEl) {
+                      menuEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    }
+                  }}
+                  hasUnprintedItems={hasUnprintedItems}
+                  updateQuantity={updateQuantity}
+                  removeBoxFromCart={removeBoxFromCart}
+                  updateItemNote={updateItemNote}
+                  updateItemPrice={updateItemPrice}
+                  subtotal={subtotal}
+                  taxAmount={taxAmount}
+                  discountAmount={discountAmount}
+                  total={total}
+                  userRole={userRole}
 
-                orderStatus={orderStatus}
-                activeTable={activeTable}
-                onSaveOrder={() => handleSaveOrder(false)}
-                onGenerateBill={handleGenerateBill}
-                onSettleBill={() => setShowPayment(true)}
-                onPrintBill={() => setShowInvoice(true)}
-                onReopenOrder={handleReopenOrder}
-                onCancelOrder={handleCancelOrder}
-                onClearCart={handleClearCart}
-                showToast={showToast}
-                onSelectTable={setActiveTable}
+                  orderStatus={orderStatus}
+                  activeTable={activeTable}
+                  onSaveOrder={() => handleSaveOrder(false)}
+                  onGenerateBill={handleGenerateBill}
+                  onSettleBill={() => setShowPayment(true)}
+                  onPrintBill={() => setShowInvoice(true)}
+                  onReopenOrder={handleReopenOrder}
+                  onCancelOrder={handleCancelOrder}
+                  onClearCart={handleClearCart}
+                  showToast={showToast}
+                  onSelectTable={setActiveTable}
 
-                discount={discount}
-                setDiscount={handleDiscountChange}
-                walletRedemption={walletRedemption}
-                setWalletRedemption={setWalletRedemption}
-                taxRate={taxRate}
-                setTaxRate={setTaxRate}
-                billType={billType}
-                setBillType={setBillType}
-                loading={loading}
-                actionLoading={actionLoading}
+                  discount={discount}
+                  setDiscount={handleDiscountChange}
+                  walletRedemption={walletRedemption}
+                  setWalletRedemption={setWalletRedemption}
+                  taxRate={taxRate}
+                  setTaxRate={setTaxRate}
+                  billType={billType}
+                  setBillType={setBillType}
+                  loading={loading}
+                  actionLoading={actionLoading}
 
-                orderSource={orderSource}
-                setOrderSource={handleOrderSourceChange}
+                  orderSource={orderSource}
+                  setOrderSource={handleOrderSourceChange}
 
-                customerPhone={customerPhone}
-                setCustomerPhone={setCustomerPhone}
-                customerName={customerName}
-                setCustomerName={setCustomerName}
-                customerInfo={customerInfo}
-                deliveryCharge={deliveryCharge}
-                setDeliveryCharge={handleDeliveryChargeChange}
-                containerCharge={containerCharge}
-                setContainerCharge={handleContainerChargeChange}
-                cuttingCharge={cuttingCharge}
-                setCuttingCharge={handleCuttingChargeChange}
-                isCuttingChargeEnabled={isCuttingChargeEnabled}
-                setIsCuttingChargeEnabled={setIsCuttingChargeEnabled}
-                hasPendingChanges={hasPendingLocalChanges.current}
-                openOrders={openOrdersList}
-                reservations={reservations}
-                onOpenCustomerModal={handleOpenCustomerModal}
-                onNavigate={onNavigate}
-                autoWhatsappEnabled={autoWhatsappEnabled}
-                onToggleAutoWhatsapp={(val) => {
-                  setAutoWhatsappEnabled(val);
-                  try {
-                    const modeKey = fishOrderMode === 'export' ? 'autoWhatsappExport' : fishOrderMode === 'bulk' ? 'autoWhatsappWholesale' : 'autoWhatsappRetail';
-                    const storageKey = fishOrderMode === 'export' ? 'ms_auto_wa_export' : fishOrderMode === 'bulk' ? 'ms_auto_wa_wholesale' : 'ms_auto_wa_retail';
-                    localStorage.setItem(storageKey, val ? '1' : '0');
-                    sessionStorage.setItem(storageKey, val ? '1' : '0');
-                    localStorage.setItem('ms_auto_wa', val ? '1' : '0');
-                    const s = JSON.parse(localStorage.getItem('restaurantSettings') || '{}');
-                    s[modeKey] = val;
-                    localStorage.setItem('restaurantSettings', JSON.stringify(s));
-                    window.dispatchEvent(new Event('storage'));
-                  } catch (e) { }
-                }}
-                isWhatsAppConnected={isWhatsAppConnected}
-                whatsappBillSentIds={whatsappBillSentIds.current}
-                fishOrderMode={fishOrderMode}
-                isOrderLocked={isOrderLocked}
-                setIsOrderLocked={setIsOrderLocked}
-                lockedTimestamp={lockedTimestamp}
-                setLockedTimestamp={setLockedTimestamp}
-                onCustomerSelect={handlePredefinedCustomerSelect}
-              />
+                  customerPhone={customerPhone}
+                  setCustomerPhone={setCustomerPhone}
+                  customerName={customerName}
+                  setCustomerName={setCustomerName}
+                  customerInfo={customerInfo}
+                  deliveryCharge={deliveryCharge}
+                  setDeliveryCharge={handleDeliveryChargeChange}
+                  containerCharge={containerCharge}
+                  setContainerCharge={handleContainerChargeChange}
+                  cuttingCharge={cuttingCharge}
+                  setCuttingCharge={handleCuttingChargeChange}
+                  isCuttingChargeEnabled={isCuttingChargeEnabled}
+                  setIsCuttingChargeEnabled={setIsCuttingChargeEnabled}
+                  hasPendingChanges={hasPendingLocalChanges.current}
+                  openOrders={openOrdersList}
+                  reservations={reservations}
+                  onOpenCustomerModal={handleOpenCustomerModal}
+                  onNavigate={onNavigate}
+                  autoWhatsappEnabled={autoWhatsappEnabled}
+                  onToggleAutoWhatsapp={(val) => {
+                    setAutoWhatsappEnabled(val);
+                    try {
+                      const modeKey = fishOrderMode === 'export' ? 'autoWhatsappExport' : fishOrderMode === 'bulk' ? 'autoWhatsappWholesale' : 'autoWhatsappRetail';
+                      const storageKey = fishOrderMode === 'export' ? 'ms_auto_wa_export' : fishOrderMode === 'bulk' ? 'ms_auto_wa_wholesale' : 'ms_auto_wa_retail';
+                      localStorage.setItem(storageKey, val ? '1' : '0');
+                      sessionStorage.setItem(storageKey, val ? '1' : '0');
+                      localStorage.setItem('ms_auto_wa', val ? '1' : '0');
+                      const s = JSON.parse(localStorage.getItem('restaurantSettings') || '{}');
+                      s[modeKey] = val;
+                      localStorage.setItem('restaurantSettings', JSON.stringify(s));
+                      window.dispatchEvent(new Event('storage'));
+                    } catch (e) { }
+                  }}
+                  isWhatsAppConnected={isWhatsAppConnected}
+                  whatsappBillSentIds={whatsappBillSentIds.current}
+                  fishOrderMode={fishOrderMode}
+                  isOrderLocked={isOrderLocked}
+                  setIsOrderLocked={setIsOrderLocked}
+                  lockedTimestamp={lockedTimestamp}
+                  setLockedTimestamp={setLockedTimestamp}
+                  onCustomerSelect={handlePredefinedCustomerSelect}
+                />
+              </div>
+
             </div>
-
-          </div>
         </div>
 
-        {cart.length > 0 && (
+        {cart.length > 0 && mobileTab === 'menu' && (
           <div className="xl:hidden p-2.5 sm:p-3 bg-surface border-t border-border shadow-xl flex items-center justify-between shrink-0 animate-bounce-short z-30">
             <div className="flex flex-col">
               <span className="text-[10px] text-text-muted font-bold uppercase">
@@ -4243,11 +4493,19 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
             <div className="flex items-center gap-1.5">
               <button
                 type="button"
+                onClick={() => setMobileTab('cart')}
+                className="px-3.5 py-2 bg-gradient-to-r from-orange-500 to-[#ea580c] hover:from-orange-600 hover:to-orange-700 text-white rounded-xl font-black text-xs shadow-md flex items-center gap-1.5 cursor-pointer active:scale-95"
+              >
+                <ShoppingCart size={13} />
+                <span>VIEW BILL</span>
+              </button>
+              <button
+                type="button"
                 onClick={() => handleGenerateBill()}
-                className="px-4 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-xl font-bold text-xs shadow-md shadow-emerald-500/20 flex items-center gap-1.5 cursor-pointer active:scale-95"
+                className="px-3.5 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-xl font-bold text-xs shadow-md flex items-center gap-1.5 cursor-pointer active:scale-95"
               >
                 <Printer size={13} />
-                <span>SAVE & PRINT</span>
+                <span>PRINT</span>
               </button>
             </div>
           </div>

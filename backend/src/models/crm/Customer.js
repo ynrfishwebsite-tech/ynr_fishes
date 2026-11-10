@@ -101,7 +101,22 @@ const customerSchema = new mongoose.Schema({
   redemptionOtpExpiry: {
     type: Date,
     default: null
-  }
+  },
+  dailyPresence: [{
+    date: {
+      type: String,
+      required: true
+    },
+    status: {
+      type: String,
+      enum: ['Present', 'Absent'],
+      default: 'Present'
+    },
+    markedAt: {
+      type: Date,
+      default: Date.now
+    }
+  }]
 }, {
   timestamps: true
 });
@@ -111,5 +126,6 @@ customerSchema.index({ lastVisit: -1 });
 customerSchema.index({ totalSpend: -1 });
 customerSchema.index({ category: 1, exportSubCategory: 1 });
 customerSchema.index({ phone: 1, name: 1 });
+customerSchema.index({ 'dailyPresence.date': 1 });
 
 export default mongoose.model('Customer', customerSchema);

@@ -42,6 +42,14 @@ const billSchema = new mongoose.Schema({
     isWholesaleBox: { type: Boolean, default: false },
     pricePerKg: { type: Number, default: 0 },
     weightKg: { type: Number, default: 0 },
+    iceCharges: { type: Number, default: 0 },
+    boxCharges: { type: Number, default: 0 },
+    transportCharges: { type: Number, default: 0 },
+    additionalCharges: [{
+      name: { type: String, default: '' },
+      amount: { type: Number, default: 0 },
+      type: { type: String, enum: ['Cr', 'Dr'], default: 'Cr' }
+    }],
     printedQuantity: {
       type: Number,
       default: 0,
@@ -195,7 +203,7 @@ const billSchema = new mongoose.Schema({
     default: ''
   },
   customerAddress: {
-    type: String,
+    type: mongoose.Schema.Types.Mixed,
     default: ''
   },
   orderLockedAt: {
@@ -376,6 +384,39 @@ const billSchema = new mongoose.Schema({
       pricePerKg: Number,
       total: Number
     }]
+  }],
+  iceCharges: {
+    type: Number,
+    default: 0
+  },
+  boxCharges: {
+    type: Number,
+    default: 0
+  },
+  transportCharges: {
+    type: Number,
+    default: 0
+  },
+  additionalCharges: [{
+    name: { type: String, default: '' },
+    amount: { type: Number, default: 0 },
+    type: { type: String, enum: ['Cr', 'Dr'], default: 'Cr' }
+  }],
+  netAdjustment: {
+    type: Number,
+    default: 0
+  },
+  customSettlements: [{
+    label: String,
+    type: { type: String, enum: ['Dr', 'Cr'] },
+    amount: Number,
+    createdAt: { type: Date, default: Date.now }
+  }],
+  partialPaymentHistory: [{
+    amount: Number,
+    mode: String,
+    note: String,
+    date: { type: Date, default: Date.now }
   }]
 }, {
   timestamps: true

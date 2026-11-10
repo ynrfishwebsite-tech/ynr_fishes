@@ -106,7 +106,7 @@ const menuSchema = new mongoose.Schema({
   },
   speciesType: {
     type: String,
-    enum: ['fish', 'prawn', 'crab', 'other'],
+    trim: true,
     default: 'fish'
   },
   sizeGrades: {

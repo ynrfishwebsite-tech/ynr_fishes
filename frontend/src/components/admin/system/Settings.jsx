@@ -1037,7 +1037,7 @@ const Settings = ({ user, setUser, onNavigate, onGoBack }) => {
                       color: 'emerald',
                       border: 'border-emerald-500/30',
                       bg: 'bg-emerald-500/5',
-                      headerBg: 'bg-emerald-500/10 text-emerald-800 dark:text-emerald-300'
+                      headerBg: 'bg-emerald-500/10 text-emerald-800'
                     },
                     {
                       key: 'wholesale',
@@ -1046,7 +1046,7 @@ const Settings = ({ user, setUser, onNavigate, onGoBack }) => {
                       color: 'amber',
                       border: 'border-amber-500/30',
                       bg: 'bg-amber-500/5',
-                      headerBg: 'bg-amber-500/10 text-amber-800 dark:text-amber-300'
+                      headerBg: 'bg-amber-500/10 text-amber-800'
                     },
                     {
                       key: 'export',
@@ -1055,7 +1055,7 @@ const Settings = ({ user, setUser, onNavigate, onGoBack }) => {
                       color: 'blue',
                       border: 'border-blue-500/30',
                       bg: 'bg-blue-500/5',
-                      headerBg: 'bg-blue-500/10 text-blue-800 dark:text-blue-300'
+                      headerBg: 'bg-blue-500/10 text-blue-800'
                     }
                   ].map((mode) => {
                     const cfg = settings.receiptCustomerDisplay?.[mode.key] || {
@@ -1100,11 +1100,11 @@ const Settings = ({ user, setUser, onNavigate, onGoBack }) => {
                           {/* Status label */}
                           <div className="my-2">
                             {cfg.enabled !== false ? (
-                              <span className="inline-flex items-center gap-1 text-[10.5px] font-bold text-emerald-700 bg-emerald-100/70 dark:bg-emerald-900/30 dark:text-emerald-300 px-2 py-0.5 rounded-md">
+                              <span className="inline-flex items-center gap-1 text-[10.5px] font-bold text-emerald-800 bg-emerald-100 border border-emerald-300 px-2 py-0.5 rounded-md">
                                 ✓ {t("Visible on Receipt")}
                               </span>
                             ) : (
-                              <span className="inline-flex items-center gap-1 text-[10.5px] font-bold text-slate-500 bg-slate-200/80 dark:bg-slate-800 dark:text-slate-400 px-2 py-0.5 rounded-md">
+                              <span className="inline-flex items-center gap-1 text-[10.5px] font-bold text-slate-600 bg-slate-200 border border-slate-300 px-2 py-0.5 rounded-md">
                                 ✕ {t("Hidden (Not Printed)")}
                               </span>
                             )}
@@ -1622,38 +1622,59 @@ const Settings = ({ user, setUser, onNavigate, onGoBack }) => {
                       <div className="pt-2 pb-1 border-t border-slate-200">
                         <span className="text-[11px] font-bold text-slate-700 block mb-1.5">{t("Apply cutting charges to:")}</span>
                         <div className="flex flex-wrap gap-2">
-                          {[
-                            { key: 'fish', label: '🐟 Fish', defaultOn: true },
-                            { key: 'prawn', label: '🦐 Prawns', defaultOn: true },
-                            { key: 'crab', label: '🦀 Crabs', defaultOn: true }
-                          ].map(sp => {
-                            const isOn = settings.cuttingSpeciesToggles?.[sp.key] !== undefined 
-                              ? settings.cuttingSpeciesToggles[sp.key] 
-                              : sp.defaultOn;
-                            return (
-                              <button
-                                key={sp.key}
-                                type="button"
-                                onClick={() => handleInputChange('cuttingSpeciesToggles', {
-                                  ...settings.cuttingSpeciesToggles,
-                                  fish: settings.cuttingSpeciesToggles?.fish !== undefined ? settings.cuttingSpeciesToggles.fish : true,
-                                  prawn: settings.cuttingSpeciesToggles?.prawn !== undefined ? settings.cuttingSpeciesToggles.prawn : true,
-                                  crab: settings.cuttingSpeciesToggles?.crab !== undefined ? settings.cuttingSpeciesToggles.crab : true,
-                                  [sp.key]: !isOn
-                                })}
-                                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold border transition-all ${
-                                  isOn 
-                                    ? 'bg-amber-100 text-amber-900 border-amber-300 shadow-sm' 
-                                    : 'bg-slate-100 text-slate-400 border-slate-200'
-                                }`}
-                              >
-                                <span>{sp.label}</span>
-                                <span className={`text-[9px] font-black px-1.5 py-0.5 rounded-full ${isOn ? 'bg-emerald-500 text-white' : 'bg-slate-300 text-white'}`}>
-                                  {isOn ? 'ON' : 'OFF'}
-                                </span>
-                              </button>
-                            );
-                          })}
+                          {(() => {
+                            const set = new Set(['fish', 'prawn', 'crab']);
+                            if (Array.isArray(menuPreviewItems)) {
+                              menuPreviewItems.forEach(item => {
+                                if (item.speciesType && typeof item.speciesType === 'string') {
+                                  const s = item.speciesType.trim().toLowerCase();
+                                  if (s) set.add(s);
+                                }
+                              });
+                            }
+                            if (settings.cuttingSpeciesToggles && typeof settings.cuttingSpeciesToggles === 'object') {
+                              Object.keys(settings.cuttingSpeciesToggles).forEach(k => {
+                                if (k && typeof k === 'string') set.add(k.trim().toLowerCase());
+                              });
+                            }
+                            const emojiMap = {
+                              fish: '🐟',
+                              prawn: '🦐',
+                              crab: '🦀',
+                              lobster: '🦞',
+                              squid: '🦑',
+                              octopus: '🐙',
+                              clam: '🦪',
+                              oyster: '🦪'
+                            };
+                            return Array.from(set).map(sp => {
+                              const icon = emojiMap[sp] || '🌊';
+                              const label = `${icon} ${sp.charAt(0).toUpperCase() + sp.slice(1)}`;
+                              const isOn = settings.cuttingSpeciesToggles?.[sp] !== undefined 
+                                ? settings.cuttingSpeciesToggles[sp] 
+                                : true;
+                              return (
+                                <button
+                                  key={sp}
+                                  type="button"
+                                  onClick={() => handleInputChange('cuttingSpeciesToggles', {
+                                    ...settings.cuttingSpeciesToggles,
+                                    [sp]: !isOn
+                                  })}
+                                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold border transition-all ${
+                                    isOn 
+                                      ? 'bg-amber-100 text-amber-900 border-amber-300 shadow-sm' 
+                                      : 'bg-slate-100 text-slate-400 border-slate-200'
+                                  }`}
+                                >
+                                  <span>{label}</span>
+                                  <span className={`text-[9px] font-black px-1.5 py-0.5 rounded-full ${isOn ? 'bg-emerald-500 text-white' : 'bg-slate-300 text-white'}`}>
+                                    {isOn ? 'ON' : 'OFF'}
+                                  </span>
+                                </button>
+                              );
+                            });
+                          })()}
                         </div>
                       </div>
                     )}

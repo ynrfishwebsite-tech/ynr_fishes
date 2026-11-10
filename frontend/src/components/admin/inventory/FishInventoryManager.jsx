@@ -32,9 +32,11 @@ import {
   X,
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
   Anchor,
   Building,
-  AlertTriangle
+  AlertTriangle,
+  RotateCcw
 } from 'lucide-react';
 import BackButton from '../common/BackButton';
 import SearchableDropdown from '../../common/SearchableDropdown';
@@ -174,6 +176,91 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack }) {
   const [suppliesPage, setSuppliesPage] = useState(1);
   const SUPPLIES_PER_PAGE = 8;
   const todayStr = useMemo(() => new Date().toISOString().split('T')[0], []);
+
+  // Stock Ledger (Overview) Database Filters & Validations
+  const [overviewSourceFilter, setOverviewSourceFilter] = useState('all'); // 'all' | 'local' | 'dam'
+  const [overviewStartDate, setOverviewStartDate] = useState('');
+  const [overviewEndDate, setOverviewEndDate] = useState('');
+  const [overviewDateError, setOverviewDateError] = useState('');
+  const [showMobileFilters, setShowMobileFilters] = useState(false);
+
+  const fetchFilteredFishInventory = useCallback(async (custom = {}) => {
+    try {
+      const src = custom.source !== undefined ? custom.source : overviewSourceFilter;
+      const sDate = custom.startDate !== undefined ? custom.startDate : overviewStartDate;
+      const eDate = custom.endDate !== undefined ? custom.endDate : overviewEndDate;
+      const q = custom.search !== undefined ? custom.search : searchTerm;
+
+      const params = {};
+      if (src && src !== 'all') params.source = src;
+      if (sDate) params.startDate = sDate;
+      if (eDate) params.endDate = eDate;
+      if (q && q.trim()) params.search = q.trim();
+
+      const res = await axios.get(`${getApiUrl()}/inventory`, {
+        headers: getAuthHeader(),
+        params
+      });
+      if (Array.isArray(res.data)) {
+        setFishList(res.data);
+      }
+    } catch (err) {
+      console.error('Error fetching filtered fish inventory:', err);
+    }
+  }, [overviewSourceFilter, overviewStartDate, overviewEndDate, searchTerm]);
+
+  const handleSelectSource = (src) => {
+    setOverviewSourceFilter(src);
+    fetchFilteredFishInventory({ source: src });
+    setOverviewPage(1);
+  };
+
+  const handleStartDateChange = (val) => {
+    if (val && todayStr && val > todayStr) {
+      setOverviewDateError('Start Date cannot be in the future');
+      setOverviewStartDate(todayStr);
+      fetchFilteredFishInventory({ startDate: todayStr });
+      return;
+    }
+    if (val && overviewEndDate && val > overviewEndDate) {
+      setOverviewDateError('Start Date cannot be after End Date');
+      setOverviewStartDate(val);
+      return;
+    }
+    setOverviewDateError('');
+    setOverviewStartDate(val);
+    fetchFilteredFishInventory({ startDate: val });
+    setOverviewPage(1);
+  };
+
+  const handleEndDateChange = (val) => {
+    if (val && todayStr && val > todayStr) {
+      setOverviewDateError('End Date cannot be in the future');
+      setOverviewEndDate(todayStr);
+      fetchFilteredFishInventory({ endDate: todayStr });
+      return;
+    }
+    if (val && overviewStartDate && val < overviewStartDate) {
+      setOverviewDateError('End Date cannot be before Start Date');
+      setOverviewEndDate(val);
+      return;
+    }
+    setOverviewDateError('');
+    setOverviewEndDate(val);
+    fetchFilteredFishInventory({ endDate: val });
+    setOverviewPage(1);
+  };
+
+  const handleClearOverviewFilters = () => {
+    setOverviewSourceFilter('all');
+    setOverviewStartDate('');
+    setOverviewEndDate('');
+    setOverviewDateError('');
+    setSearchTerm('');
+    fetchFilteredFishInventory({ source: 'all', startDate: '', endDate: '', search: '' });
+  };
+
+  const isOverviewFilterActive = overviewSourceFilter !== 'all' || Boolean(overviewStartDate) || Boolean(overviewEndDate) || Boolean(searchTerm);
 
   // Helper to extract true Date & Time from log (handling ObjectId timestamp fallback)
   const formatLogDateTime = (log) => {
@@ -1639,9 +1726,9 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack }) {
       </div>
 
       {/* Tabs & Top-Right Bar (Same Line on Desktop, Clean Responsive Wrap on Tablet/Mobile) */}
-      <div className="bg-[#FDFBF7] p-2 sm:p-2.5 rounded-2xl border border-[#E8DCCB] shadow-2xs flex flex-col md:flex-row md:items-center justify-between gap-2.5 sm:gap-3 w-full">
+      <div className="bg-[#FDFBF7] p-2 sm:p-2.5 rounded-2xl border border-[#E8DCCB] shadow-2xs flex flex-col lg:flex-row lg:items-center justify-between gap-2 sm:gap-2.5 w-full">
         {/* Left: Tab Buttons */}
-        <div className="flex gap-1.5 overflow-x-auto pb-1 md:pb-0 scrollbar-none shrink-0">
+        <div className="flex gap-1.5 overflow-x-auto pb-1 lg:pb-0 scrollbar-none shrink-0">
           {[
             { id: 'overview', label: 'Stock Ledger', icon: Package },
             { id: 'procurement', label: 'Catch Stock-In', icon: ArrowDownLeft },
@@ -1666,10 +1753,115 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack }) {
           })}
         </div>
 
-        {/* Right Corner: Controls on the exact same line as tabs on XL, stacked cleanly on Tab/Mobile */}
+        {/* Center: Live Database Filters for Stock Ledger (Desktop: Single Row without emojis) */}
         {activeTab === 'overview' && (
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between md:justify-end gap-2 w-full md:w-auto border-t md:border-t-0 pt-2 md:pt-0 border-[#fed7aa]/40">
-            <div className="relative w-full sm:w-56">
+          <div className="hidden lg:flex items-center justify-center gap-1.5 xl:gap-2 flex-nowrap flex-1 px-1 min-w-0">
+            {/* Catch Source Filter Pills - Clean Text Only (No emojis) */}
+            <div className="inline-flex items-center p-0.5 bg-white/90 rounded-xl border border-[#E8DCCB] shadow-2xs shrink-0">
+              <button
+                type="button"
+                onClick={() => handleSelectSource('all')}
+                className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
+                  overviewSourceFilter === 'all'
+                    ? 'bg-slate-800 text-white shadow-2xs font-black'
+                    : 'text-slate-600 hover:text-slate-900 hover:bg-[#FAF3E8]'
+                }`}
+              >
+                All Sources
+              </button>
+              <button
+                type="button"
+                onClick={() => handleSelectSource('local')}
+                className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
+                  overviewSourceFilter === 'local'
+                    ? 'bg-gradient-to-r from-orange-500 to-[#ea580c] text-white shadow-2xs font-black'
+                    : 'text-slate-600 hover:text-slate-900 hover:bg-[#FAF3E8]'
+                }`}
+              >
+                Local Catch
+              </button>
+              <button
+                type="button"
+                onClick={() => handleSelectSource('dam')}
+                className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
+                  overviewSourceFilter === 'dam'
+                    ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-2xs font-black'
+                    : 'text-slate-600 hover:text-slate-900 hover:bg-[#FAF3E8]'
+                }`}
+              >
+                DAM Catch
+              </button>
+            </div>
+
+            {/* Date Range Inputs with Visual Validation */}
+            <div className="flex items-center gap-1 bg-white border border-[#E8DCCB] rounded-xl px-2 py-1 shadow-2xs shrink-0">
+              <Calendar size={12} className="text-slate-400 shrink-0" />
+              <span className="text-[9px] font-bold uppercase tracking-wider text-slate-500">From</span>
+              <input
+                type="date"
+                value={overviewStartDate}
+                max={overviewEndDate || todayStr}
+                onChange={(e) => handleStartDateChange(e.target.value)}
+                className="bg-transparent text-[11px] font-bold font-mono text-slate-800 focus:outline-none cursor-pointer py-0.5 w-[96px]"
+                title="Filter Start Date"
+              />
+              <span className="text-slate-300 text-xs font-bold">→</span>
+              <span className="text-[9px] font-bold uppercase tracking-wider text-slate-500">To</span>
+              <input
+                type="date"
+                value={overviewEndDate}
+                min={overviewStartDate || undefined}
+                max={todayStr}
+                onChange={(e) => handleEndDateChange(e.target.value)}
+                className="bg-transparent text-[11px] font-bold font-mono text-slate-800 focus:outline-none cursor-pointer py-0.5 w-[96px]"
+                title="Filter End Date"
+              />
+            </div>
+
+            {/* Validation Error Banner (if any) */}
+            {overviewDateError && (
+              <span className="text-[10px] font-bold text-rose-600 bg-rose-50 border border-rose-200 px-1.5 py-0.5 rounded-lg whitespace-nowrap shrink-0">
+                {overviewDateError}
+              </span>
+            )}
+
+            {/* Clear Filters Button */}
+            {(overviewSourceFilter !== 'all' || overviewStartDate || overviewEndDate || searchTerm || overviewDateError) && (
+              <button
+                type="button"
+                onClick={handleClearOverviewFilters}
+                className="inline-flex items-center gap-1 px-2 py-1 rounded-xl text-[11px] font-bold bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 transition-all cursor-pointer shadow-2xs whitespace-nowrap shrink-0"
+                title="Reset all filters"
+              >
+                <RotateCcw size={10} />
+                <span>Clear</span>
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* Right Corner: Controls, Search, Pagination & Mobile Toggle Button */}
+        {activeTab === 'overview' && (
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between lg:justify-end gap-2 w-full lg:w-auto border-t lg:border-t-0 pt-2 lg:pt-0 border-[#fed7aa]/40 shrink-0">
+            {/* Mobile Filters Toggle Button */}
+            <button
+              type="button"
+              onClick={() => setShowMobileFilters(prev => !prev)}
+              className={`lg:hidden flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold border transition-all cursor-pointer whitespace-nowrap ${
+                showMobileFilters || isOverviewFilterActive
+                  ? 'bg-[#ea580c] text-white border-[#ea580c] shadow-xs font-black'
+                  : 'bg-white text-slate-700 border-[#E8DCCB] hover:bg-slate-50'
+              }`}
+            >
+              <Filter size={13} />
+              <span>{showMobileFilters ? 'Hide Filters' : 'Filters'}</span>
+              {isOverviewFilterActive && (
+                <span className="w-1.5 h-1.5 rounded-full bg-white" />
+              )}
+              <ChevronDown size={13} className={`transition-transform duration-200 ${showMobileFilters ? 'rotate-180' : ''}`} />
+            </button>
+
+            <div className="relative w-full sm:w-48 xl:w-56">
               <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
               <input
                 type="text"
@@ -1774,6 +1966,95 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack }) {
         )}
       </div>
 
+      {/* Mobile / Tablet Accordion Panel for Filters (Open / Close) */}
+      {activeTab === 'overview' && showMobileFilters && (
+        <div className="lg:hidden bg-[#FAF3E8] p-3 rounded-2xl border border-[#fed7aa] flex flex-col gap-2.5 shadow-2xs transition-all">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold text-slate-700 uppercase tracking-wide flex items-center gap-1.5">
+              <Filter size={13} className="text-[#ea580c]" />
+              Stock Ledger Filters
+            </span>
+            {isOverviewFilterActive && (
+              <button
+                type="button"
+                onClick={handleClearOverviewFilters}
+                className="text-xs font-bold text-rose-600 hover:text-rose-800 flex items-center gap-1 cursor-pointer"
+              >
+                <RotateCcw size={11} /> Clear All
+              </button>
+            )}
+          </div>
+
+          {/* Sources toggle: Clean, No emojis */}
+          <div className="grid grid-cols-3 gap-1 bg-white p-1 rounded-xl border border-[#E8DCCB]">
+            <button
+              type="button"
+              onClick={() => handleSelectSource('all')}
+              className={`py-1.5 text-xs font-bold rounded-lg text-center transition-all cursor-pointer ${
+                overviewSourceFilter === 'all'
+                  ? 'bg-slate-800 text-white shadow-2xs font-black'
+                  : 'text-slate-600 hover:bg-slate-50'
+              }`}
+            >
+              All Sources
+            </button>
+            <button
+              type="button"
+              onClick={() => handleSelectSource('local')}
+              className={`py-1.5 text-xs font-bold rounded-lg text-center transition-all cursor-pointer ${
+                overviewSourceFilter === 'local'
+                  ? 'bg-gradient-to-r from-orange-500 to-[#ea580c] text-white shadow-2xs font-black'
+                  : 'text-slate-600 hover:bg-slate-50'
+              }`}
+            >
+              Local Catch
+            </button>
+            <button
+              type="button"
+              onClick={() => handleSelectSource('dam')}
+              className={`py-1.5 text-xs font-bold rounded-lg text-center transition-all cursor-pointer ${
+                overviewSourceFilter === 'dam'
+                  ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-2xs font-black'
+                  : 'text-slate-600 hover:bg-slate-50'
+              }`}
+            >
+              DAM Catch
+            </button>
+          </div>
+
+          {/* Date Range Inputs */}
+          <div className="grid grid-cols-2 gap-2">
+            <div className="bg-white px-2.5 py-1.5 rounded-xl border border-[#E8DCCB]">
+              <span className="text-[9.5px] font-bold text-slate-500 block uppercase tracking-wider mb-0.5">From Date</span>
+              <input
+                type="date"
+                value={overviewStartDate}
+                max={overviewEndDate || todayStr}
+                onChange={(e) => handleStartDateChange(e.target.value)}
+                className="w-full text-xs font-bold font-mono text-slate-800 bg-transparent focus:outline-none cursor-pointer"
+              />
+            </div>
+            <div className="bg-white px-2.5 py-1.5 rounded-xl border border-[#E8DCCB]">
+              <span className="text-[9.5px] font-bold text-slate-500 block uppercase tracking-wider mb-0.5">To Date</span>
+              <input
+                type="date"
+                value={overviewEndDate}
+                min={overviewStartDate || undefined}
+                max={todayStr}
+                onChange={(e) => handleEndDateChange(e.target.value)}
+                className="w-full text-xs font-bold font-mono text-slate-800 bg-transparent focus:outline-none cursor-pointer"
+              />
+            </div>
+          </div>
+
+          {overviewDateError && (
+            <div className="text-xs font-bold text-rose-600 bg-rose-50 border border-rose-200 px-2.5 py-1.5 rounded-xl text-center">
+              {overviewDateError}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Toast Notification */}
       {message.text && (
         <Toast
@@ -1817,6 +2098,12 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack }) {
                         {fish.lastSupplier && (
                           <div className="text-[10px] sm:text-[11px] text-sky-700 font-bold mt-0.5">
                             Supplier: {fish.lastSupplier}
+                          </div>
+                        )}
+                        {fish.periodIntakeKg > 0 && (
+                          <div className="text-[10px] sm:text-[11px] text-emerald-700 font-bold mt-0.5 flex items-center gap-1">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                            Period Catch: +{fish.periodIntakeKg} Kg ({fish.periodIntakeCount} intake{fish.periodIntakeCount > 1 ? 's' : ''})
                           </div>
                         )}
                         {fish.scientificName && (
@@ -1867,6 +2154,23 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack }) {
                     </tr>
                   );
                 })}
+                {paginatedFish.length === 0 && (
+                  <tr>
+                    <td colSpan="6" className="py-12 text-center text-slate-500 text-xs sm:text-sm">
+                      <div className="flex flex-col items-center justify-center gap-2">
+                        <Package size={32} className="text-slate-300" />
+                        <span className="font-bold text-slate-700">No fish species match the selected filters.</span>
+                        <p className="text-xs text-slate-400">Try adjusting your date range or intake source.</p>
+                        <button
+                          onClick={handleClearOverviewFilters}
+                          className="mt-1 px-3 py-1.5 bg-orange-100 hover:bg-orange-200 text-[#ea580c] font-bold text-xs rounded-xl border border-orange-200 cursor-pointer transition-all"
+                        >
+                          Clear Filters & View All
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                )}
               </tbody>
             </table>
           </div>
