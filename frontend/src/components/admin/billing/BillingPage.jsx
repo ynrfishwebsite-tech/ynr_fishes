@@ -4266,15 +4266,19 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
         </div>
       )}
 
-      <div className="flex-1 flex flex-col overflow-hidden">
-        <div id="billing-main-scroll-area" className={`flex-1 flex flex-col xl:flex-row relative scroll-smooth ${
+      <div className="flex-1 flex flex-col overflow-hidden min-h-0">
+        <div id="billing-main-scroll-area" className={`flex-1 flex flex-col xl:flex-row relative scroll-smooth min-h-0 ${
           (showWholesaleWizard && (fishOrderMode === 'bulk' || fishOrderMode === 'export'))
             ? 'overflow-hidden h-full'
-            : 'overflow-y-auto xl:overflow-hidden'
+            : `overflow-y-auto xl:overflow-hidden ${cart.length > 0 && mobileTab === 'menu' ? 'pb-16 xl:pb-0' : 'pb-1 xl:pb-0'}`
         }`}>
           <div
             id="billing-menu-grid-container"
-            className={`flex flex-col bg-surface flex-1 shrink-0 xl:shrink transition-all duration-300 border-b xl:border-b-0 xl:border-r border-border/50 w-full xl:min-h-0 ${
+            className={`flex flex-col bg-surface flex-1 shrink-0 xl:shrink transition-all duration-300 border-b xl:border-b-0 xl:border-r border-border/50 w-full min-h-0 ${
+              (showWholesaleWizard && (fishOrderMode === 'bulk' || fishOrderMode === 'export'))
+                ? 'h-full overflow-hidden'
+                : ''
+            } ${
               mobileTab === 'cart' ? 'hidden xl:flex' : 'flex'
             }`}
           >
@@ -4298,12 +4302,7 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
                 cart={cart}
                 cartTotal={total}
                 onViewOrder={() => {
-                  setTimeout(() => {
-                    const cartEl = document.querySelector('#billing-cart-summary-container') || document.querySelector('.bill-summary-container') || document.querySelector('.counter-sale-cart');
-                    if (cartEl) {
-                      cartEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                    }
-                  }, 80);
+                  setMobileTab('cart');
                 }}
                 activeTable={activeTable}
                 billType={billType}
@@ -4483,14 +4482,18 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
         </div>
 
         {cart.length > 0 && mobileTab === 'menu' && (
-          <div className="xl:hidden p-2.5 sm:p-3 bg-surface border-t border-border shadow-xl flex items-center justify-between shrink-0 animate-bounce-short z-30">
+          <div
+            id="mobile-bottom-order-bar"
+            data-mobile-bottom-bar="true"
+            className="xl:hidden fixed bottom-0 left-0 right-0 px-3 py-1.5 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-t border-[#E8DCCB] dark:border-slate-800 shadow-[0_-4px_16px_rgba(0,0,0,0.12)] flex items-center justify-between z-40 pb-[calc(0.4rem+env(safe-area-inset-bottom,0px))]"
+          >
             <div className="flex flex-col">
-              <span className="text-[10px] text-text-muted font-bold uppercase">
+              <span className="text-[10px] text-text-muted font-bold uppercase tracking-wider">
                 {activeTable ? `${activeTable} • ` : ''}{cart.length} {cart.length === 1 ? 'Box/Item' : 'Boxes/Items'}
               </span>
               <span className="text-base font-black text-primary">₹{total.toFixed(2)}</span>
             </div>
-            <div className="flex items-center gap-1.5">
+            <div className="flex items-center gap-2">
               <button
                 type="button"
                 onClick={() => setMobileTab('cart')}

@@ -1166,30 +1166,28 @@ const MenuGrid = ({
     let targetX = window.innerWidth - 180;
     let targetY = 180;
 
-    const isTabletMode = typeof window !== 'undefined' && window.innerWidth >= 768 && window.innerWidth < 1280;
-    const mobileCartTab = document.getElementById('mobile-cart-tab') || document.querySelector('[data-mobile-cart-tab="true"]');
-    const isMobileMode = typeof window !== 'undefined' && window.innerWidth < 768 && mobileCartTab && mobileCartTab.offsetParent !== null;
+    const isSmallerScreen = typeof window !== 'undefined' && window.innerWidth < 1280;
 
-    if (isTabletMode) {
-      // 1. Tablet Mode: Cart is located in Row 2 directly BELOW the dial!
-      const tabletCart = document.getElementById('cart-items-container-tablet') ||
-                         document.querySelector('.bill-summary-container') ||
-                         document.getElementById('cart-items-container');
-      if (tabletCart && tabletCart.offsetParent !== null) {
-        const tRect = tabletCart.getBoundingClientRect();
-        targetX = tRect.left + Math.max(tRect.width / 4, 120);
-        targetY = Math.max(tRect.top + 50, window.innerHeight * 0.78);
+    if (isSmallerScreen) {
+      // 1. Smaller Screens (Mobile & Tablet): Item flies DOWNWARDS towards the bottom cart / bill bar!
+      const bottomBar = document.getElementById('mobile-bottom-order-bar') ||
+                        document.querySelector('[data-mobile-bottom-bar="true"]');
+      const bottomCartBtn = document.querySelector('button[title="Scroll down to Current Order"]') ||
+                            document.querySelector('button[title="View Current Order"]');
+      if (bottomBar && bottomBar.offsetParent !== null) {
+        const bRect = bottomBar.getBoundingClientRect();
+        targetX = bRect.left + bRect.width / 2;
+        targetY = bRect.top + bRect.height / 2;
+      } else if (bottomCartBtn && bottomCartBtn.offsetParent !== null) {
+        const cRect = bottomCartBtn.getBoundingClientRect();
+        targetX = cRect.left + cRect.width / 2;
+        targetY = cRect.top + cRect.height / 2;
       } else {
-        targetX = window.innerWidth * 0.35;
-        targetY = window.innerHeight * 0.85;
+        targetX = window.innerWidth / 2;
+        targetY = window.innerHeight - 35;
       }
-    } else if (isMobileMode && mobileCartTab) {
-      // 2. Mobile Phone Mode (< 768px): Target the visible [ 🛒 Current Order ] tab at top of screen
-      const mRect = mobileCartTab.getBoundingClientRect();
-      targetX = mRect.left + mRect.width / 2;
-      targetY = mRect.top + mRect.height / 2;
     } else {
-      // 3. Desktop Mode (>= 1280px): Target the exact newly added item spot at top of the items list
+      // 2. Desktop Mode (>= 1280px): Target the exact newly added item spot at top of the items list
       const cartItemsContainer = document.getElementById('cart-items-container') || document.querySelector('.bill-cart-items, [data-billing-cart="true"]');
       const cartHeader = document.getElementById('cart-items-header');
       if (cartItemsContainer && cartItemsContainer.offsetParent !== null) {
@@ -1701,11 +1699,11 @@ const MenuGrid = ({
           }
           14% {
             opacity: 1;
-            transform: translate3d(var(--start-x), var(--start-y), 70px) translate(-50%, -50%) scale(1.15) perspective(1000px) rotateX(12deg) rotateY(-18deg) rotateZ(6deg);
+            transform: translate3d(var(--start-x), var(--start-y), 50px) translate(-50%, -50%) scale(1.1) perspective(1000px) rotateX(10deg) rotateY(-12deg) rotateZ(4deg);
           }
           48% {
             opacity: 1;
-            transform: translate3d(calc(var(--start-x) + (var(--target-x) - var(--start-x)) * 0.52), calc(var(--start-y) + (var(--target-y) - var(--start-y)) * 0.4 - 70px), 85px) translate(-50%, -50%) scale(0.98) perspective(1000px) rotateX(16deg) rotateY(-22deg) rotateZ(10deg);
+            transform: translate3d(calc(var(--start-x) + (var(--target-x) - var(--start-x)) * 0.52), calc(var(--start-y) + (var(--target-y) - var(--start-y)) * 0.48), 65px) translate(-50%, -50%) scale(0.95) perspective(1000px) rotateX(12deg) rotateY(-15deg) rotateZ(8deg);
           }
           80% {
             opacity: 0.95;

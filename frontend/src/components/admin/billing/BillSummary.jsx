@@ -2203,40 +2203,16 @@ const BillSummary = ({
         )}
       </div>
 
-      {/* TABLET VIEW (768px <= width < 1280px): 2 Dedicated Columns */}
-      {isTablet ? (
-        <div className="flex-1 min-h-0 flex flex-row overflow-hidden bg-[#FDFBF7]">
-          {/* COLUMN 1: Cart Items List (Left 50%) */}
-          <div className="w-1/2 h-full flex flex-col min-h-0 border-r border-[#E8DCCB] overflow-hidden bg-[#FDFBF7]">
-            {renderCartTableHeader()}
-            <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden bg-[#FDFBF7]">
-              {renderCartItems("cart-items-container-tablet")}
-            </div>
-          </div>
-
-          {/* COLUMN 2: Settlement Totals & Action Buttons (Right 50%) */}
-          <div className="w-1/2 h-full flex flex-col min-h-0 overflow-y-auto bg-[#F7EFE2] justify-between">
-            <div className="flex flex-col w-full">
-              {renderBottomActionArea()}
-            </div>
-            <div className="w-full shrink-0">
-              {renderActionButtons()}
-              {renderPrintConfig()}
-            </div>
-          </div>
+      {/* VERTICAL BILL SUMMARY LAYOUT (Unified vertical stack for Mobile, Tablet & Desktop) */}
+      <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
+        {renderCartTableHeader()}
+        <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden bg-[#FDFBF7]">
+          {renderCartItems("cart-items-container")}
+          {renderBottomActionArea()}
         </div>
-      ) : (
-        /* MOBILE (< md) & DESKTOP (>= xl): 100% Undisturbed Original Layout */
-        <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
-          {renderCartTableHeader()}
-          <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden bg-[#FDFBF7]">
-            {renderCartItems("cart-items-container")}
-            {renderBottomActionArea()}
-          </div>
-          {renderActionButtons()}
-          {renderPrintConfig()}
-        </div>
-      )}
+        {renderActionButtons()}
+        {renderPrintConfig()}
+      </div>
 
       {showNoteModal && typeof document !== 'undefined' && createPortal(
         <div

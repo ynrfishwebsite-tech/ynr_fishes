@@ -95,6 +95,7 @@ export default function WholesaleOrderWizardModal({
   const [discountType, setDiscountType] = useState('flat'); // 'flat' (₹) | 'percentage' (%)
   const [discountValue, setDiscountValue] = useState('');
   const [editableTotal, setEditableTotal] = useState('');
+  const step2ContainerRef = useRef(null);
 
   // Number input focus helper: if value is '0' or '0.00', clear to empty string immediately; otherwise select text
   const handleNumberInputFocus = (e, val, setter) => {
@@ -367,7 +368,13 @@ export default function WholesaleOrderWizardModal({
         );
       })
       .sort((a, b) => {
-        // Sort: Customers who are already present / have orders today come first
+        // Priority 1: SELECTED customer ALWAYS comes first (#1 at top of list)!
+        const aSelected = selectedCustomer && (selectedCustomer._id === a._id || (selectedCustomer.phone && selectedCustomer.phone === a.phone));
+        const bSelected = selectedCustomer && (selectedCustomer._id === b._id || (selectedCustomer.phone && selectedCustomer.phone === b.phone));
+        if (aSelected && !bSelected) return -1;
+        if (!aSelected && bSelected) return 1;
+
+        // Priority 2: Customers who are already present / have orders today come next
         const aPres = (localPresenceMap[(a.phone || a.name || '').trim().toLowerCase()] === 'Present') || 
                       Boolean(customerTodayOrdersMap[(a.phone || a.name || '').trim().toLowerCase()]) || 
                       Boolean(a.isPresentToday);
@@ -378,7 +385,7 @@ export default function WholesaleOrderWizardModal({
         if (!aPres && bPres) return 1;
         return (a.name || '').localeCompare(b.name || '');
       });
-  }, [customersList, isExport, exportSubFilter, customerSearch, customerTodayOrdersMap, localPresenceMap]);
+  }, [customersList, isExport, exportSubFilter, customerSearch, customerTodayOrdersMap, localPresenceMap, selectedCustomer]);
 
   // ── Helper to evaluate presence from local state, active bills, or database ──
   const getCustomerPresence = (cust) => {
@@ -442,6 +449,11 @@ export default function WholesaleOrderWizardModal({
   // Select Customer Card: marks selected, marks Present in local state and DB, DOES NOT advance page
   const handleSelectCustomerCard = async (customer) => {
     setSelectedCustomer(customer);
+
+    // Automatically scroll Step 2 container up to the top so selected member at #1 is in full view!
+    if (step2ContainerRef.current) {
+      step2ContainerRef.current.scrollTo({ top: 0, behavior: 'smooth' });
+    }
 
     const custKey = (customer.phone || customer.name || '').trim().toLowerCase();
 
@@ -626,7 +638,7 @@ export default function WholesaleOrderWizardModal({
   };
 
   return (
-    <div className="w-full h-full flex flex-col bg-[#FDFBF7] text-slate-800 flex-1 overflow-hidden">
+    <div className="w-full h-full flex flex-col bg-[#FDFBF7] text-slate-800 flex-1 overflow-hidden min-h-0">
       {/* ── Direct Page Header & Breadcrumb Tracker ── */}
       <div className="bg-[#FAF0E4] border-b border-[#fed7aa] px-2.5 sm:px-4 py-1.5 sm:py-2 flex items-center justify-between shrink-0 sticky top-0 z-20 shadow-2xs">
         <div className="flex items-center gap-1.5 sm:gap-2.5 flex-wrap">
@@ -677,7 +689,7 @@ export default function WholesaleOrderWizardModal({
 
         {/* ── Step 1: All Menu Items / Fish Selection & Weight Details ── */}
         {currentStep === 1 && (
-          <div className="flex-1 overflow-y-auto p-2.5 sm:p-4 space-y-2.5 sm:space-y-3 min-h-0">
+          <div className="flex-1 overflow-y-auto p-2.5 sm:p-4 space-y-2.5 sm:space-y-3 min-h-0 touch-pan-y overscroll-contain pb-24">
             {/* Top: Big Fish Photo Hero Banner (Entire Image Without Cropping, Badges Below Information) */}
             <div className="bg-white rounded-2xl border border-[#E8DCCB] shadow-2xs overflow-hidden">
               <div className="w-full h-44 sm:h-56 bg-slate-50 flex items-center justify-center p-2 overflow-hidden">
@@ -1041,40 +1053,40 @@ export default function WholesaleOrderWizardModal({
 
         {/* ── Step 2: Customer Details Card Modal Type (Cards Grid, NOT Dropdown) ── */}
         {currentStep === 2 && (
-          <div className="flex-1 overflow-y-auto p-3.5 sm:p-5 flex flex-col space-y-3.5">
+          <div ref={step2ContainerRef} className="flex-1 overflow-y-auto p-2.5 sm:p-4 flex flex-col space-y-2 sm:space-y-2.5 min-h-0 touch-pan-y overscroll-contain pb-24">
             {/* Top Toolbar: Search & Attendance Counters */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 bg-white p-3 rounded-2xl border border-[#E8DCCB] shadow-2xs shrink-0">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 bg-white p-2 sm:p-2.5 rounded-xl border border-[#E8DCCB] shadow-2xs shrink-0">
               <div className="relative flex-1">
-                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
                 <input
                   type="text"
                   placeholder="Search dealer by name, mobile, shop, or location..."
                   value={customerSearch}
                   onChange={(e) => setCustomerSearch(e.target.value)}
-                  className="w-full bg-[#FAF0E4] border border-[#E8DCCB] rounded-xl pl-9 pr-8 py-1.5 text-xs sm:text-sm font-bold text-slate-800 focus:outline-none focus:border-[#ea580c]"
+                  className="w-full bg-[#FAF0E4] border border-[#E8DCCB] rounded-lg pl-8 pr-7 py-1 text-xs font-bold text-slate-800 focus:outline-none focus:border-[#ea580c]"
                 />
                 {customerSearch && (
                   <button
                     type="button"
                     onClick={() => setCustomerSearch('')}
-                    className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-700 bg-slate-200 rounded-full cursor-pointer transition-all"
+                    className="absolute right-2 top-1/2 -translate-y-1/2 p-0.5 text-slate-400 hover:text-slate-700 bg-slate-200 rounded-full cursor-pointer transition-all"
                     title="Clear search"
                   >
-                    <X size={11} />
+                    <X size={10} />
                   </button>
                 )}
               </div>
 
               {/* Attendance Counts */}
-              <div className="flex items-center gap-1.5 shrink-0 text-xs font-bold flex-wrap">
-                <span className="px-2.5 py-1 rounded-xl bg-slate-100 text-slate-700 border border-slate-200">
+              <div className="flex items-center gap-1 shrink-0 text-[11px] font-bold flex-wrap">
+                <span className="px-2 py-0.5 rounded-lg bg-slate-100 text-slate-700 border border-slate-200">
                   Total: {dealerStats.total}
                 </span>
-                <span className="px-2.5 py-1 rounded-xl bg-emerald-100 text-emerald-800 border border-emerald-300 flex items-center gap-1">
+                <span className="px-2 py-0.5 rounded-lg bg-emerald-100 text-emerald-800 border border-emerald-300 flex items-center gap-1">
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
                   Present: {dealerStats.present}
                 </span>
-                <span className="px-2.5 py-1 rounded-xl bg-amber-100 text-amber-800 border border-amber-300">
+                <span className="px-2 py-0.5 rounded-lg bg-amber-100 text-amber-800 border border-amber-300">
                   Absent: {dealerStats.absent}
                 </span>
               </div>
@@ -1082,68 +1094,70 @@ export default function WholesaleOrderWizardModal({
 
             {/* Saved Notification Banner (Option 1 Flow) */}
             {lastSavedSummary && (
-              <div className="bg-emerald-50 border-2 border-emerald-400 rounded-xl p-2.5 sm:px-3 sm:py-2.5 flex items-center justify-between gap-2 text-xs text-emerald-950 font-bold shrink-0 shadow-xs animate-in fade-in duration-200">
+              <div className="bg-emerald-50 border-2 border-emerald-400 rounded-xl p-2 sm:px-3 sm:py-2 flex items-center justify-between gap-2 text-xs text-emerald-950 font-bold shrink-0 shadow-xs animate-in fade-in duration-200">
                 <div className="flex items-center gap-2 flex-wrap">
-                  <div className="w-5 h-5 rounded-full bg-emerald-500 text-white flex items-center justify-center shrink-0">
-                    <Check size={12} strokeWidth={3} />
+                  <div className="w-4 h-4 rounded-full bg-emerald-500 text-white flex items-center justify-center shrink-0">
+                    <Check size={10} strokeWidth={3} />
                   </div>
                   <span>
-                    Successfully saved to <strong>{lastSavedSummary.customerName}</strong>'s bill (₹{lastSavedSummary.grandTotal?.toFixed(2)})!
+                    Saved to <strong>{lastSavedSummary.customerName}</strong>'s bill (₹{lastSavedSummary.grandTotal?.toFixed(2)})!
                     {lastSavedSummary.isGrouped && (
                       <span className="text-emerald-700 ml-1 font-semibold">
-                        (Grouped in same bill)
+                        (Grouped)
                       </span>
                     )}
-                    <span className="text-emerald-800 ml-1">Now tap the next dealer below:</span>
+                    <span className="text-emerald-800 ml-1">Tap next dealer below:</span>
                   </span>
                 </div>
                 <button
                   type="button"
                   onClick={() => setLastSavedSummary(null)}
-                  className="text-emerald-700 hover:text-emerald-950 p-1 rounded-md hover:bg-emerald-100 transition-colors cursor-pointer shrink-0"
+                  className="text-emerald-700 hover:text-emerald-950 p-0.5 rounded-md hover:bg-emerald-100 transition-colors cursor-pointer shrink-0"
                   title="Dismiss notification"
                 >
-                  <X size={14} />
+                  <X size={13} />
                 </button>
               </div>
             )}
 
-            {/* Preserved Fish Banner reminder */}
-            <div className="bg-amber-50 p-2 sm:px-3 sm:py-2 rounded-xl border border-amber-200 flex flex-wrap items-center justify-between gap-1.5 text-xs text-amber-950 font-semibold shrink-0">
-              <div className="flex items-center gap-1.5 flex-wrap">
-                <span>
-                  Assigning: <strong>{selectedFish?.name}</strong> • <strong>{totalNetKg.toFixed(2)} Kg</strong> ({sizeGrade} grade @ ₹{ratePerKg}/Kg)
+            {/* Preserved Fish Banner reminder - Ultra Compact */}
+            <div className="bg-amber-50/95 px-2.5 py-1 sm:py-1.5 rounded-xl border border-amber-300 flex items-center justify-between gap-1.5 text-[11px] sm:text-xs text-amber-950 font-bold shrink-0 shadow-2xs">
+              <div className="flex items-center gap-1.5 truncate">
+                <span className="text-[9.5px] px-1.5 py-0.2 rounded bg-amber-200/90 text-amber-900 font-black uppercase shrink-0">Assigning</span>
+                <span className="truncate text-slate-900 font-black">
+                  {selectedFish?.name} • <span className="font-mono text-emerald-800">{totalNetKg.toFixed(2)} Kg</span>
+                  <span className="text-slate-500 font-medium ml-1">({sizeGrade} @ ₹{ratePerKg})</span>
                 </span>
                 {selectedCustomer && (
-                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-900 font-bold border border-emerald-300 text-[11px]">
-                    <span>Dealer: {selectedCustomer.name}</span>
+                  <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded-md bg-emerald-100 text-emerald-900 font-black border border-emerald-300 text-[10.5px] shrink-0">
+                    <span className="truncate max-w-[90px]">{selectedCustomer.name}</span>
                     <button
                       type="button"
-                      onClick={() => setSelectedCustomer(null)}
-                      className="hover:text-red-600 p-0.5 cursor-pointer"
+                      onClick={(e) => { e.stopPropagation(); setSelectedCustomer(null); }}
+                      className="hover:text-red-600 p-0.2 cursor-pointer"
                       title="Clear selected dealer"
                     >
-                      <X size={12} />
+                      <X size={10} />
                     </button>
                   </span>
                 )}
               </div>
-              <div className="flex items-center gap-2 font-mono font-black text-[#ea580c]">
-                <span>₹{grandItemTotal.toFixed(2)}</span>
+              <div className="flex items-center gap-1.5 font-mono font-black text-[#ea580c] shrink-0 text-xs sm:text-sm">
+                <span>₹{grandItemTotal.toFixed(0)}</span>
                 {selectedCustomer && (
                   <button
                     type="button"
-                    onClick={() => setSelectedCustomer(null)}
-                    className="text-[10px] font-sans font-bold text-red-600 hover:text-red-800 underline cursor-pointer"
+                    onClick={(e) => { e.stopPropagation(); setSelectedCustomer(null); }}
+                    className="text-[9.5px] font-sans font-bold text-red-600 hover:text-red-800 underline cursor-pointer"
                   >
-                    Clear Dealer
+                    Clear
                   </button>
                 )}
               </div>
             </div>
 
             {/* Grid of Customer Cards */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5 overflow-y-auto flex-1 pr-1">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5 sm:gap-3.5 flex-1 pr-1">
               {filteredCustomers.map((cust) => {
                 const custKey = (cust.phone || cust.name || '').trim().toLowerCase();
                 const existingOrder = customerTodayOrdersMap[custKey];
@@ -1274,7 +1288,7 @@ export default function WholesaleOrderWizardModal({
 
         {/* ── Step 3: Combined View in Table Format (Single Overview Page on Mobile) ── */}
         {currentStep === 3 && (
-          <div className="flex-1 overflow-y-auto p-2.5 sm:p-4 space-y-2.5 min-h-0">
+          <div className="flex-1 overflow-y-auto p-2.5 sm:p-4 space-y-2.5 min-h-0 touch-pan-y overscroll-contain pb-28">
             {/* Top Cards: BIG Images & BIG Names for Customer & Seafood Catch (Entire Images Uncropped, Badges Below Information) */}
             <div className="grid grid-cols-2 gap-2.5 sm:gap-4">
               {/* Left: Dealer Customer with Entire Uncropped Image, Info & Badges Below */}

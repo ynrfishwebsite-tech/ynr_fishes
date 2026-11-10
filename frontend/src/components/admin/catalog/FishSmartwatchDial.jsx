@@ -169,11 +169,8 @@ export default function FishSmartwatchDial({
     setGradeOverride(initialGrade);
     setWeightKg('1.000');
     setTareGrams(0);
-    if (currentItem?.boxPackingKg) {
-      setBoxWeightKg(String(currentItem.boxPackingKg));
-    } else {
-      setBoxWeightKg('1');
-    }
+    // Predefined default weight value is 1 across all modes (Retail, Wholesale, Export)
+    setBoxWeightKg('1');
     // Reset custom rate & custom total when switching fish
     setCustomRate(null);
     setIsEditingRate(false);
@@ -439,22 +436,12 @@ export default function FishSmartwatchDial({
     };
   }, []);
 
-  // Center Disc: Tap to Add & View Order, or Swipe horizontally to switch fish
+  // Center Disc: Tap to Add to Bill, or Swipe horizontally to switch fish
   const handleCenterImageAddAndRedirect = (e) => {
     if (e) e.stopPropagation();
     const success = handleAddCurrentToBill();
     if (success) {
       setIsDialLocked(false);
-      if (onViewOrder) {
-        onViewOrder();
-      } else {
-        setTimeout(() => {
-          const cartEl = document.querySelector('#billing-cart-summary-container') || document.querySelector('.bill-summary-container') || document.querySelector('.counter-sale-cart');
-          if (cartEl) {
-            cartEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
-          }
-        }, 100);
-      }
     }
   };
 
@@ -853,7 +840,7 @@ export default function FishSmartwatchDial({
   return (
     <div
       ref={containerRef}
-      className="relative w-full min-h-[500px] h-auto flex flex-col justify-start gap-1 sm:gap-2 items-center select-none py-1 px-1 sm:px-2 overflow-x-hidden"
+      className="relative w-full h-auto flex flex-col justify-start gap-1 sm:gap-1.5 items-center select-none py-0.5 px-1 sm:px-2 overflow-x-hidden"
     >
       {/* Popovers backdrop */}
       {(showCrmPicker || isEditingRate || isEditingTotal) && (
@@ -880,7 +867,7 @@ export default function FishSmartwatchDial({
         onMouseMove={handleDialMouseMove}
         onMouseUp={handleDialEnd}
         onMouseLeave={handleDialEnd}
-        className="relative w-[340px] sm:w-[380px] md:w-[440px] lg:w-[470px] xl:w-[490px] h-[340px] sm:h-[380px] md:h-[440px] lg:h-[470px] xl:h-[490px] max-w-[min(96vw,66vh)] max-h-[min(96vw,66vh)] aspect-square mx-auto shrink-0 select-none touch-none flex items-center justify-center my-auto rounded-full cursor-grab active:cursor-grabbing"
+        className="relative w-[300px] sm:w-[360px] md:w-[420px] lg:w-[460px] xl:w-[480px] h-[300px] sm:h-[360px] md:h-[420px] lg:h-[460px] xl:h-[480px] max-w-[min(88vw,48vh)] max-h-[min(88vw,48vh)] aspect-square mx-auto shrink-0 select-none touch-none flex items-center justify-center rounded-full cursor-grab active:cursor-grabbing mt-0.5 mb-1"
         style={{
           background: 'radial-gradient(circle at 50% 30%, #ffffff 0%, #faf6f0 55%, #f5eee3 85%, #ede2d3 100%)',
           boxShadow: '0 16px 42px -10px rgba(245, 158, 11, 0.3), inset 0 2px 10px rgba(255, 255, 255, 0.95), inset 0 -6px 14px rgba(217, 119, 6, 0.12)'
@@ -1540,7 +1527,7 @@ export default function FishSmartwatchDial({
                   onBlur={(e) => {
                     const parsed = parseFloat(e.target.value);
                     if (!e.target.value || isNaN(parsed) || parsed <= 0) {
-                      setBoxWeightKg('20');
+                      setBoxWeightKg('1');
                     }
                   }}
                   onChange={(e) => {
@@ -2032,7 +2019,7 @@ export default function FishSmartwatchDial({
 
               <div className="h-4 w-px bg-slate-300 mx-0.5 shrink-0" />
 
-              {['20', '30', '40', '50', '60'].map((wVal) => {
+              {['1', '5', '10', '20', '30', '50'].map((wVal) => {
                 const isSelected = parseFloat(boxWeightKg) === parseFloat(wVal);
                 return (
                   <button
@@ -2042,7 +2029,7 @@ export default function FishSmartwatchDial({
                       setDialLock(false);
                       setBoxWeightKg(wVal);
                     }}
-                    className={`px-2.5 sm:px-3 py-1 rounded-lg font-bold transition-all cursor-pointer ${
+                    className={`px-2 sm:px-2.5 py-1 rounded-lg font-bold transition-all cursor-pointer ${
                       isSelected
                         ? 'bg-sky-600 text-white font-black shadow-xs scale-105'
                         : 'bg-white/95 text-slate-700 hover:bg-sky-50 border border-slate-200/90 shadow-2xs'
@@ -2069,7 +2056,7 @@ export default function FishSmartwatchDial({
 
               <div className="h-4 w-px bg-slate-300 mx-0.5 shrink-0" />
 
-              {['2', '5', '10', '20', '30', '50'].map((kgVal) => {
+              {['1', '2', '5', '10', '20', '30'].map((kgVal) => {
                 const isSelected = parseFloat(weightKg) === parseFloat(kgVal);
                 return (
                   <button
@@ -2168,27 +2155,6 @@ export default function FishSmartwatchDial({
             )}
           </div>
         </>
-      )}
-
-      {/* View Current Order Smooth Scroll Pill in the bottom empty section */}
-      {cart && cart.length > 0 && (
-        <div className="w-full flex justify-center py-2.5 mt-1 shrink-0">
-          <button
-            type="button"
-            onClick={() => {
-              const cartEl = document.querySelector('#billing-cart-summary-container') || document.querySelector('.bill-summary-container') || document.querySelector('.counter-sale-cart');
-              if (cartEl) {
-                cartEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
-              }
-            }}
-            className="flex items-center gap-2 px-4 py-2 rounded-full bg-emerald-700 hover:bg-emerald-800 active:scale-95 text-white font-black text-xs shadow-md transition-all cursor-pointer border border-emerald-500 animate-pulse"
-            title="Scroll down to Current Order"
-          >
-            <ShoppingCart size={14} />
-            <span>Current Order ({formattedCartCount} {cartCount === 1 ? 'item' : 'items'} • ₹{computedCartTotal.toFixed(0)})</span>
-            <ChevronDown size={14} className="stroke-[3]" />
-          </button>
-        </div>
       )}
     </div>
   );
