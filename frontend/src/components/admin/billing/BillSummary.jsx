@@ -54,6 +54,8 @@ const BillSummary = ({
   setDeliveryCharge,
   containerCharge,
   setContainerCharge,
+  iceCharges = '0',
+  setIceCharges,
   cuttingCharge = '0',
   setCuttingCharge,
   isCuttingChargeEnabled = false,
@@ -1444,9 +1446,11 @@ const BillSummary = ({
                   )}
                 </button>
 
-                {/* 2. EXTRA CHARGES BUTTON (Includes Delivery, Container, and Cutting Charges) */}
+                {/* 2. EXTRA CHARGES BUTTON (Includes Delivery, Container, Cutting for Retail / Transport, Box, Ice for Wholesale) */}
                 {(() => {
-                  const totalExtraCharges = (Number(deliveryCharge) || 0) + (Number(containerCharge) || 0) + (Number(cuttingCharge) || 0);
+                  const totalExtraCharges = isRetail
+                    ? (Number(deliveryCharge) || 0) + (Number(containerCharge) || 0) + (Number(cuttingCharge) || 0)
+                    : (Number(deliveryCharge) || 0) + (Number(containerCharge) || 0) + (Number(iceCharges) || 0);
                   return (
                     <button
                       type="button"
@@ -1641,11 +1645,11 @@ const BillSummary = ({
 
                 {/* All 3 charges in a SINGLE ROW of 3 columns */}
                 <div className="grid grid-cols-3 gap-1 sm:gap-2">
-                  {/* 1. Delivery Charge */}
+                  {/* 1. Delivery / Transport Charge */}
                   <div className="bg-white p-1 sm:p-2 rounded-lg sm:rounded-xl border border-slate-300 min-w-0">
-                    <label className="text-[10px] sm:text-[11px] font-bold text-slate-700 block mb-0.5 truncate" title={t("Delivery Charge")}>
-                      <span className="sm:hidden">{t("Delivery")}</span>
-                      <span className="hidden sm:inline">{t("Delivery")}</span>
+                    <label className="text-[10px] sm:text-[11px] font-bold text-slate-700 block mb-0.5 truncate" title={isRetail ? t("Delivery Charge") : t("Transport Charges")}>
+                      <span className="sm:hidden">{isRetail ? t("Delivery") : t("Trans")}</span>
+                      <span className="hidden sm:inline">{isRetail ? t("Delivery") : t("Transport")}</span>
                     </label>
                     <div className="flex items-center gap-0.5">
                       <span className="text-slate-400 font-mono text-[10px] sm:text-xs shrink-0">{currencySymbol}</span>
@@ -1665,9 +1669,9 @@ const BillSummary = ({
 
                   {/* 2. Container / Box Charge */}
                   <div className="bg-white p-1 sm:p-2 rounded-lg sm:rounded-xl border border-slate-300 min-w-0">
-                    <label className="text-[10px] sm:text-[11px] font-bold text-slate-700 block mb-0.5 truncate" title={t("Container / Box Charge")}>
-                      <span className="sm:hidden">{t("Box/Pack")}</span>
-                      <span className="hidden sm:inline">{t("Container / Box")}</span>
+                    <label className="text-[10px] sm:text-[11px] font-bold text-slate-700 block mb-0.5 truncate" title={isRetail ? t("Container / Box Charge") : t("Box Charges")}>
+                      <span className="sm:hidden">{isRetail ? t("Box/Pack") : t("Boxes")}</span>
+                      <span className="hidden sm:inline">{isRetail ? t("Container / Box") : t("Box / Crates")}</span>
                     </label>
                     <div className="flex items-center gap-0.5">
                       <span className="text-slate-400 font-mono text-[10px] sm:text-xs shrink-0">{currencySymbol}</span>
@@ -1685,18 +1689,16 @@ const BillSummary = ({
                     </div>
                   </div>
 
-                  {/* 3. Fish Cutting Charges (Retail Only) */}
-                  <div className={`p-1 sm:p-2 rounded-lg sm:rounded-xl border transition-all min-w-0 ${
-                    !isRetail 
-                      ? 'bg-slate-50/70 border-slate-200 opacity-60' 
-                      : ((isCuttingChargeEnabled && totalFishWeight > 0) || Number(cuttingCharge) > 0 ? 'bg-amber-50/70 border-amber-300' : 'bg-white border-slate-300')
-                  }`}>
-                    <div className="flex items-center justify-between mb-0.5 gap-0.5 min-w-0">
-                      <label className="text-[10px] sm:text-[11px] font-bold text-slate-700 flex items-center gap-0.5 truncate min-w-0" title={t("Cutting Charges")}>
-                        <Scissors size={10} className={!isRetail ? "text-slate-400 shrink-0" : "text-amber-800 shrink-0"} />
-                        <span className="truncate">{t("Cutting")}</span>
-                      </label>
-                      {isRetail ? (
+                  {/* 3. Fish Cutting Charges (Retail) OR Ice Charges (Wholesale/Export) */}
+                  {isRetail ? (
+                    <div className={`p-1 sm:p-2 rounded-lg sm:rounded-xl border transition-all min-w-0 ${
+                      (isCuttingChargeEnabled && totalFishWeight > 0) || Number(cuttingCharge) > 0 ? 'bg-amber-50/70 border-amber-300' : 'bg-white border-slate-300'
+                    }`}>
+                      <div className="flex items-center justify-between mb-0.5 gap-0.5 min-w-0">
+                        <label className="text-[10px] sm:text-[11px] font-bold text-slate-700 flex items-center gap-0.5 truncate min-w-0" title={t("Cutting Charges")}>
+                          <Scissors size={10} className="text-amber-800 shrink-0" />
+                          <span className="truncate">{t("Cutting")}</span>
+                        </label>
                         <button
                           type="button"
                           disabled={isLocked}
@@ -1719,50 +1721,61 @@ const BillSummary = ({
                         >
                           {isCuttingChargeEnabled && Number(cuttingCharge) > 0 ? 'ON' : 'OFF'}
                         </button>
-                      ) : (
-                        <span className="text-[8px] font-bold px-1 py-0.2 rounded bg-slate-200 text-slate-500 shrink-0">
-                          Retail Only
-                        </span>
+                      </div>
+
+                      <div className="flex items-center gap-0.5">
+                        <span className="text-slate-400 font-mono text-[10px] sm:text-xs shrink-0">{currencySymbol}</span>
+                        <input
+                          type="number"
+                          min="0"
+                          placeholder="0"
+                          disabled={isLocked || !isCuttingChargeEnabled}
+                          onWheel={(e) => e.target.blur()}
+                          onKeyDown={(e) => { if (e.key === '-' || e.key === 'e' || e.key === 'E') e.preventDefault(); }}
+                          value={cuttingCharge === '0' || cuttingCharge === 0 ? '' : cuttingCharge}
+                          onChange={(e) => {
+                            const val = e.target.value === '' ? '' : Math.max(0, parseFloat(e.target.value) || 0);
+                            if (setCuttingCharge) setCuttingCharge(val);
+                            if (setIsCuttingChargeEnabled) {
+                              if (val > 0) setIsCuttingChargeEnabled(true);
+                              else if (val === 0 || val === '') setIsCuttingChargeEnabled(false);
+                            }
+                          }}
+                          className="w-full bg-slate-50 border border-slate-200 rounded px-1 py-0.5 text-right font-mono font-bold text-[11px] sm:text-xs text-slate-900 focus:outline-none focus:bg-white focus:border-amber-600 disabled:opacity-50"
+                        />
+                      </div>
+                      {suggestedCuttingCharge > 0 && (
+                        <div className="text-[7.5px] sm:text-[8px] text-amber-900 font-bold truncate mt-0.5">
+                          {totalFishWeight.toFixed(1).replace(/\.0$/, '')}k • {currencySymbol}{suggestedCuttingCharge}
+                        </div>
                       )}
                     </div>
-
-                    <div className="flex items-center gap-0.5">
-                      <span className="text-slate-400 font-mono text-[10px] sm:text-xs shrink-0">{currencySymbol}</span>
-                      <input
-                        type="number"
-                        min="0"
-                        placeholder="0"
-                        disabled={isLocked || !isRetail}
-                        onWheel={(e) => e.target.blur()}
-                        onKeyDown={(e) => { if (e.key === '-' || e.key === 'e' || e.key === 'E') e.preventDefault(); }}
-                        value={!isRetail || cuttingCharge === '0' || cuttingCharge === 0 ? '' : cuttingCharge}
-                        onChange={(e) => {
-                          if (!isRetail) return;
-                          const val = e.target.value === '' ? '' : Math.max(0, parseFloat(e.target.value) || 0);
-                          if (setCuttingCharge) setCuttingCharge(val);
-                          if (setIsCuttingChargeEnabled) {
-                            if (val > 0) setIsCuttingChargeEnabled(true);
-                            else if (val === 0 || val === '') setIsCuttingChargeEnabled(false);
-                          }
-                        }}
-                        className={`w-full border rounded px-1 py-0.5 text-right font-mono font-bold text-[11px] sm:text-xs focus:outline-none ${
-                          !isRetail 
-                            ? 'bg-slate-100 border-slate-200 text-slate-400 cursor-not-allowed' 
-                            : 'bg-slate-50 border-slate-200 text-slate-900 focus:bg-white focus:border-amber-600'
-                        }`}
-                      />
+                  ) : (
+                    /* Wholesale / Export: Ice Charges */
+                    <div className="bg-white p-1 sm:p-2 rounded-lg sm:rounded-xl border border-slate-300 min-w-0">
+                      <label className="text-[10px] sm:text-[11px] font-bold text-slate-700 block mb-0.5 truncate" title={t("Ice Charges")}>
+                        <span className="sm:hidden">{t("Ice")}</span>
+                        <span className="hidden sm:inline">{t("Ice Charges")}</span>
+                      </label>
+                      <div className="flex items-center gap-0.5">
+                        <span className="text-slate-400 font-mono text-[10px] sm:text-xs shrink-0">{currencySymbol}</span>
+                        <input
+                          type="number"
+                          min="0"
+                          placeholder="0"
+                          disabled={isLocked}
+                          onWheel={(e) => e.target.blur()}
+                          onKeyDown={(e) => { if (e.key === '-' || e.key === 'e' || e.key === 'E') e.preventDefault(); }}
+                          value={iceCharges === '0' || iceCharges === 0 ? '' : iceCharges}
+                          onChange={(e) => setIceCharges && setIceCharges(e.target.value === '' ? '' : Math.max(0, parseFloat(e.target.value) || 0))}
+                          className="w-full bg-slate-50 border border-slate-200 rounded px-1 py-0.5 text-right font-mono font-bold text-[11px] sm:text-xs text-slate-900 focus:outline-none focus:bg-white focus:border-amber-600"
+                        />
+                      </div>
+                      <div className="text-[7.5px] text-amber-800 font-bold truncate mt-0.5">
+                        Wholesale Ice
+                      </div>
                     </div>
-                    {isRetail && suggestedCuttingCharge > 0 && (
-                      <div className="text-[7.5px] sm:text-[8px] text-amber-900 font-bold truncate mt-0.5">
-                        {totalFishWeight.toFixed(1).replace(/\.0$/, '')}k • {currencySymbol}{suggestedCuttingCharge}
-                      </div>
-                    )}
-                    {!isRetail && (
-                      <div className="text-[7.5px] text-slate-400 font-medium truncate mt-0.5">
-                        No cutting fee for Wholesale/Export
-                      </div>
-                    )}
-                  </div>
+                  )}
                 </div>
 
                 {taxRate > 0 && (

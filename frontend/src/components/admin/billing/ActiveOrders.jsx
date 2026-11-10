@@ -1065,6 +1065,25 @@ const ActiveOrders = ({
                           ({order.totalBoxes > 0 ? `${order.totalBoxes} Bx` : `${activeItems.length} Itm`}{orderWeight > 0 ? ` • ${orderWeight} Kg` : ''})
                         </span>
                       </div>
+                      {(() => {
+                        const totChg = (Number(order.iceCharges) || 0) + (Number(order.boxCharges) || 0) + (Number(order.transportCharges) || 0) + (Number(order.deliveryCharge) || 0);
+                        const totDisc = Number(order.discount || 0);
+                        if (!totChg && !totDisc) return null;
+                        return (
+                          <div className="flex items-center gap-1 mt-0.5 flex-wrap">
+                            {totChg > 0 && (
+                              <span className="inline-flex items-center text-[8.5px] font-black text-amber-900 bg-amber-100 px-1.5 py-0.2 rounded border border-amber-300">
+                                +₹{totChg} Chg
+                              </span>
+                            )}
+                            {totDisc > 0 && (
+                              <span className="inline-flex items-center text-[8.5px] font-black text-orange-800 bg-orange-100 px-1.5 py-0.2 rounded border border-orange-300">
+                                -₹{totDisc} Disc
+                              </span>
+                            )}
+                          </div>
+                        );
+                      })()}
                     </div>
 
                     <div className="flex items-center gap-1.5 shrink-0 ml-auto flex-wrap">

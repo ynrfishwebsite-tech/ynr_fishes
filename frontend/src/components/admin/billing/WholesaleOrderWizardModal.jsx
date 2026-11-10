@@ -56,6 +56,7 @@ export default function WholesaleOrderWizardModal({
   onClose,
   fishOrderMode = 'bulk', // 'bulk' | 'export'
   initialFish = null,
+  initialCustomer = null,
   availableFishList = [],
   customersList = [],
   openOrdersList = [],
@@ -156,11 +157,23 @@ export default function WholesaleOrderWizardModal({
   };
 
   // ── Step 2: Customer Card Selection & Search ──
-  const [selectedCustomer, setSelectedCustomer] = useState(() => savedWizardData?.selectedCustomer || null);
+  const [selectedCustomer, setSelectedCustomer] = useState(() => savedWizardData?.selectedCustomer || initialCustomer || null);
   const [customerSearch, setCustomerSearch] = useState('');
   const [exportSubFilter, setExportSubFilter] = useState('All');
   // Local presence overrides map: phone or ID -> 'Present' | 'Absent'
   const [localPresenceMap, setLocalPresenceMap] = useState({});
+
+  // Sync initialCustomer from dial CRM popup into selectedCustomer
+  useEffect(() => {
+    if (initialCustomer && !selectedCustomer) {
+      const fullMatch = (customersList || []).find(c =>
+        (initialCustomer._id && (c._id === initialCustomer._id || c.id === initialCustomer._id)) ||
+        (initialCustomer.phone && c.phone && c.phone.replace(/\D/g, '').slice(-10) === initialCustomer.phone.replace(/\D/g, '').slice(-10)) ||
+        (initialCustomer.name && c.name && c.name.trim().toLowerCase() === initialCustomer.name.trim().toLowerCase())
+      );
+      setSelectedCustomer(fullMatch || initialCustomer);
+    }
+  }, [initialCustomer, customersList]);
 
   // ── Step 3: Saved Confirmation Dialog ──
   const [showSuccessDialog, setShowSuccessDialog] = useState(false);
@@ -1625,13 +1638,13 @@ export default function WholesaleOrderWizardModal({
         )}
 
         {/* ── Page Footer with Responsive Compact Action Buttons (Always Docked at Bottom with Safe-Area) ── */}
-        <div className="bg-[#FAF0E4] border-t border-[#fed7aa] px-2.5 sm:px-5 py-2 sm:py-2.5 flex items-center justify-between shrink-0 shadow-md z-30 pb-[max(0.6rem,env(safe-area-inset-bottom))] gap-2">
+        <div className="bg-[#FAF0E4] border-t border-[#fed7aa] px-2.5 sm:px-5 py-1.5 sm:py-2 flex items-center justify-between shrink-0 shadow-md z-30 pb-[max(0.5rem,env(safe-area-inset-bottom))] gap-2">
           {/* Back button */}
           {currentStep === 1 ? (
             <button
               type="button"
               onClick={handleCloseWizard}
-              className="px-3.5 sm:px-4 py-2 sm:py-2.5 rounded-xl text-xs sm:text-sm font-bold bg-white text-slate-700 hover:bg-slate-100 border border-[#E8DCCB] transition-all cursor-pointer shadow-2xs active:scale-95"
+              className="px-3 sm:px-4 py-1.5 sm:py-2 rounded-xl text-xs sm:text-sm font-bold bg-white text-slate-700 hover:bg-slate-100 border border-[#E8DCCB] transition-all cursor-pointer shadow-2xs active:scale-95 whitespace-nowrap"
             >
               Cancel
             </button>
@@ -1639,20 +1652,21 @@ export default function WholesaleOrderWizardModal({
             <button
               type="button"
               onClick={handleBackToStep1}
-              className="inline-flex items-center gap-1 px-3 sm:px-4 py-2 sm:py-2.5 rounded-xl text-xs sm:text-sm font-bold bg-white text-slate-700 hover:bg-slate-100 border border-[#E8DCCB] transition-all cursor-pointer shadow-2xs active:scale-95"
+              className="inline-flex items-center gap-1 px-2.5 sm:px-3.5 py-1.5 sm:py-2 rounded-xl text-xs sm:text-sm font-bold bg-white text-slate-700 hover:bg-slate-100 border border-[#E8DCCB] transition-all cursor-pointer shadow-2xs active:scale-95 whitespace-nowrap"
             >
-              <ArrowLeft size={14} />
-              <span>Back to Fish Weight</span>
+              <ArrowLeft size={13} />
+              <span className="sm:hidden">Back</span>
+              <span className="hidden sm:inline">Back to Weight</span>
             </button>
           ) : (
-            <div className="flex items-center gap-1.5">
+            <div className="flex items-center gap-1">
               <button
                 type="button"
                 onClick={handleBackToStep2}
-                className="inline-flex items-center gap-1 px-2.5 sm:px-3.5 py-2 sm:py-2.5 rounded-xl text-xs sm:text-sm font-bold bg-white text-slate-700 hover:bg-slate-100 border border-[#E8DCCB] transition-all cursor-pointer shadow-2xs active:scale-95"
-                title="Return to Customer Selection with Same Fish & Weight"
+                className="inline-flex items-center gap-1 px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-xl text-xs sm:text-sm font-bold bg-white text-slate-700 hover:bg-slate-100 border border-[#E8DCCB] transition-all cursor-pointer shadow-2xs active:scale-95 whitespace-nowrap"
+                title="Return to Customer Selection"
               >
-                <ArrowLeft size={14} />
+                <ArrowLeft size={13} />
                 <span>Back</span>
               </button>
               <button
@@ -1664,10 +1678,10 @@ export default function WholesaleOrderWizardModal({
                   setEditableTotal('');
                   setCurrentStep(2);
                 }}
-                className="inline-flex items-center gap-1 px-2 sm:px-2.5 py-2 sm:py-2.5 rounded-xl text-[10.5px] sm:text-xs font-bold bg-rose-50 text-rose-700 hover:bg-rose-100 border border-rose-200 transition-all cursor-pointer shadow-2xs active:scale-95"
-                title="Clear selected dealer and return to dealer cards"
+                className="inline-flex items-center gap-1 px-2 sm:px-2.5 py-1.5 sm:py-2 rounded-xl text-xs font-bold bg-rose-50 text-rose-700 hover:bg-rose-100 border border-rose-200 transition-all cursor-pointer shadow-2xs active:scale-95 whitespace-nowrap"
+                title="Clear selected dealer"
               >
-                <X size={13} />
+                <X size={12} />
                 <span>Clear</span>
               </button>
             </div>
@@ -1678,10 +1692,11 @@ export default function WholesaleOrderWizardModal({
             <button
               type="button"
               onClick={handleProceedToCustomerSelect}
-              className="inline-flex items-center gap-1.5 px-3.5 sm:px-5 py-2 sm:py-2.5 rounded-xl text-xs sm:text-sm font-black bg-gradient-to-r from-orange-500 to-[#ea580c] hover:from-orange-600 hover:to-orange-700 text-white shadow-md active:scale-95 transition-all cursor-pointer"
+              className="inline-flex items-center gap-1 px-3 sm:px-4 py-1.5 sm:py-2 rounded-xl text-xs sm:text-sm font-black bg-gradient-to-r from-orange-500 to-[#ea580c] hover:from-orange-600 hover:to-orange-700 text-white shadow-md active:scale-95 transition-all cursor-pointer whitespace-nowrap"
             >
-              <span>Next: Select Dealer (Cards)</span>
-              <ArrowRight size={14} />
+              <span className="sm:hidden">Next: Dealer</span>
+              <span className="hidden sm:inline">Next: Select Dealer</span>
+              <ArrowRight size={13} />
             </button>
           ) : currentStep === 2 ? (
             <button
@@ -1694,24 +1709,26 @@ export default function WholesaleOrderWizardModal({
                 }
                 setCurrentStep(3);
               }}
-              className={`inline-flex items-center gap-1.5 px-3.5 sm:px-5 py-2 sm:py-2.5 rounded-xl text-xs sm:text-sm font-black shadow-md active:scale-95 transition-all cursor-pointer ${
+              className={`inline-flex items-center gap-1 px-3 sm:px-4 py-1.5 sm:py-2 rounded-xl text-xs sm:text-sm font-black shadow-md active:scale-95 transition-all cursor-pointer whitespace-nowrap ${
                 selectedCustomer
                   ? 'bg-gradient-to-r from-orange-500 to-[#ea580c] hover:from-orange-600 hover:to-orange-700 text-white'
                   : 'bg-slate-200 text-slate-400 cursor-not-allowed opacity-60'
               }`}
             >
-              <span>Next: Preview (Step 3)</span>
-              <ArrowRight size={14} />
+              <span className="sm:hidden">Next: Preview</span>
+              <span className="hidden sm:inline">Next: Preview (Step 3)</span>
+              <ArrowRight size={13} />
             </button>
           ) : (
             <button
               type="button"
               disabled={isSaving}
               onClick={handleConfirmSave}
-              className="inline-flex items-center gap-1.5 px-3.5 sm:px-5 py-2 sm:py-2.5 rounded-xl text-xs sm:text-sm font-black bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white shadow-md active:scale-95 transition-all cursor-pointer disabled:opacity-50"
+              className="inline-flex items-center gap-1 px-3 sm:px-4 py-1.5 sm:py-2 rounded-xl text-xs sm:text-sm font-black bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white shadow-md active:scale-95 transition-all cursor-pointer disabled:opacity-50 whitespace-nowrap"
             >
-              <CheckCircle size={15} />
-              <span>{isSaving ? 'Saving Lot...' : 'Confirm & Save to Bill'}</span>
+              <CheckCircle size={14} />
+              <span className="sm:hidden">{isSaving ? 'Saving...' : 'Confirm & Save'}</span>
+              <span className="hidden sm:inline">{isSaving ? 'Saving Lot...' : 'Confirm & Save to Bill'}</span>
             </button>
           )}
         </div>

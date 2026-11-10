@@ -1919,6 +1919,46 @@ const Invoice = ({ bill: incomingBill, billData, onClose, onSave, onSettle, what
                   <span>{Number(bill.cuttingCharge).toFixed(2)}</span>
                 </div>
               )}
+              {Number(bill.iceCharges || 0) > 0 && (
+                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '1px 0' }}>
+                  <span>{t("Ice Charges:")}</span>
+                  <span style={{ fontWeight: 600 }}>+{Number(bill.iceCharges).toFixed(2)}</span>
+                </div>
+              )}
+              {Number(bill.transportCharges || 0) > 0 && (
+                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '1px 0' }}>
+                  <span>{t("Transport Charges:")}</span>
+                  <span style={{ fontWeight: 600 }}>+{Number(bill.transportCharges).toFixed(2)}</span>
+                </div>
+              )}
+              {Number(bill.boxCharges || 0) > 0 && (
+                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '1px 0' }}>
+                  <span>{t("Box / Packaging:")}</span>
+                  <span style={{ fontWeight: 600 }}>+{Number(bill.boxCharges).toFixed(2)}</span>
+                </div>
+              )}
+              {(() => {
+                const rawCharges = Array.isArray(bill.additionalCharges) && bill.additionalCharges.length > 0
+                  ? bill.additionalCharges
+                  : (bill.items || []).flatMap(it => Array.isArray(it.additionalCharges) ? it.additionalCharges : []);
+                const ice = Number(bill.iceCharges || 0);
+                const trans = Number(bill.transportCharges || 0);
+                const box = Number(bill.boxCharges || 0);
+                const custom = rawCharges.filter(c => {
+                  if (!c || !c.amount || Number(c.amount) <= 0) return false;
+                  const n = (c.name || '').toLowerCase();
+                  if (n === 'ice' && ice > 0) return false;
+                  if (n.startsWith('trans') && trans > 0) return false;
+                  if (n.startsWith('box') && box > 0) return false;
+                  return true;
+                });
+                return custom.map((c, i) => (
+                  <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '1px 0' }}>
+                    <span>{c.name}:</span>
+                    <span style={{ fontWeight: 600 }}>{c.type === 'Dr' ? '-' : '+'}{Number(c.amount).toFixed(2)}</span>
+                  </div>
+                ));
+              })()}
 
               {(() => {
                 const sub = Number(bill.subtotal || bill.items?.reduce((acc, curr) => acc + ((curr.price || 0) * (curr.quantity || 1)), 0) || 0);
@@ -2426,6 +2466,24 @@ const Invoice = ({ bill: incomingBill, billData, onClose, onSave, onSettle, what
                       <div style={{ display: 'flex', width: '100%', justifyContent: 'space-between', alignItems: 'center', fontWeight: 'bold' }}>
                         <span style={{ textAlign: 'left', flex: 1 }}>{t("Cutting Charge")}</span>
                         <span style={{ textAlign: 'right', flexShrink: 0, minWidth: '48px' }}>{Number(bill.cuttingCharge).toFixed(2)}</span>
+                      </div>
+                    )}
+                    {Number(bill.iceCharges || 0) > 0 && (
+                      <div style={{ display: 'flex', width: '100%', justifyContent: 'space-between', alignItems: 'center', fontWeight: 'bold' }}>
+                        <span style={{ textAlign: 'left', flex: 1 }}>{t("Ice Charges")}</span>
+                        <span style={{ textAlign: 'right', flexShrink: 0, minWidth: '48px' }}>+{Number(bill.iceCharges).toFixed(2)}</span>
+                      </div>
+                    )}
+                    {Number(bill.transportCharges || 0) > 0 && (
+                      <div style={{ display: 'flex', width: '100%', justifyContent: 'space-between', alignItems: 'center', fontWeight: 'bold' }}>
+                        <span style={{ textAlign: 'left', flex: 1 }}>{t("Transport Charges")}</span>
+                        <span style={{ textAlign: 'right', flexShrink: 0, minWidth: '48px' }}>+{Number(bill.transportCharges).toFixed(2)}</span>
+                      </div>
+                    )}
+                    {Number(bill.boxCharges || 0) > 0 && (
+                      <div style={{ display: 'flex', width: '100%', justifyContent: 'space-between', alignItems: 'center', fontWeight: 'bold' }}>
+                        <span style={{ textAlign: 'left', flex: 1 }}>{t("Box / Packaging")}</span>
+                        <span style={{ textAlign: 'right', flexShrink: 0, minWidth: '48px' }}>+{Number(bill.boxCharges).toFixed(2)}</span>
                       </div>
                     )}
                     {roundOff !== 0 && (

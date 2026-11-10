@@ -456,6 +456,7 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
 
   const [deliveryCharge, setDeliveryCharge] = useState('0');
   const [containerCharge, setContainerCharge] = useState('0');
+  const [iceCharges, setIceCharges] = useState('0');
   const [cuttingCharge, setCuttingCharge] = useState('0');
   const [isCuttingChargeEnabled, setIsCuttingChargeEnabled] = useState(() => {
     try {
@@ -482,6 +483,16 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
 
   // Wholesale & Export Order Wizard States - Persisted across page refresh
   const [showWholesaleWizard, setShowWholesaleWizard] = useState(() => {
+    if (isExplicitNew) {
+      try {
+        localStorage.removeItem('billing_show_wholesale_wizard');
+        localStorage.removeItem('billing_wholesale_wizard_fish');
+        localStorage.removeItem('billing_wholesale_available_fish');
+        localStorage.removeItem('wholesale_wizard_data_bulk');
+        localStorage.removeItem('wholesale_wizard_data_export');
+      } catch (e) {}
+      return false;
+    }
     try {
       return localStorage.getItem('billing_show_wholesale_wizard') === 'true';
     } catch {
@@ -1667,6 +1678,7 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
     const cleanPhone = cust.phone ? cust.phone.trim().replace(/\D/g, '') : '';
     setCustomerPhone(cleanPhone);
     setCustomerName(cust.name || 'Guest');
+    setCustomerInfo(cust);
     setCustomerCategory(cust.category || (fishOrderMode === 'bulk' ? 'Wholesale' : (fishOrderMode === 'export' ? 'Export' : 'Retail')));
     setExportSubCategory(cust.exportSubCategory || null);
     setCustomerPhoto(cust.photo || '');
@@ -2059,8 +2071,9 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
         if (order.customerName) {
           setCustomerName(order.customerName);
         }
-        setDeliveryCharge(order.deliveryCharge !== undefined ? String(order.deliveryCharge) : '0');
-        setContainerCharge(order.containerCharge !== undefined ? String(order.containerCharge) : '0');
+        setDeliveryCharge(order.transportCharges !== undefined ? String(order.transportCharges) : (order.deliveryCharge !== undefined ? String(order.deliveryCharge) : '0'));
+        setContainerCharge(order.boxCharges !== undefined ? String(order.boxCharges) : (order.containerCharge !== undefined ? String(order.containerCharge) : '0'));
+        setIceCharges(order.iceCharges !== undefined ? String(order.iceCharges) : '0');
         const isOrderRetail = order.customerCategory !== 'Wholesale' && order.orderMode !== 'bulk' && order.customerCategory !== 'Export' && order.orderMode !== 'export' && !String(order.tableNo || '').startsWith('WS-') && !String(order.tableNo || '').startsWith('EXP-');
         setCuttingCharge(isOrderRetail && order.cuttingCharge !== undefined ? String(order.cuttingCharge) : '0');
         setIsCuttingChargeEnabled(isOrderRetail && Number(order.cuttingCharge) > 0);
@@ -2253,7 +2266,7 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
   const taxableAmount = subtotal - discountAmount;
   const taxVal = taxRate === '' ? 0 : parseFloat(taxRate) || 0;
   const taxAmount = taxableAmount * taxVal / 100;
-  const additionalCharges = parseFloat(deliveryCharge || 0) + parseFloat(containerCharge || 0) + (fishOrderMode === 'individual' ? parseFloat(cuttingCharge || 0) : 0);
+  const additionalCharges = parseFloat(deliveryCharge || 0) + parseFloat(containerCharge || 0) + (fishOrderMode === 'individual' ? parseFloat(cuttingCharge || 0) : parseFloat(iceCharges || 0));
   const total = Math.max(0, Math.round(taxableAmount + taxAmount + additionalCharges) - walletRedemption);
 
   const syncTimeoutRef = useRef(null);
@@ -2882,6 +2895,9 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
       deliveryCharge: parseFloat(deliveryCharge || 0),
       containerCharge: parseFloat(containerCharge || 0),
       cuttingCharge: fishOrderMode === 'individual' ? parseFloat(cuttingCharge || 0) : 0,
+      transportCharges: (fishOrderMode === 'bulk' || fishOrderMode === 'export') ? parseFloat(deliveryCharge || 0) : 0,
+      boxCharges: (fishOrderMode === 'bulk' || fishOrderMode === 'export') ? parseFloat(containerCharge || 0) : 0,
+      iceCharges: (fishOrderMode === 'bulk' || fishOrderMode === 'export') ? parseFloat(iceCharges || 0) : 0,
       isHold: isHoldStrict,
       skipNotification: !isHoldStrict, // Frontend already broadcast instantly via WebSocket — skip backend duplicate
       ...(orderId && !orderId.startsWith('offline_') && { id: orderId }),
@@ -3033,6 +3049,16 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
       return;
     }
     setContainerCharge(val);
+    hasPendingLocalChanges.current = true;
+    lastLocalEditTime.current = Date.now();
+  };
+
+  const handleIceChargesChange = (val) => {
+    if (orderStatus === 'Billed' && !hasPendingLocalChanges.current) {
+      showToast(t('Order is billed. Click EDIT to modify.', { defaultValue: 'Order is billed. Click EDIT to modify.' }), 'warning');
+      return;
+    }
+    setIceCharges(val);
     hasPendingLocalChanges.current = true;
     lastLocalEditTime.current = Date.now();
   };
@@ -4004,6 +4030,13 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
             {(onGoBack || mobileTab === 'cart') && (
               <BackButton
                 onClick={() => {
+                  try {
+                    localStorage.removeItem('billing_show_wholesale_wizard');
+                    localStorage.removeItem('billing_wholesale_wizard_fish');
+                    localStorage.removeItem('billing_wholesale_available_fish');
+                    localStorage.removeItem('wholesale_wizard_data_bulk');
+                    localStorage.removeItem('wholesale_wizard_data_export');
+                  } catch (e) {}
                   const scrollParent = document.querySelector('#billing-main-scroll-area') || window;
                   if (scrollParent && scrollParent.scrollTop > 80) {
                     scrollParent.scrollTo({ top: 0, behavior: 'smooth' });
@@ -4365,27 +4398,34 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
       )}
 
       <div className="flex-1 flex flex-col overflow-hidden min-h-0">
-        <div id="billing-main-scroll-area" className={`flex-1 flex flex-col xl:flex-row relative scroll-smooth min-h-0 ${
-          (showWholesaleWizard && (fishOrderMode === 'bulk' || fishOrderMode === 'export'))
-            ? 'overflow-hidden flex-1 h-full'
-            : `overflow-y-auto xl:overflow-hidden ${cart.length > 0 && mobileTab === 'menu' ? 'pb-16 xl:pb-0' : 'pb-1 xl:pb-0'}`
-        }`}>
-          <div
-            id="billing-menu-grid-container"
-            className={`flex flex-col bg-surface flex-1 shrink-0 xl:shrink transition-all duration-300 border-b xl:border-b-0 xl:border-r border-border/50 w-full min-h-0 ${
-              (showWholesaleWizard && (fishOrderMode === 'bulk' || fishOrderMode === 'export'))
-                ? 'flex-1 h-full overflow-hidden'
-                : ''
-            } ${
-              mobileTab === 'cart' ? 'hidden xl:flex' : 'flex'
-            }`}
-          >
+        {(() => {
+          const isWholesaleOrExport = fishOrderMode === 'bulk' || fishOrderMode === 'export';
+          const shouldHideCartPanel = (showWholesaleWizard && isWholesaleOrExport) || (isWholesaleOrExport && !activeTable && cart.length === 0);
+          return (
+            <div id="billing-main-scroll-area" className={`flex-1 flex flex-col xl:flex-row relative scroll-smooth min-h-0 ${
+              (showWholesaleWizard && isWholesaleOrExport)
+                ? 'overflow-hidden flex-1 h-full'
+                : `overflow-y-auto xl:overflow-hidden ${cart.length > 0 && mobileTab === 'menu' ? 'pb-16 xl:pb-0' : 'pb-1 xl:pb-0'}`
+            }`}>
+              <div
+                id="billing-menu-grid-container"
+                className={`flex flex-col bg-surface flex-1 shrink-0 xl:shrink transition-all duration-300 border-b xl:border-b-0 border-border/50 w-full min-h-0 ${
+                  shouldHideCartPanel ? '!w-full !max-w-full flex-1 !border-r-0' : 'xl:border-r'
+                } ${
+                  (showWholesaleWizard && isWholesaleOrExport)
+                    ? 'flex-1 h-full overflow-hidden'
+                    : ''
+                } ${
+                  mobileTab === 'cart' ? 'hidden xl:flex' : 'flex'
+                }`}
+              >
             {showWholesaleWizard && (fishOrderMode === 'bulk' || fishOrderMode === 'export') ? (
               <WholesaleOrderWizardModal
                 isOpen={true}
                 onClose={() => setShowWholesaleWizard(false)}
                 fishOrderMode={fishOrderMode}
                 initialFish={wholesaleWizardFish}
+                initialCustomer={customerInfo || (customerName ? { name: customerName, phone: customerPhone, photo: customerPhoto } : null)}
                 availableFishList={wholesaleAvailableFish}
                 customersList={crmCustomers}
                 openOrdersList={openOrdersList}
@@ -4451,11 +4491,12 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
           <div
             id="billing-cart-summary-container"
             style={typeof window !== 'undefined' && window.innerWidth >= 1280 ? {
-              width: isCartCollapsed ? 0 : rightPanelWidth,
-              maxWidth: '45vw',
-              minWidth: isCartCollapsed ? 0 : '360px'
-            } : { width: '100%', maxWidth: '100vw' }}
-            className={`flex flex-col bg-surface ${isCartCollapsed ? 'xl:w-0 border-none opacity-0 xl:opacity-100 overflow-visible' : 'border-t md:border-t-2 xl:border-t-0 xl:border-l border-border/50 overflow-visible'} shrink-0 w-full xl:w-auto xl:h-full transition-none relative ${
+              width: shouldHideCartPanel ? 0 : (isCartCollapsed ? 0 : rightPanelWidth),
+              maxWidth: shouldHideCartPanel ? 0 : '45vw',
+              minWidth: shouldHideCartPanel ? 0 : (isCartCollapsed ? 0 : '360px'),
+              display: shouldHideCartPanel ? 'none' : undefined
+            } : { width: '100%', maxWidth: '100vw', display: shouldHideCartPanel ? 'none' : undefined }}
+            className={`flex flex-col bg-surface ${shouldHideCartPanel ? '!hidden' : ''} ${isCartCollapsed ? 'xl:w-0 border-none opacity-0 xl:opacity-100 overflow-visible' : 'border-t md:border-t-2 xl:border-t-0 xl:border-l border-border/50 overflow-visible'} shrink-0 w-full xl:w-auto xl:h-full transition-none relative ${
               mobileTab === 'cart' ? 'flex' : 'hidden xl:flex'
             }`}>
 
@@ -4541,6 +4582,8 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
                   setDeliveryCharge={handleDeliveryChargeChange}
                   containerCharge={containerCharge}
                   setContainerCharge={handleContainerChargeChange}
+                  iceCharges={iceCharges}
+                  setIceCharges={handleIceChargesChange}
                   cuttingCharge={cuttingCharge}
                   setCuttingCharge={handleCuttingChargeChange}
                   isCuttingChargeEnabled={isCuttingChargeEnabled}
@@ -4577,7 +4620,9 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
               </div>
 
             </div>
-        </div>
+          </div>
+        );
+      })()}
 
         {cart.length > 0 && mobileTab === 'menu' && (
           <div
@@ -5131,6 +5176,79 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
                   </span>
                   <span>Sub Total: ₹{Number(offscreenBill.subtotal || 0).toFixed(2)}</span>
                 </div>
+              </div>
+            );
+          })()}
+
+          {/* Itemized Charges & Discounts Breakdown */}
+          {(() => {
+            const ice = Number(offscreenBill.iceCharges || 0);
+            const trans = Number(offscreenBill.transportCharges || 0);
+            const box = Number(offscreenBill.boxCharges || 0);
+            const deliv = Number(offscreenBill.deliveryCharge || 0);
+            const cut = Number(offscreenBill.cuttingCharge || 0);
+            const disc = Number(offscreenBill.discount || 0);
+            
+            const rawCharges = Array.isArray(offscreenBill.additionalCharges) && offscreenBill.additionalCharges.length > 0
+              ? offscreenBill.additionalCharges
+              : (offscreenBill.items || []).flatMap(it => Array.isArray(it.additionalCharges) ? it.additionalCharges : []);
+            
+            const customCharges = rawCharges.filter(c => {
+              if (!c || !c.amount || Number(c.amount) <= 0) return false;
+              const n = (c.name || '').toLowerCase();
+              if (n === 'ice' && ice > 0) return false;
+              if (n.startsWith('trans') && trans > 0) return false;
+              if (n.startsWith('box') && box > 0) return false;
+              return true;
+            });
+
+            const hasAnyChargesOrDiscount = ice > 0 || trans > 0 || box > 0 || deliv > 0 || cut > 0 || disc > 0 || customCharges.length > 0;
+            if (!hasAnyChargesOrDiscount) return null;
+
+            return (
+              <div style={{ margin: '4px 0', fontSize: '11px', borderTop: '1px dashed #000', paddingTop: '4px' }}>
+                {ice > 0 && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', padding: '1px 0' }}>
+                    <span>Ice Charges:</span>
+                    <span style={{ fontWeight: 600 }}>+₹{ice.toFixed(2)}</span>
+                  </div>
+                )}
+                {trans > 0 && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', padding: '1px 0' }}>
+                    <span>Transport Charges:</span>
+                    <span style={{ fontWeight: 600 }}>+₹{trans.toFixed(2)}</span>
+                  </div>
+                )}
+                {box > 0 && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', padding: '1px 0' }}>
+                    <span>Box / Packaging:</span>
+                    <span style={{ fontWeight: 600 }}>+₹{box.toFixed(2)}</span>
+                  </div>
+                )}
+                {deliv > 0 && trans === 0 && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', padding: '1px 0' }}>
+                    <span>Delivery Charge:</span>
+                    <span style={{ fontWeight: 600 }}>+₹{deliv.toFixed(2)}</span>
+                  </div>
+                )}
+                {cut > 0 && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', padding: '1px 0' }}>
+                    <span>Fish Cutting Charges:</span>
+                    <span style={{ fontWeight: 600 }}>+₹{cut.toFixed(2)}</span>
+                  </div>
+                )}
+                {customCharges.map((c, i) => (
+                  <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '1px 0' }}>
+                    <span>{c.name}:</span>
+                    <span style={{ fontWeight: 600 }}>{c.type === 'Dr' ? '-' : '+'}₹{Number(c.amount).toFixed(2)}</span>
+                  </div>
+                ))}
+                {disc > 0 && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', padding: '1px 0', color: '#c2410c', fontWeight: 'bold' }}>
+                    <span>Discount:</span>
+                    <span>-₹{disc.toFixed(2)}</span>
+                  </div>
+                )}
               </div>
             );
           })()}

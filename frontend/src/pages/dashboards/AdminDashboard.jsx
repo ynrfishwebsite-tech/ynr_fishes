@@ -155,6 +155,15 @@ export default function AdminDashboard() {
         try { localStorage.setItem('billing_fish_order_mode', options.mode); } catch (e) {}
       }
       const isNew = options.action === 'new' || options.table === 'NEW_ORDER';
+      if (isNew) {
+        try {
+          localStorage.removeItem('billing_show_wholesale_wizard');
+          localStorage.removeItem('billing_wholesale_wizard_fish');
+          localStorage.removeItem('billing_wholesale_available_fish');
+          localStorage.removeItem('wholesale_wizard_data_bulk');
+          localStorage.removeItem('wholesale_wizard_data_export');
+        } catch (e) {}
+      }
       const tableToSet = isNew ? null : (options.table !== undefined ? options.table : (options.preserveTable ? selectedOrderTable : null));
       const actionToSet = isNew ? 'new' : (options.action !== undefined ? options.action : (options.preserveTable ? selectedOrderAction : null));
 
@@ -176,6 +185,14 @@ export default function AdminDashboard() {
       if (currentView !== 'billing' || options.forceRemount) {
         setBillingKey(k => k + 1);
       }
+    } else {
+      try {
+        localStorage.removeItem('billing_show_wholesale_wizard');
+        localStorage.removeItem('billing_wholesale_wizard_fish');
+        localStorage.removeItem('billing_wholesale_available_fish');
+        localStorage.removeItem('wholesale_wizard_data_bulk');
+        localStorage.removeItem('wholesale_wizard_data_export');
+      } catch (e) {}
     }
 
     if (view === currentView) return;
@@ -194,6 +211,13 @@ export default function AdminDashboard() {
 
   // Back button returns to the exact previous page
   const goBack = () => {
+    try {
+      localStorage.removeItem('billing_show_wholesale_wizard');
+      localStorage.removeItem('billing_wholesale_wizard_fish');
+      localStorage.removeItem('billing_wholesale_available_fish');
+      localStorage.removeItem('wholesale_wizard_data_bulk');
+      localStorage.removeItem('wholesale_wizard_data_export');
+    } catch (e) {}
     setViewHistory(prev => {
       if (prev.length > 1) {
         const nextHistory = prev.slice(0, -1);
@@ -209,6 +233,13 @@ export default function AdminDashboard() {
 
   // Clicking Logo jumps directly to Main Entrance Dashboard
   const goToHome = () => {
+    try {
+      localStorage.removeItem('billing_show_wholesale_wizard');
+      localStorage.removeItem('billing_wholesale_wizard_fish');
+      localStorage.removeItem('billing_wholesale_available_fish');
+      localStorage.removeItem('wholesale_wizard_data_bulk');
+      localStorage.removeItem('wholesale_wizard_data_export');
+    } catch (e) {}
     if (user?.role === 'driver') {
       setViewHistory(['driver-portal']);
       setCurrentView('driver-portal');
