@@ -367,8 +367,13 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
     }
   });
   const [mobileTab, setMobileTab] = useState(() => {
+    if (initialAction === 'new' || initialFishMode === 'bulk' || initialFishMode === 'export') {
+      try { localStorage.setItem('billing_mobile_tab', 'menu'); } catch {}
+      return 'menu';
+    }
     try {
-      return localStorage.getItem('billing_mobile_tab') || 'menu';
+      const saved = localStorage.getItem('billing_mobile_tab');
+      return saved === 'cart' ? 'cart' : 'menu';
     } catch {
       return 'menu';
     }
@@ -533,6 +538,21 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
       localStorage.setItem('billing_mobile_tab', mobileTab);
     } catch (e) {}
   }, [mobileTab]);
+
+  // Ensure 'menu' tab is active if cart is empty, or when switching orders/modes
+  useEffect(() => {
+    if (cart.length === 0 && mobileTab === 'cart') {
+      setMobileTab('menu');
+      try { localStorage.setItem('billing_mobile_tab', 'menu'); } catch (e) {}
+    }
+  }, [cart.length, mobileTab]);
+
+  useEffect(() => {
+    if (initialAction === 'new' || initialFishMode === 'bulk' || initialFishMode === 'export') {
+      setMobileTab('menu');
+      try { localStorage.setItem('billing_mobile_tab', 'menu'); } catch (e) {}
+    }
+  }, [initialFishMode, initialTable, initialAction]);
 
   useEffect(() => {
     try {
@@ -4021,7 +4041,7 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
     <div className="h-full flex-1 min-h-0 flex flex-col overflow-hidden bg-background">
       {/* Header Navigation & Action Bar: 2 rows on Tablet, 1 row on Desktop */}
       {!(showWholesaleWizard && (fishOrderMode === 'bulk' || fishOrderMode === 'export')) && (
-      <div className={`flex flex-col xl:flex-row xl:h-14 xl:items-center xl:justify-between px-2 sm:px-3 lg:px-6 bg-surface border-b border-border/50 shrink-0 relative ${isOrderDropdownOpen ? 'z-[100]' : 'z-30'} gap-1.5 py-1.5 xl:py-0 ${mobileTab === 'cart' ? 'hidden xl:flex' : 'flex'}`}>
+      <div className={`flex flex-col xl:flex-row xl:h-14 xl:items-center xl:justify-between px-2 sm:px-3 lg:px-6 bg-surface border-b border-border/50 shrink-0 relative ${isOrderDropdownOpen ? 'z-[100]' : 'z-30'} gap-1.5 py-1.5 xl:py-0 flex`}>
 
         {/* ROW 1: (On Tablet: Back, Order Selector, New Order, Lock, Fullscreen) / (On Desktop: Left Section) */}
         <div className="flex items-center justify-between w-full xl:w-auto gap-2">
@@ -4030,6 +4050,11 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
             {(onGoBack || mobileTab === 'cart') && (
               <BackButton
                 onClick={() => {
+                  if (mobileTab === 'cart') {
+                    setMobileTab('menu');
+                    try { localStorage.setItem('billing_mobile_tab', 'menu'); } catch {}
+                    return;
+                  }
                   try {
                     localStorage.removeItem('billing_show_wholesale_wizard');
                     localStorage.removeItem('billing_wholesale_wizard_fish');

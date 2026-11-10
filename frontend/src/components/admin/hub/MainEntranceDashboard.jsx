@@ -661,6 +661,16 @@ export default function MainEntranceDashboard({
     }
 
     if (card.navView) {
+      if (card.navView === 'billing') {
+        try {
+          localStorage.setItem('billing_mobile_tab', 'menu');
+          localStorage.removeItem('billing_show_wholesale_wizard');
+          localStorage.removeItem('billing_wholesale_wizard_fish');
+          localStorage.removeItem('billing_wholesale_available_fish');
+          localStorage.removeItem('wholesale_wizard_data_bulk');
+          localStorage.removeItem('wholesale_wizard_data_export');
+        } catch (e) {}
+      }
       onNavigate(card.navView, card.navOptions || {});
     }
   };

@@ -150,6 +150,9 @@ export default function AdminDashboard() {
     if (!isPagePermitted(view)) return;
 
     if (view === 'billing') {
+      try {
+        localStorage.setItem('billing_mobile_tab', 'menu');
+      } catch (e) {}
       if (options.mode) {
         setSelectedOrderMode(options.mode);
         try { localStorage.setItem('billing_fish_order_mode', options.mode); } catch (e) {}
@@ -726,13 +729,16 @@ export default function AdminDashboard() {
       </header>
 
       {/* Main Full-Width Content View (No Sidebar, 100% responsive on all screen sizes) */}
-      <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden', position: 'relative' }}>
+      <div style={{ flex: 1, minHeight: 0, height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden', position: 'relative' }}>
         <main
           id="admin-main-viewport"
           style={{
             flex: 1,
             width: '100%',
             minHeight: 0,
+            height: '100%',
+            display: 'flex',
+            flexDirection: 'column',
             overflowY: currentView === 'billing' ? 'hidden' : 'scroll',
             WebkitOverflowScrolling: 'touch',
             touchAction: 'pan-y',

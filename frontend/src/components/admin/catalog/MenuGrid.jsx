@@ -2050,7 +2050,7 @@ const MenuGrid = ({
           {displayMode === '3d_roller' ? (
             <>
               {/* Mobile & Tablet View: Dedicated Smartwatch Round Dial UI */}
-              <div className="xl:hidden w-full flex-1 flex flex-col items-center justify-center min-h-full">
+              <div className="xl:hidden w-full flex-1 flex flex-col items-center justify-center min-h-[460px] sm:min-h-full">
                 <FishSmartwatchDial
                   items={filteredItems}
                   activeIndex={activeRollerIndex}
