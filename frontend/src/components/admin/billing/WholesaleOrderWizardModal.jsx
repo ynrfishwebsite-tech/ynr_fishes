@@ -711,8 +711,7 @@ export default function WholesaleOrderWizardModal({
 
   return (
     <div 
-      className="w-full h-full flex-1 flex flex-col bg-[#FDFBF7] text-slate-800 overflow-hidden min-h-0 max-h-full relative"
-      style={{ height: '100%', maxHeight: '100%', minHeight: 0 }}
+      className="fixed inset-0 sm:relative sm:inset-auto w-full h-full sm:flex-1 flex flex-col bg-[#FDFBF7] text-slate-800 overflow-hidden z-50 sm:z-auto"
     >
       {/* ── Direct Page Header & Breadcrumb Tracker ── */}
       <div className="bg-[#FAF0E4] border-b border-[#fed7aa] px-2.5 sm:px-4 py-1.5 sm:py-2 flex items-center justify-between shrink-0 sticky top-0 z-20 shadow-2xs">

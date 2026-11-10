@@ -726,15 +726,13 @@ export default function AdminDashboard() {
       </header>
 
       {/* Main Full-Width Content View (No Sidebar, 100% responsive on all screen sizes) */}
-      <div style={{ flex: 1, minHeight: 0, height: '100%', maxHeight: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden', position: 'relative' }}>
+      <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden', position: 'relative' }}>
         <main
           id="admin-main-viewport"
           style={{
             flex: 1,
             width: '100%',
             minHeight: 0,
-            height: '100%',
-            maxHeight: '100%',
             overflowY: currentView === 'billing' ? 'hidden' : 'scroll',
             WebkitOverflowScrolling: 'touch',
             touchAction: 'pan-y',
