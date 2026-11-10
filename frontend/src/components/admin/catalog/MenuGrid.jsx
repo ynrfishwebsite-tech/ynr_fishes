@@ -605,7 +605,19 @@ const MenuGrid = ({
       : chosenFish?.sizeGrades?.big?.enabled !== false ? 'big' : 'medium';
     const chosenGrade = initialGradeOverride || chosenFish?.defaultSizeGrade || initialEnabledGrade;
     const defaultRate = getItemPricePerKg(chosenFish, fishOrderMode, chosenGrade);
-    const slotKg = (initialWeightKg && parseFloat(initialWeightKg) > 0) ? String(initialWeightKg) : '1';
+    
+    // Auto-split entered decimal weight (e.g. 20.5 Kg -> 20 Kg and 500 Grams)
+    let slotKg = '1';
+    let slotGrams = '';
+    if (initialWeightKg !== null && initialWeightKg !== undefined) {
+      const numWeight = parseFloat(initialWeightKg);
+      if (!isNaN(numWeight) && numWeight > 0) {
+        const wholeKg = Math.floor(numWeight);
+        const fracGrams = Math.round((numWeight - wholeKg) * 1000);
+        slotKg = String(wholeKg);
+        slotGrams = fracGrams > 0 ? String(fracGrams) : '';
+      }
+    }
 
     const initialSlots = [{
       id: `slot_0_${Date.now()}_${Math.random()}`,
@@ -613,7 +625,7 @@ const MenuGrid = ({
       fish: chosenFish,
       sizeGrade: chosenGrade,
       weightKg: slotKg,
-      weightGrams: '',
+      weightGrams: slotGrams,
       pricePerKg: String(defaultRate)
     }];
     setBoxSlots(initialSlots);
@@ -698,6 +710,18 @@ const MenuGrid = ({
   const handleSlotWeightKgChange = (index, weightVal) => {
     setBoxSlots(prev => prev.map((slot, idx) => {
       if (idx !== index) return slot;
+      // If user enters a decimal in the KG field (e.g. 20.5), split into 20 Kg and 500 Grams
+      if (weightVal && String(weightVal).includes('.')) {
+        const parts = String(weightVal).split('.');
+        const wholeKg = parts[0] || '0';
+        const fracStr = (parts[1] || '').slice(0, 3);
+        const fracGrams = fracStr ? Math.round(parseFloat(`0.${fracStr}`) * 1000) : 0;
+        return {
+          ...slot,
+          weightKg: wholeKg,
+          weightGrams: fracGrams > 0 ? String(fracGrams) : ''
+        };
+      }
       return { ...slot, weightKg: weightVal };
     }));
   };
@@ -1052,7 +1076,10 @@ const MenuGrid = ({
         orderMode: 'retail',
         cutType: slot.cutType,
         yieldFactor: 1.0,
-        tareWeightKg: ((slot.tareGrams || 0) / 1000)
+        tareWeightKg: ((slot.tareGrams || 0) / 1000),
+        customCuttingChargeEnabled: slot.fish?.customCuttingChargeEnabled ?? false,
+        cuttingCharge: slot.fish?.cuttingCharge ?? 0,
+        sizeGrades: slot.fish?.sizeGrades
       };
     });
 
@@ -3314,7 +3341,10 @@ const MenuGrid = ({
                         orderMode: 'retail',
                         cutType: slot.cutType,
                         yieldFactor: 1.0,
-                        tareWeightKg: ((slot.tareGrams || 0) / 1000)
+                        tareWeightKg: ((slot.tareGrams || 0) / 1000),
+                        customCuttingChargeEnabled: slot.fish?.customCuttingChargeEnabled ?? false,
+                        cuttingCharge: slot.fish?.cuttingCharge ?? 0,
+                        sizeGrades: slot.fish?.sizeGrades
                       };
 
                       onSelectItem(itemToAdd);

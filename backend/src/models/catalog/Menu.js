@@ -199,11 +199,7 @@ const menuSchema = new mongoose.Schema({
     type: String,
     trim: true,
     default: ''
-  },
-  variants: [{
-    name: String, // e.g. "Small", "Medium", "Large"
-    price: Number
-  }]
+  }
 }, {
   timestamps: true
 });

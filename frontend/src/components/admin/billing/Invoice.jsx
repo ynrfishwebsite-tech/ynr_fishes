@@ -1578,7 +1578,7 @@ const Invoice = ({ bill: incomingBill, billData, onClose, onSave, onSettle, what
         document.body
       )}
 
-      <ClothUnrollReceipt isDirectPrint={isDirectPrint}>
+      <ClothUnrollReceipt isDirectPrint={isDirectPrint} animationEnabled={settings.enableBillAnimation !== false}>
         <div
           id="invoice-print-area"
           className={`receipt-print bg-white text-black mx-auto shadow-2xl print:shadow-none mt-0 mb-2 pb-1 print:m-0 print:border-0 ${getFormatClasses()}`}

@@ -100,17 +100,8 @@ const BillSummary = ({
         const sp = (item.speciesType || 'fish').toLowerCase();
         if (speciesToggles[sp] === false) return sum;
 
-        // 1. Skip Whole / uncut fish (bought whole without cutting)
-        const cut = (item.cutType || item.cuttingStyle || '').toLowerCase();
-        const rawName = (item.name || '').toLowerCase();
-        if (cut.includes('whole') || rawName.includes('(whole') || rawName.includes('- whole')) {
-          return sum;
-        }
-
-        // 2. Skip if cutting charges are explicitly toggled OFF / stopped for this fish
-        if (item.customCuttingChargeEnabled === false) {
-          return sum;
-        }
+        // Skip if explicitly disabled in database
+        if (item.customCuttingChargeEnabled === false) return sum;
 
         const activeQty = Math.max(0, (Number(item.quantity) || 1) - (Number(item.cancelledQuantity) || 0));
         const w = Number(item.netWeightKg || item.enteredWeight || item.weightKg || 0);
@@ -120,9 +111,6 @@ const BillSummary = ({
       return (cart || []).reduce((sum, item) => {
         if (item.isCancelled) return sum;
         if (item.orderMode && item.orderMode !== 'individual') return sum;
-        const cut = (item.cutType || item.cuttingStyle || '').toLowerCase();
-        const rawName = (item.name || '').toLowerCase();
-        if (cut.includes('whole') || rawName.includes('(whole') || rawName.includes('- whole')) return sum;
         if (item.customCuttingChargeEnabled === false) return sum;
         const activeQty = Math.max(0, (Number(item.quantity) || 1) - (Number(item.cancelledQuantity) || 0));
         const w = Number(item.netWeightKg || item.enteredWeight || item.weightKg || 0);
@@ -184,20 +172,12 @@ const BillSummary = ({
 
   const cuttingTiers = totalFishWeight <= 0 ? 0 : (totalFishWeight <= 1.5 ? 1 : 1 + Math.ceil(totalFishWeight - 1.5));
   const suggestedCuttingCharge = React.useMemo(() => {
-    if (!isRetail || totalFishWeight <= 0) return 0;
+    if (!isRetail || !cart || cart.length === 0) return 0;
     try {
       const s = JSON.parse(localStorage.getItem('restaurantSettings') || '{}');
       const speciesToggles = s.cuttingSpeciesToggles || { fish: true, prawn: true, crab: true };
-      const baseRate = cuttingRate;
-      const tiers = s.cuttingTiers || [
-        { label: 'Tier 1', maxKg: 1.5, multiplier: 1 },
-        { label: 'Tier 2', maxKg: 2.5, multiplier: 2 },
-        { label: 'Tier 3', maxKg: 3.5, multiplier: 3 },
-        { label: 'Extra', extraPerKg: true, multiplier: 1 }
-      ];
-      const tier1Max = Number(tiers[0]?.maxKg) || 1.5;
-      const tier2Max = Number(tiers[1]?.maxKg) || 2.5;
-      const tier3Max = Number(tiers[2]?.maxKg) || 3.5;
+      const defaultRate = Number(s.cuttingChargePerKg) > 0 ? Number(s.cuttingChargePerKg) : 10;
+      const tier1Max = 1.5;
 
       let customTotal = 0;
       let standardWeight = 0;
@@ -208,17 +188,8 @@ const BillSummary = ({
         const sp = (item.speciesType || 'fish').toLowerCase();
         if (speciesToggles[sp] === false) return;
 
-        // 1. Skip Whole / uncut fish (bought whole without cutting)
-        const cut = (item.cutType || item.cuttingStyle || '').toLowerCase();
-        const rawName = (item.name || '').toLowerCase();
-        if (cut.includes('whole') || rawName.includes('(whole') || rawName.includes('- whole')) {
-          return;
-        }
-
-        // 2. Skip if cutting charges are explicitly toggled OFF / stopped for this fish
-        if (item.customCuttingChargeEnabled === false) {
-          return;
-        }
+        // Skip if explicitly toggled OFF for this item in database
+        if (item.customCuttingChargeEnabled === false) return;
 
         const w = Number(item.netWeightKg || item.enteredWeight || item.weightKg || (item.sellingUnit === 'Kg' ? item.quantity : 0) || 0);
         if (w <= 0) return;
@@ -226,34 +197,37 @@ const BillSummary = ({
         const gradeKey = item.sizeGrade || 'medium';
         const gradeCut = parseFloat(item.sizeGrades?.[gradeKey]?.cuttingCharge);
         const itemCut = parseFloat(item.cuttingCharge);
-        const cutRate = gradeCut > 0 ? gradeCut : (itemCut > 0 ? itemCut : 0);
 
-        if (item.customCuttingChargeEnabled) {
-          if (cutRate > 0) {
-            const steps = w <= tier1Max ? 1 : (1 + Math.ceil(w - tier1Max));
-            customTotal += steps * cutRate;
-          } else {
-            // Explicitly 0 cutting charge for this item
-            return;
-          }
-        } else {
+        let cutRate = 0;
+        if (gradeCut > 0) {
+          cutRate = gradeCut;
+        } else if (itemCut > 0) {
+          cutRate = itemCut;
+        } else if (item.customCuttingChargeEnabled === true) {
+          cutRate = defaultRate;
+        } else if (s.enableCuttingCharges === true) {
+          const cut = (item.cutType || item.cuttingStyle || '').toLowerCase();
+          if (!cut.includes('whole')) cutRate = defaultRate;
+        }
+
+        if (cutRate > 0) {
+          const steps = w <= tier1Max ? 1 : 1 + Math.ceil(w - tier1Max);
+          customTotal += steps * cutRate;
+        } else if (s.enableCuttingCharges === true) {
           standardWeight += w;
         }
       });
 
       let standardCharge = 0;
       if (standardWeight > 0) {
-        if (standardWeight <= tier1Max) standardCharge = baseRate;
-        else if (standardWeight <= tier2Max) standardCharge = baseRate * 2;
-        else if (standardWeight <= tier3Max) standardCharge = baseRate * 3;
-        else standardCharge = baseRate * (3 + Math.ceil(standardWeight - tier3Max));
+        standardCharge = Math.ceil(standardWeight) * defaultRate;
       }
 
       return Math.round(customTotal + standardCharge);
     } catch {
-      return calculateCuttingCharge(totalFishWeight, cuttingRate);
+      return 0;
     }
-  }, [cart, totalFishWeight, cuttingRate, isRetail]);
+  }, [cart, isRetail]);
 
   const { groupedBoxes, individualItems } = React.useMemo(() => {
     const boxes = {};
@@ -1159,7 +1133,7 @@ const BillSummary = ({
 
               {/* Individual Items List */}
               {individualItems.map((item, index) => (
-                <div key={item._id || item.name || index} className={`flex items-start py-1.5 px-1.5 border-b border-[#f1f5f9] hover:bg-[#F5E8D8] transition-colors group ${item.isCancelled ? 'opacity-50' : ''}`}>
+                <div key={item.itemKey || `${item._id || item.name || 'item'}-${index}`} className={`flex items-start py-1.5 px-1.5 border-b border-[#f1f5f9] hover:bg-[#F5E8D8] transition-colors group ${item.isCancelled ? 'opacity-50' : ''}`}>
                   {/* Delete Icon */}
                   <button
                     onClick={() => updateQuantity(item.itemKey || item._id || item.name, -item.quantity)}
@@ -1301,48 +1275,60 @@ const BillSummary = ({
                     ) : null}
                   </div>
 
-                  {/* Quantity Controls */}
-                  <div className="flex items-center gap-0 w-[78px] shrink-0 bg-[#F7EFE2] rounded-lg overflow-hidden border border-[#E8DCCB]">
-                    <button
-                      type="button"
-                      onClick={() => updateQuantity(item.itemKey || item._id || item.name, -1)}
-                      disabled={isLocked || item.isCancelled}
-                      className="w-5 h-6 flex items-center justify-center text-[#64748b] hover:bg-[#F5E8D8] hover:text-red-500 disabled:opacity-50 transition-colors shrink-0">
-                      <Minus size={11} />
-                    </button>
-                    <input
-                      type="number"
-                      min="0.01"
-                      step="any"
-                      disabled={isLocked || item.isCancelled}
-                      value={item.quantity - (item.cancelledQuantity || 0) === 0 ? '' : (item.quantity - (item.cancelledQuantity || 0))}
-                      onWheel={(e) => e.target.blur()}
-                      onFocus={(e) => e.target.select()}
-                      onKeyDown={(e) => {
-                        if (e.key === '-' || e.key === 'e' || e.key === '+') e.preventDefault();
-                      }}
-                      onChange={(e) => {
-                        const raw = e.target.value;
-                        if (raw === '') return;
-                        const parsed = parseFloat(raw);
-                        if (!isNaN(parsed) && parsed >= 0) {
-                          const currentActive = item.quantity - (item.cancelledQuantity || 0);
-                          const delta = parsed - currentActive;
-                          if (delta !== 0) {
-                            updateQuantity(item.itemKey || item._id || item.name, delta);
-                          }
-                        }
-                      }}
-                      className={`w-9 h-6 bg-[#FDFBF7] text-center font-bold text-[11px] text-[#1e293b] focus:outline-none border-x border-[#E8DCCB] p-0 ${item.isCancelled ? 'line-through text-slate-500' : ''}`}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => updateQuantity(item.itemKey || item._id || item.name, 1)}
-                      disabled={isLocked || item.isCancelled}
-                      className="w-5 h-6 flex items-center justify-center text-[#64748b] hover:bg-[#F5E8D8] hover:text-emerald-600 disabled:opacity-50 transition-colors shrink-0">
-                      <Plus size={11} />
-                    </button>
-                  </div>
+                  {/* Quantity Controls - Points / Decimal in Kgs & Grams */}
+                  {(() => {
+                    const isKgItem = item.sellingUnit !== 'Piece' && item.sellingUnit !== 'piece' && item.sellingUnit !== 'packet';
+                    const stepDelta = isKgItem ? 0.5 : 1;
+                    const activeQty = Math.max(0, (item.quantity || 0) - (item.cancelledQuantity || 0));
+                    const displayQty = isKgItem ? Number(activeQty).toFixed(3) : activeQty;
+
+                    return (
+                      <div className={`flex items-center gap-0 shrink-0 bg-[#F7EFE2] rounded-lg overflow-hidden border border-[#E8DCCB] ${isKgItem ? 'w-[94px]' : 'w-[78px]'}`}>
+                        <button
+                          type="button"
+                          onClick={() => updateQuantity(item.itemKey || item._id || item.name, -stepDelta)}
+                          disabled={isLocked || item.isCancelled}
+                          title={isKgItem ? "-0.500 Kg" : "-1"}
+                          className="w-5 h-6 flex items-center justify-center text-[#64748b] hover:bg-[#F5E8D8] hover:text-red-500 disabled:opacity-50 transition-colors shrink-0">
+                          <Minus size={11} />
+                        </button>
+                        <input
+                          type="number"
+                          min="0.001"
+                          step={isKgItem ? "0.001" : "1"}
+                          disabled={isLocked || item.isCancelled}
+                          value={activeQty === 0 ? '' : displayQty}
+                          onWheel={(e) => e.target.blur()}
+                          onFocus={(e) => e.target.select()}
+                          onKeyDown={(e) => {
+                            if (e.key === '-' || e.key === 'e' || e.key === '+') e.preventDefault();
+                          }}
+                          onChange={(e) => {
+                            const raw = e.target.value;
+                            if (raw === '') return;
+                            const parsed = parseFloat(raw);
+                            if (!isNaN(parsed) && parsed >= 0) {
+                              const delta = Math.round((parsed - activeQty) * 1000) / 1000;
+                              if (delta !== 0) {
+                                updateQuantity(item.itemKey || item._id || item.name, delta);
+                              }
+                            }
+                          }}
+                          className={`h-6 bg-[#FDFBF7] text-center font-bold text-[11px] font-mono text-[#1e293b] focus:outline-none border-x border-[#E8DCCB] p-0 ${
+                            isKgItem ? 'w-[54px]' : 'w-9'
+                          } ${item.isCancelled ? 'line-through text-slate-500' : ''}`}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => updateQuantity(item.itemKey || item._id || item.name, stepDelta)}
+                          disabled={isLocked || item.isCancelled}
+                          title={isKgItem ? "+0.500 Kg" : "+1"}
+                          className="w-5 h-6 flex items-center justify-center text-[#64748b] hover:bg-[#F5E8D8] hover:text-emerald-600 disabled:opacity-50 transition-colors shrink-0">
+                          <Plus size={11} />
+                        </button>
+                      </div>
+                    );
+                  })()}
 
                   {/* Price - editable on click */}
                   <div className="w-[50px] shrink-0 text-right flex flex-col justify-center h-6 pr-1">
@@ -1719,19 +1705,19 @@ const BillSummary = ({
                             if (setIsCuttingChargeEnabled) setIsCuttingChargeEnabled(nextState);
                             if (setCuttingCharge) {
                               if (nextState) {
-                                setCuttingCharge(suggestedCuttingCharge);
+                                setCuttingCharge(suggestedCuttingCharge > 0 ? suggestedCuttingCharge : 10);
                               } else {
                                 setCuttingCharge(0);
                               }
                             }
                           }}
-                          className={`text-[8px] sm:text-[9px] font-black px-1 py-0.2 rounded cursor-pointer transition-all shrink-0 ${
-                            (isCuttingChargeEnabled && totalFishWeight > 0) || Number(cuttingCharge) > 0
-                              ? 'bg-amber-700 text-white shadow-2xs'
+                          className={`text-[8px] sm:text-[9px] font-black px-1.5 py-0.5 rounded cursor-pointer transition-all shrink-0 ${
+                            isCuttingChargeEnabled && Number(cuttingCharge) > 0
+                              ? 'bg-emerald-600 text-white shadow-2xs'
                               : 'bg-slate-200 text-slate-700 hover:bg-slate-300'
                           }`}
                         >
-                          {(isCuttingChargeEnabled && totalFishWeight > 0) || Number(cuttingCharge) > 0 ? 'ON' : 'OFF'}
+                          {isCuttingChargeEnabled && Number(cuttingCharge) > 0 ? 'ON' : 'OFF'}
                         </button>
                       ) : (
                         <span className="text-[8px] font-bold px-1 py-0.2 rounded bg-slate-200 text-slate-500 shrink-0">

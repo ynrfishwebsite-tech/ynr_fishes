@@ -145,8 +145,7 @@ const MenuManagement = ({ user, onNavigate, onGoBack }) => {
     taxRate: 0,
     hsnCode: '',
     isAvailable: true,
-    recipe: [],
-    variants: []
+    recipe: []
   });
 
   const [categoryFormData, setCategoryFormData] = useState({
@@ -255,8 +254,7 @@ const MenuManagement = ({ user, onNavigate, onGoBack }) => {
         taxRate: item.taxRate || 0,
         hsnCode: item.hsnCode || '',
         isAvailable: item.isAvailable !== false,
-        recipe: item.recipe || [],
-        variants: item.variants || []
+        recipe: item.recipe || []
       });
     } else {
       setCurrentItem(null);
@@ -285,8 +283,7 @@ const MenuManagement = ({ user, onNavigate, onGoBack }) => {
         taxRate: 0,
         hsnCode: '',
         isAvailable: true,
-        recipe: [],
-        variants: []
+        recipe: []
       });
     }
     setShowCustomCategoryInput(false);
@@ -395,13 +392,9 @@ const MenuManagement = ({ user, onNavigate, onGoBack }) => {
           quantityRequired: Number(r.quantityRequired) || 1
         }));
 
-      // Sanitize variants
-      const cleanVariants = (formData.variants || [])
-        .filter(v => v.name?.trim())
-        .map(v => ({ name: v.name.trim(), price: parseFloat(v.price) || 0 }));
-
       const wholesalePricePerKg = parseFloat(formData.wholesalePricePerKg) || price;
       const exportPricePerKg = parseFloat(formData.exportPricePerKg) || wholesalePricePerKg;
+      const baseCuttingFee = parseFloat(formData.cuttingCharge) || 0;
 
       const itemData = {
         ...formData,
@@ -423,7 +416,7 @@ const MenuManagement = ({ user, onNavigate, onGoBack }) => {
             wholesalePrice: parseFloat(formData.sizeGrades?.small?.wholesalePrice) || wholesalePricePerKg,
             exportPrice: parseFloat(formData.sizeGrades?.small?.exportPrice) || exportPricePerKg,
             unit: formData.sizeGrades?.small?.unit || 'kg',
-            cuttingCharge: parseFloat(formData.sizeGrades?.small?.cuttingCharge) || 0
+            cuttingCharge: parseFloat(formData.sizeGrades?.small?.cuttingCharge) || baseCuttingFee
           },
           medium: {
             minKg: parseFloat(formData.sizeGrades?.medium?.minKg) || 1,
@@ -433,7 +426,7 @@ const MenuManagement = ({ user, onNavigate, onGoBack }) => {
             wholesalePrice: parseFloat(formData.sizeGrades?.medium?.wholesalePrice) || wholesalePricePerKg,
             exportPrice: parseFloat(formData.sizeGrades?.medium?.exportPrice) || exportPricePerKg,
             unit: formData.sizeGrades?.medium?.unit || 'kg',
-            cuttingCharge: parseFloat(formData.sizeGrades?.medium?.cuttingCharge) || 0
+            cuttingCharge: parseFloat(formData.sizeGrades?.medium?.cuttingCharge) || baseCuttingFee
           },
           big: {
             minKg: parseFloat(formData.sizeGrades?.big?.minKg) || 4,
@@ -443,18 +436,20 @@ const MenuManagement = ({ user, onNavigate, onGoBack }) => {
             wholesalePrice: parseFloat(formData.sizeGrades?.big?.wholesalePrice) || wholesalePricePerKg,
             exportPrice: parseFloat(formData.sizeGrades?.big?.exportPrice) || exportPricePerKg,
             unit: formData.sizeGrades?.big?.unit || 'kg',
-            cuttingCharge: parseFloat(formData.sizeGrades?.big?.cuttingCharge) || 0
+            cuttingCharge: parseFloat(formData.sizeGrades?.big?.cuttingCharge) || baseCuttingFee
           }
         },
-        customCuttingChargeEnabled: formData.customCuttingChargeEnabled || false,
-        cuttingCharge: parseFloat(formData.cuttingCharge) || 0,
+        customCuttingChargeEnabled: Boolean(formData.customCuttingChargeEnabled),
+        cuttingCharge: baseCuttingFee,
         category: finalCategory,
         image: formatImageUrl(formData.image),
         price,
         taxRate,
-        recipe: cleanRecipe,
-        variants: cleanVariants
+        recipe: cleanRecipe
       };
+
+      // Completely ensure variants and legacy box fields are removed
+      delete itemData.variants;
 
       // Ensure legacy box packing fields are not saved or sent
       delete itemData.boxPackingKg;
@@ -583,9 +578,8 @@ const MenuManagement = ({ user, onNavigate, onGoBack }) => {
         isAvailable: row.isAvailable !== false,
         taxRate: row.taxRate || 0,
         image: row.image || '',
-        variants: Array.isArray(row.variants) ? row.variants : [],
         sizeGrades: row.sizeGrades,
-        customCuttingChargeEnabled: row.customCuttingChargeEnabled || false,
+        customCuttingChargeEnabled: Boolean(row.customCuttingChargeEnabled),
         cuttingCharge: parseFloat(row.cuttingCharge) || 0
       }));
 
@@ -621,14 +615,6 @@ const MenuManagement = ({ user, onNavigate, onGoBack }) => {
           for (const row of rows) {
             if (!row.Name || !row.Price || !row.Category) continue;
 
-            let parsedVariants = [];
-            if (row.Variants) {
-              parsedVariants = row.Variants.split('|').map((v) => {
-                const parts = v.split(':');
-                return { name: parts[0] ? parts[0].trim() : '', price: parseFloat(parts[1]) || 0 };
-              });
-            }
-
             itemsPayload.push({
               name: row.Name.trim(),
               price: parseFloat(row.Price) || 0,
@@ -638,8 +624,7 @@ const MenuManagement = ({ user, onNavigate, onGoBack }) => {
               isAvailable: row['Is Available'] ? row['Is Available'].toLowerCase() === 'yes' : true,
               taxRate: parseFloat(row['Tax Rate']) || 0,
               hsnCode: row['HSN Code'] || '',
-              image: row['Image URL'] || '',
-              variants: parsedVariants
+              image: row['Image URL'] || ''
             });
           }
 
@@ -680,6 +665,21 @@ const MenuManagement = ({ user, onNavigate, onGoBack }) => {
       setToast({ message: `"${item.name}" marked as ${!item.isAvailable ? 'Available' : 'Unavailable'}`, type: 'success' });
     } catch (error) {
       setToast({ message: 'Failed to update availability', type: 'error' });
+    }
+  };
+
+  const handleToggleCuttingCharge = async (item) => {
+    try {
+      const nextStatus = !item.customCuttingChargeEnabled;
+      setItems((prev) => prev.map((i) => i._id === item._id ? { ...i, customCuttingChargeEnabled: nextStatus } : i));
+      await updateMenuItem(item._id, { customCuttingChargeEnabled: nextStatus });
+      setToast({ 
+        message: `Cutting charges ${nextStatus ? 'ENABLED (ON)' : 'DISABLED (OFF)'} for "${item.name}"`, 
+        type: 'success' 
+      });
+    } catch (error) {
+      setItems((prev) => prev.map((i) => i._id === item._id ? { ...i, customCuttingChargeEnabled: item.customCuttingChargeEnabled } : i));
+      setToast({ message: 'Failed to update cutting charge status', type: 'error' });
     }
   };
 
@@ -1255,6 +1255,7 @@ const MenuManagement = ({ user, onNavigate, onGoBack }) => {
                     <th className="px-3 md:px-4 py-2.5 text-xs font-black text-amber-800 dark:text-amber-400 uppercase tracking-wider bg-amber-50/50 dark:bg-amber-950/20">{t("Wholesale (₹/Kg)")}</th>
                     <th className="px-3 md:px-4 py-2.5 text-xs font-black text-blue-800 dark:text-blue-400 uppercase tracking-wider bg-blue-50/50 dark:bg-blue-950/20">{t("Export (₹/Kg)")}</th>
                     <th className="px-3 md:px-4 py-2.5 text-xs font-black text-slate-800 dark:text-slate-200 uppercase tracking-wider">{t("Size Grades & Availability")}</th>
+                    <th className="px-3 md:px-4 py-2.5 text-xs font-black text-indigo-800 dark:text-indigo-400 uppercase tracking-wider bg-indigo-50/50 dark:bg-indigo-950/20 whitespace-nowrap">{t("Cutting Charges (₹)")}</th>
                     <th className="px-3 md:px-4 py-2.5 text-xs font-black text-slate-800 dark:text-slate-200 uppercase tracking-wider">{t("Stock")}</th>
                     <th className="px-3 md:px-4 py-2.5 text-xs font-black text-slate-800 dark:text-slate-200 uppercase tracking-wider text-right">{t("Actions")}</th>
                   </tr>
@@ -1276,13 +1277,14 @@ const MenuManagement = ({ user, onNavigate, onGoBack }) => {
                         <td className="px-3 py-2.5"><div className="w-14 h-3.5 bg-surface-hover rounded"></div></td>
                         <td className="px-3 py-2.5"><div className="w-14 h-3.5 bg-surface-hover rounded"></div></td>
                         <td className="px-3 py-2.5"><div className="w-20 h-3.5 bg-surface-hover rounded"></div></td>
+                        <td className="px-3 py-2.5"><div className="w-20 h-3.5 bg-surface-hover rounded"></div></td>
                         <td className="px-3 py-2.5"><div className="w-12 h-3.5 bg-surface-hover rounded"></div></td>
                         <td className="px-3 py-2.5 text-right"><div className="w-16 h-3.5 bg-surface-hover rounded ml-auto"></div></td>
                       </tr>
                     ))
                   ) : paginatedItems.length === 0 ? (
                     <tr>
-                      <td colSpan="10" className="p-10 text-center text-text-muted">
+                      <td colSpan="11" className="p-10 text-center text-text-muted">
                         <div className="flex flex-col items-center justify-center gap-2">
                           <Loader2 size={24} className={loading ? "animate-spin text-primary" : "hidden"} />
                           <span className="font-medium text-xs">
@@ -1388,39 +1390,70 @@ const MenuManagement = ({ user, onNavigate, onGoBack }) => {
                           <div className="flex items-center gap-1.5">
                             {/* Small */}
                             <span 
-                              title={`Small: ${item.sizeGrades?.small?.minKg ?? 0}-${item.sizeGrades?.small?.maxKg ?? 1} Kg (${item.sizeGrades?.small?.enabled !== false ? 'Available' : 'Unavailable'})`}
-                              className={`px-2 py-0.5 rounded text-[11px] font-black border transition-colors ${
+                              title={`Small (${item.sizeGrades?.small?.minKg ?? 0}-${item.sizeGrades?.small?.maxKg ?? 1} Kg): Retail ₹${item.sizeGrades?.small?.price || item.price}, Wholesale ₹${item.sizeGrades?.small?.wholesalePrice || item.wholesalePricePerKg || '-'}, Export ₹${item.sizeGrades?.small?.exportPrice || item.exportPricePerKg || '-'}`}
+                              className={`px-2 py-0.5 rounded text-[11px] font-black border transition-colors flex items-center gap-1 ${
                                 item.sizeGrades?.small?.enabled !== false 
                                   ? 'bg-emerald-100 text-emerald-900 border-emerald-300 dark:bg-emerald-950 dark:text-emerald-300 dark:border-emerald-700' 
                                   : 'bg-slate-100 text-slate-400 border-slate-200 line-through'
                               }`}
                             >
-                              S
+                              S <span className="font-mono text-[10px] font-semibold text-emerald-800 dark:text-emerald-300">₹{item.sizeGrades?.small?.price || item.price}</span>
                             </span>
 
                             {/* Medium */}
                             <span 
-                              title={`Medium: ${item.sizeGrades?.medium?.minKg ?? 1}-${item.sizeGrades?.medium?.maxKg ?? 4} Kg (${item.sizeGrades?.medium?.enabled !== false ? 'Available' : 'Unavailable'})`}
-                              className={`px-2 py-0.5 rounded text-[11px] font-black border transition-colors ${
+                              title={`Medium (${item.sizeGrades?.medium?.minKg ?? 1}-${item.sizeGrades?.medium?.maxKg ?? 4} Kg): Retail ₹${item.sizeGrades?.medium?.price || item.price}, Wholesale ₹${item.sizeGrades?.medium?.wholesalePrice || item.wholesalePricePerKg || '-'}, Export ₹${item.sizeGrades?.medium?.exportPrice || item.exportPricePerKg || '-'}`}
+                              className={`px-2 py-0.5 rounded text-[11px] font-black border transition-colors flex items-center gap-1 ${
                                 item.sizeGrades?.medium?.enabled !== false 
                                   ? 'bg-amber-100 text-amber-900 border-amber-300 dark:bg-amber-950 dark:text-amber-300 dark:border-amber-700' 
                                   : 'bg-slate-100 text-slate-400 border-slate-200 line-through'
                               }`}
                             >
-                              M
+                              M <span className="font-mono text-[10px] font-semibold text-amber-800 dark:text-amber-300">₹{item.sizeGrades?.medium?.price || item.price}</span>
                             </span>
 
                             {/* Big */}
                             <span 
-                              title={`Big: ${item.sizeGrades?.big?.minKg ?? 4}+ Kg (${item.sizeGrades?.big?.enabled !== false ? 'Available' : 'Unavailable'})`}
-                              className={`px-2 py-0.5 rounded text-[11px] font-black border transition-colors ${
+                              title={`Big (${item.sizeGrades?.big?.minKg ?? 4}+ Kg): Retail ₹${item.sizeGrades?.big?.price || item.price}, Wholesale ₹${item.sizeGrades?.big?.wholesalePrice || item.wholesalePricePerKg || '-'}, Export ₹${item.sizeGrades?.big?.exportPrice || item.exportPricePerKg || '-'}`}
+                              className={`px-2 py-0.5 rounded text-[11px] font-black border transition-colors flex items-center gap-1 ${
                                 item.sizeGrades?.big?.enabled !== false 
                                   ? 'bg-blue-100 text-blue-900 border-blue-300 dark:bg-blue-950 dark:text-blue-300 dark:border-blue-700' 
                                   : 'bg-slate-100 text-slate-400 border-slate-200 line-through'
                               }`}
                             >
-                              B
+                              B <span className="font-mono text-[10px] font-semibold text-blue-800 dark:text-blue-300">₹{item.sizeGrades?.big?.price || item.price}</span>
                             </span>
+                          </div>
+                        </td>
+                        {/* Cutting Charges (₹) */}
+                        <td className="px-3 md:px-4 py-2.5 whitespace-nowrap bg-indigo-50/20 dark:bg-indigo-950/10">
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={() => handleToggleCuttingCharge(item)}
+                              title={item.customCuttingChargeEnabled ? t("Turn Cutting Charges OFF") : t("Turn Cutting Charges ON")}
+                              className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none shrink-0 cursor-pointer ${
+                                item.customCuttingChargeEnabled ? 'bg-emerald-500' : 'bg-slate-300 dark:bg-slate-700'
+                              }`}
+                            >
+                              <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow-sm transition-transform ${
+                                item.customCuttingChargeEnabled ? 'translate-x-4.5' : 'translate-x-1'
+                              }`} />
+                            </button>
+                            {item.customCuttingChargeEnabled ? (
+                              <div className="flex flex-col text-[11px] leading-tight">
+                                <span className="font-bold text-emerald-700 dark:text-emerald-400">
+                                  ON <span className="font-semibold text-slate-700 dark:text-slate-300 font-mono">(Base: ₹{item.cuttingCharge || 0})</span>
+                                </span>
+                                <span className="text-[10px] text-slate-500 dark:text-slate-400 font-mono">
+                                  S:₹{item.sizeGrades?.small?.cuttingCharge ?? item.cuttingCharge ?? 0} • M:₹{item.sizeGrades?.medium?.cuttingCharge ?? item.cuttingCharge ?? 0} • B:₹{item.sizeGrades?.big?.cuttingCharge ?? item.cuttingCharge ?? 0}
+                                </span>
+                              </div>
+                            ) : (
+                              <div className="flex flex-col text-[11px] leading-tight text-slate-400">
+                                <span className="font-bold text-slate-400">OFF</span>
+                                <span className="text-[10px]">No cutting fee</span>
+                              </div>
+                            )}
                           </div>
                         </td>
                         {/* Stock */}
@@ -2257,7 +2290,18 @@ const MenuManagement = ({ user, onNavigate, onGoBack }) => {
                         onWheel={(e) => e.target.blur()}
                         placeholder="0"
                         value={formData.cuttingCharge ?? ''}
-                        onChange={(e) => setFormData({ ...formData, cuttingCharge: e.target.value })}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setFormData(prev => {
+                            const updatedGrades = { ...prev.sizeGrades };
+                            ['small', 'medium', 'big'].forEach(gk => {
+                              if (!updatedGrades[gk]?.cuttingCharge || updatedGrades[gk].cuttingCharge === prev.cuttingCharge) {
+                                updatedGrades[gk] = { ...updatedGrades[gk], cuttingCharge: val };
+                              }
+                            });
+                            return { ...prev, cuttingCharge: val, sizeGrades: updatedGrades };
+                          });
+                        }}
                         className="w-20 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded px-1.5 py-1 text-center font-bold text-xs text-slate-800 dark:text-slate-200 focus:outline-none focus:border-amber-500"
                       />
                       <span className="text-[10px] text-slate-400">{t("per step")}</span>
@@ -2283,62 +2327,6 @@ const MenuManagement = ({ user, onNavigate, onGoBack }) => {
                     </div>
                   </div>
                 )}
-              </div>
-
-              {/* 11. Variants / Variety */}
-              <div className="space-y-1.5 border-t border-border pt-2">
-                <div className="flex justify-between items-center">
-                  <label className="text-[11px] sm:text-xs font-black text-slate-800 dark:text-slate-200">
-                    {t("Variants / Variety")} <span className="text-[10px] text-text-muted font-normal">(e.g. Tiger, Red Prawn, Vannamei)</span>
-                  </label>
-                  <button
-                    type="button"
-                    onClick={() => setFormData({ ...formData, variants: [...(formData.variants || []), { name: '', price: '' }] })}
-                    className="text-xs text-primary font-bold hover:underline cursor-pointer"
-                  >
-                    + Add Variant
-                  </button>
-                </div>
-                {(formData.variants || []).map((variant, vIdx) => (
-                  <div key={vIdx} className="flex gap-2 items-center">
-                    <input
-                      type="text"
-                      placeholder="Variant name (e.g. Tiger, Red Prawn)"
-                      value={variant.name}
-                      onChange={(e) => {
-                        const newVariants = [...formData.variants];
-                        newVariants[vIdx] = { ...newVariants[vIdx], name: e.target.value };
-                        setFormData({ ...formData, variants: newVariants });
-                      }}
-                      className="flex-1 bg-background border border-border rounded-lg px-2.5 py-1 text-xs text-text-main focus:outline-none focus:border-primary"
-                    />
-                    <input
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      onWheel={(e) => e.target.blur()}
-                      onKeyDown={(e) => { if (e.key === '-' || e.key === 'e' || e.key === 'E') e.preventDefault(); }}
-                      placeholder="Price ₹/Kg"
-                      value={variant.price}
-                      onChange={(e) => {
-                        const v = e.target.value;
-                        if (v === '' || parseFloat(v) >= 0) {
-                          const newVariants = [...formData.variants];
-                          newVariants[vIdx] = { ...newVariants[vIdx], price: v };
-                          setFormData({ ...formData, variants: newVariants });
-                        }
-                      }}
-                      className="w-24 bg-background border border-border rounded-lg px-2.5 py-1 text-xs text-text-main focus:outline-none focus:border-primary font-bold"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setFormData({ ...formData, variants: formData.variants.filter((_, i) => i !== vIdx) })}
-                      className="text-danger p-1 cursor-pointer shrink-0"
-                    >
-                      <X size={14} />
-                    </button>
-                  </div>
-                ))}
               </div>
 
               {/* Submit Button */}

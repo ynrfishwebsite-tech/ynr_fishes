@@ -72,6 +72,7 @@ const Settings = ({ user, setUser, onNavigate, onGoBack }) => {
     autoSendTime2: '22:30',
     enableGlobalNotifications: true,
     defaultBillingLayout: 'grid',
+    enableBillAnimation: true,
     receiptCustomerDisplay: {
       retail: { enabled: true, showName: true, showPhone: true, showAddress: false, showShopName: false },
       wholesale: { enabled: true, showName: true, showPhone: true, showAddress: true, showShopName: true },
@@ -966,6 +967,40 @@ const Settings = ({ user, setUser, onNavigate, onGoBack }) => {
                       {t("Silent printing is only available in the Desktop App and Android Bluetooth mode. In the web version, a print dialog will always appear.")}
                     </p>
                   )}
+
+                  {/* Bill Receipt Animation Toggle */}
+                  <div className="flex items-center justify-between pt-2 border-t border-border mt-2">
+                    <div className="space-y-0.5">
+                      <label className="text-sm font-semibold text-text-main flex items-center gap-2">
+                        🎉 {t("Bill Receipt Animation")}
+                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${settings.enableBillAnimation !== false ? 'bg-emerald-100 text-emerald-700 border-emerald-300' : 'bg-slate-100 text-slate-500 border-slate-300'}`}>
+                          {settings.enableBillAnimation !== false ? t('ON') : t('OFF')}
+                        </span>
+                      </label>
+                      <p className="text-xs text-text-muted">
+                        {t("Show the 3D roller unroll animation when a bill receipt opens. Turn OFF for instant display.")}
+                      </p>
+                    </div>
+                    <label className="relative inline-flex items-center cursor-pointer select-none shrink-0">
+                      <input
+                        type="checkbox"
+                        className="sr-only"
+                        checked={settings.enableBillAnimation !== false}
+                        onChange={(e) => {
+                          handleInputChange('enableBillAnimation', e.target.checked);
+                          try {
+                            const resto = JSON.parse(localStorage.getItem('restaurantSettings') || '{}');
+                            resto.enableBillAnimation = e.target.checked;
+                            localStorage.setItem('restaurantSettings', JSON.stringify(resto));
+                            window.dispatchEvent(new CustomEvent('settingsUpdated', { detail: { ...settings, enableBillAnimation: e.target.checked } }));
+                          } catch (_) {}
+                        }}
+                      />
+                      <div className={`w-11 h-6 rounded-full transition-colors relative flex items-center p-0.5 ${settings.enableBillAnimation !== false ? 'bg-primary' : 'bg-gray-300'}`}>
+                        <div className={`w-5 h-5 bg-white rounded-full shadow-md transform transition-transform ${settings.enableBillAnimation !== false ? 'translate-x-5' : 'translate-x-0'}`} />
+                      </div>
+                    </label>
+                  </div>
                 </div>
               </div>
             )}

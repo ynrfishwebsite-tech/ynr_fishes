@@ -2327,9 +2327,9 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
       if (match) {
         const cancelledQty = i.cancelledQuantity || 0;
         const activeQty = Math.max(0, (i.quantity || 0) - cancelledQty);
-        const newActiveQty = Math.max(0, activeQty + delta);
+        const newActiveQty = Math.max(0, Math.round((activeQty + delta) * 1000) / 1000);
         // Store back as historical total + cancelled so BillSummary's (quantity - cancelledQuantity) = newActiveQty
-        const newRawQty = newActiveQty + cancelledQty;
+        const newRawQty = Math.round((newActiveQty + cancelledQty) * 1000) / 1000;
         if (newActiveQty === 0) {
           if ((i.printedQuantity || 0) > 0) {
             showToast(`${i.name} marked for cancellation (Print Slip)`, 'info');
@@ -2339,8 +2339,9 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
         }
         const unitPrice = Number(i.pricePerKg || i.price || 0);
         const newTotal = Number((unitPrice * newActiveQty).toFixed(2));
+        const isKg = i.sellingUnit !== 'Piece' && i.sellingUnit !== 'piece' && i.sellingUnit !== 'packet';
         const baseUnitWeight = (activeQty > 0 && i.enteredWeight) ? (Number(i.enteredWeight) / activeQty) : Number(i.weightKg || i.enteredWeight || 1);
-        const newWeight = Number((baseUnitWeight * newActiveQty).toFixed(3));
+        const newWeight = isKg ? newActiveQty : Number((baseUnitWeight * newActiveQty).toFixed(3));
         return {
           ...i,
           quantity: newRawQty,
@@ -2774,162 +2775,86 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
     }
   };
 
-  const totalCartFishWeight = useMemo(() => {
-    // Only Retail orders have cutting charges
-    if (fishOrderMode !== 'individual') return 0;
+  // Dynamic Per-Item & Mixed-Item cutting charge calculation
+  const dynamicSuggestedCuttingCharge = useMemo(() => {
+    if (fishOrderMode !== 'individual' || !cart || cart.length === 0) return 0;
     try {
       const s = JSON.parse(localStorage.getItem('restaurantSettings') || '{}');
       const speciesToggles = s.cuttingSpeciesToggles || { fish: true, prawn: true, crab: true };
-      return cart.reduce((sum, item) => {
-        if (item.isCancelled) return sum;
-        if (item.orderMode && item.orderMode !== 'individual') return sum;
+      const defaultRate = Number(s.cuttingChargePerKg) > 0 ? Number(s.cuttingChargePerKg) : 10;
+      const tier1Max = 1.5;
+
+      let total = 0;
+      cart.forEach(item => {
+        if (item.isCancelled) return;
+        if (item.orderMode && item.orderMode !== 'individual') return;
         const sp = (item.speciesType || 'fish').toLowerCase();
-        if (speciesToggles[sp] === false) return sum;
+        if (speciesToggles[sp] === false) return;
 
-        // 1. Skip Whole / uncut fish (bought whole without cutting)
-        const cut = (item.cutType || item.cuttingStyle || '').toLowerCase();
-        const rawName = (item.name || '').toLowerCase();
-        if (cut.includes('whole') || rawName.includes('(whole') || rawName.includes('- whole')) {
-          return sum;
-        }
-
-        // 2. Skip if cutting charges are explicitly toggled OFF / stopped for this fish
-        if (item.customCuttingChargeEnabled === false) {
-          return sum;
-        }
+        // Skip if explicitly toggled OFF for this item in database
+        if (item.customCuttingChargeEnabled === false) return;
 
         const w = parseFloat(item.enteredWeight || item.netWeightKg || item.weightKg || (item.sellingUnit === 'Kg' ? item.quantity : 0) || 0);
-        return sum + w;
-      }, 0);
+        if (w <= 0) return;
+
+        const gradeKey = item.sizeGrade || 'medium';
+        const gradeCut = parseFloat(item.sizeGrades?.[gradeKey]?.cuttingCharge);
+        const itemCut = parseFloat(item.cuttingCharge);
+        
+        let cutRate = 0;
+        if (gradeCut > 0) {
+          cutRate = gradeCut;
+        } else if (itemCut > 0) {
+          cutRate = itemCut;
+        } else if (item.customCuttingChargeEnabled === true) {
+          cutRate = defaultRate;
+        } else if (s.enableCuttingCharges === true) {
+          // If global cutting charges are on, check if not whole
+          const cut = (item.cutType || item.cuttingStyle || '').toLowerCase();
+          if (!cut.includes('whole')) cutRate = defaultRate;
+        }
+
+        if (cutRate > 0) {
+          const steps = w <= tier1Max ? 1 : 1 + Math.ceil(w - tier1Max);
+          total += steps * cutRate;
+        }
+      });
+      return Math.round(total);
     } catch {
-      return cart.reduce((sum, item) => {
-        if (item.isCancelled) return sum;
-        if (item.orderMode && item.orderMode !== 'individual') return sum;
-        const cut = (item.cutType || item.cuttingStyle || '').toLowerCase();
-        const rawName = (item.name || '').toLowerCase();
-        if (cut.includes('whole') || rawName.includes('(whole') || rawName.includes('- whole')) return sum;
-        if (item.customCuttingChargeEnabled === false) return sum;
-        const w = parseFloat(item.enteredWeight || item.netWeightKg || item.weightKg || (item.sellingUnit === 'Kg' ? item.quantity : 0) || 0);
-        return sum + w;
-      }, 0);
+      return 0;
     }
   }, [cart, fishOrderMode]);
 
-  const activeCuttingRate = useMemo(() => {
-    try {
-      const s = JSON.parse(localStorage.getItem('restaurantSettings') || '{}');
-      return Number(s.cuttingChargePerKg) > 0 ? Number(s.cuttingChargePerKg) : 10;
-    } catch { return 10; }
-  }, []);
+  const totalCartFishWeight = useMemo(() => {
+    if (fishOrderMode !== 'individual' || !cart) return 0;
+    return cart.reduce((sum, item) => {
+      if (item.isCancelled) return sum;
+      if (item.orderMode && item.orderMode !== 'individual') return sum;
+      const w = parseFloat(item.enteredWeight || item.netWeightKg || item.weightKg || (item.sellingUnit === 'Kg' ? item.quantity : 0) || 0);
+      return sum + w;
+    }, 0);
+  }, [cart, fishOrderMode]);
 
-  // Force reset cutting charge whenever switching to Wholesale or Export mode
+  // Keep cuttingCharge in sync with dynamic calculation when enabled
   useEffect(() => {
     if (fishOrderMode !== 'individual') {
-      if (cuttingCharge !== '0' && cuttingCharge !== 0 && cuttingCharge !== '') {
-        setCuttingCharge('0');
-      }
-      if (isCuttingChargeEnabled) {
-        setIsCuttingChargeEnabled(false);
-      }
-    }
-  }, [fishOrderMode]);
-
-  useEffect(() => {
-    // Strictly zero out cutting charges in Wholesale or Export
-    if (fishOrderMode !== 'individual') {
-      if (cuttingCharge !== '0' && cuttingCharge !== 0 && cuttingCharge !== '') {
-        setCuttingCharge('0');
-      }
-      if (isCuttingChargeEnabled) {
-        setIsCuttingChargeEnabled(false);
-      }
+      if (cuttingCharge !== '0' && cuttingCharge !== 0 && cuttingCharge !== '') setCuttingCharge('0');
+      if (isCuttingChargeEnabled) setIsCuttingChargeEnabled(false);
       return;
     }
 
-    // If no eligible fish weight for cutting in cart (or whole fish / stopped fish), force 0 cutting charge
-    if (totalCartFishWeight === 0) {
-      if (cuttingCharge !== '0' && cuttingCharge !== 0 && cuttingCharge !== '') {
-        setCuttingCharge('0');
+    if (dynamicSuggestedCuttingCharge > 0) {
+      if (!isCuttingChargeEnabled && cuttingCharge === '0') {
+        setIsCuttingChargeEnabled(true);
+        setCuttingCharge(String(dynamicSuggestedCuttingCharge));
+      } else if (isCuttingChargeEnabled) {
+        setCuttingCharge(String(dynamicSuggestedCuttingCharge));
       }
-      return;
-    }
-
-    if (isCuttingChargeEnabled && totalCartFishWeight > 0) {
-      // Calculate taking into account custom per-item / per-grade cutting charges
-      try {
-        const s = JSON.parse(localStorage.getItem('restaurantSettings') || '{}');
-        const speciesToggles = s.cuttingSpeciesToggles || { fish: true, prawn: true, crab: true };
-        const baseRate = activeCuttingRate;
-        const tiers = s.cuttingTiers || [
-          { label: 'Tier 1', maxKg: 1.5, multiplier: 1 },
-          { label: 'Tier 2', maxKg: 2.5, multiplier: 2 },
-          { label: 'Tier 3', maxKg: 3.5, multiplier: 3 },
-          { label: 'Extra', extraPerKg: true, multiplier: 1 }
-        ];
-        const tier1Max = Number(tiers[0]?.maxKg) || 1.5;
-        const tier2Max = Number(tiers[1]?.maxKg) || 2.5;
-        const tier3Max = Number(tiers[2]?.maxKg) || 3.5;
-
-        let customTotal = 0;
-        let standardWeight = 0;
-
-        cart.forEach(item => {
-          if (item.isCancelled) return;
-          if (item.orderMode && item.orderMode !== 'individual') return;
-          const sp = (item.speciesType || 'fish').toLowerCase();
-          if (speciesToggles[sp] === false) return;
-
-          // 1. Whole fish is uncut - strictly 0 cutting charge
-          const cut = (item.cutType || item.cuttingStyle || '').toLowerCase();
-          const rawName = (item.name || '').toLowerCase();
-          if (cut.includes('whole') || rawName.includes('(whole') || rawName.includes('- whole')) {
-            return;
-          }
-
-          // 2. Explicitly toggled OFF / stopped for this fish
-          if (item.customCuttingChargeEnabled === false) {
-            return;
-          }
-
-          const w = parseFloat(item.enteredWeight || item.netWeightKg || item.weightKg || (item.sellingUnit === 'Kg' ? item.quantity : 0) || 0);
-          if (w <= 0) return;
-
-          const gradeKey = item.sizeGrade || 'medium';
-          const gradeCut = parseFloat(item.sizeGrades?.[gradeKey]?.cuttingCharge);
-          const itemCut = parseFloat(item.cuttingCharge);
-          const cutRate = gradeCut > 0 ? gradeCut : (itemCut > 0 ? itemCut : 0);
-
-          if (item.customCuttingChargeEnabled) {
-            if (cutRate > 0) {
-              const steps = w <= tier1Max ? 1 : (1 + Math.ceil(w - tier1Max));
-              customTotal += steps * cutRate;
-            } else {
-              // Explicitly 0 cutting charge for this item
-              return;
-            }
-          } else {
-            standardWeight += w;
-          }
-        });
-
-        let standardCharge = 0;
-        if (standardWeight > 0) {
-          if (standardWeight <= tier1Max) standardCharge = baseRate;
-          else if (standardWeight <= tier2Max) standardCharge = baseRate * 2;
-          else if (standardWeight <= tier3Max) standardCharge = baseRate * 3;
-          else standardCharge = baseRate * (3 + Math.ceil(standardWeight - tier3Max));
-        }
-
-        const calculated = Math.round(customTotal + standardCharge);
-        setCuttingCharge(String(calculated));
-      } catch {
-        const calculated = calculateCuttingCharge(totalCartFishWeight, activeCuttingRate);
-        setCuttingCharge(String(calculated));
-      }
-    } else if (isCuttingChargeEnabled && totalCartFishWeight === 0) {
+    } else if (cart.length === 0) {
       setCuttingCharge('0');
+      setIsCuttingChargeEnabled(false);
     }
-  }, [isCuttingChargeEnabled, totalCartFishWeight, activeCuttingRate, cart, fishOrderMode]);
+  }, [dynamicSuggestedCuttingCharge, isCuttingChargeEnabled, cart.length, fishOrderMode]);
 
   // Immediately resets all state for a clean NEW ORDER (no premature placeholder numbers)
   const handleCreateNewOrder = useCallback(() => {
