@@ -71,30 +71,42 @@ export default function WholesaleOrderWizardModal({
     ? 'bg-blue-600 text-white' 
     : 'bg-gradient-to-r from-amber-600 to-orange-600 text-white';
 
+  // ── LocalStorage State Persistence: Survives full browser refresh across all 3 steps ──
+  const STORAGE_KEY = `wholesale_wizard_data_${fishOrderMode || 'bulk'}`;
+
+  const savedWizardData = useMemo(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      return saved ? JSON.parse(saved) : null;
+    } catch {
+      return null;
+    }
+  }, [STORAGE_KEY]);
+
   // ── Step State: 1 = Fish & Weight, 2 = Customer Cards, 3 = Overall Preview ──
-  const [currentStep, setCurrentStep] = useState(1);
+  const [currentStep, setCurrentStep] = useState(() => savedWizardData?.currentStep || 1);
 
   // ── Step 1: Selected Fish & Weights ──
-  const [selectedFish, setSelectedFish] = useState(() => initialFish || availableFishList[0] || null);
-  const [sizeGrade, setSizeGrade] = useState('medium');
-  const [weightKg, setWeightKg] = useState('1'); // Initial weight default is 1 Kg
-  const [weightGrams, setWeightGrams] = useState('');
-  const [boxesCount, setBoxesCount] = useState('1');
-  const [ratePerKg, setRatePerKg] = useState('');
+  const [selectedFish, setSelectedFish] = useState(() => savedWizardData?.selectedFish || initialFish || availableFishList[0] || null);
+  const [sizeGrade, setSizeGrade] = useState(() => savedWizardData?.sizeGrade || 'medium');
+  const [weightKg, setWeightKg] = useState(() => savedWizardData?.weightKg ?? '1'); // Initial weight default is 1 Kg
+  const [weightGrams, setWeightGrams] = useState(() => savedWizardData?.weightGrams ?? '');
+  const [boxesCount, setBoxesCount] = useState(() => savedWizardData?.boxesCount ?? '1');
+  const [ratePerKg, setRatePerKg] = useState(() => savedWizardData?.ratePerKg ?? '');
   // ── Flexible Lot Charges with Cr. / Dr. and Custom Category Support ──
-  const [lotCharges, setLotCharges] = useState([
+  const [lotCharges, setLotCharges] = useState(() => savedWizardData?.lotCharges || [
     { id: 'ice', name: 'Ice', amount: '', type: 'Cr', isCustom: false },
     { id: 'box', name: 'Boxes', amount: '', type: 'Cr', isCustom: false },
     { id: 'trans', name: 'Trans', amount: '', type: 'Cr', isCustom: false }
   ]);
   const [showAddChargeInput, setShowAddChargeInput] = useState(false);
   const [newCustomChargeName, setNewCustomChargeName] = useState('');
-  const [notes, setNotes] = useState('');
+  const [notes, setNotes] = useState(() => savedWizardData?.notes ?? '');
 
   // ── Step 3: Rate, Discount & Total Handlers ──
-  const [discountType, setDiscountType] = useState('flat'); // 'flat' (₹) | 'percentage' (%)
-  const [discountValue, setDiscountValue] = useState('');
-  const [editableTotal, setEditableTotal] = useState('');
+  const [discountType, setDiscountType] = useState(() => savedWizardData?.discountType || 'flat'); // 'flat' (₹) | 'percentage' (%)
+  const [discountValue, setDiscountValue] = useState(() => savedWizardData?.discountValue ?? '');
+  const [editableTotal, setEditableTotal] = useState(() => savedWizardData?.editableTotal ?? '');
   const step2ContainerRef = useRef(null);
 
   // Number input focus helper: if value is '0' or '0.00', clear to empty string immediately; otherwise select text
@@ -144,7 +156,7 @@ export default function WholesaleOrderWizardModal({
   };
 
   // ── Step 2: Customer Card Selection & Search ──
-  const [selectedCustomer, setSelectedCustomer] = useState(null);
+  const [selectedCustomer, setSelectedCustomer] = useState(() => savedWizardData?.selectedCustomer || null);
   const [customerSearch, setCustomerSearch] = useState('');
   const [exportSubFilter, setExportSubFilter] = useState('All');
   // Local presence overrides map: phone or ID -> 'Present' | 'Absent'
@@ -155,9 +167,56 @@ export default function WholesaleOrderWizardModal({
   const [lastSavedSummary, setLastSavedSummary] = useState(null);
   const [isSaving, setIsSaving] = useState(false);
 
+  // Auto-save wizard state to localStorage across all steps so browser reload never erases entered data
+  useEffect(() => {
+    try {
+      const dataToSave = {
+        currentStep,
+        selectedFish,
+        sizeGrade,
+        weightKg,
+        weightGrams,
+        boxesCount,
+        ratePerKg,
+        lotCharges,
+        notes,
+        selectedCustomer,
+        discountType,
+        discountValue,
+        editableTotal,
+      };
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(dataToSave));
+    } catch (e) {}
+  }, [
+    STORAGE_KEY,
+    currentStep,
+    selectedFish,
+    sizeGrade,
+    weightKg,
+    weightGrams,
+    boxesCount,
+    ratePerKg,
+    lotCharges,
+    notes,
+    selectedCustomer,
+    discountType,
+    discountValue,
+    editableTotal,
+  ]);
+
+  const handleCloseWizard = () => {
+    try {
+      localStorage.removeItem(STORAGE_KEY);
+      localStorage.removeItem('billing_show_wholesale_wizard');
+      localStorage.removeItem('billing_wholesale_wizard_fish');
+      localStorage.removeItem('billing_wholesale_available_fish');
+    } catch (e) {}
+    if (onClose) onClose();
+  };
+
   // Sync initial fish if prop changes
   useEffect(() => {
-    if (initialFish) {
+    if (initialFish && (!selectedFish || initialFish._id !== selectedFish._id)) {
       setSelectedFish(initialFish);
     }
   }, [initialFish]);
@@ -638,7 +697,7 @@ export default function WholesaleOrderWizardModal({
   };
 
   return (
-    <div className="w-full h-full flex flex-col bg-[#FDFBF7] text-slate-800 flex-1 overflow-hidden min-h-0">
+    <div className="w-full flex-1 flex flex-col bg-[#FDFBF7] text-slate-800 overflow-hidden min-h-0 relative">
       {/* ── Direct Page Header & Breadcrumb Tracker ── */}
       <div className="bg-[#FAF0E4] border-b border-[#fed7aa] px-2.5 sm:px-4 py-1.5 sm:py-2 flex items-center justify-between shrink-0 sticky top-0 z-20 shadow-2xs">
         <div className="flex items-center gap-1.5 sm:gap-2.5 flex-wrap">
@@ -678,7 +737,7 @@ export default function WholesaleOrderWizardModal({
           </span>
           <button
             type="button"
-            onClick={onClose}
+            onClick={handleCloseWizard}
             className="p-1 rounded-lg bg-white hover:bg-slate-200 text-slate-500 hover:text-slate-900 border border-[#E8DCCB] transition-all cursor-pointer shadow-2xs"
             title="Exit Wholesale Order Page"
           >
@@ -689,10 +748,10 @@ export default function WholesaleOrderWizardModal({
 
         {/* ── Step 1: All Menu Items / Fish Selection & Weight Details ── */}
         {currentStep === 1 && (
-          <div className="flex-1 overflow-y-auto p-2.5 sm:p-4 space-y-2.5 sm:space-y-3 min-h-0 touch-pan-y overscroll-contain pb-24">
+          <div className="flex-1 overflow-y-auto p-2.5 sm:p-4 space-y-2.5 sm:space-y-3 min-h-0 touch-pan-y overscroll-contain pb-12 sm:pb-16">
             {/* Top: Big Fish Photo Hero Banner (Entire Image Without Cropping, Badges Below Information) */}
             <div className="bg-white rounded-2xl border border-[#E8DCCB] shadow-2xs overflow-hidden">
-              <div className="w-full h-44 sm:h-56 bg-slate-50 flex items-center justify-center p-2 overflow-hidden">
+              <div className="w-full h-32 sm:h-44 md:h-52 bg-slate-50 flex items-center justify-center p-2 overflow-hidden">
                 {selectedFish?.image ? (
                   <img 
                     src={formatImageUrl(selectedFish.image)} 
@@ -1053,7 +1112,7 @@ export default function WholesaleOrderWizardModal({
 
         {/* ── Step 2: Customer Details Card Modal Type (Cards Grid, NOT Dropdown) ── */}
         {currentStep === 2 && (
-          <div ref={step2ContainerRef} className="flex-1 overflow-y-auto p-2.5 sm:p-4 flex flex-col space-y-2 sm:space-y-2.5 min-h-0 touch-pan-y overscroll-contain pb-24">
+          <div ref={step2ContainerRef} className="flex-1 overflow-y-auto p-2.5 sm:p-4 flex flex-col space-y-2 sm:space-y-2.5 min-h-0 touch-pan-y overscroll-contain pb-12 sm:pb-16">
             {/* Top Toolbar: Search & Attendance Counters */}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 bg-white p-2 sm:p-2.5 rounded-xl border border-[#E8DCCB] shadow-2xs shrink-0">
               <div className="relative flex-1">
@@ -1120,40 +1179,38 @@ export default function WholesaleOrderWizardModal({
               </div>
             )}
 
-            {/* Preserved Fish Banner reminder - Ultra Compact */}
-            <div className="bg-amber-50/95 px-2.5 py-1 sm:py-1.5 rounded-xl border border-amber-300 flex items-center justify-between gap-1.5 text-[11px] sm:text-xs text-amber-950 font-bold shrink-0 shadow-2xs">
-              <div className="flex items-center gap-1.5 truncate">
-                <span className="text-[9.5px] px-1.5 py-0.2 rounded bg-amber-200/90 text-amber-900 font-black uppercase shrink-0">Assigning</span>
-                <span className="truncate text-slate-900 font-black">
-                  {selectedFish?.name} • <span className="font-mono text-emerald-800">{totalNetKg.toFixed(2)} Kg</span>
-                  <span className="text-slate-500 font-medium ml-1">({sizeGrade} @ ₹{ratePerKg})</span>
-                </span>
-                {selectedCustomer && (
-                  <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded-md bg-emerald-100 text-emerald-900 font-black border border-emerald-300 text-[10.5px] shrink-0">
-                    <span className="truncate max-w-[90px]">{selectedCustomer.name}</span>
+            {/* Preserved Fish Banner reminder - Clean 2-Row Layout */}
+            <div className="bg-amber-50/95 px-2.5 sm:px-3 py-1.5 rounded-xl border border-amber-300 flex flex-col gap-1 text-[11px] sm:text-xs text-amber-950 font-bold shrink-0 shadow-2xs">
+              {/* Row 1: Assigning fish info and total price */}
+              <div className="flex items-center justify-between gap-1.5">
+                <div className="flex items-center gap-1.5 truncate">
+                  <span className="text-[9px] sm:text-[9.5px] px-1.5 py-0.2 rounded bg-amber-200/90 text-amber-900 font-black uppercase shrink-0">Assigning</span>
+                  <span className="truncate text-slate-900 font-black text-[11px] sm:text-xs">
+                    {selectedFish?.name} • <span className="font-mono text-emerald-800">{totalNetKg.toFixed(2)} Kg</span>
+                    <span className="text-slate-500 font-medium ml-1">({sizeGrade} @ ₹{ratePerKg})</span>
+                  </span>
+                </div>
+                <div className="font-mono font-black text-[#ea580c] shrink-0 text-xs sm:text-sm">
+                  ₹{grandItemTotal.toFixed(0)}
+                </div>
+              </div>
+
+              {/* Row 2: Selected Dealer Badge (Single Clear ✕ Button, no extra Clear link) */}
+              {selectedCustomer && (
+                <div className="flex items-center gap-1.5 pt-0.5 border-t border-amber-200/60">
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md bg-emerald-100 text-emerald-950 font-black border border-emerald-300 text-xs shadow-2xs">
+                    <span>Dealer: <strong className="text-emerald-900">{selectedCustomer.name}</strong></span>
                     <button
                       type="button"
                       onClick={(e) => { e.stopPropagation(); setSelectedCustomer(null); }}
-                      className="hover:text-red-600 p-0.2 cursor-pointer"
+                      className="text-emerald-700 hover:text-red-600 hover:bg-emerald-200/80 rounded-full p-0.5 transition-colors cursor-pointer ml-0.5"
                       title="Clear selected dealer"
                     >
-                      <X size={10} />
+                      <X size={12} strokeWidth={2.5} />
                     </button>
                   </span>
-                )}
-              </div>
-              <div className="flex items-center gap-1.5 font-mono font-black text-[#ea580c] shrink-0 text-xs sm:text-sm">
-                <span>₹{grandItemTotal.toFixed(0)}</span>
-                {selectedCustomer && (
-                  <button
-                    type="button"
-                    onClick={(e) => { e.stopPropagation(); setSelectedCustomer(null); }}
-                    className="text-[9.5px] font-sans font-bold text-red-600 hover:text-red-800 underline cursor-pointer"
-                  >
-                    Clear
-                  </button>
-                )}
-              </div>
+                </div>
+              )}
             </div>
 
             {/* Grid of Customer Cards */}
@@ -1288,7 +1345,7 @@ export default function WholesaleOrderWizardModal({
 
         {/* ── Step 3: Combined View in Table Format (Single Overview Page on Mobile) ── */}
         {currentStep === 3 && (
-          <div className="flex-1 overflow-y-auto p-2.5 sm:p-4 space-y-2.5 min-h-0 touch-pan-y overscroll-contain pb-28">
+          <div className="flex-1 overflow-y-auto p-2.5 sm:p-4 space-y-2.5 min-h-0 touch-pan-y overscroll-contain pb-12 sm:pb-16">
             {/* Top Cards: BIG Images & BIG Names for Customer & Seafood Catch (Entire Images Uncropped, Badges Below Information) */}
             <div className="grid grid-cols-2 gap-2.5 sm:gap-4">
               {/* Left: Dealer Customer with Entire Uncropped Image, Info & Badges Below */}
@@ -1567,14 +1624,14 @@ export default function WholesaleOrderWizardModal({
           </div>
         )}
 
-        {/* ── Page Footer with Responsive Compact Action Buttons (Always Sticky at Bottom) ── */}
-        <div className="bg-[#FAF0E4] border-t border-[#fed7aa] px-3 sm:px-5 py-2 sm:py-2.5 flex items-center justify-between shrink-0 shadow-md sticky bottom-0 z-20">
+        {/* ── Page Footer with Responsive Compact Action Buttons (Always Docked at Bottom with Safe-Area) ── */}
+        <div className="bg-[#FAF0E4] border-t border-[#fed7aa] px-2.5 sm:px-5 py-2 sm:py-2.5 flex items-center justify-between shrink-0 shadow-md z-30 pb-[max(0.6rem,env(safe-area-inset-bottom))] gap-2">
           {/* Back button */}
           {currentStep === 1 ? (
             <button
               type="button"
-              onClick={onClose}
-              className="px-3 sm:px-3.5 py-1.5 sm:py-2 rounded-xl text-xs sm:text-sm font-bold bg-white text-slate-700 hover:bg-slate-100 border border-[#E8DCCB] transition-all cursor-pointer shadow-2xs active:scale-95"
+              onClick={handleCloseWizard}
+              className="px-3.5 sm:px-4 py-2 sm:py-2.5 rounded-xl text-xs sm:text-sm font-bold bg-white text-slate-700 hover:bg-slate-100 border border-[#E8DCCB] transition-all cursor-pointer shadow-2xs active:scale-95"
             >
               Cancel
             </button>
@@ -1582,9 +1639,9 @@ export default function WholesaleOrderWizardModal({
             <button
               type="button"
               onClick={handleBackToStep1}
-              className="inline-flex items-center gap-1 px-3 sm:px-3.5 py-1.5 sm:py-2 rounded-xl text-xs sm:text-sm font-bold bg-white text-slate-700 hover:bg-slate-100 border border-[#E8DCCB] transition-all cursor-pointer shadow-2xs active:scale-95"
+              className="inline-flex items-center gap-1 px-3 sm:px-4 py-2 sm:py-2.5 rounded-xl text-xs sm:text-sm font-bold bg-white text-slate-700 hover:bg-slate-100 border border-[#E8DCCB] transition-all cursor-pointer shadow-2xs active:scale-95"
             >
-              <ArrowLeft size={13} />
+              <ArrowLeft size={14} />
               <span>Back to Fish Weight</span>
             </button>
           ) : (
@@ -1592,10 +1649,10 @@ export default function WholesaleOrderWizardModal({
               <button
                 type="button"
                 onClick={handleBackToStep2}
-                className="inline-flex items-center gap-1 px-2.5 sm:px-3.5 py-1.5 sm:py-2 rounded-xl text-xs sm:text-sm font-bold bg-white text-slate-700 hover:bg-slate-100 border border-[#E8DCCB] transition-all cursor-pointer shadow-2xs active:scale-95"
+                className="inline-flex items-center gap-1 px-2.5 sm:px-3.5 py-2 sm:py-2.5 rounded-xl text-xs sm:text-sm font-bold bg-white text-slate-700 hover:bg-slate-100 border border-[#E8DCCB] transition-all cursor-pointer shadow-2xs active:scale-95"
                 title="Return to Customer Selection with Same Fish & Weight"
               >
-                <ArrowLeft size={13} />
+                <ArrowLeft size={14} />
                 <span>Back</span>
               </button>
               <button
@@ -1607,10 +1664,10 @@ export default function WholesaleOrderWizardModal({
                   setEditableTotal('');
                   setCurrentStep(2);
                 }}
-                className="inline-flex items-center gap-1 px-2 sm:px-2.5 py-1.5 sm:py-2 rounded-xl text-[10.5px] sm:text-xs font-bold bg-rose-50 text-rose-700 hover:bg-rose-100 border border-rose-200 transition-all cursor-pointer shadow-2xs active:scale-95"
+                className="inline-flex items-center gap-1 px-2 sm:px-2.5 py-2 sm:py-2.5 rounded-xl text-[10.5px] sm:text-xs font-bold bg-rose-50 text-rose-700 hover:bg-rose-100 border border-rose-200 transition-all cursor-pointer shadow-2xs active:scale-95"
                 title="Clear selected dealer and return to dealer cards"
               >
-                <X size={12} />
+                <X size={13} />
                 <span>Clear</span>
               </button>
             </div>
@@ -1621,10 +1678,10 @@ export default function WholesaleOrderWizardModal({
             <button
               type="button"
               onClick={handleProceedToCustomerSelect}
-              className="inline-flex items-center gap-1 px-3.5 sm:px-4 py-1.5 sm:py-2 rounded-xl text-xs sm:text-sm font-black bg-gradient-to-r from-orange-500 to-[#ea580c] hover:from-orange-600 hover:to-orange-700 text-white shadow-md active:scale-95 transition-all cursor-pointer"
+              className="inline-flex items-center gap-1.5 px-3.5 sm:px-5 py-2 sm:py-2.5 rounded-xl text-xs sm:text-sm font-black bg-gradient-to-r from-orange-500 to-[#ea580c] hover:from-orange-600 hover:to-orange-700 text-white shadow-md active:scale-95 transition-all cursor-pointer"
             >
               <span>Next: Select Dealer (Cards)</span>
-              <ArrowRight size={13} />
+              <ArrowRight size={14} />
             </button>
           ) : currentStep === 2 ? (
             <button
@@ -1637,23 +1694,23 @@ export default function WholesaleOrderWizardModal({
                 }
                 setCurrentStep(3);
               }}
-              className={`inline-flex items-center gap-1 px-3.5 sm:px-4 py-1.5 sm:py-2 rounded-xl text-xs sm:text-sm font-black shadow-md active:scale-95 transition-all cursor-pointer ${
+              className={`inline-flex items-center gap-1.5 px-3.5 sm:px-5 py-2 sm:py-2.5 rounded-xl text-xs sm:text-sm font-black shadow-md active:scale-95 transition-all cursor-pointer ${
                 selectedCustomer
                   ? 'bg-gradient-to-r from-orange-500 to-[#ea580c] hover:from-orange-600 hover:to-orange-700 text-white'
                   : 'bg-slate-200 text-slate-400 cursor-not-allowed opacity-60'
               }`}
             >
               <span>Next: Preview (Step 3)</span>
-              <ArrowRight size={13} />
+              <ArrowRight size={14} />
             </button>
           ) : (
             <button
               type="button"
               disabled={isSaving}
               onClick={handleConfirmSave}
-              className="inline-flex items-center gap-1 px-3.5 sm:px-5 py-1.5 sm:py-2 rounded-xl text-xs sm:text-sm font-black bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white shadow-md active:scale-95 transition-all cursor-pointer disabled:opacity-50"
+              className="inline-flex items-center gap-1.5 px-3.5 sm:px-5 py-2 sm:py-2.5 rounded-xl text-xs sm:text-sm font-black bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white shadow-md active:scale-95 transition-all cursor-pointer disabled:opacity-50"
             >
-              <CheckCircle size={14} />
+              <CheckCircle size={15} />
               <span>{isSaving ? 'Saving Lot...' : 'Confirm & Save to Bill'}</span>
             </button>
           )}
@@ -1703,7 +1760,7 @@ export default function WholesaleOrderWizardModal({
 
                 <button
                   type="button"
-                  onClick={onClose}
+                  onClick={handleCloseWizard}
                   className="w-full py-1.5 text-xs text-slate-500 hover:text-slate-800 font-semibold cursor-pointer"
                 >
                   Close Wizard

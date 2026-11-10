@@ -358,8 +358,21 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
     return () => window.removeEventListener('spacesUpdated', loadSpaces);
   }, []);
 
-  const [cart, setCart] = useState([]);
-  const [mobileTab, setMobileTab] = useState('menu'); // 'menu' or 'cart'
+  const [cart, setCart] = useState(() => {
+    try {
+      const saved = localStorage.getItem('billing_active_cart');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+  const [mobileTab, setMobileTab] = useState(() => {
+    try {
+      return localStorage.getItem('billing_mobile_tab') || 'menu';
+    } catch {
+      return 'menu';
+    }
+  });
   const [orderId, setOrderId] = useState(null);
   const [orderStatus, setOrderStatus] = useState('Open'); // Open, Billed, Paid
   const [billNumber, setBillNumber] = useState(null);
@@ -402,9 +415,28 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
 
   // Delivery / CRM fields
   const [orderSource, setOrderSource] = useState('Direct');
-  const [customerPhone, setCustomerPhone] = useState('');
-  const [customerName, setCustomerName] = useState('');
-  const [customerInfo, setCustomerInfo] = useState(null);
+  const [customerPhone, setCustomerPhone] = useState(() => {
+    try {
+      return localStorage.getItem('billing_customer_phone') || '';
+    } catch {
+      return '';
+    }
+  });
+  const [customerName, setCustomerName] = useState(() => {
+    try {
+      return localStorage.getItem('billing_customer_name') || '';
+    } catch {
+      return '';
+    }
+  });
+  const [customerInfo, setCustomerInfo] = useState(() => {
+    try {
+      const saved = localStorage.getItem('billing_customer_info');
+      return saved ? JSON.parse(saved) : null;
+    } catch {
+      return null;
+    }
+  });
   const [customerCategory, setCustomerCategory] = useState(() => {
     const mode = (initialFishMode && ['individual', 'bulk', 'export'].includes(initialFishMode))
       ? initialFishMode
@@ -448,11 +480,77 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
   const [crmSuggestions, setCrmSuggestions] = useState([]);
   const [showCrmSuggestions, setShowCrmSuggestions] = useState(false);
 
-  // Wholesale & Export Order Wizard States
-  const [showWholesaleWizard, setShowWholesaleWizard] = useState(false);
-  const [wholesaleWizardFish, setWholesaleWizardFish] = useState(null);
-  const [wholesaleAvailableFish, setWholesaleAvailableFish] = useState([]);
+  // Wholesale & Export Order Wizard States - Persisted across page refresh
+  const [showWholesaleWizard, setShowWholesaleWizard] = useState(() => {
+    try {
+      return localStorage.getItem('billing_show_wholesale_wizard') === 'true';
+    } catch {
+      return false;
+    }
+  });
+  const [wholesaleWizardFish, setWholesaleWizardFish] = useState(() => {
+    try {
+      const saved = localStorage.getItem('billing_wholesale_wizard_fish');
+      return saved ? JSON.parse(saved) : null;
+    } catch {
+      return null;
+    }
+  });
+  const [wholesaleAvailableFish, setWholesaleAvailableFish] = useState(() => {
+    try {
+      const saved = localStorage.getItem('billing_wholesale_available_fish');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
   const [crmCustomers, setCrmCustomers] = useState([]);
+
+  // Auto-persist cart, tab, customer and wizard states to localStorage
+  useEffect(() => {
+    try {
+      if (cart && cart.length > 0) {
+        localStorage.setItem('billing_active_cart', JSON.stringify(cart));
+      } else {
+        localStorage.removeItem('billing_active_cart');
+      }
+    } catch (e) {}
+  }, [cart]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('billing_mobile_tab', mobileTab);
+    } catch (e) {}
+  }, [mobileTab]);
+
+  useEffect(() => {
+    try {
+      if (customerPhone) localStorage.setItem('billing_customer_phone', customerPhone);
+      else localStorage.removeItem('billing_customer_phone');
+      if (customerName) localStorage.setItem('billing_customer_name', customerName);
+      else localStorage.removeItem('billing_customer_name');
+      if (customerInfo) localStorage.setItem('billing_customer_info', JSON.stringify(customerInfo));
+      else localStorage.removeItem('billing_customer_info');
+    } catch (e) {}
+  }, [customerPhone, customerName, customerInfo]);
+
+  useEffect(() => {
+    try {
+      if (showWholesaleWizard) {
+        localStorage.setItem('billing_show_wholesale_wizard', 'true');
+        if (wholesaleWizardFish) {
+          localStorage.setItem('billing_wholesale_wizard_fish', JSON.stringify(wholesaleWizardFish));
+        }
+        if (wholesaleAvailableFish && wholesaleAvailableFish.length > 0) {
+          localStorage.setItem('billing_wholesale_available_fish', JSON.stringify(wholesaleAvailableFish));
+        }
+      } else {
+        localStorage.removeItem('billing_show_wholesale_wizard');
+        localStorage.removeItem('billing_wholesale_wizard_fish');
+        localStorage.removeItem('billing_wholesale_available_fish');
+      }
+    } catch (e) {}
+  }, [showWholesaleWizard, wholesaleWizardFish, wholesaleAvailableFish]);
 
   useEffect(() => {
     fetchPredefinedCustomers('All', 'All', true).then((custs) => {
@@ -3894,7 +3992,7 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
   };
 
   return (
-    <div className="h-full flex flex-col overflow-hidden bg-background">
+    <div className="h-full flex-1 min-h-0 flex flex-col overflow-hidden bg-background">
       {/* Header Navigation & Action Bar: 2 rows on Tablet, 1 row on Desktop */}
       {!(showWholesaleWizard && (fishOrderMode === 'bulk' || fishOrderMode === 'export')) && (
       <div className={`flex flex-col xl:flex-row xl:h-14 xl:items-center xl:justify-between px-2 sm:px-3 lg:px-6 bg-surface border-b border-border/50 shrink-0 relative ${isOrderDropdownOpen ? 'z-[100]' : 'z-30'} gap-1.5 py-1.5 xl:py-0 ${mobileTab === 'cart' ? 'hidden xl:flex' : 'flex'}`}>
@@ -4269,14 +4367,14 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
       <div className="flex-1 flex flex-col overflow-hidden min-h-0">
         <div id="billing-main-scroll-area" className={`flex-1 flex flex-col xl:flex-row relative scroll-smooth min-h-0 ${
           (showWholesaleWizard && (fishOrderMode === 'bulk' || fishOrderMode === 'export'))
-            ? 'overflow-hidden h-full'
+            ? 'overflow-hidden flex-1 h-full'
             : `overflow-y-auto xl:overflow-hidden ${cart.length > 0 && mobileTab === 'menu' ? 'pb-16 xl:pb-0' : 'pb-1 xl:pb-0'}`
         }`}>
           <div
             id="billing-menu-grid-container"
             className={`flex flex-col bg-surface flex-1 shrink-0 xl:shrink transition-all duration-300 border-b xl:border-b-0 xl:border-r border-border/50 w-full min-h-0 ${
               (showWholesaleWizard && (fishOrderMode === 'bulk' || fishOrderMode === 'export'))
-                ? 'h-full overflow-hidden'
+                ? 'flex-1 h-full overflow-hidden'
                 : ''
             } ${
               mobileTab === 'cart' ? 'hidden xl:flex' : 'flex'

@@ -2132,18 +2132,17 @@ const BillSummary = ({
                 }
                 if (onBackToMenu) onBackToMenu();
               }}
-              className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-[#ea580c] hover:bg-[#c2410c] active:scale-95 text-white font-black text-xs shadow-xs transition-all cursor-pointer mr-1"
+              className="flex items-center gap-1 px-2 py-0.5 rounded-lg bg-[#ea580c] hover:bg-[#c2410c] active:scale-95 text-white font-black text-[11px] sm:text-xs shadow-xs transition-all cursor-pointer shrink-0 mr-0.5"
               title="Return to Menu Dial"
             >
-              <ArrowLeft size={13} className="stroke-[3]" />
+              <ArrowLeft size={12} className="stroke-[3]" />
               <span>Back</span>
             </button>
           )}
-          <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-          <span className="font-extrabold text-xs text-[#0f2942] tracking-wide uppercase font-black">{t("Counter Sale / Direct Order")}
-          </span>
+          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse shrink-0" />
+          <span className="font-black text-[10px] sm:text-xs text-[#0f2942] tracking-tight uppercase whitespace-nowrap truncate">{t("Counter Sale / Direct Order")}</span>
         </div>
-        <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-[#fff7ed] text-[#c2410c] border border-[#fed7aa] font-bold">
+        <span className="text-[9.5px] sm:text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-[#fff7ed] text-[#c2410c] border border-[#fed7aa] shrink-0">
           {activeTable ? `#${activeTable.replace(/^(TAK-|DEL-|ORD-)/i, '')}` : t("New Order")}
         </span>
       </div>
