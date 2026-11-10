@@ -710,7 +710,10 @@ export default function WholesaleOrderWizardModal({
   };
 
   return (
-    <div className="w-full flex-1 flex flex-col bg-[#FDFBF7] text-slate-800 overflow-hidden min-h-0 relative">
+    <div 
+      className="w-full h-full flex-1 flex flex-col bg-[#FDFBF7] text-slate-800 overflow-hidden min-h-0 max-h-full relative"
+      style={{ height: '100%', maxHeight: '100%', minHeight: 0 }}
+    >
       {/* ── Direct Page Header & Breadcrumb Tracker ── */}
       <div className="bg-[#FAF0E4] border-b border-[#fed7aa] px-2.5 sm:px-4 py-1.5 sm:py-2 flex items-center justify-between shrink-0 sticky top-0 z-20 shadow-2xs">
         <div className="flex items-center gap-1.5 sm:gap-2.5 flex-wrap">
@@ -761,7 +764,10 @@ export default function WholesaleOrderWizardModal({
 
         {/* ── Step 1: All Menu Items / Fish Selection & Weight Details ── */}
         {currentStep === 1 && (
-          <div className="flex-1 overflow-y-auto p-2.5 sm:p-4 space-y-2.5 sm:space-y-3 min-h-0 touch-pan-y overscroll-contain pb-12 sm:pb-16">
+          <div 
+            className="flex-1 overflow-y-auto p-2.5 sm:p-4 space-y-2.5 sm:space-y-3 min-h-0 touch-pan-y overscroll-contain pb-6 sm:pb-8"
+            style={{ WebkitOverflowScrolling: 'touch', touchAction: 'pan-y' }}
+          >
             {/* Top: Big Fish Photo Hero Banner (Entire Image Without Cropping, Badges Below Information) */}
             <div className="bg-white rounded-2xl border border-[#E8DCCB] shadow-2xs overflow-hidden">
               <div className="w-full h-32 sm:h-44 md:h-52 bg-slate-50 flex items-center justify-center p-2 overflow-hidden">
@@ -1125,7 +1131,11 @@ export default function WholesaleOrderWizardModal({
 
         {/* ── Step 2: Customer Details Card Modal Type (Cards Grid, NOT Dropdown) ── */}
         {currentStep === 2 && (
-          <div ref={step2ContainerRef} className="flex-1 overflow-y-auto p-2.5 sm:p-4 flex flex-col space-y-2 sm:space-y-2.5 min-h-0 touch-pan-y overscroll-contain pb-12 sm:pb-16">
+          <div 
+            ref={step2ContainerRef} 
+            className="flex-1 overflow-y-auto p-2.5 sm:p-4 flex flex-col space-y-2 sm:space-y-2.5 min-h-0 touch-pan-y overscroll-contain pb-6 sm:pb-8"
+            style={{ WebkitOverflowScrolling: 'touch', touchAction: 'pan-y' }}
+          >
             {/* Top Toolbar: Search & Attendance Counters */}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 bg-white p-2 sm:p-2.5 rounded-xl border border-[#E8DCCB] shadow-2xs shrink-0">
               <div className="relative flex-1">
@@ -1358,7 +1368,10 @@ export default function WholesaleOrderWizardModal({
 
         {/* ── Step 3: Combined View in Table Format (Single Overview Page on Mobile) ── */}
         {currentStep === 3 && (
-          <div className="flex-1 overflow-y-auto p-2.5 sm:p-4 space-y-2.5 min-h-0 touch-pan-y overscroll-contain pb-12 sm:pb-16">
+          <div 
+            className="flex-1 overflow-y-auto p-2.5 sm:p-4 space-y-2.5 min-h-0 touch-pan-y overscroll-contain pb-6 sm:pb-8"
+            style={{ WebkitOverflowScrolling: 'touch', touchAction: 'pan-y' }}
+          >
             {/* Top Cards: BIG Images & BIG Names for Customer & Seafood Catch (Entire Images Uncropped, Badges Below Information) */}
             <div className="grid grid-cols-2 gap-2.5 sm:gap-4">
               {/* Left: Dealer Customer with Entire Uncropped Image, Info & Badges Below */}
@@ -1638,13 +1651,16 @@ export default function WholesaleOrderWizardModal({
         )}
 
         {/* ── Page Footer with Responsive Compact Action Buttons (Always Docked at Bottom with Safe-Area) ── */}
-        <div className="bg-[#FAF0E4] border-t border-[#fed7aa] px-2.5 sm:px-5 py-1.5 sm:py-2 flex items-center justify-between shrink-0 shadow-md z-30 pb-[max(0.5rem,env(safe-area-inset-bottom))] gap-2">
+        <div 
+          className="bg-[#FAF0E4] border-t border-[#fed7aa] px-3 sm:px-5 py-2 sm:py-2.5 flex items-center justify-between shrink-0 shadow-[0_-4px_16px_rgba(0,0,0,0.12)] z-40 sticky bottom-0 gap-2"
+          style={{ paddingBottom: 'max(0.65rem, env(safe-area-inset-bottom, 0.65rem))' }}
+        >
           {/* Back button */}
           {currentStep === 1 ? (
             <button
               type="button"
               onClick={handleCloseWizard}
-              className="px-3 sm:px-4 py-1.5 sm:py-2 rounded-xl text-xs sm:text-sm font-bold bg-white text-slate-700 hover:bg-slate-100 border border-[#E8DCCB] transition-all cursor-pointer shadow-2xs active:scale-95 whitespace-nowrap"
+              className="min-h-[38px] px-4 sm:px-5 py-2 rounded-xl text-xs sm:text-sm font-black bg-white text-slate-700 hover:bg-slate-100 border border-[#E8DCCB] transition-all cursor-pointer shadow-xs active:scale-95 whitespace-nowrap flex items-center justify-center"
             >
               Cancel
             </button>
@@ -1652,21 +1668,21 @@ export default function WholesaleOrderWizardModal({
             <button
               type="button"
               onClick={handleBackToStep1}
-              className="inline-flex items-center gap-1 px-2.5 sm:px-3.5 py-1.5 sm:py-2 rounded-xl text-xs sm:text-sm font-bold bg-white text-slate-700 hover:bg-slate-100 border border-[#E8DCCB] transition-all cursor-pointer shadow-2xs active:scale-95 whitespace-nowrap"
+              className="min-h-[38px] inline-flex items-center gap-1.5 px-3.5 sm:px-4 py-2 rounded-xl text-xs sm:text-sm font-black bg-white text-slate-700 hover:bg-slate-100 border border-[#E8DCCB] transition-all cursor-pointer shadow-xs active:scale-95 whitespace-nowrap"
             >
-              <ArrowLeft size={13} />
+              <ArrowLeft size={14} />
               <span className="sm:hidden">Back</span>
               <span className="hidden sm:inline">Back to Weight</span>
             </button>
           ) : (
-            <div className="flex items-center gap-1">
+            <div className="flex items-center gap-1.5">
               <button
                 type="button"
                 onClick={handleBackToStep2}
-                className="inline-flex items-center gap-1 px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-xl text-xs sm:text-sm font-bold bg-white text-slate-700 hover:bg-slate-100 border border-[#E8DCCB] transition-all cursor-pointer shadow-2xs active:scale-95 whitespace-nowrap"
+                className="min-h-[38px] inline-flex items-center gap-1 px-3 sm:px-3.5 py-2 rounded-xl text-xs sm:text-sm font-black bg-white text-slate-700 hover:bg-slate-100 border border-[#E8DCCB] transition-all cursor-pointer shadow-xs active:scale-95 whitespace-nowrap"
                 title="Return to Customer Selection"
               >
-                <ArrowLeft size={13} />
+                <ArrowLeft size={14} />
                 <span>Back</span>
               </button>
               <button
@@ -1678,10 +1694,10 @@ export default function WholesaleOrderWizardModal({
                   setEditableTotal('');
                   setCurrentStep(2);
                 }}
-                className="inline-flex items-center gap-1 px-2 sm:px-2.5 py-1.5 sm:py-2 rounded-xl text-xs font-bold bg-rose-50 text-rose-700 hover:bg-rose-100 border border-rose-200 transition-all cursor-pointer shadow-2xs active:scale-95 whitespace-nowrap"
+                className="min-h-[38px] inline-flex items-center gap-1 px-2.5 sm:px-3 py-2 rounded-xl text-xs font-black bg-rose-50 text-rose-700 hover:bg-rose-100 border border-rose-200 transition-all cursor-pointer shadow-xs active:scale-95 whitespace-nowrap"
                 title="Clear selected dealer"
               >
-                <X size={12} />
+                <X size={13} />
                 <span>Clear</span>
               </button>
             </div>
@@ -1692,11 +1708,11 @@ export default function WholesaleOrderWizardModal({
             <button
               type="button"
               onClick={handleProceedToCustomerSelect}
-              className="inline-flex items-center gap-1 px-3 sm:px-4 py-1.5 sm:py-2 rounded-xl text-xs sm:text-sm font-black bg-gradient-to-r from-orange-500 to-[#ea580c] hover:from-orange-600 hover:to-orange-700 text-white shadow-md active:scale-95 transition-all cursor-pointer whitespace-nowrap"
+              className="min-h-[38px] inline-flex items-center gap-1.5 px-4 sm:px-5 py-2 rounded-xl text-xs sm:text-sm font-black bg-gradient-to-r from-orange-500 to-[#ea580c] hover:from-orange-600 hover:to-orange-700 text-white shadow-md active:scale-95 transition-all cursor-pointer whitespace-nowrap"
             >
               <span className="sm:hidden">Next: Dealer</span>
               <span className="hidden sm:inline">Next: Select Dealer</span>
-              <ArrowRight size={13} />
+              <ArrowRight size={14} />
             </button>
           ) : currentStep === 2 ? (
             <button
@@ -1709,7 +1725,7 @@ export default function WholesaleOrderWizardModal({
                 }
                 setCurrentStep(3);
               }}
-              className={`inline-flex items-center gap-1 px-3 sm:px-4 py-1.5 sm:py-2 rounded-xl text-xs sm:text-sm font-black shadow-md active:scale-95 transition-all cursor-pointer whitespace-nowrap ${
+              className={`min-h-[38px] inline-flex items-center gap-1.5 px-4 sm:px-5 py-2 rounded-xl text-xs sm:text-sm font-black shadow-md active:scale-95 transition-all cursor-pointer whitespace-nowrap ${
                 selectedCustomer
                   ? 'bg-gradient-to-r from-orange-500 to-[#ea580c] hover:from-orange-600 hover:to-orange-700 text-white'
                   : 'bg-slate-200 text-slate-400 cursor-not-allowed opacity-60'
@@ -1717,16 +1733,16 @@ export default function WholesaleOrderWizardModal({
             >
               <span className="sm:hidden">Next: Preview</span>
               <span className="hidden sm:inline">Next: Preview (Step 3)</span>
-              <ArrowRight size={13} />
+              <ArrowRight size={14} />
             </button>
           ) : (
             <button
               type="button"
               disabled={isSaving}
               onClick={handleConfirmSave}
-              className="inline-flex items-center gap-1 px-3 sm:px-4 py-1.5 sm:py-2 rounded-xl text-xs sm:text-sm font-black bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white shadow-md active:scale-95 transition-all cursor-pointer disabled:opacity-50 whitespace-nowrap"
+              className="min-h-[38px] inline-flex items-center gap-1.5 px-4 sm:px-5 py-2 rounded-xl text-xs sm:text-sm font-black bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white shadow-md active:scale-95 transition-all cursor-pointer disabled:opacity-50 whitespace-nowrap"
             >
-              <CheckCircle size={14} />
+              <CheckCircle size={15} />
               <span className="sm:hidden">{isSaving ? 'Saving...' : 'Confirm & Save'}</span>
               <span className="hidden sm:inline">{isSaving ? 'Saving Lot...' : 'Confirm & Save to Bill'}</span>
             </button>

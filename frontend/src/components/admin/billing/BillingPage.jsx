@@ -4397,27 +4397,28 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
         </div>
       )}
 
-      <div className="flex-1 flex flex-col overflow-hidden min-h-0">
+      <div className="flex-1 flex flex-col overflow-hidden min-h-0 h-full max-h-full">
         {(() => {
           const isWholesaleOrExport = fishOrderMode === 'bulk' || fishOrderMode === 'export';
           const shouldHideCartPanel = (showWholesaleWizard && isWholesaleOrExport) || (isWholesaleOrExport && !activeTable && cart.length === 0);
           return (
-            <div id="billing-main-scroll-area" className={`flex-1 flex flex-col xl:flex-row relative scroll-smooth min-h-0 ${
+            <div id="billing-main-scroll-area" className={`flex-1 flex flex-col xl:flex-row relative scroll-smooth min-h-0 h-full max-h-full ${
               (showWholesaleWizard && isWholesaleOrExport)
-                ? 'overflow-hidden flex-1 h-full'
+                ? 'overflow-hidden flex-1 h-full max-h-full'
                 : `overflow-y-auto xl:overflow-hidden ${cart.length > 0 && mobileTab === 'menu' ? 'pb-16 xl:pb-0' : 'pb-1 xl:pb-0'}`
             }`}>
               <div
                 id="billing-menu-grid-container"
-                className={`flex flex-col bg-surface flex-1 shrink-0 xl:shrink transition-all duration-300 border-b xl:border-b-0 border-border/50 w-full min-h-0 ${
+                className={`flex flex-col bg-surface flex-1 transition-all duration-300 border-b xl:border-b-0 border-border/50 w-full min-h-0 h-full max-h-full ${
                   shouldHideCartPanel ? '!w-full !max-w-full flex-1 !border-r-0' : 'xl:border-r'
                 } ${
                   (showWholesaleWizard && isWholesaleOrExport)
-                    ? 'flex-1 h-full overflow-hidden'
-                    : ''
+                    ? 'flex-1 h-full max-h-full overflow-hidden shrink'
+                    : 'shrink-0 xl:shrink'
                 } ${
                   mobileTab === 'cart' ? 'hidden xl:flex' : 'flex'
                 }`}
+                style={(showWholesaleWizard && isWholesaleOrExport) ? { height: '100%', maxHeight: '100%', minHeight: 0 } : undefined}
               >
             {showWholesaleWizard && (fishOrderMode === 'bulk' || fishOrderMode === 'export') ? (
               <WholesaleOrderWizardModal
