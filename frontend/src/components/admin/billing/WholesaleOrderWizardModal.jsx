@@ -518,37 +518,14 @@ export default function WholesaleOrderWizardModal({
     setCurrentStep(2);
   };
 
-  // Select Customer Card: marks selected, marks Present in local state and DB, DOES NOT advance page
-  const handleSelectCustomerCard = async (customer) => {
+  // Select Customer Card: marks selected, DOES NOT advance page, DOES NOT prematurely mark Present
+  const handleSelectCustomerCard = (customer) => {
     setSelectedCustomer(customer);
 
     // Automatically scroll Step 2 container up to the top so selected member at #1 is in full view!
     if (step2ContainerRef.current) {
       step2ContainerRef.current.scrollTo({ top: 0, behavior: 'smooth' });
     }
-
-    const custKey = (customer.phone || customer.name || '').trim().toLowerCase();
-
-    // Mark as Present immediately in local state
-    setLocalPresenceMap(prev => ({
-      ...prev,
-      [custKey]: 'Present'
-    }));
-
-    // Persist to MongoDB backend database!
-    try {
-      const todayStr = new Date().toISOString().split('T')[0];
-      await api.post('/customers/presence', {
-        customerId: customer._id,
-        phone: customer.phone,
-        date: todayStr,
-        status: 'Present'
-      });
-      customer.isPresentToday = true;
-    } catch (err) {
-      console.warn('Could not persist customer presence to backend:', err.message);
-    }
-
     // DO NOT NAVIGATE TO STEP 3! Stays on Step 2 so user can verify selection and change if needed!
   };
 
@@ -657,6 +634,26 @@ export default function WholesaleOrderWizardModal({
 
       if (onSaveItemToCustomerOrder) {
         await onSaveItemToCustomerOrder(itemPayload, selectedCustomer, existingOrderInfo);
+      }
+
+      // Mark as Present in local state and DB only upon Confirm & Save!
+      const custKey = (selectedCustomer.phone || selectedCustomer.name || '').trim().toLowerCase();
+      setLocalPresenceMap(prev => ({
+        ...prev,
+        [custKey]: 'Present'
+      }));
+      selectedCustomer.isPresentToday = true;
+
+      try {
+        const todayStr = new Date().toISOString().split('T')[0];
+        await api.post('/customers/presence', {
+          customerId: selectedCustomer._id,
+          phone: selectedCustomer.phone,
+          date: todayStr,
+          status: 'Present'
+        });
+      } catch (err) {
+        console.warn('Could not persist customer presence to backend:', err.message);
       }
 
       const savedCustName = selectedCustomer.name;
@@ -1333,7 +1330,7 @@ export default function WholesaleOrderWizardModal({
                           <span>✓ In Bill: {existingOrder.itemsCount} items ({existingOrder.totalWeight?.toFixed(1) || 0} Kg)</span>
                         </span>
                       ) : (
-                        <span className="text-slate-400 font-medium">Daily Mandi Account</span>
+                        <span />
                       )}
 
                       <div className="flex items-center gap-1.5 ml-auto">
