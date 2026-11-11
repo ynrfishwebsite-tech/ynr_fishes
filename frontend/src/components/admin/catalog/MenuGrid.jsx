@@ -493,7 +493,17 @@ const MenuGrid = ({
 
   useEffect(() => {
     loadPredefinedCustomers();
-    const handleUpdate = () => loadPredefinedCustomers();
+    const handleUpdate = (e) => {
+      if (e?.detail) {
+        const newC = e.detail;
+        const cleanP = String(newC.phone || '').replace(/\D/g, '');
+        setPredefinedCustomers(prev => {
+          const filtered = prev.filter(c => String(c.phone || '').replace(/\D/g, '') !== cleanP);
+          return [newC, ...filtered];
+        });
+      }
+      loadPredefinedCustomers();
+    };
     window.addEventListener('customersUpdated', handleUpdate);
     return () => window.removeEventListener('customersUpdated', handleUpdate);
   }, [loadPredefinedCustomers]);

@@ -24,10 +24,12 @@ import {
   Clock,
   Calendar,
   History,
-  Trash2
+  Trash2,
+  Camera
 } from 'lucide-react';
 import { getItemPricePerKg, getItemSizeGrades, formatImageUrl, getItemWaterType } from '../catalog/MenuGrid';
 import api from '../../../api/system/axios';
+import ImageCropperModal from '../crm/ImageCropperModal';
 
 /**
  * Safely format customer address object or string to string to prevent React child crash
@@ -109,6 +111,75 @@ export default function WholesaleOrderWizardModal({
   const [discountValue, setDiscountValue] = useState(() => savedWizardData?.discountValue ?? '');
   const [editableTotal, setEditableTotal] = useState(() => savedWizardData?.editableTotal ?? '');
   const step2ContainerRef = useRef(null);
+
+  // ── Step 2 New Dealer / Customer Modal with Circle Cropper ──
+  const [localCustomersList, setLocalCustomersList] = useState(() => customersList || []);
+  useEffect(() => {
+    setLocalCustomersList(customersList || []);
+  }, [customersList]);
+
+  const [showAddCustomerModal, setShowAddCustomerModal] = useState(false);
+  const [newCustPhone, setNewCustPhone] = useState('');
+  const [newCustName, setNewCustName] = useState('');
+  const [newCustBusinessName, setNewCustBusinessName] = useState('');
+  const [newCustAddress, setNewCustAddress] = useState('');
+  const [newCustPhoto, setNewCustPhoto] = useState('');
+  const [cropperModal, setCropperModal] = useState({ isOpen: false, imageSrc: '' });
+  const [isSavingCustomer, setIsSavingCustomer] = useState(false);
+  const newCustFileInputRef = useRef(null);
+
+  const handleSaveNewDealer = async (e) => {
+    if (e) e.preventDefault();
+    const cleanPhone = newCustPhone.trim().replace(/\D/g, '');
+    const cleanName = newCustName.trim();
+    if (!cleanPhone && !cleanName) {
+      if (showToast) showToast('Please enter dealer name or phone number', 'warning');
+      return;
+    }
+    setIsSavingCustomer(true);
+    const targetCat = isExport ? 'Export' : 'Wholesale';
+    const newCustObj = {
+      _id: 'temp_' + Date.now(),
+      name: cleanName || (isExport ? 'Export Client' : 'Dealer'),
+      phone: cleanPhone,
+      businessName: newCustBusinessName.trim(),
+      address: {
+        line1: newCustAddress.trim(),
+        fullAddress: newCustAddress.trim(),
+        city: 'Kadapa',
+        district: 'YSR Kadapa'
+      },
+      photo: newCustPhoto || '',
+      category: targetCat,
+      exportSubCategory: isExport ? (exportSubFilter !== 'All' ? exportSubFilter : 'Local') : null
+    };
+
+    // 1. Instant optimistic update
+    setLocalCustomersList(prev => [newCustObj, ...prev]);
+    setSelectedCustomer(newCustObj);
+    setShowAddCustomerModal(false);
+    if (showToast) showToast(`✅ ${isExport ? 'Export Client' : 'Dealer'} created & selected!`, 'success');
+
+    // Reset inputs
+    setNewCustPhone('');
+    setNewCustName('');
+    setNewCustBusinessName('');
+    setNewCustAddress('');
+    setNewCustPhoto('');
+
+    // 2. Persist to backend and dispatch event
+    try {
+      const res = await api.post('/customers', newCustObj);
+      if (res.data?.customer?._id) {
+        newCustObj._id = res.data.customer._id;
+      }
+      window.dispatchEvent(new CustomEvent('customersUpdated', { detail: newCustObj }));
+    } catch (err) {
+      console.warn('Could not persist new dealer to backend:', err.message);
+    } finally {
+      setIsSavingCustomer(false);
+    }
+  };
 
   // Number input focus helper: if value is '0' or '0.00', clear to empty string immediately; otherwise select text
   const handleNumberInputFocus = (e, val, setter) => {
@@ -418,7 +489,7 @@ export default function WholesaleOrderWizardModal({
     const targetCategory = isExport ? 'Export' : 'Wholesale';
     const q = customerSearch.trim().toLowerCase();
 
-    return (customersList || [])
+    return (localCustomersList || [])
       .filter(c => {
         if (!c) return false;
         // Match category
@@ -457,7 +528,7 @@ export default function WholesaleOrderWizardModal({
         if (!aPres && bPres) return 1;
         return (a.name || '').localeCompare(b.name || '');
       });
-  }, [customersList, isExport, exportSubFilter, customerSearch, customerTodayOrdersMap, localPresenceMap, selectedCustomer]);
+  }, [localCustomersList, isExport, exportSubFilter, customerSearch, customerTodayOrdersMap, localPresenceMap, selectedCustomer]);
 
   // ── Helper to evaluate presence from local state, active bills, or database ──
   const getCustomerPresence = (cust) => {
@@ -1132,27 +1203,40 @@ export default function WholesaleOrderWizardModal({
             className="flex-1 overflow-y-auto p-2.5 sm:p-4 flex flex-col space-y-2 sm:space-y-2.5 min-h-0 touch-pan-y overscroll-contain pb-6 sm:pb-8"
             style={{ WebkitOverflowScrolling: 'touch', touchAction: 'pan-y' }}
           >
-            {/* Top Toolbar: Search & Attendance Counters */}
+            {/* Top Toolbar: Search & Attendance Counters & + Add Dealer Button */}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 bg-white p-2 sm:p-2.5 rounded-xl border border-[#E8DCCB] shadow-2xs shrink-0">
-              <div className="relative flex-1">
-                <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
-                <input
-                  type="text"
-                  placeholder="Search dealer by name, mobile, shop, or location..."
-                  value={customerSearch}
-                  onChange={(e) => setCustomerSearch(e.target.value)}
-                  className="w-full bg-[#FAF0E4] border border-[#E8DCCB] rounded-lg pl-8 pr-7 py-1 text-xs font-bold text-slate-800 focus:outline-none focus:border-[#ea580c]"
-                />
-                {customerSearch && (
-                  <button
-                    type="button"
-                    onClick={() => setCustomerSearch('')}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 p-0.5 text-slate-400 hover:text-slate-700 bg-slate-200 rounded-full cursor-pointer transition-all"
-                    title="Clear search"
-                  >
-                    <X size={10} />
-                  </button>
-                )}
+              <div className="flex items-center gap-1.5 sm:gap-2 flex-1">
+                <div className="relative flex-1">
+                  <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <input
+                    type="text"
+                    placeholder="Search dealer by name, mobile, shop, or location..."
+                    value={customerSearch}
+                    onChange={(e) => setCustomerSearch(e.target.value)}
+                    className="w-full bg-[#FAF0E4] border border-[#E8DCCB] rounded-lg pl-8 pr-7 py-1 text-xs font-bold text-slate-800 focus:outline-none focus:border-[#ea580c]"
+                  />
+                  {customerSearch && (
+                    <button
+                      type="button"
+                      onClick={() => setCustomerSearch('')}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 p-0.5 text-slate-400 hover:text-slate-700 bg-slate-200 rounded-full cursor-pointer transition-all"
+                      title="Clear search"
+                    >
+                      <X size={10} />
+                    </button>
+                  )}
+                </div>
+
+                {/* + Add Dealer Button (Opens Rich Modal with Image Cropper) */}
+                <button
+                  type="button"
+                  onClick={() => setShowAddCustomerModal(true)}
+                  className="min-h-[28px] sm:min-h-[30px] px-2.5 sm:px-3 py-1 bg-gradient-to-r from-orange-500 to-[#ea580c] hover:from-orange-600 hover:to-orange-700 text-white rounded-lg text-xs font-black flex items-center gap-1 shadow-2xs cursor-pointer active:scale-95 shrink-0 whitespace-nowrap"
+                  title={isExport ? "Add new export client" : "Add new wholesale dealer"}
+                >
+                  <Plus size={13} strokeWidth={3} />
+                  <span>{isExport ? '+ Client' : '+ Add Dealer'}</span>
+                </button>
               </div>
 
               {/* Attendance Counts */}
@@ -1797,6 +1881,164 @@ export default function WholesaleOrderWizardModal({
               </div>
             </div>
           </div>
+        )}
+
+        {/* ── FULL CRM ADD CUSTOMER / DEALER MODAL (Screenshot 1 Exact Match with Image Cropper) ── */}
+        {showAddCustomerModal && (
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-xs z-[999999] flex items-center justify-center p-3 animate-fade-in">
+            <div className="bg-[#FDFBF7] border-2 border-[#E8DCCB] rounded-3xl w-full max-w-md overflow-hidden shadow-2xl flex flex-col animate-slide-up text-slate-800 my-auto">
+              {/* Header: Title & Subtitle */}
+              <div className="p-4 border-b border-[#E8DCCB] flex justify-between items-center bg-[#FAF0E4]">
+                <div>
+                  <h3 className="font-black text-base text-slate-900 tracking-tight">
+                    {isExport ? 'Add New Export Client' : 'Add New Customer / Dealer'}
+                  </h3>
+                  <p className="text-[11px] text-slate-500 font-semibold mt-0.5">
+                    {isExport ? 'Export Management Hub • Export Channel' : 'Wholesale Management Hub • Wholesale Channel'}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowAddCustomerModal(false)}
+                  className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-200/60 rounded-xl transition-all cursor-pointer"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              <form onSubmit={handleSaveNewDealer} className="p-4 sm:p-5 space-y-3.5 text-xs max-h-[82vh] overflow-y-auto">
+                {/* Photo Upload with Circle Crop (Exact Match to Screenshot 1) */}
+                <div className="flex items-center gap-3.5 p-3 bg-[#FAF0E4]/70 rounded-2xl border border-[#E8DCCB]">
+                  {newCustPhoto ? (
+                    <img
+                      src={newCustPhoto}
+                      alt="Profile"
+                      className="w-14 h-14 rounded-full object-cover border-2 border-amber-400 shadow-xs shrink-0"
+                    />
+                  ) : (
+                    <div className="w-14 h-14 rounded-full bg-amber-100 text-amber-800 font-black text-xl flex items-center justify-center shrink-0 border border-amber-300">
+                      {((newCustName || 'C').charAt(0) || 'C').toUpperCase()}
+                    </div>
+                  )}
+                  <div className="space-y-1">
+                    <input
+                      type="file"
+                      ref={newCustFileInputRef}
+                      accept="image/*"
+                      className="hidden"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) {
+                          const reader = new FileReader();
+                          reader.onload = () => setCropperModal({ isOpen: true, imageSrc: reader.result });
+                          reader.readAsDataURL(file);
+                        }
+                      }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => newCustFileInputRef.current?.click()}
+                      className="px-3 py-1 bg-white hover:bg-slate-50 border border-[#E8DCCB] rounded-xl text-xs font-bold text-slate-800 flex items-center gap-1.5 shadow-2xs cursor-pointer active:scale-95 transition-all"
+                    >
+                      <Camera size={13} className="text-[#ea580c]" />
+                      <span>{newCustPhoto ? 'Change Photo' : 'Upload Photo'}</span>
+                    </button>
+                    <p className="text-[10px] text-slate-500 font-medium">Auto-cropped circle profile avatar</p>
+                  </div>
+                </div>
+
+                {/* Phone Input */}
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-600 uppercase tracking-wider mb-1">
+                    PHONE NUMBER (10 DIGITS) *
+                  </label>
+                  <input
+                    type="tel"
+                    required
+                    maxLength={10}
+                    value={newCustPhone}
+                    onChange={(e) => setNewCustPhone(e.target.value.replace(/\D/g, ''))}
+                    placeholder="e.g. 9582425359"
+                    className="w-full bg-[#FAF0E4]/60 border border-[#E8DCCB] rounded-xl px-3 py-2 text-xs font-bold font-mono text-slate-900 focus:outline-none focus:border-[#ea580c] focus:bg-white transition-all"
+                  />
+                </div>
+
+                {/* Name Input */}
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-600 uppercase tracking-wider mb-1">
+                    {isExport ? 'CLIENT NAME' : 'DEALER / CUSTOMER NAME'} *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={newCustName}
+                    onChange={(e) => setNewCustName(e.target.value)}
+                    placeholder="e.g. Saifuddin or Anand Kumar"
+                    className="w-full bg-[#FAF0E4]/60 border border-[#E8DCCB] rounded-xl px-3 py-2 text-xs font-bold text-slate-900 focus:outline-none focus:border-[#ea580c] focus:bg-white transition-all"
+                  />
+                </div>
+
+                {/* Shop / Business Name */}
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-600 uppercase tracking-wider mb-1">
+                    SHOP / BUSINESS NAME (OPTIONAL)
+                  </label>
+                  <input
+                    type="text"
+                    value={newCustBusinessName}
+                    onChange={(e) => setNewCustBusinessName(e.target.value)}
+                    placeholder="e.g. Royal Fish Mart"
+                    className="w-full bg-[#FAF0E4]/60 border border-[#E8DCCB] rounded-xl px-3 py-2 text-xs font-bold text-slate-900 focus:outline-none focus:border-[#ea580c] focus:bg-white transition-all"
+                  />
+                </div>
+
+                {/* Address / Location */}
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-600 uppercase tracking-wider mb-1">
+                    ADDRESS / LOCATION (OPTIONAL)
+                  </label>
+                  <input
+                    type="text"
+                    value={newCustAddress}
+                    onChange={(e) => setNewCustAddress(e.target.value)}
+                    placeholder="e.g. Door No, Street, Landmark, Kadapa"
+                    className="w-full bg-[#FAF0E4]/60 border border-[#E8DCCB] rounded-xl px-3 py-2 text-xs font-bold text-slate-900 focus:outline-none focus:border-[#ea580c] focus:bg-white transition-all"
+                  />
+                </div>
+
+                {/* Action Buttons */}
+                <div className="pt-2 flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowAddCustomerModal(false)}
+                    className="flex-1 py-2.5 border border-[#E8DCCB] bg-[#FAF0E4] hover:bg-[#F5E8D8] text-slate-700 rounded-xl font-bold text-xs cursor-pointer active:scale-95 transition-all"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isSavingCustomer}
+                    className="flex-1 py-2.5 bg-gradient-to-r from-[#ea580c] to-[#c2410c] hover:from-orange-600 hover:to-orange-700 text-white rounded-xl font-black text-xs shadow-md cursor-pointer active:scale-95 disabled:opacity-50 transition-all flex items-center justify-center gap-1.5"
+                  >
+                    {isSavingCustomer ? 'Saving...' : 'Save & Persist'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* ── IMAGE CROPPER MODAL (Circle Cropper) ── */}
+        {cropperModal.isOpen && (
+          <ImageCropperModal
+            isOpen={cropperModal.isOpen}
+            imageSrc={cropperModal.imageSrc}
+            onClose={() => setCropperModal({ isOpen: false, imageSrc: '' })}
+            onCropComplete={(croppedBase64) => {
+              setNewCustPhoto(croppedBase64);
+              setCropperModal({ isOpen: false, imageSrc: '' });
+            }}
+          />
         )}
       </div>
   );

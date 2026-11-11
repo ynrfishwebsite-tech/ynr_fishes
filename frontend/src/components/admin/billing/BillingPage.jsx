@@ -11,7 +11,7 @@ import { getActiveOrder, saveOrder, generateBill, settleBill, apiReopenOrder, ap
 import { sendWhatsAppBill, getWhatsAppStatus } from '../../../api/communication/whatsapp';
 import api from '../../../api/system/axios';
 import { getCachedOpenOrders, upsertCachedOpenOrder, removeCachedOpenOrder } from '../../../db/offlineDb';
-import { Search, UtensilsCrossed, Maximize, Minimize, TrendingUp, ShoppingBag, ShoppingCart, LayoutGrid, Menu, ChevronLeft, ChevronRight, ChevronDown, Lock, Unlock, X, User, UserPlus, Phone, Loader2, Plus, Check, Printer } from 'lucide-react';
+import { Search, UtensilsCrossed, Maximize, Minimize, TrendingUp, ShoppingBag, ShoppingCart, LayoutGrid, Menu, ChevronLeft, ChevronRight, ChevronDown, Lock, Unlock, X, User, UserPlus, Phone, Loader2, Plus, Check, Printer, Camera, Building, MapPin } from 'lucide-react';
 import useDebounce from '../../../hooks/useDebounce';
 import Invoice from './Invoice';
 import { getBillTotalWeightKg, resolveItemQtyAndRate } from './BillHistory';
@@ -23,6 +23,7 @@ import { QRCodeSVG } from 'qrcode.react';
 // Pre-load canvas-confetti so it's ready instantly when payment succeeds (no cold-start lag)
 import 'canvas-confetti';
 import BackButton from '../common/BackButton';
+import ImageCropperModal from '../crm/ImageCropperModal';
 
 // Animated count-up component for Sales Badge
 const AnimatedSalesCount = ({ value, duration = 1500 }) => {
@@ -484,7 +485,11 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
   const [crmSaving, setCrmSaving] = useState(false);
   const [crmCustomerFound, setCrmCustomerFound] = useState(null);
   const [crmSuggestions, setCrmSuggestions] = useState([]);
-  const [showCrmSuggestions, setShowCrmSuggestions] = useState(false);
+  const [tempCustomerBusinessName, setTempCustomerBusinessName] = useState('');
+  const [tempCustomerAddress, setTempCustomerAddress] = useState('');
+  const [tempCustomerPhoto, setTempCustomerPhoto] = useState('');
+  const [cropperModal, setCropperModal] = useState({ isOpen: false, imageSrc: '' });
+  const crmFileInputRef = useRef(null);
 
   // Wholesale & Export Order Wizard States - Persisted across page refresh
   const [showWholesaleWizard, setShowWholesaleWizard] = useState(() => {
@@ -1574,6 +1579,12 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
 
     setTempCustomerPhone(phoneToUse);
     setTempCustomerName(nameToUse);
+    setTempCustomerBusinessName(customerInfo?.businessName || '');
+    const addr = typeof customerAddress === 'string'
+      ? customerAddress
+      : (customerAddress?.fullAddress || customerAddress?.line1 || '');
+    setTempCustomerAddress(addr);
+    setTempCustomerPhoto(customerPhoto || '');
     setCrmCustomerFound(null);
     setShowCustomerModal(true);
 
@@ -1622,6 +1633,12 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
           const data = await res.json();
           if (!data.isNew && data.customer) {
             setTempCustomerName(data.customer.name || '');
+            setTempCustomerBusinessName(data.customer.businessName || '');
+            const addr = typeof data.customer.address === 'string'
+              ? data.customer.address
+              : (data.customer.address?.fullAddress || data.customer.address?.line1 || '');
+            setTempCustomerAddress(addr);
+            setTempCustomerPhoto(data.customer.photo || '');
             setCrmCustomerFound(data.customer);
           } else {
             setCrmCustomerFound(null);
@@ -1645,36 +1662,71 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
       return;
     }
 
+    setCrmSaving(true);
+
+    const targetCategory = fishOrderMode === 'bulk' ? 'Wholesale' : (fishOrderMode === 'export' ? 'Export' : 'Retail');
+    const targetRole = targetCategory === 'Wholesale' ? 'Dealer' : (targetCategory === 'Export' ? 'Client' : 'Customer');
+
+    const customerData = {
+      name: cleanName || 'Guest',
+      phone: cleanPhone,
+      businessName: (tempCustomerBusinessName || '').trim(),
+      address: {
+        line1: (tempCustomerAddress || '').trim(),
+        fullAddress: (tempCustomerAddress || '').trim(),
+        city: 'Kadapa',
+        district: 'YSR Kadapa'
+      },
+      photo: tempCustomerPhoto || '',
+      category: targetCategory,
+      exportSubCategory: targetCategory === 'Export' ? 'Local' : null,
+      orderType: billType
+    };
+
     // 1. Instant Optimistic UI Update & Close Modal (0ms delay)
     setCustomerPhone(cleanPhone);
     setCustomerName(cleanName || 'Guest');
+    setCustomerPhoto(tempCustomerPhoto || '');
+    setCustomerAddress((tempCustomerAddress || '').trim());
+    setCustomerInfo(customerData);
+    setCustomerCategory(targetCategory);
+    setIsOrderLocked(true);
     setShowCustomerModal(false);
-    showToast(t('Customer details linked to order'), 'success');
+    showToast(`✅ ${targetRole} saved and selected!`, 'success');
+
+    // Update crmCustomers list in state immediately
+    setCrmCustomers(prev => {
+      const filtered = prev.filter(c => String(c.phone || '').replace(/\D/g, '') !== cleanPhone);
+      return [customerData, ...filtered];
+    });
 
     setOpenOrdersList(prev => prev.map(o => isTableMatching(o.tableNo, activeTable) ? {
       ...o,
       customerPhone: cleanPhone,
-      customerName: cleanName || 'Guest'
+      customerName: cleanName || 'Guest',
+      customerPhoto: tempCustomerPhoto || ''
     } : o));
 
     if (activeTable) {
       upsertCachedOpenOrder({
         tableNo: activeTable,
         customerPhone: cleanPhone,
-        customerName: cleanName || 'Guest'
+        customerName: cleanName || 'Guest',
+        customerPhoto: tempCustomerPhoto || ''
       }).catch(() => { });
     }
 
-    // 2. Non-blocking Background Parallel API Sync
+    // 2. Dispatch event so all dropdowns/components across the app (smartwatch dial, etc.) reload immediately
+    try {
+      window.dispatchEvent(new CustomEvent('customersUpdated', { detail: customerData }));
+    } catch (e) {}
+
+    // 3. Non-blocking Background API Sync
     (async () => {
       try {
         const syncPromises = [];
         if (cleanPhone) {
-          syncPromises.push(api.post('/customers', {
-            name: cleanName || 'Guest',
-            phone: cleanPhone,
-            orderType: billType
-          }));
+          syncPromises.push(api.post('/customers', customerData));
         }
 
         const targetOrderId = orderId || openOrdersList.find(o => isTableMatching(o.tableNo, activeTable))?._id;
@@ -1687,8 +1739,18 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
         }
 
         await Promise.all(syncPromises);
+
+        // Fetch fresh customers in background and notify
+        fetchPredefinedCustomers(targetCategory, 'All', true).then(custs => {
+          if (Array.isArray(custs)) {
+            setCrmCustomers(custs);
+            window.dispatchEvent(new CustomEvent('customersUpdated'));
+          }
+        }).catch(() => {});
       } catch (err) {
         console.warn('Background customer CRM sync error:', err);
+      } finally {
+        setCrmSaving(false);
       }
     })();
   };
@@ -4786,47 +4848,95 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
           '1234'
         ].filter(Boolean)} />
 
-      {/* Customer CRM Modal (Only Name and Phone Number) */}
+      {/* ── FULL CRM CUSTOMER / DEALER MODAL (Screenshot 1 Exact Match with Image Cropper) ── */}
       {showCustomerModal && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-xs flex items-center justify-center z-[99999] p-4 animate-fade-in">
-          <div className="bg-white border border-[#E8DCCB] w-full max-w-sm rounded-2xl shadow-2xl overflow-hidden animate-slide-up text-slate-800">
-            <div className="p-4 border-b border-[#E8DCCB] flex justify-between items-center bg-[#F7EFE2]">
-              <div className="flex items-center gap-2.5">
-                <div className="p-2 bg-orange-100 border border-orange-200 text-[#ea580c] rounded-xl shadow-xs">
-                  <User size={18} />
-                </div>
-                <div>
-                  <h3 className="font-black text-sm text-slate-800">{t("Customer CRM")}</h3>
-                  <p className="text-[11px] text-slate-500">{t("Add customer name & phone number")}</p>
-                </div>
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs z-[999999] flex items-center justify-center p-3 animate-fade-in">
+          <div className="bg-[#FDFBF7] border-2 border-[#E8DCCB] rounded-3xl w-full max-w-md overflow-hidden shadow-2xl flex flex-col animate-slide-up text-slate-800 my-auto">
+            {/* Header: Title & Subtitle */}
+            <div className="p-4 border-b border-[#E8DCCB] flex justify-between items-center bg-[#FAF0E4]">
+              <div>
+                <h3 className="font-black text-base text-slate-900 tracking-tight">
+                  {fishOrderMode === 'bulk'
+                    ? t('Add New Customer / Dealer')
+                    : fishOrderMode === 'export'
+                    ? t('Add New Export Client')
+                    : t('Add New Customer / Dealer')}
+                </h3>
+                <p className="text-[11px] text-slate-500 font-semibold mt-0.5">
+                  {fishOrderMode === 'bulk'
+                    ? 'Wholesale Management Hub • Wholesale Channel'
+                    : fishOrderMode === 'export'
+                    ? 'Export Management Hub • Export Channel'
+                    : 'Retail Management Hub • Retail Channel'}
+                </p>
               </div>
               <button
                 type="button"
                 onClick={() => setShowCustomerModal(false)}
-                className="text-slate-400 hover:text-slate-700 p-1.5 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
+                className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-200/60 rounded-xl transition-all cursor-pointer"
               >
                 <X size={18} />
               </button>
             </div>
 
-            <form onSubmit={handleSaveCustomerCRM} className="p-5 space-y-4">
+            <form onSubmit={handleSaveCustomerCRM} className="p-4 sm:p-5 space-y-3.5 text-xs max-h-[82vh] overflow-y-auto">
+              {/* Photo Upload with Circle Crop (Exact Match to Screenshot 1) */}
+              <div className="flex items-center gap-3.5 p-3 bg-[#FAF0E4]/70 rounded-2xl border border-[#E8DCCB]">
+                {tempCustomerPhoto ? (
+                  <img
+                    src={tempCustomerPhoto}
+                    alt="Profile"
+                    className="w-14 h-14 rounded-full object-cover border-2 border-amber-400 shadow-xs shrink-0"
+                  />
+                ) : (
+                  <div className="w-14 h-14 rounded-full bg-amber-100 text-amber-800 font-black text-xl flex items-center justify-center shrink-0 border border-amber-300">
+                    {((tempCustomerName || 'C').charAt(0) || 'C').toUpperCase()}
+                  </div>
+                )}
+                <div className="space-y-1">
+                  <input
+                    type="file"
+                    ref={crmFileInputRef}
+                    accept="image/*"
+                    className="hidden"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) {
+                        const reader = new FileReader();
+                        reader.onload = () => setCropperModal({ isOpen: true, imageSrc: reader.result });
+                        reader.readAsDataURL(file);
+                      }
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => crmFileInputRef.current?.click()}
+                    className="px-3 py-1 bg-white hover:bg-slate-50 border border-[#E8DCCB] rounded-xl text-xs font-bold text-slate-800 flex items-center gap-1.5 shadow-2xs cursor-pointer active:scale-95 transition-all"
+                  >
+                    <Camera size={13} className="text-[#ea580c]" />
+                    <span>{tempCustomerPhoto ? t('Change Photo') : t('Upload Photo')}</span>
+                  </button>
+                  <p className="text-[10px] text-slate-500 font-medium">{t('Auto-cropped circle profile avatar')}</p>
+                </div>
+              </div>
+
+              {/* Phone Input */}
               <div>
-                <label className="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-1.5">
-                  {t("Phone Number (10 Digits)")}
+                <label className="block text-[11px] font-bold text-slate-600 uppercase tracking-wider mb-1">
+                  {t('PHONE NUMBER (10 DIGITS)')} *
                 </label>
                 <div className="relative">
-                  <Phone size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
                   <input
                     type="tel"
+                    required
                     maxLength={10}
-                    placeholder="e.g. 9876543210"
                     value={tempCustomerPhone}
                     onChange={(e) => handleCrmPhoneChange(e.target.value)}
                     onFocus={() => { if (crmSuggestions.length > 0) setShowCrmSuggestions(true); }}
                     onBlur={() => setTimeout(() => setShowCrmSuggestions(false), 200)}
-                    className="w-full pl-10 pr-4 py-2.5 bg-[#F7EFE2] border border-[#E8DCCB] rounded-xl text-sm font-bold text-slate-800 focus:outline-none focus:border-[#ea580c] focus:ring-2 focus:ring-[#ea580c]/20 transition-all font-mono"
+                    placeholder="e.g. 9582425359"
+                    className="w-full bg-[#FAF0E4]/60 border border-[#E8DCCB] rounded-xl px-3 py-2 text-xs font-bold font-mono text-slate-900 focus:outline-none focus:border-[#ea580c] focus:bg-white transition-all"
                   />
-                  {/* Suggestions Dropdown */}
                   {showCrmSuggestions && crmSuggestions.length > 0 && (
                     <div className="absolute z-50 w-full mt-1 bg-white border border-[#E8DCCB] rounded-xl shadow-2xl max-h-48 overflow-y-auto">
                       {crmSuggestions.map((cust, idx) => (
@@ -4837,12 +4947,18 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
                             e.preventDefault();
                             handleCrmPhoneChange(cust.phone);
                             setTempCustomerName(cust.name && cust.name !== 'Guest' ? cust.name : '');
+                            setTempCustomerBusinessName(cust.businessName || '');
+                            const a = typeof cust.address === 'string'
+                              ? cust.address
+                              : (cust.address?.fullAddress || cust.address?.line1 || '');
+                            setTempCustomerAddress(a);
+                            setTempCustomerPhoto(cust.photo || '');
                             setShowCrmSuggestions(false);
                           }}
                         >
                           <div className="flex flex-col">
-                            <span className="text-sm font-bold text-slate-800 font-mono">{cust.phone}</span>
-                            <span className="text-xs text-slate-500">{cust.name}</span>
+                            <span className="text-xs font-bold text-slate-900 font-mono">{cust.phone}</span>
+                            <span className="text-[11px] text-slate-500">{cust.name} {cust.businessName ? `(${cust.businessName})` : ''}</span>
                           </div>
                         </div>
                       ))}
@@ -4850,59 +4966,100 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
                   )}
                 </div>
                 {crmLoading && (
-                  <p className="text-[11px] text-[#ea580c] mt-1 flex items-center gap-1 font-medium animate-pulse">
+                  <p className="text-[10.5px] text-[#ea580c] mt-1 flex items-center gap-1 font-medium animate-pulse">
                     Checking CRM records...
                   </p>
                 )}
                 {crmCustomerFound && (
-                  <p className="text-[11px] text-emerald-600 mt-1 flex items-center gap-1 font-bold">
-                    ✓ Existing customer found ({crmCustomerFound.totalVisits || 1} visits)
+                  <p className="text-[10.5px] text-emerald-600 mt-1 flex items-center gap-1 font-bold">
+                    ✓ Existing record found ({crmCustomerFound.name})
                   </p>
                 )}
               </div>
 
+              {/* Name Input */}
               <div>
-                <label className="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-1.5">
-                  {t("Customer Name")}
+                <label className="block text-[11px] font-bold text-slate-600 uppercase tracking-wider mb-1">
+                  {fishOrderMode === 'bulk' ? t('DEALER NAME') : fishOrderMode === 'export' ? t('CLIENT NAME') : t('CUSTOMER NAME')} *
                 </label>
-                <div className="relative">
-                  <User size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
-                  <input
-                    type="text"
-                    placeholder="e.g. Rahul Sharma"
-                    value={tempCustomerName}
-                    onChange={(e) => setTempCustomerName(e.target.value)}
-                    className="w-full pl-10 pr-4 py-2.5 bg-[#F7EFE2] border border-[#E8DCCB] rounded-xl text-sm font-bold text-slate-800 focus:outline-none focus:border-[#ea580c] focus:ring-2 focus:ring-[#ea580c]/20 transition-all"
-                  />
-                </div>
+                <input
+                  type="text"
+                  required
+                  value={tempCustomerName}
+                  onChange={(e) => setTempCustomerName(e.target.value)}
+                  placeholder="e.g. Saifuddin or Anand Kumar"
+                  className="w-full bg-[#FAF0E4]/60 border border-[#E8DCCB] rounded-xl px-3 py-2 text-xs font-bold text-slate-900 focus:outline-none focus:border-[#ea580c] focus:bg-white transition-all"
+                />
               </div>
 
+              {/* Shop / Business Name */}
+              <div>
+                <label className="block text-[11px] font-bold text-slate-600 uppercase tracking-wider mb-1">
+                  {t('SHOP / BUSINESS NAME (OPTIONAL)')}
+                </label>
+                <input
+                  type="text"
+                  value={tempCustomerBusinessName}
+                  onChange={(e) => setTempCustomerBusinessName(e.target.value)}
+                  placeholder="e.g. Royal Fish Mart"
+                  className="w-full bg-[#FAF0E4]/60 border border-[#E8DCCB] rounded-xl px-3 py-2 text-xs font-bold text-slate-900 focus:outline-none focus:border-[#ea580c] focus:bg-white transition-all"
+                />
+              </div>
+
+              {/* Address / Location */}
+              <div>
+                <label className="block text-[11px] font-bold text-slate-600 uppercase tracking-wider mb-1">
+                  {t('ADDRESS / LOCATION (OPTIONAL)')}
+                </label>
+                <input
+                  type="text"
+                  value={tempCustomerAddress}
+                  onChange={(e) => setTempCustomerAddress(e.target.value)}
+                  placeholder="e.g. Door No, Street, Landmark, Kadapa"
+                  className="w-full bg-[#FAF0E4]/60 border border-[#E8DCCB] rounded-xl px-3 py-2 text-xs font-bold text-slate-900 focus:outline-none focus:border-[#ea580c] focus:bg-white transition-all"
+                />
+              </div>
+
+              {/* Action Buttons */}
               <div className="pt-2 flex gap-2">
                 <button
                   type="button"
                   onClick={() => setShowCustomerModal(false)}
-                  className="flex-1 py-2.5 border border-[#E8DCCB] bg-[#F7EFE2] text-slate-700 rounded-xl font-bold text-xs hover:bg-[#F5E8D8] hover:text-slate-900 transition-colors cursor-pointer"
+                  className="flex-1 py-2.5 border border-[#E8DCCB] bg-[#FAF0E4] hover:bg-[#F5E8D8] text-slate-700 rounded-xl font-bold text-xs cursor-pointer active:scale-95 transition-all"
                 >
-                  {t("Cancel")}
+                  {t('Cancel')}
                 </button>
                 <button
                   type="submit"
                   disabled={crmSaving}
-                  className="flex-1 py-2.5 bg-gradient-to-r from-[#ea580c] to-[#c2410c] hover:from-[#c2410c] hover:to-[#9a3412] text-white rounded-xl font-bold text-xs shadow-xs transition-all cursor-pointer flex items-center justify-center gap-1.5"
+                  className="flex-1 py-2.5 bg-gradient-to-r from-[#ea580c] to-[#c2410c] hover:from-orange-600 hover:to-orange-700 text-white rounded-xl font-black text-xs shadow-md cursor-pointer active:scale-95 disabled:opacity-50 transition-all flex items-center justify-center gap-1.5"
                 >
                   {crmSaving ? (
                     <>
                       <Loader2 size={14} className="animate-spin" />
-                      <span>Saving...</span>
+                      <span>{t('Saving...')}</span>
                     </>
                   ) : (
-                    <span>{t("Save to Order")}</span>
+                    <span>{t('Save & Persist')}</span>
                   )}
                 </button>
               </div>
             </form>
           </div>
         </div>
+      )}
+
+      {/* ── IMAGE CROPPER MODAL (Crop Customer / Dealer Avatar) ── */}
+      {cropperModal.isOpen && (
+        <ImageCropperModal
+          isOpen={cropperModal.isOpen}
+          imageSrc={cropperModal.imageSrc}
+          onClose={() => setCropperModal({ isOpen: false, imageSrc: '' })}
+          onCropComplete={(croppedBase64) => {
+            setTempCustomerPhoto(croppedBase64);
+            setCropperModal({ isOpen: false, imageSrc: '' });
+          }}
+        />
       )}
 
       {/* Offscreen Thermal Receipt for Instant WhatsApp Image Capture */}
