@@ -79,22 +79,8 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack }) {
     } catch (e) {}
   }, [stockInSubTab]);
 
-  const [showStatsStrip, setShowStatsStrip] = useState(() => {
-    try {
-      const saved = localStorage.getItem('inventory_show_stats');
-      return saved !== null ? saved === 'true' : true;
-    } catch (e) {
-      return true;
-    }
-  });
-
-  const toggleStatsStrip = () => {
-    setShowStatsStrip(prev => {
-      const next = !prev;
-      try { localStorage.setItem('inventory_show_stats', String(next)); } catch (e) {}
-      return next;
-    });
-  };
+  // Cold Storage Stock Metrics Modal (Default: OFF on all screen sizes)
+  const [isStatsModalOpen, setIsStatsModalOpen] = useState(false);
   const [fishList, setFishList] = useState([]);
   const [stockLogs, setStockLogs] = useState([]);
   const [crmCustomers, setCrmCustomers] = useState([]);
@@ -202,7 +188,7 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack }) {
   const [overviewStartDate, setOverviewStartDate] = useState('');
   const [overviewEndDate, setOverviewEndDate] = useState('');
   const [overviewDateError, setOverviewDateError] = useState('');
-  const [showMobileFilters, setShowMobileFilters] = useState(false);
+  const [isFilterModalOpen, setIsFilterModalOpen] = useState(false);
 
   const fetchFilteredFishInventory = useCallback(async (custom = {}) => {
     try {
@@ -1672,22 +1658,22 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack }) {
             </div>
           </div>
 
-          {/* Right Header Controls: Mini Stats Toggle & Refresh */}
+          {/* Right Header Controls: Stock Stats Modal Button & Refresh */}
           <div className="flex items-center gap-1.5 shrink-0">
             <button
               type="button"
-              onClick={toggleStatsStrip}
-              className="flex items-center gap-1 px-2 py-1 rounded-lg bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 text-[11px] font-bold transition-all cursor-pointer shadow-2xs shrink-0"
-              title={showStatsStrip ? "Minimize stats cards to save vertical screen space" : "Show full stats cards"}
+              onClick={() => setIsStatsModalOpen(true)}
+              className="flex items-center gap-1 sm:gap-1.5 px-2 sm:px-2.5 py-1 rounded-lg bg-orange-50 hover:bg-orange-100 text-[#ea580c] border border-orange-200 text-[11px] sm:text-xs font-bold transition-all cursor-pointer shadow-2xs shrink-0"
+              title="Open Cold Storage Metrics Modal"
             >
-              {showStatsStrip ? <EyeOff size={11} className="text-slate-500" /> : <Eye size={11} className="text-[#ea580c]" />}
-              <span className="hidden xs:inline">{showStatsStrip ? 'Hide Stats' : 'Show Stats'}</span>
+              <Scale size={12} className="text-[#ea580c]" />
+              <span>Stock Stats</span>
             </button>
 
             <button
               onClick={fetchInventoryData}
               disabled={loading}
-              className="flex items-center gap-1 px-2 py-1 rounded-lg bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 text-[11px] font-bold transition-all cursor-pointer shadow-2xs shrink-0"
+              className="flex items-center gap-1 px-2 py-1 rounded-lg bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 text-[11px] sm:text-xs font-bold transition-all cursor-pointer shadow-2xs shrink-0"
               title="Refresh Inventory"
             >
               <RefreshCw size={11} className={loading ? 'animate-spin' : ''} />
@@ -1697,87 +1683,111 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack }) {
         </div>
       </div>
 
-      {/* KPI Cards Strip (Ultra-Compact High-Density / Minimizable) */}
-      {showStatsStrip ? (
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-1.5 sm:gap-2 md:gap-2.5 w-full">
-          {/* Card 1: Total Fish Stock */}
-          <div className="bg-[#FDFBF7] border border-[#E8DCCB] rounded-xl px-2.5 py-1.5 sm:px-3 sm:py-2 shadow-2xs flex items-center justify-between">
-            <div className="min-w-0">
-              <span className="text-[8.5px] sm:text-[9.5px] font-bold text-slate-500 uppercase tracking-wide truncate block leading-tight">Total Fish Stock</span>
-              <div className="text-xs sm:text-sm md:text-base font-black text-sky-800 font-mono leading-tight mt-0.5 truncate">
-                {totalStockKg.toFixed(1)} <span className="text-[9px] sm:text-[10px] font-semibold text-slate-500">Kg</span>
+      {/* ── Cold Storage Stock Metrics Modal (Open/Close Modal, Default: OFF on All Screen Sizes) ── */}
+      {isStatsModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-150">
+          <div className="bg-[#FDFBF7] border border-[#E8DCCB] rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+            {/* Modal Header */}
+            <div className="px-4 py-3 border-b border-[#fed7aa]/60 flex items-center justify-between bg-[#FAF0E4]">
+              <div className="flex items-center gap-2">
+                <div className="p-1.5 bg-orange-100 text-[#ea580c] rounded-lg border border-orange-200">
+                  <Scale size={16} />
+                </div>
+                <div>
+                  <h3 className="text-sm sm:text-base font-black text-slate-900 m-0 leading-tight">
+                    Cold Storage Stock Metrics
+                  </h3>
+                  <p className="text-[11px] text-slate-500 font-medium m-0">
+                    Live overview of current warehouse inventory & capacity
+                  </p>
+                </div>
               </div>
+              <button
+                type="button"
+                onClick={() => setIsStatsModalOpen(false)}
+                className="p-1.5 rounded-lg text-slate-500 hover:text-slate-800 hover:bg-white/80 transition-all cursor-pointer"
+                title="Close"
+              >
+                <X size={18} />
+              </button>
             </div>
-            <div className="p-1 sm:p-1.5 bg-sky-100 text-sky-700 rounded-lg border border-sky-200 shrink-0 ml-1">
-              <Scale size={13} />
-            </div>
-          </div>
 
-          {/* Card 2: Active Varieties */}
-          <div className="bg-[#FDFBF7] border border-[#E8DCCB] rounded-xl px-2.5 py-1.5 sm:px-3 sm:py-2 shadow-2xs flex items-center justify-between">
-            <div className="min-w-0">
-              <span className="text-[8.5px] sm:text-[9.5px] font-bold text-slate-500 uppercase tracking-wide truncate block leading-tight">Active Varieties</span>
-              <div className="text-xs sm:text-sm md:text-base font-black text-emerald-800 font-mono leading-tight mt-0.5 truncate">
-                {fishList.length} <span className="text-[9px] sm:text-[10px] font-semibold text-slate-500">Items</span>
-              </div>
-            </div>
-            <div className="p-1 sm:p-1.5 bg-emerald-100 text-emerald-700 rounded-lg border border-emerald-200 shrink-0 ml-1">
-              <ShieldCheck size={13} />
-            </div>
-          </div>
+            {/* Modal Body: 4 Full Metric Cards */}
+            <div className="p-4 space-y-3 overflow-y-auto">
+              <div className="grid grid-cols-2 gap-2.5 sm:gap-3">
+                {/* Total Stock */}
+                <div className="bg-white border border-[#E8DCCB] rounded-xl p-3 shadow-2xs flex flex-col justify-between">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-wide">
+                      Total Fish Stock
+                    </span>
+                    <div className="p-1.5 bg-sky-100 text-sky-700 rounded-lg">
+                      <Scale size={14} />
+                    </div>
+                  </div>
+                  <div className="text-lg sm:text-xl font-black text-sky-800 font-mono mt-2">
+                    {totalStockKg.toFixed(1)} <span className="text-xs font-semibold text-slate-500">Kg</span>
+                  </div>
+                </div>
 
-          {/* Card 3: Low Stock Alert */}
-          <div className="bg-[#FDFBF7] border border-[#E8DCCB] rounded-xl px-2.5 py-1.5 sm:px-3 sm:py-2 shadow-2xs flex items-center justify-between">
-            <div className="min-w-0">
-              <span className="text-[8.5px] sm:text-[9.5px] font-bold text-slate-500 uppercase tracking-wide truncate block leading-tight">Low Stock Alert</span>
-              <div className="text-xs sm:text-sm md:text-base font-black text-amber-800 font-mono leading-tight mt-0.5 truncate">
-                {lowStockCount} <span className="text-[9px] sm:text-[10px] font-semibold text-slate-500">Varieties</span>
-              </div>
-            </div>
-            <div className="p-1 sm:p-1.5 bg-amber-100 text-amber-700 rounded-lg border border-amber-200 shrink-0 ml-1">
-              <AlertTriangle size={13} />
-            </div>
-          </div>
+                {/* Active Varieties */}
+                <div className="bg-white border border-[#E8DCCB] rounded-xl p-3 shadow-2xs flex flex-col justify-between">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-wide">
+                      Active Varieties
+                    </span>
+                    <div className="p-1.5 bg-emerald-100 text-emerald-700 rounded-lg">
+                      <ShieldCheck size={14} />
+                    </div>
+                  </div>
+                  <div className="text-lg sm:text-xl font-black text-emerald-800 font-mono mt-2">
+                    {fishList.length} <span className="text-xs font-semibold text-slate-500">Items</span>
+                  </div>
+                </div>
 
-          {/* Card 4: Cold Storage Crates */}
-          <div className="bg-[#FDFBF7] border border-[#E8DCCB] rounded-xl px-2.5 py-1.5 sm:px-3 sm:py-2 shadow-2xs flex items-center justify-between">
-            <div className="min-w-0">
-              <span className="text-[8.5px] sm:text-[9.5px] font-bold text-slate-500 uppercase tracking-wide truncate block leading-tight">Storage Crates</span>
-              <div className="text-xs sm:text-sm md:text-base font-black text-orange-800 font-mono leading-tight mt-0.5 truncate">
-                ~{totalCratesEqv} <span className="text-[9px] sm:text-[10px] font-semibold text-slate-500">Boxes</span>
+                {/* Low Stock Alert */}
+                <div className="bg-white border border-[#E8DCCB] rounded-xl p-3 shadow-2xs flex flex-col justify-between">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-wide">
+                      Low Stock Alert
+                    </span>
+                    <div className="p-1.5 bg-amber-100 text-amber-700 rounded-lg">
+                      <AlertTriangle size={14} />
+                    </div>
+                  </div>
+                  <div className="text-lg sm:text-xl font-black text-amber-800 font-mono mt-2">
+                    {lowStockCount} <span className="text-xs font-semibold text-slate-500">Varieties</span>
+                  </div>
+                </div>
+
+                {/* Cold Storage Crates */}
+                <div className="bg-white border border-[#E8DCCB] rounded-xl p-3 shadow-2xs flex flex-col justify-between">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-wide">
+                      Storage Crates
+                    </span>
+                    <div className="p-1.5 bg-orange-100 text-[#ea580c] rounded-lg">
+                      <Package size={14} />
+                    </div>
+                  </div>
+                  <div className="text-lg sm:text-xl font-black text-orange-800 font-mono mt-2">
+                    ~{totalCratesEqv} <span className="text-xs font-semibold text-slate-500">Boxes</span>
+                  </div>
+                </div>
               </div>
             </div>
-            <div className="p-1 sm:p-1.5 bg-orange-100 text-[#ea580c] rounded-lg border border-orange-200 shrink-0 ml-1">
-              <Package size={13} />
+
+            {/* Modal Footer */}
+            <div className="px-4 py-2.5 bg-slate-50 border-t border-slate-200 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setIsStatsModalOpen(false)}
+                className="px-4 py-1.5 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-xs font-bold transition-all cursor-pointer shadow-xs"
+              >
+                Close
+              </button>
             </div>
           </div>
-        </div>
-      ) : (
-        /* Collapsed Ultra-Slim Micro-Bar (Takes just 26px and keeps all 4 metrics directly visible) */
-        <div 
-          onClick={toggleStatsStrip}
-          className="bg-[#FAF0E4]/70 hover:bg-[#FAF0E4] border border-[#fed7aa] rounded-xl px-2.5 py-1 flex items-center justify-between gap-2 text-xs font-bold text-slate-700 cursor-pointer shadow-2xs transition-all"
-        >
-          <div className="flex items-center gap-2 sm:gap-3 overflow-x-auto scrollbar-none text-[10.5px] font-mono">
-            <span className="text-sky-800 flex items-center gap-1 font-bold">
-              <Scale size={11} className="text-sky-600" /> {totalStockKg.toFixed(1)} Kg Stock
-            </span>
-            <span className="text-slate-300">•</span>
-            <span className="text-emerald-800 flex items-center gap-1 font-bold">
-              <ShieldCheck size={11} className="text-emerald-600" /> {fishList.length} Varieties
-            </span>
-            <span className="text-slate-300">•</span>
-            <span className="text-amber-800 flex items-center gap-1 font-bold">
-              <AlertTriangle size={11} className="text-amber-600" /> {lowStockCount} Low
-            </span>
-            <span className="text-slate-300">•</span>
-            <span className="text-orange-800 flex items-center gap-1 font-bold">
-              <Package size={11} className="text-[#ea580c]" /> ~{totalCratesEqv} Boxes
-            </span>
-          </div>
-          <span className="text-[9.5px] text-[#ea580c] font-black shrink-0 flex items-center gap-0.5">
-            Expand <ChevronDown size={11} />
-          </span>
         </div>
       )}
 
@@ -1967,22 +1977,21 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack }) {
               />
             </div>
 
-            {/* Mobile Filters Toggle Button */}
+            {/* Mobile Filter Button (Opens Bottom Sheet / Modal instead of taking space on screen) */}
             <button
               type="button"
-              onClick={() => setShowMobileFilters(prev => !prev)}
-              className={`md:hidden flex items-center justify-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-bold border transition-all cursor-pointer whitespace-nowrap shrink-0 ${
-                showMobileFilters || isOverviewFilterActive
+              onClick={() => setIsFilterModalOpen(true)}
+              className={`md:hidden flex items-center justify-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-bold border transition-all cursor-pointer whitespace-nowrap shrink-0 ${
+                isOverviewFilterActive
                   ? 'bg-[#ea580c] text-white border-[#ea580c] shadow-xs font-black'
                   : 'bg-white text-slate-700 border-[#E8DCCB] hover:bg-slate-50'
               }`}
             >
               <Filter size={12} />
-              <span>{showMobileFilters ? 'Hide' : 'Filters'}</span>
+              <span>Filter</span>
               {isOverviewFilterActive && (
-                <span className="w-1.5 h-1.5 rounded-full bg-white" />
+                <span className="w-2 h-2 rounded-full bg-white ml-0.5" />
               )}
-              <ChevronDown size={12} className={`transition-transform duration-200 ${showMobileFilters ? 'rotate-180' : ''}`} />
             </button>
 
             {/* Pagination Controls */}
@@ -2012,95 +2021,209 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack }) {
               </div>
             </div>
           </div>
-        </div>
-      )}
 
-      {/* Mobile / Tablet Accordion Panel for Filters (Open / Close) */}
-      {activeTab === 'overview' && showMobileFilters && (
-        <div className="md:hidden bg-[#FAF3E8] p-2.5 rounded-xl border border-[#fed7aa] flex flex-col gap-2 shadow-2xs transition-all">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-slate-700 uppercase tracking-wide flex items-center gap-1.5">
-              <Filter size={13} className="text-[#ea580c]" />
-              Stock Ledger Filters
-            </span>
-            {isOverviewFilterActive && (
+          {/* Active Filter Indicators on Mobile (Ultra-slim 22px badge with 1-tap remove, zero screen bloat) */}
+          {isOverviewFilterActive && (
+            <div className="md:hidden flex items-center gap-1.5 overflow-x-auto scrollbar-none pt-1 border-t border-[#fed7aa]/50 text-[11px] w-full">
+              <span className="text-slate-500 font-bold shrink-0">Filter:</span>
+              {overviewSourceFilter !== 'all' && (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-orange-100 text-[#ea580c] font-black border border-orange-200 shrink-0">
+                  {overviewSourceFilter === 'local' ? 'Local Catch' : 'DAM Catch'}
+                  <button type="button" onClick={() => handleSelectSource('all')} className="hover:text-rose-600 cursor-pointer ml-0.5">
+                    <X size={10} />
+                  </button>
+                </span>
+              )}
+              {(overviewStartDate || overviewEndDate) && (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-sky-100 text-sky-800 font-bold border border-sky-200 shrink-0">
+                  {overviewStartDate || '...'} → {overviewEndDate || '...'}
+                  <button type="button" onClick={() => { setOverviewStartDate(''); setOverviewEndDate(''); }} className="hover:text-rose-600 cursor-pointer ml-0.5">
+                    <X size={10} />
+                  </button>
+                </span>
+              )}
               <button
                 type="button"
                 onClick={handleClearOverviewFilters}
-                className="text-xs font-bold text-rose-600 hover:text-rose-800 flex items-center gap-1 cursor-pointer"
+                className="text-[10.5px] text-rose-600 hover:text-rose-800 font-bold underline ml-auto shrink-0 cursor-pointer"
               >
-                <RotateCcw size={11} /> Clear All
+                Clear
               </button>
-            )}
-          </div>
-
-          {/* Sources toggle: Clean, No emojis */}
-          <div className="grid grid-cols-3 gap-1 bg-white p-1 rounded-xl border border-[#E8DCCB]">
-            <button
-              type="button"
-              onClick={() => handleSelectSource('all')}
-              className={`py-1.5 text-xs font-bold rounded-lg text-center transition-all cursor-pointer ${
-                overviewSourceFilter === 'all'
-                  ? 'bg-slate-800 text-white shadow-2xs font-black'
-                  : 'text-slate-600 hover:bg-slate-50'
-              }`}
-            >
-              All Sources
-            </button>
-            <button
-              type="button"
-              onClick={() => handleSelectSource('local')}
-              className={`py-1.5 text-xs font-bold rounded-lg text-center transition-all cursor-pointer ${
-                overviewSourceFilter === 'local'
-                  ? 'bg-gradient-to-r from-orange-500 to-[#ea580c] text-white shadow-2xs font-black'
-                  : 'text-slate-600 hover:bg-slate-50'
-              }`}
-            >
-              Local Catch
-            </button>
-            <button
-              type="button"
-              onClick={() => handleSelectSource('dam')}
-              className={`py-1.5 text-xs font-bold rounded-lg text-center transition-all cursor-pointer ${
-                overviewSourceFilter === 'dam'
-                  ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-2xs font-black'
-                  : 'text-slate-600 hover:bg-slate-50'
-              }`}
-            >
-              DAM Catch
-            </button>
-          </div>
-
-          {/* Date Range Inputs */}
-          <div className="grid grid-cols-2 gap-2">
-            <div className="bg-white px-2.5 py-1.5 rounded-xl border border-[#E8DCCB]">
-              <span className="text-[9.5px] font-bold text-slate-500 block uppercase tracking-wider mb-0.5">From Date</span>
-              <input
-                type="date"
-                value={overviewStartDate}
-                max={overviewEndDate || todayStr}
-                onChange={(e) => handleStartDateChange(e.target.value)}
-                className="w-full text-xs font-bold font-mono text-slate-800 bg-transparent focus:outline-none cursor-pointer"
-              />
-            </div>
-            <div className="bg-white px-2.5 py-1.5 rounded-xl border border-[#E8DCCB]">
-              <span className="text-[9.5px] font-bold text-slate-500 block uppercase tracking-wider mb-0.5">To Date</span>
-              <input
-                type="date"
-                value={overviewEndDate}
-                min={overviewStartDate || undefined}
-                max={todayStr}
-                onChange={(e) => handleEndDateChange(e.target.value)}
-                className="w-full text-xs font-bold font-mono text-slate-800 bg-transparent focus:outline-none cursor-pointer"
-              />
-            </div>
-          </div>
-
-          {overviewDateError && (
-            <div className="text-xs font-bold text-rose-600 bg-rose-50 border border-rose-200 px-2.5 py-1.5 rounded-xl text-center">
-              {overviewDateError}
             </div>
           )}
+        </div>
+      )}
+
+      {/* ── Mobile Filter Bottom Sheet / Modal (New Sleek Method: Zero space wasted on table screen) ── */}
+      {isFilterModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-150">
+          <div className="bg-[#FDFBF7] border border-[#E8DCCB] rounded-t-3xl sm:rounded-2xl w-full max-w-md shadow-2xl overflow-hidden flex flex-col max-h-[85vh] animate-in slide-in-from-bottom duration-200">
+            {/* Header */}
+            <div className="px-4 py-3 border-b border-[#fed7aa]/60 flex items-center justify-between bg-[#FAF0E4]">
+              <div className="flex items-center gap-2">
+                <div className="p-1 bg-orange-100 text-[#ea580c] rounded-lg">
+                  <Filter size={15} />
+                </div>
+                <h3 className="text-sm font-black text-slate-900 m-0">Stock Ledger Filters</h3>
+              </div>
+              <div className="flex items-center gap-2">
+                {isOverviewFilterActive && (
+                  <button
+                    type="button"
+                    onClick={handleClearOverviewFilters}
+                    className="text-xs font-bold text-rose-600 hover:text-rose-800 flex items-center gap-1 cursor-pointer"
+                  >
+                    <RotateCcw size={11} /> Reset
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setIsFilterModalOpen(false)}
+                  className="p-1 rounded-lg text-slate-500 hover:text-slate-800 hover:bg-white/80 transition-all cursor-pointer"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-4 space-y-3.5 overflow-y-auto">
+              {/* Catch Source Selection */}
+              <div className="space-y-1.5">
+                <label className="text-[11px] font-black text-slate-600 uppercase tracking-wide block">
+                  Catch Origin Source
+                </label>
+                <div className="grid grid-cols-3 gap-1.5 bg-white p-1 rounded-xl border border-[#E8DCCB]">
+                  <button
+                    type="button"
+                    onClick={() => handleSelectSource('all')}
+                    className={`py-2 text-xs font-bold rounded-lg text-center transition-all cursor-pointer ${
+                      overviewSourceFilter === 'all'
+                        ? 'bg-slate-800 text-white shadow-2xs font-black'
+                        : 'text-slate-600 hover:bg-slate-50'
+                    }`}
+                  >
+                    All Sources
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleSelectSource('local')}
+                    className={`py-2 text-xs font-bold rounded-lg text-center transition-all cursor-pointer ${
+                      overviewSourceFilter === 'local'
+                        ? 'bg-gradient-to-r from-orange-500 to-[#ea580c] text-white shadow-2xs font-black'
+                        : 'text-slate-600 hover:bg-slate-50'
+                    }`}
+                  >
+                    Local Catch
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleSelectSource('dam')}
+                    className={`py-2 text-xs font-bold rounded-lg text-center transition-all cursor-pointer ${
+                      overviewSourceFilter === 'dam'
+                        ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-2xs font-black'
+                        : 'text-slate-600 hover:bg-slate-50'
+                    }`}
+                  >
+                    DAM Catch
+                  </button>
+                </div>
+              </div>
+
+              {/* Quick Date Presets */}
+              <div className="space-y-1.5">
+                <label className="text-[11px] font-black text-slate-600 uppercase tracking-wide block">
+                  Date Range Presets
+                </label>
+                <div className="grid grid-cols-4 gap-1.5">
+                  {[
+                    { label: 'Today', start: todayStr, end: todayStr },
+                    {
+                      label: 'Yesterday',
+                      start: new Date(Date.now() - 86400000).toISOString().split('T')[0],
+                      end: new Date(Date.now() - 86400000).toISOString().split('T')[0]
+                    },
+                    {
+                      label: '7 Days',
+                      start: new Date(Date.now() - 7 * 86400000).toISOString().split('T')[0],
+                      end: todayStr
+                    },
+                    { label: 'All Time', start: '', end: '' }
+                  ].map(preset => {
+                    const isSelected = overviewStartDate === preset.start && overviewEndDate === preset.end;
+                    return (
+                      <button
+                        key={preset.label}
+                        type="button"
+                        onClick={() => {
+                          setOverviewStartDate(preset.start);
+                          setOverviewEndDate(preset.end);
+                          setOverviewDateError('');
+                          setOverviewPage(1);
+                        }}
+                        className={`py-1.5 px-2 rounded-xl text-xs font-bold border transition-all text-center cursor-pointer ${
+                          isSelected
+                            ? 'bg-[#ea580c] text-white border-[#ea580c] shadow-2xs font-black'
+                            : 'bg-white text-slate-700 border-[#E8DCCB] hover:bg-slate-50'
+                        }`}
+                      >
+                        {preset.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Custom Date Pickers */}
+              <div className="space-y-1.5">
+                <label className="text-[11px] font-black text-slate-600 uppercase tracking-wide block">
+                  Custom Dates
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="bg-white border border-[#E8DCCB] rounded-xl p-2.5">
+                    <span className="text-[9.5px] font-bold text-slate-500 uppercase block">From Date</span>
+                    <input
+                      type="date"
+                      value={overviewStartDate}
+                      max={overviewEndDate || todayStr}
+                      onChange={(e) => handleStartDateChange(e.target.value)}
+                      className="w-full bg-transparent text-xs font-bold font-mono text-slate-800 focus:outline-none mt-1 cursor-pointer"
+                    />
+                  </div>
+                  <div className="bg-white border border-[#E8DCCB] rounded-xl p-2.5">
+                    <span className="text-[9.5px] font-bold text-slate-500 uppercase block">To Date</span>
+                    <input
+                      type="date"
+                      value={overviewEndDate}
+                      min={overviewStartDate || undefined}
+                      max={todayStr}
+                      onChange={(e) => handleEndDateChange(e.target.value)}
+                      className="w-full bg-transparent text-xs font-bold font-mono text-slate-800 focus:outline-none mt-1 cursor-pointer"
+                    />
+                  </div>
+                </div>
+                {overviewDateError && (
+                  <span className="text-xs font-bold text-rose-600 block mt-1">
+                    {overviewDateError}
+                  </span>
+                )}
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="px-4 py-3 bg-slate-50 border-t border-slate-200 flex items-center justify-between gap-2">
+              <span className="text-xs font-bold text-slate-600">
+                {filteredFish.length} item{filteredFish.length !== 1 ? 's' : ''} matching
+              </span>
+              <button
+                type="button"
+                onClick={() => setIsFilterModalOpen(false)}
+                className="px-5 py-2 bg-[#ea580c] hover:bg-orange-600 text-white rounded-xl text-xs font-black shadow-xs cursor-pointer transition-all"
+              >
+                Apply Filters
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
@@ -2153,11 +2276,6 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack }) {
                           <div className="text-[10px] sm:text-[11px] text-emerald-700 font-bold mt-0.5 flex items-center gap-1">
                             <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
                             Period Catch: +{fish.periodIntakeKg} Kg ({fish.periodIntakeCount} intake{fish.periodIntakeCount > 1 ? 's' : ''})
-                          </div>
-                        )}
-                        {fish.scientificName && (
-                          <div className="text-[10px] sm:text-[11px] text-slate-500 italic font-medium">
-                            {fish.scientificName}
                           </div>
                         )}
                       </td>
