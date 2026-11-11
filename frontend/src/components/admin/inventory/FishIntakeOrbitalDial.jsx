@@ -20,6 +20,7 @@ import {
 export const formatImageUrl = (url) => {
   if (!url) return '';
   let trimmed = String(url).trim();
+  if (!trimmed || trimmed === '""' || trimmed === "''" || trimmed === 'null' || trimmed === 'undefined') return '';
 
   if (trimmed.includes('google.com/imgres') || trimmed.includes('imgurl=')) {
     try {
@@ -30,13 +31,23 @@ export const formatImageUrl = (url) => {
       const match = trimmed.match(/[?&]imgurl=([^&]+)/);
       if (match && match[1]) trimmed = decodeURIComponent(match[1]);
     }
+  } else if (trimmed.includes('mediaurl=')) {
+    try {
+      const urlObj = new URL(trimmed);
+      const extracted = urlObj.searchParams.get('mediaurl');
+      if (extracted) trimmed = extracted;
+    } catch (e) { }
   }
 
   if (trimmed.startsWith('data:image/') || trimmed.startsWith('http://') || trimmed.startsWith('https://') || trimmed.startsWith('/')) {
     return trimmed;
   }
-  if (/^[A-Za-z0-9+/=]{30,}$/.test(trimmed) || trimmed.startsWith('iVBOR') || trimmed.startsWith('/9j/')) {
-    return `data:image/jpeg;base64,${trimmed}`;
+  if (/^[A-Za-z0-9+/=]{30,}$/.test(trimmed) || trimmed.startsWith('iVBOR') || trimmed.startsWith('/9j/') || trimmed.startsWith('R0lGOD') || trimmed.startsWith('UklGR')) {
+    let mime = 'jpeg';
+    if (trimmed.startsWith('iVBOR')) mime = 'png';
+    else if (trimmed.startsWith('R0lGOD')) mime = 'gif';
+    else if (trimmed.startsWith('UklGR')) mime = 'webp';
+    return `data:image/${mime};base64,${trimmed}`;
   }
   return trimmed;
 };
@@ -653,6 +664,7 @@ export default function FishIntakeOrbitalDial({
             const x = 220 + r * Math.cos(rad);
             const y = 220 + r * Math.sin(rad);
             const isSelected = idx === safeActiveIndex;
+            const imgUrl = formatImageUrl(item.image);
 
             return (
               <button
@@ -671,19 +683,32 @@ export default function FishIntakeOrbitalDial({
                   transition: isDraggingDialRef.current ? 'none' : 'transform 0.25s cubic-bezier(0.2, 0.8, 0.2, 1)',
                   pointerEvents: 'auto'
                 }}
-                className={`overflow-hidden flex items-center justify-center rounded-full cursor-pointer transition-all ${
+                className={`overflow-hidden flex items-center justify-center rounded-full cursor-pointer transition-all relative ${
                   isSelected
                     ? 'w-12 h-12 sm:w-14 sm:h-14 bg-white rounded-full ring-2 ring-amber-500 border-2 border-amber-600 shadow-xl scale-110 z-40'
                     : 'w-9 h-9 sm:w-11 sm:h-11 bg-white/95 rounded-full border border-amber-300 shadow-2xs hover:scale-115 hover:border-amber-500 z-30'
                 }`}
                 title={item.name}
               >
-                <img
-                  src={formatImageUrl(item.image)}
-                  alt={item.name}
-                  className="w-full h-full object-contain p-0.5 rounded-full pointer-events-none"
-                  loading="lazy"
-                />
+                {imgUrl ? (
+                  <img
+                    src={imgUrl}
+                    alt={item.name}
+                    className="w-full h-full object-contain p-0.5 rounded-full pointer-events-none"
+                    loading="lazy"
+                    onError={(e) => {
+                      e.currentTarget.style.display = 'none';
+                      const fallback = e.currentTarget.parentElement?.querySelector('.fish-dial-thumb-fallback');
+                      if (fallback) fallback.style.display = 'flex';
+                    }}
+                  />
+                ) : null}
+                <div
+                  className="fish-dial-thumb-fallback w-full h-full items-center justify-center bg-gradient-to-br from-amber-100 to-orange-100 text-amber-800 rounded-full font-bold text-[13px] sm:text-sm select-none pointer-events-none"
+                  style={{ display: imgUrl ? 'none' : 'flex' }}
+                >
+                  🐟
+                </div>
               </button>
             );
           })}
@@ -729,15 +754,34 @@ export default function FishIntakeOrbitalDial({
           }}
           title={`Click to Add ${currentFish?.name || 'Fish'} Lot`}
         >
-          {currentFish?.image ? (
-            <img
-              src={formatImageUrl(currentFish.image)}
-              alt={currentFish.name}
-              className="max-w-[85%] max-h-[85%] object-contain pointer-events-none transition-transform duration-300 drop-shadow-md select-none group-hover:scale-105"
-            />
-          ) : (
-            <Scale size={32} className="text-amber-700 pointer-events-none" />
-          )}
+          {(() => {
+            const centerImgUrl = formatImageUrl(currentFish?.image);
+            return (
+              <>
+                {centerImgUrl ? (
+                  <img
+                    src={centerImgUrl}
+                    alt={currentFish?.name || 'Fish'}
+                    className="max-w-[85%] max-h-[85%] object-contain pointer-events-none transition-transform duration-300 drop-shadow-md select-none group-hover:scale-105"
+                    onError={(e) => {
+                      e.currentTarget.style.display = 'none';
+                      const fallback = e.currentTarget.parentElement?.querySelector('.center-disc-fallback');
+                      if (fallback) fallback.style.display = 'flex';
+                    }}
+                  />
+                ) : null}
+                <div
+                  className="center-disc-fallback flex flex-col items-center justify-center pointer-events-none select-none text-center"
+                  style={{ display: centerImgUrl ? 'none' : 'flex' }}
+                >
+                  <span className="text-3xl sm:text-4xl drop-shadow-sm leading-none">🐟</span>
+                  <span className="text-[9.5px] sm:text-[10.5px] font-black text-amber-900/90 tracking-wide mt-1 max-w-[85px] truncate">
+                    {currentFish?.name?.split('/')[0]?.trim() || 'Lot'}
+                  </span>
+                </div>
+              </>
+            );
+          })()}
           <span className="absolute bottom-1 px-1.5 py-0.5 rounded-full bg-[#ea580c] text-white text-[8px] sm:text-[9px] font-black uppercase tracking-wider shadow-xs">
             + Add Lot
           </span>
@@ -945,3 +989,4 @@ export default function FishIntakeOrbitalDial({
     </div>
   );
 }
+

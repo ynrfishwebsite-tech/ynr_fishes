@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import Toast from '../system/Toast';
 import axios from 'axios';
 import { getApiUrl } from '../../../config.js';
@@ -45,6 +45,7 @@ import BackButton from '../common/BackButton';
 import SearchableDropdown from '../../common/SearchableDropdown';
 import FishInwardInvoice from './FishInwardInvoice';
 import FishIntakeOrbitalDial from './FishIntakeOrbitalDial';
+import { getMenuItems } from '../../../api/catalog/menu';
 
 export default function FishInventoryManager({ user, onNavigate, onGoBack }) {
   const [activeTab, setActiveTab] = useState(() => {
@@ -83,6 +84,8 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack }) {
   // Cold Storage Stock Metrics Modal (Default: OFF on all screen sizes)
   const [isStatsModalOpen, setIsStatsModalOpen] = useState(false);
   const [fishList, setFishList] = useState([]);
+  const [masterFishList, setMasterFishList] = useState([]);
+  const catalogMenuMapRef = useRef(new Map());
   const [stockLogs, setStockLogs] = useState([]);
   const [crmCustomers, setCrmCustomers] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -259,7 +262,17 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack }) {
         params
       });
       if (Array.isArray(res.data)) {
-        setFishList(res.data);
+        const enriched = res.data.map(item => {
+          const cat = catalogMenuMapRef.current.get(String(item._id)) ||
+                      catalogMenuMapRef.current.get((item.name || '').trim().toLowerCase()) || {};
+          return {
+            ...item,
+            image: item.image || cat.image || '',
+            sizeGrades: item.sizeGrades || cat.sizeGrades || null,
+            waterType: item.waterType || cat.waterType || 'sea_water'
+          };
+        });
+        setFishList(enriched);
       }
     } catch (err) {
       console.error('Error fetching filtered fish inventory:', err);
@@ -366,17 +379,43 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack }) {
   const fetchInventoryData = async () => {
     try {
       setLoading(true);
-      const [invRes, logsRes, crmRes, suppliersData, categoriesData, supplyLogsData, vehiclesData] = await Promise.all([
+      const [invRes, logsRes, crmRes, suppliersData, categoriesData, supplyLogsData, vehiclesData, menuCatalog] = await Promise.all([
         axios.get(`${getApiUrl()}/inventory`, { headers: getAuthHeader() }),
         axios.get(`${getApiUrl()}/inventory/logs`, { headers: getAuthHeader(), params: { limit: 200 } }),
         axios.get(`${getApiUrl()}/crm/customers`, { headers: getAuthHeader() }).catch(() => ({ data: [] })),
         getSuppliers().catch(() => []),
         getSupplyCategories().catch(() => []),
         getSupplyLogs().catch(() => []),
-        getVehicles().catch(() => [])
+        getVehicles().catch(() => []),
+        getMenuItems().catch(() => [])
       ]);
 
-      if (Array.isArray(invRes.data)) setFishList(invRes.data);
+      if (Array.isArray(menuCatalog)) {
+        menuCatalog.forEach(m => {
+          if (m && m._id) catalogMenuMapRef.current.set(String(m._id), m);
+          if (m && m.name) catalogMenuMapRef.current.set(m.name.trim().toLowerCase(), m);
+        });
+      }
+
+      const enrichItems = (list) => {
+        if (!Array.isArray(list)) return [];
+        return list.map(item => {
+          const cat = catalogMenuMapRef.current.get(String(item._id)) ||
+                      catalogMenuMapRef.current.get((item.name || '').trim().toLowerCase()) || {};
+          return {
+            ...item,
+            image: item.image || cat.image || '',
+            sizeGrades: item.sizeGrades || cat.sizeGrades || null,
+            waterType: item.waterType || cat.waterType || 'sea_water'
+          };
+        });
+      };
+
+      if (Array.isArray(invRes.data)) {
+        const enriched = enrichItems(invRes.data);
+        setFishList(enriched);
+        setMasterFishList(enriched);
+      }
       const rawLogs = Array.isArray(logsRes.data) ? logsRes.data : (logsRes.data?.data || []);
       setStockLogs(rawLogs);
       if (Array.isArray(crmRes.data)) setCrmCustomers(crmRes.data);
@@ -423,7 +462,8 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack }) {
 
   // Formatted Dropdown Options for SearchableDropdown
   const fishOptions = useMemo(() => {
-    return (fishList || []).map((f) => ({
+    const sourceList = (masterFishList && masterFishList.length > 0) ? masterFishList : fishList;
+    return (sourceList || []).map((f) => ({
       value: f._id,
       label: f.name,
       badge: `Stock: ${f.stock || 0}kg`,
@@ -431,7 +471,7 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack }) {
       price: f.purchasePrice,
       raw: f
     }));
-  }, [fishList]);
+  }, [masterFishList, fishList]);
 
   // Extract Small / Medium / Big Size Grades & Backend Weight Ranges for any fish
   const getFishGradeOptions = useCallback((fish) => {
@@ -2652,7 +2692,7 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack }) {
                   {localSelectorMode === 'ring' && (
                     <div className="p-3 sm:p-5 bg-gradient-to-b from-[#FAF3E8]/70 via-white to-[#FAF0E4]/30 border-b border-[#fed7aa]/60">
                       <FishIntakeOrbitalDial
-                        items={fishList}
+                        items={masterFishList.length > 0 ? masterFishList : fishList}
                         onAddFishLot={handleAddLocalLotFromDial}
                         mode="local"
                       />
@@ -3374,7 +3414,7 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack }) {
                   {damSelectorMode === 'ring' && (
                     <div className="p-3 sm:p-5 bg-gradient-to-b from-blue-50/60 via-white to-indigo-50/30 border-b border-[#fed7aa]/60">
                       <FishIntakeOrbitalDial
-                        items={fishList}
+                        items={masterFishList.length > 0 ? masterFishList : fishList}
                         onAddFishLot={handleAddDamLotFromDial}
                         mode="dam"
                       />

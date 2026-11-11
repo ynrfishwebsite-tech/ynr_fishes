@@ -589,7 +589,7 @@ export const getFishInventory = async (req, res) => {
       baseMenuQuery.$and.push({ $or: orConditions });
 
       const fishItems = await Menu.find(baseMenuQuery)
-        .select('name scientificName category price purchasePrice stock openingStock boxPackingKg boxTareWeightKg boxNetFishKg minStockAlertKg cuts')
+        .select('name scientificName category price boxPrice wholesalePricePerKg exportPricePerKg purchasePrice stock openingStock boxPackingKg boxTareWeightKg boxNetFishKg minStockAlertKg cuts image sizeGrades waterType speciesType nameTranslations description')
         .populate('category', 'name')
         .sort({ name: 1 })
         .lean();
@@ -608,7 +608,7 @@ export const getFishInventory = async (req, res) => {
     }
 
     const fishItems = await Menu.find(baseMenuQuery)
-      .select('name scientificName category price purchasePrice stock openingStock boxPackingKg boxTareWeightKg boxNetFishKg minStockAlertKg cuts')
+      .select('name scientificName category price boxPrice wholesalePricePerKg exportPricePerKg purchasePrice stock openingStock boxPackingKg boxTareWeightKg boxNetFishKg minStockAlertKg cuts image sizeGrades waterType speciesType nameTranslations description')
       .populate('category', 'name')
       .sort({ name: 1 })
       .lean();
