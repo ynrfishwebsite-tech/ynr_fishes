@@ -177,14 +177,32 @@ export default function FishIntakeOrbitalDial({
   };
 
   const handleKgPerBoxChange = (newKpb) => {
-    const kpb = Math.max(1, Number(newKpb));
+    const parsed = Number(newKpb);
+    const kpb = !isNaN(parsed) && parsed > 0 ? Number(parsed.toFixed(3)) : 0;
     setKgPerBox(kpb);
     const b = Number(boxes || 0);
     if (b > 0) {
       const totKg = b * kpb;
-      setScaleKg(String(Math.floor(totKg)));
-      setScaleGrams(String(Math.round((totKg - Math.floor(totKg)) * 1000)));
+      const whole = Math.floor(totKg);
+      const remG = Math.round((totKg - whole) * 1000);
+      setScaleKg(String(whole + Math.floor(remG / 1000)));
+      setScaleGrams(String(remG % 1000));
     }
+  };
+
+  // Helper to open dual Kg + Grams weight modal for Scale Weight or Kg / Box
+  const handleOpenDualWeightModal = (field, currentValKg, currentValGrams = 0) => {
+    if (field === 'kgPerBox') {
+      const raw = Number(kgPerBox) || 0;
+      const whole = Math.floor(raw);
+      const fracG = Math.round((raw - whole) * 1000);
+      setModalKgVal(String(whole));
+      setModalGramsVal(String(fracG));
+    } else {
+      setModalKgVal(String(currentValKg ?? scaleKg ?? '0'));
+      setModalGramsVal(String(currentValGrams ?? scaleGrams ?? '0'));
+    }
+    setEditModalField(field);
   };
 
   // Cycle Grade on Petal 1 Tap
@@ -200,15 +218,6 @@ export default function FishIntakeOrbitalDial({
     if (nextG.rate) {
       setRatePerKg(String(nextG.rate));
     }
-  };
-
-  // Cycle Box Capacity on Petal 2 Tap: 60 -> 70 -> 50 -> 40
-  const BOX_PRESETS = [60, 70, 50, 40];
-  const handleCycleKpb = (e) => {
-    if (e) e.stopPropagation();
-    const currIdx = BOX_PRESETS.indexOf(Number(kgPerBox));
-    const nextKpb = BOX_PRESETS[(currIdx + 1) % BOX_PRESETS.length];
-    handleKgPerBoxChange(nextKpb);
   };
 
   // Calculate Net Weight & Total Amount
@@ -402,11 +411,17 @@ export default function FishIntakeOrbitalDial({
       return;
     }
 
+    if (editModalField === 'kgPerBox') {
+      const k = Math.max(0, parseInt(modalKgVal, 10) || 0);
+      const g = Math.max(0, Math.min(999, parseInt(modalGramsVal, 10) || 0));
+      handleKgPerBoxChange(k + (g / 1000));
+      setEditModalField(null);
+      return;
+    }
+
     const val = editInputVal.trim();
     if (editModalField === 'boxes') {
       handleBoxesChange(val);
-    } else if (editModalField === 'kgPerBox') {
-      handleKgPerBoxChange(val);
     } else if (editModalField === 'rate') {
       setRatePerKg(val);
     } else if (editModalField === 'total') {
@@ -641,7 +656,10 @@ export default function FishIntakeOrbitalDial({
             strokeLinejoin="round"
             filter="url(#intakePetalShadow)"
             className="cursor-pointer pointer-events-auto hover:opacity-95 active:opacity-90"
-            onClick={handleCycleKpb}
+            onClick={(e) => {
+              e.stopPropagation();
+              handleOpenDualWeightModal('kgPerBox');
+            }}
           />
 
           {/* PETAL 3: Bottom-Right (4 o'clock / 120°) - Boxes */}
@@ -668,10 +686,9 @@ export default function FishIntakeOrbitalDial({
             strokeLinejoin="round"
             filter="url(#intakePetalShadow)"
             className="cursor-pointer pointer-events-auto hover:opacity-95 active:opacity-90"
-            onClick={() => {
-              setModalKgVal(String(scaleKg || '0'));
-              setModalGramsVal(String(scaleGrams || '0'));
-              setEditModalField('scaleKg');
+            onClick={(e) => {
+              e.stopPropagation();
+              handleOpenDualWeightModal('scaleKg');
             }}
           />
 
@@ -893,16 +910,29 @@ export default function FishIntakeOrbitalDial({
         {/* PETAL 2: Top-Right (2 o'clock / 60°) - Kg / Box */}
         <div
           style={getCurvedSectorCenterStyle(60)}
-          onClick={handleCycleKpb}
+          onClick={(e) => {
+            e.stopPropagation();
+            handleOpenDualWeightModal('kgPerBox');
+          }}
           className="no-dial-drag pointer-events-auto flex flex-col items-center justify-center text-center cursor-pointer active:scale-95 transition-transform max-w-[80px] sm:max-w-[95px]"
-          title="Kg / Box"
+          title="Kg / Box (Click to enter Kg & Grams)"
         >
           <div className="flex items-center gap-0.5 text-sky-900 font-bold text-[8px] sm:text-[9px] uppercase tracking-wide">
             <Package size={10} className="text-sky-700" />
             <span>Kg / Box</span>
           </div>
           <div className="text-[11px] sm:text-xs font-black text-sky-950 font-mono leading-tight">
-            {kgPerBox} Kg
+            {(() => {
+              const raw = Number(kgPerBox) || 0;
+              const whole = Math.floor(raw);
+              const g = Math.round((raw - whole) * 1000);
+              return (
+                <>
+                  {whole} <span className="text-[9px] font-semibold">Kg</span>
+                  {g > 0 && <span className="text-[9.5px] text-sky-800 ml-0.5">{g}g</span>}
+                </>
+              );
+            })()}
           </div>
         </div>
 
@@ -943,10 +973,9 @@ export default function FishIntakeOrbitalDial({
         {/* PETAL 4: Bottom (6 o'clock / 180°) - Scale Weight */}
         <div
           style={getCurvedSectorCenterStyle(180)}
-          onClick={() => {
-            setModalKgVal(String(scaleKg || '0'));
-            setModalGramsVal(String(scaleGrams || '0'));
-            setEditModalField('scaleKg');
+          onClick={(e) => {
+            e.stopPropagation();
+            handleOpenDualWeightModal('scaleKg');
           }}
           className="no-dial-drag pointer-events-auto flex flex-col items-center justify-center text-center cursor-pointer active:scale-95 transition-transform max-w-[85px] sm:max-w-[105px]"
           title="Scale Weight (Click to enter Kg & Grams)"
@@ -1018,7 +1047,7 @@ export default function FishIntakeOrbitalDial({
             <div className="flex items-center justify-between border-b border-amber-100 pb-2">
               <span className="text-xs font-black text-slate-800 uppercase tracking-wide flex items-center gap-1.5">
                 {editModalField === 'boxes' && <><Boxes size={14} className="text-orange-600" /> Enter Boxes / Crates</>}
-                {editModalField === 'kgPerBox' && <><Package size={14} className="text-sky-600" /> Enter Kg Per Box</>}
+                {editModalField === 'kgPerBox' && <><Package size={14} className="text-sky-600" /> Kg / Box (Kg + Gm)</>}
                 {editModalField === 'scaleKg' && <><Scale size={14} className="text-amber-600" /> Scale Weight (Kg + Gm)</>}
                 {editModalField === 'rate' && <><Tag size={14} className="text-rose-600" /> Enter Rate (₹/Kg)</>}
                 {editModalField === 'total' && <><Calculator size={14} className="text-emerald-600" /> Negotiate / Total (₹)</>}
@@ -1032,8 +1061,8 @@ export default function FishIntakeOrbitalDial({
               </button>
             </div>
 
-            {/* Scale Weight Dedicated Dual-Input Mode (Kg + Grams) */}
-            {editModalField === 'scaleKg' ? (
+            {/* Dual-Input Weight Mode (Kg + Grams) for both Scale Weight & Kg / Box */}
+            {(editModalField === 'scaleKg' || editModalField === 'kgPerBox') ? (
               <div className="space-y-3">
                 <div className="bg-amber-50/70 border border-amber-200 rounded-xl px-2.5 py-1.5 flex items-center justify-between text-xs">
                   <span className="font-bold text-slate-700 truncate max-w-[170px]">{currentFish?.name}</span>
