@@ -2,13 +2,13 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { X, ZoomIn, ZoomOut, RotateCw, Check, Move, Maximize2, Minimize2, Circle, Square } from 'lucide-react';
 import { useLanguage } from '../../../context/LanguageContext';
 
-export default function ImageCropperModal({ imageSrc, onCropComplete, onClose, title }) {
+export default function ImageCropperModal({ imageSrc, onCropComplete, onClose, title, initialShape = 'circle' }) {
   const { t } = useLanguage();
   const [zoom, setZoom] = useState(1);
   const [rotation, setRotation] = useState(0);
   const [offset, setOffset] = useState({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState(false);
-  const [cropShape, setCropShape] = useState('circle'); // 'circle' | 'square'
+  const [cropShape, setCropShape] = useState(initialShape); // 'circle' | 'square'
   const [baseDimensions, setBaseDimensions] = useState({ width: 260, height: 260 });
   const [naturalDimensions, setNaturalDimensions] = useState({ width: 0, height: 0 });
 
@@ -39,7 +39,8 @@ export default function ImageCropperModal({ imageSrc, onCropComplete, onClose, t
     setZoom(1);
     setRotation(0);
     setOffset({ x: 0, y: 0 });
-  }, [imageSrc]);
+    if (initialShape) setCropShape(initialShape);
+  }, [imageSrc, initialShape]);
 
   // Fit Whole Image action
   const handleFitWholeImage = () => {

@@ -11,6 +11,7 @@ import ConfirmationModal from '../system/ConfirmationModal';
 import Toast from '../system/Toast';
 import BackButton from '../common/BackButton';
 import BulkImportModal, { generateExcelWithStyling } from './BulkImportModal';
+import ImageCropperModal from '../crm/ImageCropperModal';
 
 const formatImageUrl = (url) => {
   if (!url) return '';
@@ -117,6 +118,7 @@ const MenuManagement = ({ user, onNavigate, onGoBack }) => {
   // Per-recipe-row dropdown open state & search query
   const [ingredientDropdown, setIngredientDropdown] = useState({}); // { [rowIndex]: { open: bool, query: string } }
   const [uploadFileInfo, setUploadFileInfo] = useState(null);
+  const [cropperModal, setCropperModal] = useState({ isOpen: false, imageSrc: '' });
 
   useEffect(() => {
     setCurrentPage(1);
@@ -2100,7 +2102,7 @@ const MenuManagement = ({ user, onNavigate, onGoBack }) => {
                       accept="image/*"
                       className="hidden"
                       onChange={(e) => {
-                        const file = e.target.files[0];
+                        const file = e.target.files?.[0];
                         if (file) {
                           if (file.size > 5 * 1024 * 1024) {
                             setToast({ message: t("Image size should be less than or equal to 5MB"), type: 'error' });
@@ -2116,45 +2118,40 @@ const MenuManagement = ({ user, onNavigate, onGoBack }) => {
                           });
 
                           const reader = new FileReader();
-                          reader.onloadend = (event) => {
-                            const img = new Image();
-                            img.onload = () => {
-                              const canvas = document.createElement('canvas');
-                              const MAX_WIDTH = 400;
-                              const MAX_HEIGHT = 400;
-                              let width = img.width;
-                              let height = img.height;
-                              if (width > height) {
-                                if (width > MAX_WIDTH) {
-                                  height = Math.round(height * MAX_WIDTH / width);
-                                  width = MAX_WIDTH;
-                                }
-                              } else {
-                                if (height > MAX_HEIGHT) {
-                                  width = Math.round(width * MAX_HEIGHT / height);
-                                  height = MAX_HEIGHT;
-                                }
-                              }
-                              canvas.width = width;
-                              canvas.height = height;
-                              const ctx = canvas.getContext('2d');
-                              ctx.drawImage(img, 0, 0, width, height);
-                              const compressedDataUrl = canvas.toDataURL('image/jpeg', 0.75);
-                              setFormData({ ...formData, image: compressedDataUrl });
-                            };
-                            img.src = event.target.result;
+                          reader.onload = () => {
+                            setCropperModal({ isOpen: true, imageSrc: reader.result });
                           };
                           reader.readAsDataURL(file);
+                          e.target.value = '';
                         }
                       }}
                     />
                   </label>
                   {formatImageUrl(formData.image) && (
-                    <div className="relative w-8 h-8 rounded-lg overflow-hidden border border-border shrink-0 bg-background group">
+                    <button
+                      type="button"
+                      onClick={() => setCropperModal({ isOpen: true, imageSrc: formatImageUrl(formData.image) })}
+                      title={t("Crop current image")}
+                      className="bg-primary/10 hover:bg-primary/20 text-primary border border-primary/25 px-2.5 py-1.5 rounded-lg cursor-pointer flex items-center gap-1 text-xs font-bold shrink-0 transition-colors shadow-2xs"
+                    >
+                      <Scissors size={12} />
+                      <span>{t("Crop")}</span>
+                    </button>
+                  )}
+                  {formatImageUrl(formData.image) && (
+                    <div
+                      className="relative w-8 h-8 rounded-lg overflow-hidden border border-border shrink-0 bg-background group cursor-pointer"
+                      onClick={() => setCropperModal({ isOpen: true, imageSrc: formatImageUrl(formData.image) })}
+                      title={t("Click to crop image")}
+                    >
                       <img src={formatImageUrl(formData.image)} alt="Preview" className="w-full h-full object-cover" />
                       <button
                         type="button"
-                        onClick={() => { setUploadFileInfo(null); setFormData({ ...formData, image: '' }); }}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setUploadFileInfo(null);
+                          setFormData({ ...formData, image: '' });
+                        }}
                         className="absolute inset-0 bg-black/70 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
                         title={t("Remove image")}
                       >
@@ -2664,7 +2661,20 @@ const MenuManagement = ({ user, onNavigate, onGoBack }) => {
         isOpen={isBulkImportModalOpen}
         onClose={() => setIsBulkImportModalOpen(false)}
         onImportSuccess={handleBulkImportItems} />
-      
+
+      {/* ── IMAGE CROPPER MODAL (Crop Menu Item Image) ── */}
+      {cropperModal.isOpen && (
+        <ImageCropperModal
+          imageSrc={cropperModal.imageSrc}
+          title={currentItem ? t("Crop Item Image") : t("Crop New Item Image")}
+          initialShape="square"
+          onClose={() => setCropperModal({ isOpen: false, imageSrc: '' })}
+          onCropComplete={(croppedBase64) => {
+            setFormData(prev => ({ ...prev, image: croppedBase64 }));
+            setCropperModal({ isOpen: false, imageSrc: '' });
+          }}
+        />
+      )}
 
       {toast &&
       <Toast
