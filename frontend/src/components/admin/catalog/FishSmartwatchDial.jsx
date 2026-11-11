@@ -122,17 +122,26 @@ export default function FishSmartwatchDial({
   const [isCrmBlinking, setIsCrmBlinking] = useState(false);
   const [showCalculator, setShowCalculator] = useState(false);
 
-  // Long-press Rate Edit states
+  // Rate Edit states (Single-click)
   const [customRate, setCustomRate] = useState(null);
   const [isEditingRate, setIsEditingRate] = useState(false);
   const [tempRateInput, setTempRateInput] = useState('');
-  const ratePressTimerRef = useRef(null);
 
-  // Long-press Total Edit & Auto-Discount states
+  // Total Edit & Auto-Discount states (Single-click)
   const [customTotal, setCustomTotal] = useState(null);
   const [isEditingTotal, setIsEditingTotal] = useState(false);
   const [tempTotalInput, setTempTotalInput] = useState('');
-  const totalPressTimerRef = useRef(null);
+
+  // Dedicated Separate Kgs & Grams Weight Modal (Single-click)
+  const [showWeightModal, setShowWeightModal] = useState(false);
+  const [modalWeightKg, setModalWeightKg] = useState('1');
+  const [modalWeightGrams, setModalWeightGrams] = useState('0');
+
+  // Local Customer Selection for instant reflection on petal in Wholesale & Export
+  const [localCustomer, setLocalCustomer] = useState(null);
+  const effectiveCustomerName = customerName || localCustomer?.name || '';
+  const effectiveCustomerPhone = customerPhone || localCustomer?.phone || '';
+  const effectiveCustomerPhoto = customerPhoto || localCustomer?.photo || '';
 
   // Dial rotation state & drag physics
   const [dialRingRotation, setDialRingRotation] = useState(0);
@@ -181,11 +190,34 @@ export default function FishSmartwatchDial({
     setIsEditingTotal(false);
   }, [currentItem?._id]);
 
-  // Reset custom total when weight changes
+  // Reset custom total when weight or box weight changes
   useEffect(() => {
     setCustomTotal(null);
     setIsEditingTotal(false);
-  }, [weightKg]);
+  }, [weightKg, boxWeightKg]);
+
+  // Keep localCustomer in sync with incoming parent props
+  useEffect(() => {
+    if (customerName || customerPhone) {
+      setLocalCustomer({
+        name: customerName,
+        phone: customerPhone,
+        photo: customerPhoto
+      });
+    } else {
+      setLocalCustomer(null);
+    }
+  }, [customerName, customerPhone, customerPhoto]);
+
+  // Weight display helper (handles kg and grams cleanly)
+  const formatWeightDisplay = (val) => {
+    const num = parseFloat(val) || 0;
+    const whole = Math.floor(num);
+    const grams = Math.round((num - whole) * 1000);
+    if (grams > 0 && whole > 0) return `${whole}k ${grams}g`;
+    if (grams > 0) return `${grams}g`;
+    return `${whole} Kg`;
+  };
 
   const isBoxBasedMode = fishOrderMode === 'bulk' || fishOrderMode === 'export';
 
@@ -205,31 +237,25 @@ export default function FishSmartwatchDial({
   const fractionLabel = formatKgFraction ? formatKgFraction(netKg) : `${netKg.toFixed(3)} Kg`;
 
   // Wholesale / Export Box Mode calculations
-  const boxRate = currentItem
-    ? (fishOrderMode === 'export'
-        ? (parseFloat(currentItem.exportPricePerKg) || parseFloat(currentItem.wholesalePricePerKg) || parseFloat(currentItem.price) || 0)
-        : (parseFloat(currentItem.wholesalePricePerKg) || parseFloat(currentItem.price) || 0))
-    : 0;
-  // In 1 Fish / Box mode, each addition is 1 box of boxWeightKg
-  const totalBoxWeightKg = parseFloat(boxWeightKg) || 0;
-  const totalBoxPrice = parseFloat((totalBoxWeightKg * boxRate).toFixed(2));
-  const mixedItemTotal = parseFloat((netKg * boxRate).toFixed(2));
+  // In 1 Fish / Box mode, each addition uses boxWeightKg (defaults to 1 Kg)
+  const totalBoxWeightKg = parseFloat(boxWeightKg) || 1;
 
   // Next sequential box number for 1 Fish / Box additions
   const nextSingleBoxNum = useMemo(() => {
     return (cart || []).reduce((max, it) => Math.max(max, Number(it.boxNumber || 0)), 0) + 1;
   }, [cart]);
 
-  // Base rate before manual edit
-  const baseRate = isBoxBasedMode ? boxRate : activeRate;
-  // Effective rate (custom rate if long-press edited, else base rate)
+  // Base rate before manual edit MUST use activeRate in all modes (Retail, Wholesale, Export)
+  // so that Grade changes immediately reflect in the Rate and Total petals!
+  const baseRate = activeRate;
+  // Effective rate (custom rate if single-click edited, else base rate)
   const effectiveRate = customRate !== null && !isNaN(parseFloat(customRate)) && parseFloat(customRate) > 0
     ? parseFloat(customRate)
     : baseRate;
 
   // Standard total before manual discount
   const standardTotal = isBoxBasedMode
-    ? (boxFishMode === 'mixed' ? parseFloat((netKg * effectiveRate).toFixed(2)) : parseFloat((totalBoxWeightKg * effectiveRate).toFixed(2)))
+    ? parseFloat((totalBoxWeightKg * effectiveRate).toFixed(2))
     : parseFloat((netKg * effectiveRate).toFixed(2));
 
   // Effective total (either negotiated total or standard total)
@@ -567,10 +593,11 @@ export default function FishSmartwatchDial({
     const nextGrade = gradesToUse[(currIdx + 1) % gradesToUse.length];
 
     setGradeOverride(nextGrade);
-    setWeightKg('1.000');
+    // Clear custom rate & total so that the new grade's catalog price is applied immediately
+    setCustomRate(null);
     setCustomTotal(null);
     if (showToast) {
-      const gRate = currentItem?.sizeGrades?.[nextGrade]?.price || (currentItem && getItemPricePerKg ? getItemPricePerKg(currentItem, fishOrderMode, nextGrade) : currentItem?.price || 0);
+      const gRate = currentItem && getItemPricePerKg ? getItemPricePerKg(currentItem, fishOrderMode, nextGrade) : (currentItem?.price || 0);
       showToast(`Grade: ${nextGrade.toUpperCase()} (₹${gRate}/Kg)`, 'info');
     }
   };
@@ -587,21 +614,11 @@ export default function FishSmartwatchDial({
     }
   };
 
-  // Long-press Rate Handlers (> 500ms)
-  const startRateLongPress = (e) => {
-    e.stopPropagation();
-    ratePressTimerRef.current = setTimeout(() => {
-      setIsEditingRate(true);
-      setTempRateInput(String(effectiveRate));
-      if (showToast) showToast('Edit Rate Price (₹/Kg)', 'info');
-    }, 500);
-  };
-
-  const cancelRateLongPress = () => {
-    if (ratePressTimerRef.current) {
-      clearTimeout(ratePressTimerRef.current);
-      ratePressTimerRef.current = null;
-    }
+  // Single-Click Rate Modal Handlers
+  const handleOpenRateModal = (e) => {
+    if (e) e.stopPropagation();
+    setTempRateInput(String(currentRateAmount));
+    setIsEditingRate(true);
   };
 
   const handleSaveRate = () => {
@@ -614,21 +631,11 @@ export default function FishSmartwatchDial({
     setIsEditingRate(false);
   };
 
-  // Long-press Total Handlers (> 500ms) with Auto-Discount
-  const startTotalLongPress = (e) => {
-    e.stopPropagation();
-    totalPressTimerRef.current = setTimeout(() => {
-      setIsEditingTotal(true);
-      setTempTotalInput(String(Math.round(standardTotal)));
-      if (showToast) showToast('Enter Negotiated Total (Auto-Calculates Discount)', 'info');
-    }, 500);
-  };
-
-  const cancelTotalLongPress = () => {
-    if (totalPressTimerRef.current) {
-      clearTimeout(totalPressTimerRef.current);
-      totalPressTimerRef.current = null;
-    }
+  // Single-Click Total Modal Handlers
+  const handleOpenTotalModal = (e) => {
+    if (e) e.stopPropagation();
+    setTempTotalInput(String(Math.round(currentTotalAmount)));
+    setIsEditingTotal(true);
   };
 
   const handleSaveTotal = () => {
@@ -644,6 +651,31 @@ export default function FishSmartwatchDial({
       }
     }
     setIsEditingTotal(false);
+  };
+
+  // Single-Click Weight Modal Handlers (Separate Kg & Grams)
+  const handleOpenWeightModal = (e) => {
+    if (e) e.stopPropagation();
+    const currentVal = isBoxBasedMode ? (parseFloat(boxWeightKg) || 1) : (netGrams / 1000 || 1);
+    const wholeKg = Math.floor(currentVal);
+    const grams = Math.round((currentVal - wholeKg) * 1000);
+    setModalWeightKg(String(wholeKg));
+    setModalWeightGrams(String(grams));
+    setShowWeightModal(true);
+  };
+
+  const handleConfirmWeightModal = () => {
+    const rawK = parseFloat(modalWeightKg) || 0;
+    const rawG = parseFloat(modalWeightGrams) || 0;
+    const finalK = rawK + (rawG / 1000);
+    const clampedK = finalK > 0 ? finalK : 1;
+    setWeightKg(clampedK.toFixed(3));
+    setBoxWeightKg(String(clampedK));
+    setCustomTotal(null); // Recalculate total with new weight
+    setShowWeightModal(false);
+    if (showToast) {
+      showToast(`Weight set: ${formatWeightDisplay(clampedK, 0)}`, 'success');
+    }
   };
 
   // Add Item to Bill (returns true on success, false on validation error)
@@ -663,11 +695,6 @@ export default function FishSmartwatchDial({
     }
 
     if (isBoxBasedMode) {
-      if (openBoxPackerModal) {
-        const passedWeight = parseFloat(boxWeightKg) || (netGrams / 1000) || 1;
-        openBoxPackerModal(currentItem, activeGrade, passedWeight);
-        return true;
-      }
       if (boxFishMode === 'mixed') {
         if (netKg <= 0) {
           if (showToast) showToast(`Please enter valid weight in Kg for Box #${activeBoxNumber}`, 'error');
@@ -743,6 +770,7 @@ export default function FishSmartwatchDial({
         netWeightKg: totalBoxWeightKg,
         pricePerKg: finalPricePerKg,
         price: finalPricePerKg,
+        rate: finalPricePerKg,
         total: finalItemTotal,
         standardTotal: standardTotal,
         originalTotal: standardTotal,
@@ -752,6 +780,9 @@ export default function FishSmartwatchDial({
         sizeGrade: activeGrade,
         cutType: selectedCutType,
         orderMode: fishOrderMode,
+        customerName: effectiveCustomerName,
+        customerPhone: effectiveCustomerPhone,
+        customerPhoto: effectiveCustomerPhoto,
         boxFishMode: 'single',
         itemKey: `${currentItem._id}_box${nextSingleBoxNum}_slot${Date.now()}`
       };
@@ -1102,6 +1133,8 @@ export default function FishSmartwatchDial({
                     onClick={() => {
                       setDialLock(false);
                       setBoxWeightKg(val);
+                      setWeightKg(parseFloat(val).toFixed(3));
+                      setCustomTotal(null);
                     }}
                     style={{ left: `${x}%`, bottom: `${y}%` }}
                     className={`absolute pointer-events-auto transform -translate-x-1/2 translate-y-1/2 rounded-full font-black transition-all cursor-pointer active:scale-90 shadow-2xs backdrop-blur-2xs
@@ -1184,6 +1217,8 @@ export default function FishSmartwatchDial({
                     onClick={() => {
                       setDialLock(false);
                       setBoxWeightKg(val);
+                      setWeightKg(parseFloat(val).toFixed(3));
+                      setCustomTotal(null);
                     }}
                     style={{ right: `${x}%`, bottom: `${y}%` }}
                     className={`absolute pointer-events-auto transform translate-x-1/2 translate-y-1/2 rounded-full font-black transition-all cursor-pointer active:scale-90 shadow-2xs backdrop-blur-2xs
@@ -1372,7 +1407,7 @@ export default function FishSmartwatchDial({
             }}
           />
 
-          {/* 2. TOP-RIGHT SECTOR (2 o'clock / 60°): RATE (Long-press to edit) */}
+          {/* 2. TOP-RIGHT SECTOR (2 o'clock / 60°): RATE (Single-click to edit) */}
           <path
             d={createRoundedAnnularSector(220, 220, 92, 156, 36, 84, 8)}
             fill="url(#gradRate)"
@@ -1381,21 +1416,10 @@ export default function FishSmartwatchDial({
             strokeLinejoin="round"
             filter="url(#sectorShadow)"
             className="cursor-pointer pointer-events-auto hover:opacity-95 active:opacity-90"
-            onMouseDown={startRateLongPress}
-            onMouseUp={cancelRateLongPress}
-            onMouseLeave={cancelRateLongPress}
-            onTouchStart={startRateLongPress}
-            onTouchEnd={cancelRateLongPress}
-            onTouchCancel={cancelRateLongPress}
-            onClick={(e) => {
-              e.stopPropagation();
-              if (!isEditingRate && showToast) {
-                showToast('Hold (long-press) to edit rate price', 'info');
-              }
-            }}
+            onClick={handleOpenRateModal}
           />
 
-          {/* 3. BOTTOM-RIGHT SECTOR (4 o'clock / 120°): TOTAL (Long-press to edit total & apply discount) */}
+          {/* 3. BOTTOM-RIGHT SECTOR (4 o'clock / 120°): TOTAL (Single-click to edit negotiated total) */}
           <path
             d={createRoundedAnnularSector(220, 220, 92, 156, 96, 144, 8)}
             fill="url(#gradTotal)"
@@ -1404,21 +1428,10 @@ export default function FishSmartwatchDial({
             strokeLinejoin="round"
             filter="url(#sectorShadow)"
             className="cursor-pointer pointer-events-auto hover:opacity-95 active:opacity-90"
-            onMouseDown={startTotalLongPress}
-            onMouseUp={cancelTotalLongPress}
-            onMouseLeave={cancelTotalLongPress}
-            onTouchStart={startTotalLongPress}
-            onTouchEnd={cancelTotalLongPress}
-            onTouchCancel={cancelTotalLongPress}
-            onClick={(e) => {
-              e.stopPropagation();
-              if (!isEditingTotal && showToast) {
-                showToast('Hold (long-press) to enter negotiated total & apply discount', 'info');
-              }
-            }}
+            onClick={handleOpenTotalModal}
           />
 
-          {/* 4. BOTTOM SECTOR (6 o'clock / 180°): WEIGHT STEPPER PETAL */}
+          {/* 4. BOTTOM SECTOR (6 o'clock / 180°): WEIGHT PETAL (Single-click opens Kgs & Grams modal) */}
           <path
             d={createRoundedAnnularSector(220, 220, 92, 156, 151, 209, 8)}
             fill="url(#gradWeight)"
@@ -1427,6 +1440,7 @@ export default function FishSmartwatchDial({
             strokeLinejoin="round"
             filter="url(#sectorShadow)"
             className="cursor-pointer pointer-events-auto hover:opacity-95 active:opacity-90"
+            onClick={handleOpenWeightModal}
           />
 
           {/* 5. BOTTOM-LEFT SECTOR (8 o'clock / 240°): CUTTING STYLE (1-Tap Cycle) */}
@@ -1617,7 +1631,7 @@ export default function FishSmartwatchDial({
           title="Customer CRM (Tap to select or change)"
         >
           {/* Direct Deselect / Clear Button on Petal */}
-          {Boolean(customerName || customerPhone) && (
+          {Boolean(effectiveCustomerName || effectiveCustomerPhone) && (
             <button
               type="button"
               onClick={(e) => {
@@ -1626,6 +1640,7 @@ export default function FishSmartwatchDial({
                 if (setCustomerName) setCustomerName('');
                 if (setCustomerPhone) setCustomerPhone('');
                 if (onCustomerSelect) onCustomerSelect(null);
+                setLocalCustomer(null);
                 if (showToast) showToast('Customer cleared / deselected', 'info');
               }}
               className="absolute -top-1.5 -right-1.5 w-4 h-4 md:w-5 md:h-5 rounded-full bg-rose-600 hover:bg-rose-700 active:scale-90 text-white flex items-center justify-center shadow-md cursor-pointer z-40 transition-transform border border-white"
@@ -1636,10 +1651,10 @@ export default function FishSmartwatchDial({
           )}
 
           <div className="flex items-center gap-1 mb-0.5">
-            {customerPhoto ? (
+            {effectiveCustomerPhoto ? (
               <img
-                src={customerPhoto}
-                alt={customerName || 'Customer'}
+                src={effectiveCustomerPhoto}
+                alt={effectiveCustomerName || 'Customer'}
                 className="w-4 h-4 md:w-5 md:h-5 rounded-full object-cover border border-amber-500 shrink-0"
               />
             ) : fishOrderMode === 'bulk' ? (
@@ -1654,8 +1669,8 @@ export default function FishSmartwatchDial({
             {fishOrderMode === 'bulk' ? 'Dealer' : fishOrderMode === 'export' ? 'Client' : 'Customer'}
           </span>
           <span className="text-[9px] sm:text-[10px] md:text-[12px] lg:text-sm font-black text-slate-900 font-mono leading-tight mt-0.5 truncate max-w-[74px] md:max-w-[105px] lg:max-w-[125px]">
-            {customerName || customerPhone ? (
-              <span>{customerName || customerPhone}</span>
+            {effectiveCustomerName || effectiveCustomerPhone ? (
+              <span>{effectiveCustomerName || effectiveCustomerPhone}</span>
             ) : (
               <span className="text-amber-700/80 text-[8px] md:text-[10px] font-bold underline decoration-dotted">Select</span>
             )}
@@ -1676,23 +1691,12 @@ export default function FishSmartwatchDial({
           </span>
         </div>
 
-        {/* 3. TOP-RIGHT CURVED SECTOR (2 o'clock / 60°): RATE DISPLAY (Long-press to Edit) */}
+        {/* 3. TOP-RIGHT CURVED SECTOR (2 o'clock / 60°): RATE DISPLAY (Single-click to Edit) */}
         <div
           style={getCurvedSectorCenterStyle(60)}
-          onMouseDown={startRateLongPress}
-          onMouseUp={cancelRateLongPress}
-          onMouseLeave={cancelRateLongPress}
-          onTouchStart={startRateLongPress}
-          onTouchEnd={cancelRateLongPress}
-          onTouchCancel={cancelRateLongPress}
-          onClick={(e) => {
-            e.stopPropagation();
-            if (!isEditingRate && showToast) {
-              showToast('Hold (long press) to edit rate price', 'info');
-            }
-          }}
+          onClick={handleOpenRateModal}
           className="no-dial-drag pointer-events-auto select-none flex flex-col items-center justify-center text-center max-w-[64px] md:max-w-[90px] lg:max-w-[105px] overflow-hidden px-0.5 cursor-pointer active:scale-95 transition-transform"
-          title="Long-press to edit rate"
+          title="Tap to edit rate price"
         >
           <Tag size={12} className="text-[#c2410c] stroke-[2.5] mb-0.5 shrink-0 md:w-4.5 md:h-4.5" />
           <span className="text-[7.5px] sm:text-[8.5px] md:text-[10.5px] lg:text-xs font-bold text-[#9a3412] leading-none whitespace-nowrap">
@@ -1717,23 +1721,12 @@ export default function FishSmartwatchDial({
           </span>
         </div>
 
-        {/* 5. BOTTOM-RIGHT CURVED SECTOR (4 o'clock / 120°): LIVE TOTAL DISPLAY (Long-press to Edit & Auto-Discount) */}
+        {/* 5. BOTTOM-RIGHT CURVED SECTOR (4 o'clock / 120°): LIVE TOTAL DISPLAY (Single-click to Edit) */}
         <div
           style={getCurvedSectorCenterStyle(120)}
-          onMouseDown={startTotalLongPress}
-          onMouseUp={cancelTotalLongPress}
-          onMouseLeave={cancelTotalLongPress}
-          onTouchStart={startTotalLongPress}
-          onTouchEnd={cancelTotalLongPress}
-          onTouchCancel={cancelTotalLongPress}
-          onClick={(e) => {
-            e.stopPropagation();
-            if (!isEditingTotal && showToast) {
-              showToast('Hold (long press) to enter negotiated total & apply discount', 'info');
-            }
-          }}
+          onClick={handleOpenTotalModal}
           className="no-dial-drag pointer-events-auto select-none flex flex-col items-center justify-center text-center max-w-[64px] md:max-w-[90px] lg:max-w-[105px] overflow-hidden px-0.5 cursor-pointer active:scale-95 transition-transform"
-          title="Long-press to enter negotiated total"
+          title="Tap to enter negotiated total"
         >
           <Layers size={12} className="text-[#15803d] stroke-[2.5] mb-0.5 shrink-0 md:w-4.5 md:h-4.5" />
           <span className="text-[7.5px] sm:text-[8.5px] md:text-[10.5px] lg:text-xs font-bold text-[#166534] leading-none whitespace-nowrap">
@@ -1746,167 +1739,63 @@ export default function FishSmartwatchDial({
           </span>
         </div>
 
-        {/* 6. BOTTOM CURVED SECTOR (6 o'clock / 180°): WEIGHT STEPPER PETAL */}
+        {/* 6. BOTTOM CURVED SECTOR (6 o'clock / 180°): WEIGHT PETAL (Single-click opens Kgs & Grams modal) */}
         <div
           style={getCurvedSectorCenterStyle(180)}
-          className="no-dial-drag pointer-events-auto select-none flex flex-col items-center justify-center text-center max-w-[110px] sm:max-w-[125px] md:max-w-[160px] lg:max-w-[185px] overflow-hidden px-0.5"
-          title="Weight Stepper (Tap - / + or enter weight)"
+          onClick={handleOpenWeightModal}
+          className="no-dial-drag pointer-events-auto select-none flex flex-col items-center justify-center text-center max-w-[110px] sm:max-w-[125px] md:max-w-[160px] lg:max-w-[185px] overflow-hidden px-0.5 cursor-pointer active:scale-95 transition-transform"
+          title="Tap to enter Weight (Kgs & Grams)"
         >
           <div className="flex items-center gap-1 mb-0.5">
             <ShoppingBag size={11} className="text-[#92400e] stroke-[2.5] md:w-4 md:h-4" />
             <span className="text-[7.5px] sm:text-[8.5px] md:text-[10.5px] lg:text-xs font-bold text-[#92400e] leading-none whitespace-nowrap">
-              {isBoxBasedMode && boxFishMode === 'single' ? 'Box Wt' : 'Weight'}
+              {isBoxBasedMode ? 'Lot / Box Wt' : 'Weight'}
             </span>
           </div>
 
-          {(!isBoxBasedMode || boxFishMode === 'mixed') ? (
-            <div
-              onClick={(e) => e.stopPropagation()}
-              className="flex items-center gap-0.5 sm:gap-1 shrink-0"
+          <div className="flex items-center gap-1 shrink-0 font-mono font-black text-slate-900 text-xs sm:text-sm">
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                if (isBoxBasedMode) {
+                  const nextVal = Math.max(1, (parseFloat(boxWeightKg) || 1) - 1);
+                  setBoxWeightKg(String(nextVal));
+                  setWeightKg(nextVal.toFixed(3));
+                  setCustomTotal(null);
+                } else {
+                  handleDecreaseWeight(e);
+                }
+              }}
+              className="w-4 h-4 sm:w-5 sm:h-5 rounded-full bg-white/95 hover:bg-white text-amber-950 flex items-center justify-center font-black cursor-pointer border border-amber-300 shadow-2xs active:scale-90"
+              title="- 1 Kg"
             >
-              <button
-                type="button"
-                onClick={handleDecreaseWeight}
-                className="w-5 h-5 sm:w-6 sm:h-6 md:w-7 md:h-7 rounded-full bg-white/95 hover:bg-white active:scale-90 text-amber-950 flex items-center justify-center font-black cursor-pointer border border-amber-300 shadow-2xs transition-transform"
-                title="Decrease weight (-0.5 Kg)"
-              >
-                <Minus size={11} className="stroke-[3] md:w-3.5 md:h-3.5" />
-              </button>
+              <Minus size={9} className="stroke-[3]" />
+            </button>
 
-              <div className="flex items-center gap-0.5 px-0.5">
-                <input
-                  type="number"
-                  step="any"
-                  min="0.1"
-                  enterKeyHint="done"
-                  value={weightKg === '0' || weightKg === 0 ? '' : weightKg}
-                  onFocus={(e) => {
-                    e.target.select();
-                    setDialLock(true);
-                    setWeightKg('');
-                  }}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setDialLock(true);
-                  }}
-                  onPointerDown={(e) => {
-                    e.stopPropagation();
-                    setDialLock(true);
-                  }}
-                  onTouchStart={(e) => {
-                    e.stopPropagation();
-                    setDialLock(true);
-                  }}
-                  onBlur={(e) => {
-                    const parsed = parseFloat(e.target.value);
-                    if (!e.target.value || isNaN(parsed) || parsed <= 0) {
-                      setWeightKg('1.000');
-                    }
-                  }}
-                  onChange={(e) => {
-                    setDialLock(true);
-                    setWeightKg(e.target.value);
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      const parsed = parseFloat(e.target.value);
-                      if (!e.target.value || isNaN(parsed) || parsed <= 0) {
-                        setWeightKg('1.000');
-                      } else {
-                        setWeightKg(parsed.toFixed(3));
-                      }
-                      e.target.blur();
-                    }
-                  }}
-                  placeholder=""
-                  style={{ backgroundColor: 'transparent', boxShadow: 'none' }}
-                  className="text-xs sm:text-sm font-black text-slate-900 font-mono text-center bg-transparent border-0 outline-none shadow-none focus:outline-none focus:ring-0 w-11 sm:w-13 leading-none p-0 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                />
-                <span className="text-[9px] sm:text-[10px] font-black text-slate-800">Kg</span>
-              </div>
+            <span className="px-1.5 py-0.5 bg-white/90 border border-amber-200/90 rounded-md text-[11px] sm:text-xs font-black text-slate-900">
+              {formatWeightDisplay(isBoxBasedMode ? parseFloat(boxWeightKg) || 1 : netKg)}
+            </span>
 
-              <button
-                type="button"
-                onClick={handleIncreaseWeight}
-                className="w-5 h-5 sm:w-6 sm:h-6 rounded-full bg-white/95 hover:bg-white active:scale-90 text-amber-950 flex items-center justify-center font-black cursor-pointer border border-amber-300 shadow-2xs transition-transform"
-                title="Increase weight (+0.5 Kg)"
-              >
-                <Plus size={11} className="stroke-[3]" />
-              </button>
-            </div>
-          ) : (
-            <div
-              onClick={(e) => e.stopPropagation()}
-              className="flex items-center gap-0.5 sm:gap-1 shrink-0"
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                if (isBoxBasedMode) {
+                  const nextVal = (parseFloat(boxWeightKg) || 1) + 1;
+                  setBoxWeightKg(String(nextVal));
+                  setWeightKg(nextVal.toFixed(3));
+                  setCustomTotal(null);
+                } else {
+                  handleIncreaseWeight(e);
+                }
+              }}
+              className="w-4 h-4 sm:w-5 sm:h-5 rounded-full bg-white/95 hover:bg-white text-amber-950 flex items-center justify-center font-black cursor-pointer border border-amber-300 shadow-2xs active:scale-90"
+              title="+ 1 Kg"
             >
-              <button
-                type="button"
-                onClick={() => setBoxWeightKg((prev) => String(Math.max(1, (parseFloat(prev) || 1) - 1)))}
-                className="w-5 h-5 sm:w-6 sm:h-6 rounded-full bg-white/95 hover:bg-white active:scale-90 text-amber-950 flex items-center justify-center font-black cursor-pointer border border-amber-300 shadow-2xs transition-transform"
-              >
-                <Minus size={11} className="stroke-[3]" />
-              </button>
-
-              <div className="flex items-center gap-0.5 px-0.5">
-                <input
-                  type="number"
-                  min="1"
-                  step="any"
-                  value={boxWeightKg === '0' || boxWeightKg === 0 ? '' : boxWeightKg}
-                  onFocus={(e) => {
-                    e.target.select();
-                    setDialLock(true);
-                    setBoxWeightKg('');
-                  }}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setDialLock(true);
-                  }}
-                  onPointerDown={(e) => {
-                    e.stopPropagation();
-                    setDialLock(true);
-                  }}
-                  onTouchStart={(e) => {
-                    e.stopPropagation();
-                    setDialLock(true);
-                  }}
-                  onBlur={(e) => {
-                    const parsed = parseFloat(e.target.value);
-                    if (!e.target.value || isNaN(parsed) || parsed <= 0) {
-                      setBoxWeightKg('1');
-                    }
-                  }}
-                  onChange={(e) => {
-                    setDialLock(true);
-                    setBoxWeightKg(e.target.value);
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      e.preventDefault();
-                      e.target.blur();
-                      const enteredVal = parseFloat(e.target.value) || parseFloat(boxWeightKg) || 1;
-                      setBoxWeightKg(String(enteredVal));
-                      if (openBoxPackerModal) {
-                        openBoxPackerModal(currentItem, activeGrade, enteredVal);
-                      }
-                    }
-                  }}
-                  className="text-xs sm:text-sm font-black text-slate-900 font-mono text-center bg-transparent border-0 outline-none w-10 sm:w-12 leading-none p-0"
-                />
-                <span className="text-[9px] sm:text-[10px] font-black text-slate-800">Kg</span>
-              </div>
-
-              <button
-                type="button"
-                onClick={() => setBoxWeightKg((prev) => String((parseFloat(prev) || 1) + 1))}
-                className="w-5 h-5 sm:w-6 sm:h-6 rounded-full bg-white/95 hover:bg-white active:scale-90 text-amber-950 flex items-center justify-center font-black cursor-pointer border border-amber-300 shadow-2xs transition-transform"
-              >
-                <Plus size={11} className="stroke-[3]" />
-              </button>
-            </div>
-          )}
+              <Plus size={9} className="stroke-[3]" />
+            </button>
+          </div>
         </div>
 
         {/* ========================================================
@@ -1934,24 +1823,26 @@ export default function FishSmartwatchDial({
             </div>
 
             {/* Currently Selected Customer Banner with Clear / Deselect Button */}
-            {(customerName || customerPhone) && (
+            {(effectiveCustomerName || effectiveCustomerPhone) && (
               <div className="mb-2 p-2 bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-300 rounded-xl flex items-center justify-between gap-2 shadow-2xs">
                 <div className="flex items-center gap-2 min-w-0">
-                  {customerPhoto ? (
+                  {effectiveCustomerPhoto ? (
                     <img
-                      src={customerPhoto}
-                      alt={customerName || 'Customer'}
+                      src={effectiveCustomerPhoto}
+                      alt={effectiveCustomerName || 'Customer'}
                       className="w-10 h-10 rounded-full object-cover border-2 border-amber-500 shrink-0 shadow-xs"
                     />
                   ) : (
                     <div className="w-10 h-10 rounded-full bg-gradient-to-br from-amber-500 to-orange-600 text-white font-black text-sm flex items-center justify-center shrink-0 shadow-xs">
-                      {(customerName || customerPhone || 'C').charAt(0).toUpperCase()}
+                      {(effectiveCustomerName || effectiveCustomerPhone || 'C').charAt(0).toUpperCase()}
                     </div>
                   )}
                   <div className="min-w-0 truncate">
-                    <div className="text-[9px] uppercase font-bold tracking-wider text-amber-700">Active Customer</div>
-                    <div className="text-xs font-black text-slate-900 truncate">{customerName || 'Customer'}</div>
-                    {customerPhone && <div className="text-[10px] font-mono text-slate-600 truncate">{customerPhone}</div>}
+                    <div className="text-[9px] uppercase font-bold tracking-wider text-amber-700">
+                      {fishOrderMode === 'bulk' ? 'Active Dealer' : fishOrderMode === 'export' ? 'Active Client' : 'Active Customer'}
+                    </div>
+                    <div className="text-xs font-black text-slate-900 truncate">{effectiveCustomerName || 'Customer'}</div>
+                    {effectiveCustomerPhone && <div className="text-[10px] font-mono text-slate-600 truncate">{effectiveCustomerPhone}</div>}
                   </div>
                 </div>
                 <button
@@ -1961,6 +1852,7 @@ export default function FishSmartwatchDial({
                     if (setCustomerName) setCustomerName('');
                     if (setCustomerPhone) setCustomerPhone('');
                     if (onCustomerSelect) onCustomerSelect(null);
+                    setLocalCustomer(null);
                     setShowCrmPicker(false);
                     if (showToast) showToast('Customer cleared / deselected', 'info');
                   }}
@@ -2012,8 +1904,12 @@ export default function FishSmartwatchDial({
                           if (setCustomerName) setCustomerName('');
                           if (setCustomerPhone) setCustomerPhone('');
                           if (onCustomerSelect) onCustomerSelect(null);
+                          setLocalCustomer(null);
                           if (showToast) showToast('Customer deselected', 'info');
                         } else {
+                          setLocalCustomer(c);
+                          if (setCustomerName) setCustomerName(c.name || '');
+                          if (setCustomerPhone) setCustomerPhone(c.phone || '');
                           if (handleSelectCustomer) handleSelectCustomer(c);
                           else if (onCustomerSelect) onCustomerSelect(c);
                           if (showToast) showToast(`Selected ${c.name || 'Customer'}`, 'success');
@@ -2072,7 +1968,7 @@ export default function FishSmartwatchDial({
 
             {/* Bottom Actions: Clear Selection or Open Full Customer Modal */}
             <div className="pt-2 mt-2 border-t border-amber-100 flex items-center justify-between gap-1">
-              {(customerName || customerPhone) && (
+              {(effectiveCustomerName || effectiveCustomerPhone) && (
                 <button
                   type="button"
                   onClick={() => {
@@ -2080,6 +1976,7 @@ export default function FishSmartwatchDial({
                     if (setCustomerName) setCustomerName('');
                     if (setCustomerPhone) setCustomerPhone('');
                     if (onCustomerSelect) onCustomerSelect(null);
+                    setLocalCustomer(null);
                     setShowCrmPicker(false);
                     if (showToast) showToast('Customer cleared / deselected', 'info');
                   }}
@@ -2105,130 +2002,271 @@ export default function FishSmartwatchDial({
         )}
 
         {/* ========================================================
-            INLINE RATE EDIT POPOVER (Long-press triggered)
+            INLINE RATE EDIT MODAL (Single-click triggered)
             ======================================================== */}
         {isEditingRate && (
           <div
-            onClick={(e) => e.stopPropagation()}
-            className="no-dial-drag absolute z-50 top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-white/98 backdrop-blur-md border-2 border-orange-400 rounded-2xl p-3 shadow-2xl w-56 animate-in fade-in zoom-in-95 duration-150"
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-2xs animate-in fade-in duration-150"
+            onClick={() => setIsEditingRate(false)}
           >
-            <div className="flex justify-between items-center pb-1.5 mb-2 border-b border-orange-100">
-              <span className="text-xs font-black text-slate-800">Edit Rate Price (₹/Kg)</span>
-              <button
-                type="button"
-                onClick={() => setIsEditingRate(false)}
-                className="w-5 h-5 rounded-full bg-slate-100 text-slate-500 hover:text-slate-900 flex items-center justify-center text-xs font-bold cursor-pointer"
-              >
-                ×
-              </button>
-            </div>
-            <div className="flex items-center gap-1.5 bg-orange-50/80 border border-orange-300 rounded-xl px-2.5 py-1 mb-2.5">
-              <span className="text-sm font-black text-orange-900 font-mono">₹</span>
-              <input
-                type="number"
-                step="any"
-                autoFocus
-                value={tempRateInput}
-                onChange={(e) => setTempRateInput(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') handleSaveRate();
-                  if (e.key === 'Escape') setIsEditingRate(false);
-                }}
-                className="w-full text-base font-black font-mono text-slate-900 bg-transparent border-0 outline-none focus:outline-none"
-                placeholder="Rate/Kg"
-              />
-              <span className="text-[10px] font-bold text-slate-600">/Kg</span>
-            </div>
-            <div className="flex gap-1.5">
-              <button
-                type="button"
-                onClick={() => {
-                  setCustomRate(null);
-                  setIsEditingRate(false);
-                  if (showToast) showToast('Reset to catalog rate', 'info');
-                }}
-                className="flex-1 py-1 text-[11px] font-bold text-slate-600 hover:bg-slate-100 rounded-lg cursor-pointer transition-colors"
-              >
-                Reset
-              </button>
-              <button
-                type="button"
-                onClick={handleSaveRate}
-                className="flex-1 py-1 text-[11px] font-black bg-orange-600 hover:bg-orange-700 text-white rounded-lg cursor-pointer transition-colors"
-              >
-                Save Rate
-              </button>
+            <div
+              onClick={(e) => e.stopPropagation()}
+              className="bg-white rounded-2xl p-4 w-full max-w-xs shadow-2xl border-2 border-orange-300 space-y-3 animate-in zoom-in-95 duration-150"
+            >
+              <div className="flex justify-between items-center pb-2 border-b border-orange-100">
+                <div className="flex items-center gap-1.5 text-xs font-black text-slate-800 uppercase tracking-wide">
+                  <Tag size={15} className="text-orange-600" />
+                  <span>Edit Rate Price (₹/Kg)</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsEditingRate(false)}
+                  className="w-6 h-6 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 hover:text-slate-800 flex items-center justify-center cursor-pointer transition-colors"
+                >
+                  <X size={14} />
+                </button>
+              </div>
+              <div className="flex items-center gap-2 bg-orange-50/80 border-2 border-orange-300 focus-within:border-orange-500 rounded-xl px-3 py-2 transition-all">
+                <span className="text-lg font-black text-orange-900 font-mono">₹</span>
+                <input
+                  type="number"
+                  step="any"
+                  autoFocus
+                  value={tempRateInput}
+                  onChange={(e) => setTempRateInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') handleSaveRate();
+                    if (e.key === 'Escape') setIsEditingRate(false);
+                  }}
+                  className="w-full text-xl font-black font-mono text-slate-900 bg-transparent border-0 outline-none focus:outline-none"
+                  placeholder="Rate/Kg"
+                />
+                <span className="text-xs font-bold text-slate-600">/Kg</span>
+              </div>
+              <div className="flex gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCustomRate(null);
+                    setIsEditingRate(false);
+                    if (showToast) showToast('Reset to catalog rate', 'info');
+                  }}
+                  className="flex-1 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100 border border-slate-200 rounded-xl cursor-pointer text-center transition-colors"
+                >
+                  Reset Standard
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSaveRate}
+                  className="flex-1 py-2 text-xs font-black bg-orange-600 hover:bg-orange-700 active:scale-95 text-white rounded-xl cursor-pointer shadow-md text-center transition-all"
+                >
+                  Apply Rate
+                </button>
+              </div>
             </div>
           </div>
         )}
 
         {/* ========================================================
-            INLINE NEGOTIATED TOTAL POPOVER (Long-press triggered)
+            INLINE NEGOTIATED TOTAL MODAL (Single-click triggered)
             ======================================================== */}
         {isEditingTotal && (
           <div
-            onClick={(e) => e.stopPropagation()}
-            className="no-dial-drag absolute z-50 top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-white/98 backdrop-blur-md border-2 border-emerald-400 rounded-2xl p-3 shadow-2xl w-60 animate-in fade-in zoom-in-95 duration-150"
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-2xs animate-in fade-in duration-150"
+            onClick={() => setIsEditingTotal(false)}
           >
-            <div className="flex justify-between items-center pb-1.5 mb-1.5 border-b border-emerald-100">
-              <span className="text-xs font-black text-slate-800">Negotiated Total Amount</span>
-              <button
-                type="button"
-                onClick={() => setIsEditingTotal(false)}
-                className="w-5 h-5 rounded-full bg-slate-100 text-slate-500 hover:text-slate-900 flex items-center justify-center text-xs font-bold cursor-pointer"
-              >
-                ×
-              </button>
-            </div>
-            <div className="text-[11px] text-slate-500 mb-1 flex justify-between">
-              <span>Standard Total:</span>
-              <span className="font-bold font-mono text-slate-700">₹{standardTotal.toFixed(2)}</span>
-            </div>
-            <div className="flex items-center gap-1.5 bg-emerald-50/80 border border-emerald-300 rounded-xl px-2.5 py-1 mb-2">
-              <span className="text-sm font-black text-emerald-900 font-mono">₹</span>
-              <input
-                type="number"
-                step="any"
-                autoFocus
-                value={tempTotalInput}
-                onChange={(e) => setTempTotalInput(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') handleSaveTotal();
-                  if (e.key === 'Escape') setIsEditingTotal(false);
-                }}
-                className="w-full text-base font-black font-mono text-slate-900 bg-transparent border-0 outline-none focus:outline-none"
-                placeholder="Total ₹"
-              />
-            </div>
-            {/* Live Discount Difference Preview */}
-            {(() => {
-              const entered = parseFloat(tempTotalInput);
-              const previewDiff = !isNaN(entered) && standardTotal > entered ? standardTotal - entered : 0;
-              return previewDiff > 0 ? (
-                <div className="text-[11px] font-bold text-emerald-800 bg-emerald-100/90 rounded-lg px-2 py-0.5 mb-2 text-center">
-                  Auto-Discount: -₹{previewDiff.toFixed(2)}
+            <div
+              onClick={(e) => e.stopPropagation()}
+              className="bg-white rounded-2xl p-4 w-full max-w-xs shadow-2xl border-2 border-emerald-300 space-y-3 animate-in zoom-in-95 duration-150"
+            >
+              <div className="flex justify-between items-center pb-2 border-b border-emerald-100">
+                <div className="flex items-center gap-1.5 text-xs font-black text-slate-800 uppercase tracking-wide">
+                  <Layers size={15} className="text-emerald-600" />
+                  <span>Negotiated Total (₹)</span>
                 </div>
-              ) : null;
-            })()}
-            <div className="flex gap-1.5">
-              <button
-                type="button"
-                onClick={() => {
-                  setCustomTotal(null);
-                  setIsEditingTotal(false);
-                  if (showToast) showToast('Reset to standard calculated total', 'info');
-                }}
-                className="flex-1 py-1 text-[11px] font-bold text-slate-600 hover:bg-slate-100 rounded-lg cursor-pointer transition-colors"
-              >
-                Reset
-              </button>
-              <button
-                type="button"
-                onClick={handleSaveTotal}
-                className="flex-1 py-1 text-[11px] font-black bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg cursor-pointer transition-colors"
-              >
-                Apply Total
-              </button>
+                <button
+                  type="button"
+                  onClick={() => setIsEditingTotal(false)}
+                  className="w-6 h-6 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 hover:text-slate-800 flex items-center justify-center cursor-pointer transition-colors"
+                >
+                  <X size={14} />
+                </button>
+              </div>
+              <div className="bg-slate-50 border border-slate-200 rounded-xl p-2.5 flex items-center justify-between text-xs">
+                <span className="text-slate-500 font-bold">Standard Total:</span>
+                <span className="font-black font-mono text-slate-800 text-sm">₹{standardTotal.toFixed(2)}</span>
+              </div>
+              <div className="flex items-center gap-2 bg-emerald-50/80 border-2 border-emerald-300 focus-within:border-emerald-500 rounded-xl px-3 py-2 transition-all">
+                <span className="text-lg font-black text-emerald-900 font-mono">₹</span>
+                <input
+                  type="number"
+                  step="any"
+                  autoFocus
+                  value={tempTotalInput}
+                  onChange={(e) => setTempTotalInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') handleSaveTotal();
+                    if (e.key === 'Escape') setIsEditingTotal(false);
+                  }}
+                  className="w-full text-xl font-black font-mono text-slate-900 bg-transparent border-0 outline-none focus:outline-none"
+                  placeholder="Total ₹"
+                />
+              </div>
+              {/* Live Discount Difference Preview */}
+              {(() => {
+                const entered = parseFloat(tempTotalInput);
+                const previewDiff = !isNaN(entered) && standardTotal > entered ? standardTotal - entered : 0;
+                return previewDiff > 0 ? (
+                  <div className="text-xs font-black text-emerald-800 bg-emerald-100 border border-emerald-300 rounded-xl px-3 py-1.5 text-center">
+                    Auto-Discount: -₹{previewDiff.toFixed(2)}
+                  </div>
+                ) : null;
+              })()}
+              <div className="flex gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCustomTotal(null);
+                    setIsEditingTotal(false);
+                    if (showToast) showToast('Reset to standard calculated total', 'info');
+                  }}
+                  className="flex-1 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100 border border-slate-200 rounded-xl cursor-pointer text-center transition-colors"
+                >
+                  Reset Standard
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSaveTotal}
+                  className="flex-1 py-2 text-xs font-black bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white rounded-xl cursor-pointer shadow-md text-center transition-all"
+                >
+                  Apply Total
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ========================================================
+            SEPARATE KGS & GRAMS WEIGHT MODAL (Single-click triggered)
+            ======================================================== */}
+        {showWeightModal && (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-2xs animate-in fade-in duration-150"
+            onClick={() => setShowWeightModal(false)}
+          >
+            <div
+              onClick={(e) => e.stopPropagation()}
+              className="bg-white rounded-2xl p-4 w-full max-w-xs shadow-2xl border-2 border-amber-300 space-y-3.5 animate-in zoom-in-95 duration-150"
+            >
+              {/* Modal Header */}
+              <div className="flex items-center justify-between pb-2 border-b border-amber-100">
+                <div className="flex items-center gap-1.5 text-xs font-black text-slate-800 uppercase tracking-wide">
+                  <Scale size={16} className="text-amber-600" />
+                  <span>Enter {isBoxBasedMode ? 'Lot / Box Weight' : 'Fish Weight'}</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowWeightModal(false)}
+                  className="w-6 h-6 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 hover:text-slate-800 flex items-center justify-center transition-colors cursor-pointer"
+                >
+                  <X size={14} />
+                </button>
+              </div>
+
+              {/* Current Fish & Price Reminder */}
+              <div className="bg-amber-50/70 border border-amber-200 rounded-xl px-2.5 py-1.5 flex items-center justify-between text-xs">
+                <span className="font-bold text-slate-700 truncate max-w-[170px]">{currentItem?.name}</span>
+                <span className="font-black text-amber-900 font-mono">₹{currentRateAmount}/Kg</span>
+              </div>
+
+              {/* Separate Inputs: Weight (Kg) and Grams (Optional) */}
+              <div className="grid grid-cols-2 gap-2.5">
+                <div>
+                  <label className="text-[10px] sm:text-[11px] font-bold text-slate-600 uppercase tracking-wider block mb-1">
+                    Weight (Kg)
+                  </label>
+                  <input
+                    type="number"
+                    step="1"
+                    min="0"
+                    autoFocus
+                    value={modalWeightKg}
+                    onChange={(e) => setModalWeightKg(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') handleConfirmWeightModal();
+                      if (e.key === 'Escape') setShowWeightModal(false);
+                    }}
+                    className="w-full text-lg sm:text-xl font-black font-mono text-center p-2 bg-slate-50 border-2 border-slate-200 focus:border-amber-500 focus:bg-white rounded-xl focus:outline-none transition-all"
+                    placeholder="0"
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] sm:text-[11px] font-bold text-slate-600 uppercase tracking-wider block mb-1">
+                    Grams (Optional)
+                  </label>
+                  <input
+                    type="number"
+                    step="10"
+                    min="0"
+                    max="999"
+                    value={modalWeightGrams}
+                    onChange={(e) => setModalWeightGrams(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') handleConfirmWeightModal();
+                      if (e.key === 'Escape') setShowWeightModal(false);
+                    }}
+                    className="w-full text-lg sm:text-xl font-black font-mono text-center p-2 bg-slate-50 border-2 border-slate-200 focus:border-amber-500 focus:bg-white rounded-xl focus:outline-none transition-all"
+                    placeholder="0"
+                  />
+                </div>
+              </div>
+
+              {/* Quick Presets */}
+              <div>
+                <div className="text-[9.5px] font-bold text-slate-400 uppercase tracking-wider mb-1">Quick Weight Presets</div>
+                <div className="flex flex-wrap items-center gap-1.5">
+                  {(isBoxBasedMode ? [1, 5, 10, 20, 50, 100] : [0.5, 1, 2, 3, 5, 10]).map(val => (
+                    <button
+                      key={val}
+                      type="button"
+                      onClick={() => {
+                        const whole = Math.floor(val);
+                        const g = Math.round((val - whole) * 1000);
+                        setModalWeightKg(String(whole));
+                        setModalWeightGrams(String(g));
+                      }}
+                      className="px-2 py-1 rounded-lg text-xs font-bold bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200 cursor-pointer active:scale-95 transition-all"
+                    >
+                      {val} Kg
+                    </button>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={() => { setModalWeightKg('0'); setModalWeightGrams('0'); }}
+                    className="px-2 py-1 rounded-lg text-xs font-bold bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 cursor-pointer ml-auto active:scale-95 transition-all"
+                  >
+                    Clear
+                  </button>
+                </div>
+              </div>
+
+              {/* Actions */}
+              <div className="flex items-center gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={() => setShowWeightModal(false)}
+                  className="flex-1 py-2 rounded-xl border border-slate-300 text-xs font-bold text-slate-700 hover:bg-slate-50 cursor-pointer text-center transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConfirmWeightModal}
+                  className="flex-1 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 active:scale-95 text-white text-xs font-black shadow-md cursor-pointer text-center transition-all"
+                >
+                  Confirm Weight
+                </button>
+              </div>
             </div>
           </div>
         )}

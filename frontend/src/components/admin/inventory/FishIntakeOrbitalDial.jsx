@@ -91,8 +91,10 @@ export default function FishIntakeOrbitalDial({
   const [kgPerBox, setKgPerBox] = useState(60);
   const [scaleKg, setScaleKg] = useState('60');
   const [scaleGrams, setScaleGrams] = useState('0');
+  const [modalKgVal, setModalKgVal] = useState('60');
+  const [modalGramsVal, setModalGramsVal] = useState('0');
   const [ratePerKg, setRatePerKg] = useState('150');
-  const [editModalField, setEditModalField] = useState(null); // 'boxes' | 'kgPerBox' | 'scaleKg' | 'rate'
+  const [editModalField, setEditModalField] = useState(null); // 'boxes' | 'kgPerBox' | 'scaleKg' | 'rate' | 'total'
   const [editInputVal, setEditInputVal] = useState('');
   const [addedSuccessToast, setAddedSuccessToast] = useState(false);
 
@@ -391,15 +393,28 @@ export default function FishIntakeOrbitalDial({
 
   // Quick edit modal save
   const handleSaveModalValue = () => {
+    if (editModalField === 'scaleKg') {
+      const k = Math.max(0, parseInt(modalKgVal, 10) || 0);
+      const g = Math.max(0, Math.min(999, parseInt(modalGramsVal, 10) || 0));
+      setScaleKg(String(k));
+      setScaleGrams(String(g));
+      setEditModalField(null);
+      return;
+    }
+
     const val = editInputVal.trim();
     if (editModalField === 'boxes') {
       handleBoxesChange(val);
     } else if (editModalField === 'kgPerBox') {
       handleKgPerBoxChange(val);
-    } else if (editModalField === 'scaleKg') {
-      setScaleKg(val);
     } else if (editModalField === 'rate') {
       setRatePerKg(val);
+    } else if (editModalField === 'total') {
+      const tot = parseFloat(val);
+      if (!isNaN(tot) && tot >= 0 && netWeightKg > 0) {
+        const calcRate = (tot / netWeightKg).toFixed(2);
+        setRatePerKg(String(calcRate));
+      }
     }
     setEditModalField(null);
   };
@@ -654,8 +669,9 @@ export default function FishIntakeOrbitalDial({
             filter="url(#intakePetalShadow)"
             className="cursor-pointer pointer-events-auto hover:opacity-95 active:opacity-90"
             onClick={() => {
+              setModalKgVal(String(scaleKg || '0'));
+              setModalGramsVal(String(scaleGrams || '0'));
               setEditModalField('scaleKg');
-              setEditInputVal(String(scaleKg));
             }}
           />
 
@@ -683,6 +699,10 @@ export default function FishIntakeOrbitalDial({
             strokeLinejoin="round"
             filter="url(#intakePetalShadow)"
             className="cursor-pointer pointer-events-auto hover:opacity-95 active:opacity-90"
+            onClick={() => {
+              setEditModalField('total');
+              setEditInputVal(String(Math.round(totalAmount)));
+            }}
           />
         </svg>
 
@@ -923,16 +943,21 @@ export default function FishIntakeOrbitalDial({
         {/* PETAL 4: Bottom (6 o'clock / 180°) - Scale Weight */}
         <div
           style={getCurvedSectorCenterStyle(180)}
-          onClick={() => { setEditModalField('scaleKg'); setEditInputVal(String(scaleKg)); }}
+          onClick={() => {
+            setModalKgVal(String(scaleKg || '0'));
+            setModalGramsVal(String(scaleGrams || '0'));
+            setEditModalField('scaleKg');
+          }}
           className="no-dial-drag pointer-events-auto flex flex-col items-center justify-center text-center cursor-pointer active:scale-95 transition-transform max-w-[85px] sm:max-w-[105px]"
-          title="Scale Weight"
+          title="Scale Weight (Click to enter Kg & Grams)"
         >
           <div className="flex items-center gap-0.5 text-amber-900 font-bold text-[8px] sm:text-[9px] uppercase tracking-wide">
             <Scale size={10} className="text-amber-700" />
             <span>Scale Wt</span>
           </div>
           <div className="text-xs sm:text-sm font-black text-amber-950 font-mono leading-tight">
-            {netWeightKg.toFixed(1)} <span className="text-[9px] font-semibold">Kg</span>
+            {Number(scaleKg) || 0} <span className="text-[9px] font-semibold">Kg</span>
+            {Number(scaleGrams) > 0 && <span className="text-[10px] text-amber-800 ml-0.5">{Number(scaleGrams)}g</span>}
           </div>
         </div>
 
@@ -941,7 +966,7 @@ export default function FishIntakeOrbitalDial({
           style={getCurvedSectorCenterStyle(240)}
           onClick={() => { setEditModalField('rate'); setEditInputVal(String(ratePerKg)); }}
           className="no-dial-drag pointer-events-auto flex flex-col items-center justify-center text-center cursor-pointer active:scale-95 transition-transform max-w-[80px] sm:max-w-[95px]"
-          title="Rate"
+          title="Rate (Click to edit rate)"
         >
           <div className="flex items-center gap-0.5 text-rose-900 font-bold text-[8px] sm:text-[9px] uppercase tracking-wide">
             <Tag size={10} className="text-rose-700" />
@@ -955,8 +980,12 @@ export default function FishIntakeOrbitalDial({
         {/* PETAL 6: Top-Left (10 o'clock / 300°) - Total (₹) */}
         <div
           style={getCurvedSectorCenterStyle(300)}
-          className="no-dial-drag pointer-events-auto flex flex-col items-center justify-center text-center max-w-[85px] sm:max-w-[105px]"
-          title="Total"
+          onClick={() => {
+            setEditModalField('total');
+            setEditInputVal(String(Math.round(totalAmount)));
+          }}
+          className="no-dial-drag pointer-events-auto flex flex-col items-center justify-center text-center cursor-pointer active:scale-95 transition-transform max-w-[85px] sm:max-w-[105px]"
+          title="Total (Click to enter total)"
         >
           <div className="flex items-center gap-0.5 text-emerald-900 font-bold text-[8px] sm:text-[9px] uppercase tracking-wide">
             <Calculator size={10} className="text-emerald-700" />
@@ -976,46 +1005,139 @@ export default function FishIntakeOrbitalDial({
         </div>
       )}
 
-      {/* ── QUICK NUMERIC EDIT MODAL FOR PETALS ── */}
+      {/* ── QUICK NUMERIC / DUAL-INPUT MODAL FOR PETALS ── */}
       {editModalField && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-2xs">
-          <div className="bg-white rounded-2xl p-4 w-full max-w-xs shadow-2xl border border-slate-200 space-y-3">
-            <div className="flex items-center justify-between border-b pb-2">
-              <span className="text-xs font-black text-slate-800 uppercase tracking-wide">
-                {editModalField === 'boxes' && 'Enter Crates / Boxes'}
-                {editModalField === 'kgPerBox' && 'Enter Kg Per Box'}
-                {editModalField === 'scaleKg' && 'Enter Scale Weight (Kg)'}
-                {editModalField === 'rate' && 'Enter Rate (₹/Kg)'}
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-2xs animate-in fade-in duration-150"
+          onClick={() => setEditModalField(null)}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="bg-white rounded-2xl p-4 w-full max-w-xs shadow-2xl border-2 border-amber-300 space-y-3.5 animate-in zoom-in-95 duration-150"
+          >
+            <div className="flex items-center justify-between border-b border-amber-100 pb-2">
+              <span className="text-xs font-black text-slate-800 uppercase tracking-wide flex items-center gap-1.5">
+                {editModalField === 'boxes' && <><Boxes size={14} className="text-orange-600" /> Enter Boxes / Crates</>}
+                {editModalField === 'kgPerBox' && <><Package size={14} className="text-sky-600" /> Enter Kg Per Box</>}
+                {editModalField === 'scaleKg' && <><Scale size={14} className="text-amber-600" /> Scale Weight (Kg + Gm)</>}
+                {editModalField === 'rate' && <><Tag size={14} className="text-rose-600" /> Enter Rate (₹/Kg)</>}
+                {editModalField === 'total' && <><Calculator size={14} className="text-emerald-600" /> Negotiate / Total (₹)</>}
               </span>
               <button
                 type="button"
                 onClick={() => setEditModalField(null)}
-                className="p-1 rounded-lg text-slate-400 hover:text-slate-700"
+                className="w-6 h-6 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 hover:text-slate-800 flex items-center justify-center cursor-pointer transition-colors"
               >
-                <X size={16} />
+                <X size={14} />
               </button>
             </div>
-            <input
-              type="number"
-              step={editModalField === 'scaleKg' ? '0.1' : '1'}
-              autoFocus
-              value={editInputVal}
-              onChange={(e) => setEditInputVal(e.target.value)}
-              onKeyDown={(e) => { if (e.key === 'Enter') handleSaveModalValue(); }}
-              className="w-full text-lg font-black font-mono text-center p-2 border border-slate-300 rounded-xl focus:outline-none focus:border-[#ea580c]"
-            />
-            <div className="flex items-center gap-2">
+
+            {/* Scale Weight Dedicated Dual-Input Mode (Kg + Grams) */}
+            {editModalField === 'scaleKg' ? (
+              <div className="space-y-3">
+                <div className="bg-amber-50/70 border border-amber-200 rounded-xl px-2.5 py-1.5 flex items-center justify-between text-xs">
+                  <span className="font-bold text-slate-700 truncate max-w-[170px]">{currentFish?.name}</span>
+                  <span className="font-black text-amber-900 font-mono">₹{ratePerKg}/Kg</span>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2.5">
+                  <div>
+                    <label className="text-[10px] sm:text-[11px] font-bold text-slate-600 uppercase tracking-wider block mb-1">
+                      Weight (Kg)
+                    </label>
+                    <input
+                      type="number"
+                      step="1"
+                      min="0"
+                      autoFocus
+                      value={modalKgVal}
+                      onChange={(e) => setModalKgVal(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') handleSaveModalValue();
+                        if (e.key === 'Escape') setEditModalField(null);
+                      }}
+                      className="w-full text-lg sm:text-xl font-black font-mono text-center p-2 bg-slate-50 border-2 border-slate-200 focus:border-amber-500 focus:bg-white rounded-xl focus:outline-none transition-all"
+                      placeholder="0"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] sm:text-[11px] font-bold text-slate-600 uppercase tracking-wider block mb-1">
+                      Grams (Optional)
+                    </label>
+                    <input
+                      type="number"
+                      step="10"
+                      min="0"
+                      max="999"
+                      value={modalGramsVal}
+                      onChange={(e) => setModalGramsVal(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') handleSaveModalValue();
+                        if (e.key === 'Escape') setEditModalField(null);
+                      }}
+                      className="w-full text-lg sm:text-xl font-black font-mono text-center p-2 bg-slate-50 border-2 border-slate-200 focus:border-amber-500 focus:bg-white rounded-xl focus:outline-none transition-all"
+                      placeholder="0"
+                    />
+                  </div>
+                </div>
+
+                {/* Quick Presets */}
+                <div>
+                  <div className="text-[9.5px] font-bold text-slate-400 uppercase tracking-wider mb-1">Quick Weight Presets</div>
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    {[10, 20, 40, 50, 60, 70, 100].map(val => (
+                      <button
+                        key={val}
+                        type="button"
+                        onClick={() => {
+                          setModalKgVal(String(val));
+                          setModalGramsVal('0');
+                        }}
+                        className="px-2 py-1 rounded-lg text-xs font-bold bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200 cursor-pointer active:scale-95 transition-all"
+                      >
+                        {val} Kg
+                      </button>
+                    ))}
+                    <button
+                      type="button"
+                      onClick={() => { setModalKgVal('0'); setModalGramsVal('0'); }}
+                      className="px-2 py-1 rounded-lg text-xs font-bold bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 cursor-pointer ml-auto active:scale-95 transition-all"
+                    >
+                      Clear
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              /* Single Input Mode for Boxes, KgPerBox, Rate, Total */
+              <div className="space-y-2">
+                <input
+                  type="number"
+                  step={editModalField === 'rate' || editModalField === 'total' ? 'any' : '1'}
+                  autoFocus
+                  value={editInputVal}
+                  onChange={(e) => setEditInputVal(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') handleSaveModalValue();
+                    if (e.key === 'Escape') setEditModalField(null);
+                  }}
+                  className="w-full text-lg sm:text-xl font-black font-mono text-center p-2 bg-slate-50 border-2 border-slate-200 focus:border-[#ea580c] focus:bg-white rounded-xl focus:outline-none transition-all"
+                />
+              </div>
+            )}
+
+            <div className="flex items-center gap-2 pt-1">
               <button
                 type="button"
                 onClick={() => setEditModalField(null)}
-                className="flex-1 py-1.5 rounded-xl border border-slate-300 text-xs font-bold text-slate-700 hover:bg-slate-50"
+                className="flex-1 py-2 rounded-xl border border-slate-300 text-xs font-bold text-slate-700 hover:bg-slate-50 cursor-pointer text-center transition-colors"
               >
                 Cancel
               </button>
               <button
                 type="button"
                 onClick={handleSaveModalValue}
-                className="flex-1 py-1.5 rounded-xl bg-[#ea580c] hover:bg-orange-600 text-white text-xs font-black shadow-xs"
+                className="flex-1 py-2 rounded-xl bg-[#ea580c] hover:bg-orange-600 active:scale-95 text-white text-xs font-black shadow-md cursor-pointer text-center transition-all"
               >
                 Confirm
               </button>
