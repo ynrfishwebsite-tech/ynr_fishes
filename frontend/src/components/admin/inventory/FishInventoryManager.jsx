@@ -142,6 +142,58 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack }) {
   const [localSelectorMode, setLocalSelectorMode] = useState('ring');
   const [damSelectorMode, setDamSelectorMode] = useState('ring');
 
+  // Split decimal kgPerBox into separate Kg and Grams fields for dual table inputs
+  const splitKgPerBoxParts = (row) => {
+    if (row.kgPerBoxKg !== undefined && row.kgPerBoxGrams !== undefined) {
+      return { k: String(row.kgPerBoxKg), g: String(row.kgPerBoxGrams) };
+    }
+    const raw = row.kgPerBox;
+    if (raw === '' || raw === null || raw === undefined) return { k: '', g: '' };
+    const num = Number(raw);
+    if (isNaN(num)) return { k: '', g: '' };
+    const whole = Math.floor(num);
+    const remG = Math.round((num - whole) * 1000);
+    return {
+      k: String(whole + Math.floor(remG / 1000)),
+      g: String(remG % 1000)
+    };
+  };
+
+  // Update table row Kg/Box from separate Kg and Grams inputs and recalculate scale weight
+  const buildUpdatedRowsWithKpb = (rows, idx, nextKRaw, nextGRaw, parseDecimalK = false) => {
+    const updated = [...rows];
+    let kStr = nextKRaw;
+    let gStr = nextGRaw;
+
+    if (parseDecimalK && String(nextKRaw).includes('.')) {
+      const parts = String(nextKRaw).split('.');
+      kStr = parts[0] || '0';
+      const fracStr = (parts[1] || '').padEnd(3, '0').slice(0, 3);
+      gStr = String(parseInt(fracStr, 10) || 0);
+    }
+
+    const kNum = Math.max(0, parseFloat(kStr) || 0);
+    const gNum = Math.max(0, Math.min(999, parseInt(gStr, 10) || 0));
+    const combinedKpb = (kStr === '' && gStr === '') ? '' : Number((kNum + gNum / 1000).toFixed(3));
+
+    updated[idx] = {
+      ...updated[idx],
+      kgPerBoxKg: kStr,
+      kgPerBoxGrams: gStr,
+      kgPerBox: combinedKpb
+    };
+
+    const bCount = Number(updated[idx].boxes || 0);
+    if (bCount > 0 && typeof combinedKpb === 'number' && combinedKpb > 0) {
+      const totalWeight = bCount * combinedKpb;
+      const wholeKg = Math.floor(totalWeight);
+      const remainderGrams = Math.round((totalWeight - wholeKg) * 1000);
+      updated[idx].kg = String(wholeKg + Math.floor(remainderGrams / 1000));
+      updated[idx].grams = String(remainderGrams % 1000);
+    }
+    return updated;
+  };
+
   const handleAddLocalLotFromDial = useCallback((lotPayload) => {
     setLocalStockInForm(prev => {
       const isFirstItemEmpty = prev.items.length === 1 && (!prev.items[0].menuItemId || !prev.items[0].itemName);
@@ -153,7 +205,7 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack }) {
         sizeBracket: lotPayload.sizeBracket,
         weightOption: lotPayload.weightOption,
         boxes: String(lotPayload.boxes || 0),
-        kgPerBox: Number(lotPayload.kgPerBox || 60),
+        kgPerBox: lotPayload.kgPerBox !== undefined ? Number(lotPayload.kgPerBox) : 60,
         kg: String(lotPayload.kg || 0),
         grams: String(lotPayload.grams || 0),
         ratePerKg: String(lotPayload.ratePerKg || 0)
@@ -176,7 +228,7 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack }) {
         sizeBracket: lotPayload.sizeBracket,
         weightOption: lotPayload.weightOption,
         boxes: String(lotPayload.boxes || 0),
-        kgPerBox: Number(lotPayload.kgPerBox || 60),
+        kgPerBox: lotPayload.kgPerBox !== undefined ? Number(lotPayload.kgPerBox) : 60,
         kg: String(lotPayload.kg || 0),
         grams: String(lotPayload.grams || 0),
         price: String(lotPayload.ratePerKg || 0)
@@ -2709,7 +2761,7 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack }) {
                           <th className="py-2.5 px-2.5 min-w-[200px]">Fish Variety</th>
                           <th className="py-2.5 px-2.5 min-w-[140px]">Grade</th>
                           <th className="py-2.5 px-2.5 text-center min-w-[80px]">Boxes</th>
-                          <th className="py-2.5 px-2.5 text-center min-w-[80px]">Kg / Box</th>
+                          <th className="py-2.5 px-2.5 text-center min-w-[130px]">Kg / Box</th>
                           <th className="py-2.5 px-2.5 text-center min-w-[130px]">Scale Wt (Kg)</th>
                           <th className="py-2.5 px-2.5 text-right min-w-[90px]">Rate (₹)</th>
                           <th className="py-2.5 px-2.5 text-right min-w-[100px]">Total (₹)</th>
@@ -2764,6 +2816,8 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack }) {
                                       weightOption: defaultGrade?.range || '1 - 4 Kg',
                                       ratePerKg: defaultGrade?.rate ? String(defaultGrade.rate) : (sel?.purchasePrice ? String(sel.purchasePrice) : updated[idx].ratePerKg),
                                       kgPerBox: itemKpb,
+                                      kgPerBoxKg: undefined,
+                                      kgPerBoxGrams: undefined,
                                       kg: autoKg,
                                       grams: autoGm
                                     };
@@ -2849,28 +2903,53 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack }) {
                                 />
                               </td>
                               <td className="py-2 px-2.5 align-middle">
-                                <input
-                                  type="number"
-                                  min="1"
-                                  step="any"
-                                  placeholder="60"
-                                  value={row.kgPerBox}
-                                  onChange={(e) => {
-                                    const val = e.target.value;
-                                    const updated = [...localStockInForm.items];
-                                    updated[idx].kgPerBox = val;
-                                    const bCount = Number(updated[idx].boxes || 0);
-                                    if (bCount > 0 && val !== '' && !isNaN(Number(val)) && Number(val) > 0) {
-                                      const totalWeight = bCount * Number(val);
-                                      const wholeKg = Math.floor(totalWeight);
-                                      const remainderGrams = Math.round((totalWeight - wholeKg) * 1000);
-                                      updated[idx].kg = String(wholeKg);
-                                      updated[idx].grams = remainderGrams > 0 ? String(remainderGrams) : '0';
-                                    }
-                                    setLocalStockInForm({ ...localStockInForm, items: updated });
-                                  }}
-                                  className="w-full h-9 bg-white border border-[#E8DCCB] rounded-lg px-2 text-xs text-center font-mono font-bold text-slate-800 focus:outline-none focus:border-[#ea580c]"
-                                />
+                                {(() => {
+                                  const kpbParts = splitKgPerBoxParts(row);
+                                  return (
+                                    <div className="flex items-center justify-center gap-1 h-9">
+                                      <input
+                                        type="number"
+                                        min="0"
+                                        step="any"
+                                        placeholder="Kg"
+                                        value={kpbParts.k}
+                                        onChange={(e) => {
+                                          const updated = buildUpdatedRowsWithKpb(
+                                            localStockInForm.items,
+                                            idx,
+                                            e.target.value,
+                                            kpbParts.g,
+                                            true
+                                          );
+                                          setLocalStockInForm({ ...localStockInForm, items: updated });
+                                        }}
+                                        className="w-14 h-9 bg-white border border-[#E8DCCB] rounded-lg px-1.5 text-xs text-center font-mono font-bold text-slate-800 focus:outline-none focus:border-[#ea580c]"
+                                      />
+                                      <span className="text-[11px] font-bold text-slate-400">+</span>
+                                      <input
+                                        type="number"
+                                        min="0"
+                                        max="999"
+                                        placeholder="Gm"
+                                        value={kpbParts.g}
+                                        onChange={(e) => {
+                                          let gVal = e.target.value.replace(/[^0-9]/g, '');
+                                          if (gVal.length > 3) gVal = gVal.slice(0, 3);
+                                          if (Number(gVal) > 999) gVal = '999';
+                                          const updated = buildUpdatedRowsWithKpb(
+                                            localStockInForm.items,
+                                            idx,
+                                            kpbParts.k,
+                                            gVal,
+                                            false
+                                          );
+                                          setLocalStockInForm({ ...localStockInForm, items: updated });
+                                        }}
+                                        className="w-13 h-9 bg-white border border-[#E8DCCB] rounded-lg px-1 text-xs text-center font-mono font-bold text-slate-800 focus:outline-none focus:border-[#ea580c]"
+                                      />
+                                    </div>
+                                  );
+                                })()}
                               </td>
                               <td className="py-2 px-2.5 align-middle">
                                 <div className="flex items-center justify-center gap-1 h-9">
@@ -3433,7 +3512,7 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack }) {
                           <th className="py-2.5 px-2.5 min-w-[200px]">Fish Variety</th>
                           <th className="py-2.5 px-2.5 min-w-[140px]">Grade</th>
                           <th className="py-2.5 px-2.5 text-center min-w-[80px]">Boxes</th>
-                          <th className="py-2.5 px-2.5 text-center min-w-[80px]">Kg / Box</th>
+                          <th className="py-2.5 px-2.5 text-center min-w-[130px]">Kg / Box</th>
                           <th className="py-2.5 px-2.5 text-center min-w-[130px]">Scale Wt (Kg)</th>
                           <th className="py-2.5 px-2.5 text-right min-w-[90px]">Rate (₹)</th>
                           <th className="py-2.5 px-2.5 text-right min-w-[100px]">Total (₹)</th>
@@ -3488,6 +3567,8 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack }) {
                                       weightOption: defaultGrade?.range || '1 - 4 Kg',
                                       price: defaultGrade?.rate ? String(defaultGrade.rate) : (sel?.purchasePrice ? String(sel.purchasePrice) : updated[idx].price),
                                       kgPerBox: itemKpb,
+                                      kgPerBoxKg: undefined,
+                                      kgPerBoxGrams: undefined,
                                       kg: autoKg,
                                       grams: autoGm
                                     };
@@ -3573,28 +3654,53 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack }) {
                                 />
                               </td>
                               <td className="py-2 px-2.5 align-middle">
-                                <input
-                                  type="number"
-                                  min="1"
-                                  step="any"
-                                  placeholder="60"
-                                  value={row.kgPerBox}
-                                  onChange={(e) => {
-                                    const val = e.target.value;
-                                    const updated = [...damStockInForm.tallyItems];
-                                    updated[idx].kgPerBox = val;
-                                    const bCount = Number(updated[idx].boxes || 0);
-                                    if (bCount > 0 && val !== '' && !isNaN(Number(val)) && Number(val) > 0) {
-                                      const totalWeight = bCount * Number(val);
-                                      const wholeKg = Math.floor(totalWeight);
-                                      const remainderGrams = Math.round((totalWeight - wholeKg) * 1000);
-                                      updated[idx].kg = String(wholeKg);
-                                      updated[idx].grams = remainderGrams > 0 ? String(remainderGrams) : '0';
-                                    }
-                                    setDamStockInForm({ ...damStockInForm, tallyItems: updated });
-                                  }}
-                                  className="w-full h-9 bg-white border border-[#E8DCCB] rounded-lg px-2 text-xs text-center font-mono font-bold text-slate-800 focus:outline-none focus:border-blue-500"
-                                />
+                                {(() => {
+                                  const kpbParts = splitKgPerBoxParts(row);
+                                  return (
+                                    <div className="flex items-center justify-center gap-1 h-9">
+                                      <input
+                                        type="number"
+                                        min="0"
+                                        step="any"
+                                        placeholder="Kg"
+                                        value={kpbParts.k}
+                                        onChange={(e) => {
+                                          const updated = buildUpdatedRowsWithKpb(
+                                            damStockInForm.tallyItems,
+                                            idx,
+                                            e.target.value,
+                                            kpbParts.g,
+                                            true
+                                          );
+                                          setDamStockInForm({ ...damStockInForm, tallyItems: updated });
+                                        }}
+                                        className="w-14 h-9 bg-white border border-[#E8DCCB] rounded-lg px-1.5 text-xs text-center font-mono font-bold text-slate-800 focus:outline-none focus:border-blue-500"
+                                      />
+                                      <span className="text-[11px] font-bold text-slate-400">+</span>
+                                      <input
+                                        type="number"
+                                        min="0"
+                                        max="999"
+                                        placeholder="Gm"
+                                        value={kpbParts.g}
+                                        onChange={(e) => {
+                                          let gVal = e.target.value.replace(/[^0-9]/g, '');
+                                          if (gVal.length > 3) gVal = gVal.slice(0, 3);
+                                          if (Number(gVal) > 999) gVal = '999';
+                                          const updated = buildUpdatedRowsWithKpb(
+                                            damStockInForm.tallyItems,
+                                            idx,
+                                            kpbParts.k,
+                                            gVal,
+                                            false
+                                          );
+                                          setDamStockInForm({ ...damStockInForm, tallyItems: updated });
+                                        }}
+                                        className="w-13 h-9 bg-white border border-[#E8DCCB] rounded-lg px-1 text-xs text-center font-mono font-bold text-slate-800 focus:outline-none focus:border-blue-500"
+                                      />
+                                    </div>
+                                  );
+                                })()}
                               </td>
                               <td className="py-2 px-2.5 align-middle">
                                 <div className="flex items-center justify-center gap-1 h-9">
