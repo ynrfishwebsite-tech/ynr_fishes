@@ -485,6 +485,7 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
   const [crmSaving, setCrmSaving] = useState(false);
   const [crmCustomerFound, setCrmCustomerFound] = useState(null);
   const [crmSuggestions, setCrmSuggestions] = useState([]);
+  const [showCrmSuggestions, setShowCrmSuggestions] = useState(false);
   const [tempCustomerBusinessName, setTempCustomerBusinessName] = useState('');
   const [tempCustomerAddress, setTempCustomerAddress] = useState('');
   const [tempCustomerPhoto, setTempCustomerPhoto] = useState('');
