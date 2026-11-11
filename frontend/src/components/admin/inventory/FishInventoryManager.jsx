@@ -36,7 +36,10 @@ import {
   Anchor,
   Building,
   AlertTriangle,
-  RotateCcw
+  RotateCcw,
+  Boxes,
+  Eye,
+  EyeOff
 } from 'lucide-react';
 import BackButton from '../common/BackButton';
 import SearchableDropdown from '../../common/SearchableDropdown';
@@ -75,6 +78,23 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack }) {
       localStorage.setItem('inventory_stockin_subtab', stockInSubTab);
     } catch (e) {}
   }, [stockInSubTab]);
+
+  const [showStatsStrip, setShowStatsStrip] = useState(() => {
+    try {
+      const saved = localStorage.getItem('inventory_show_stats');
+      return saved !== null ? saved === 'true' : true;
+    } catch (e) {
+      return true;
+    }
+  });
+
+  const toggleStatsStrip = () => {
+    setShowStatsStrip(prev => {
+      const next = !prev;
+      try { localStorage.setItem('inventory_show_stats', String(next)); } catch (e) {}
+      return next;
+    });
+  };
   const [fishList, setFishList] = useState([]);
   const [stockLogs, setStockLogs] = useState([]);
   const [crmCustomers, setCrmCustomers] = useState([]);
@@ -1627,22 +1647,22 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack }) {
   const totalCratesEqv = (totalStockKg / 50).toFixed(1);
 
   return (
-    <div className="px-1 py-2 sm:p-3 md:p-4 space-y-3 w-full text-slate-800">
-      {/* Top Header Card (Compact & Mobile-Responsive Header) */}
-      <div className="bg-[#FDFBF7] border border-[#E8DCCB] rounded-xl p-2.5 sm:px-3.5 sm:py-2.5 shadow-2xs w-full">
+    <div className="px-1 py-1.5 sm:p-3 md:p-4 space-y-2.5 sm:space-y-3 w-full text-slate-800">
+      {/* Top Header Card (Ultra-Compact & Mobile-Responsive Header) */}
+      <div className="bg-[#FDFBF7] border border-[#E8DCCB] rounded-xl px-2.5 py-1.5 sm:px-3 sm:py-2 shadow-2xs w-full">
         <div className="flex items-center justify-between gap-2">
           {/* Left Title & Branding */}
           <div className="flex items-center gap-2 sm:gap-2.5 min-w-0">
             {onGoBack && <BackButton onClick={onGoBack} label="Back" />}
-            <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-orange-100 text-[#ea580c] border border-orange-200 flex items-center justify-center shrink-0 shadow-xs">
-              <Package size={15} />
+            <div className="w-6 h-6 sm:w-7 sm:h-7 rounded-lg bg-orange-100 text-[#ea580c] border border-orange-200 flex items-center justify-center shrink-0 shadow-xs">
+              <Package size={14} />
             </div>
             <div className="min-w-0">
               <div className="flex items-center gap-1.5 flex-wrap">
-                <h1 className="text-xs sm:text-sm md:text-base font-black text-slate-900 tracking-tight leading-tight m-0 truncate">
+                <h1 className="text-xs sm:text-sm font-black text-slate-900 tracking-tight leading-tight m-0 truncate">
                   Fish Inventory & Catch Ledger
                 </h1>
-                <span className="text-[9px] sm:text-[10px] font-black px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200 shrink-0">
+                <span className="text-[8.5px] sm:text-[9.5px] font-black px-1.5 py-0.2 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200 shrink-0">
                   Live Cold Storage
                 </span>
               </div>
@@ -1652,116 +1672,210 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack }) {
             </div>
           </div>
 
-          {/* Right Refresh Action */}
-          <button
-            onClick={fetchInventoryData}
-            disabled={loading}
-            className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 text-xs font-bold transition-all cursor-pointer shadow-2xs shrink-0"
-            title="Refresh Inventory"
-          >
-            <RefreshCw size={12} className={loading ? 'animate-spin' : ''} />
-            <span className="hidden xs:inline sm:inline">Refresh</span>
-          </button>
-        </div>
+          {/* Right Header Controls: Mini Stats Toggle & Refresh */}
+          <div className="flex items-center gap-1.5 shrink-0">
+            <button
+              type="button"
+              onClick={toggleStatsStrip}
+              className="flex items-center gap-1 px-2 py-1 rounded-lg bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 text-[11px] font-bold transition-all cursor-pointer shadow-2xs shrink-0"
+              title={showStatsStrip ? "Minimize stats cards to save vertical screen space" : "Show full stats cards"}
+            >
+              {showStatsStrip ? <EyeOff size={11} className="text-slate-500" /> : <Eye size={11} className="text-[#ea580c]" />}
+              <span className="hidden xs:inline">{showStatsStrip ? 'Hide Stats' : 'Show Stats'}</span>
+            </button>
 
-        {/* Mobile subtitle row */}
-        <p className="text-[10px] text-slate-500 font-medium m-0 mt-1.5 sm:hidden border-t border-[#fed7aa]/30 pt-1">
-          Current storage inventory, catch unloading, and stock movements
-        </p>
-      </div>
-
-      {/* KPI Cards Strip (Two cards per row on mobile, 4 on desktop, Medium Density) */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-2.5 md:gap-3 w-full">
-        {/* Card 1: Total Fish Stock */}
-        <div className="bg-[#FDFBF7] border border-[#E8DCCB] rounded-xl p-2.5 sm:px-3 sm:py-2.5 shadow-2xs flex items-center justify-between">
-          <div className="min-w-0">
-            <span className="text-[9px] sm:text-[10px] font-bold text-slate-500 uppercase tracking-wide truncate block">Total Fish Stock</span>
-            <div className="text-sm sm:text-base md:text-lg font-black text-sky-800 font-mono leading-tight mt-0.5 truncate">
-              {totalStockKg.toFixed(1)} <span className="text-[10px] sm:text-xs font-semibold text-slate-500">Kg</span>
-            </div>
-          </div>
-          <div className="p-1.5 sm:p-2 bg-sky-100 text-sky-700 rounded-lg border border-sky-200 shrink-0 ml-1.5">
-            <Scale size={15} />
-          </div>
-        </div>
-
-        {/* Card 2: Active Varieties */}
-        <div className="bg-[#FDFBF7] border border-[#E8DCCB] rounded-xl p-2.5 sm:px-3 sm:py-2.5 shadow-2xs flex items-center justify-between">
-          <div className="min-w-0">
-            <span className="text-[9px] sm:text-[10px] font-bold text-slate-500 uppercase tracking-wide truncate block">Active Varieties</span>
-            <div className="text-sm sm:text-base md:text-lg font-black text-emerald-800 font-mono leading-tight mt-0.5 truncate">
-              {fishList.length} <span className="text-[10px] sm:text-xs font-semibold text-slate-500">Items</span>
-            </div>
-          </div>
-          <div className="p-1.5 sm:p-2 bg-emerald-100 text-emerald-700 rounded-lg border border-emerald-200 shrink-0 ml-1.5">
-            <ShieldCheck size={15} />
-          </div>
-        </div>
-
-        {/* Card 3: Low Stock Alert */}
-        <div className="bg-[#FDFBF7] border border-[#E8DCCB] rounded-xl p-2.5 sm:px-3 sm:py-2.5 shadow-2xs flex items-center justify-between">
-          <div className="min-w-0">
-            <span className="text-[9px] sm:text-[10px] font-bold text-slate-500 uppercase tracking-wide truncate block">Low Stock Alert</span>
-            <div className="text-sm sm:text-base md:text-lg font-black text-amber-800 font-mono leading-tight mt-0.5 truncate">
-              {lowStockCount} <span className="text-[10px] sm:text-xs font-semibold text-slate-500">Varieties</span>
-            </div>
-          </div>
-          <div className="p-1.5 sm:p-2 bg-amber-100 text-amber-700 rounded-lg border border-amber-200 shrink-0 ml-1.5">
-            <AlertTriangle size={15} />
-          </div>
-        </div>
-
-        {/* Card 4: Cold Storage Crates */}
-        <div className="bg-[#FDFBF7] border border-[#E8DCCB] rounded-xl p-2.5 sm:px-3 sm:py-2.5 shadow-2xs flex items-center justify-between">
-          <div className="min-w-0">
-            <span className="text-[9px] sm:text-[10px] font-bold text-slate-500 uppercase tracking-wide truncate block">Storage Crates</span>
-            <div className="text-sm sm:text-base md:text-lg font-black text-orange-800 font-mono leading-tight mt-0.5 truncate">
-              ~{totalCratesEqv} <span className="text-[10px] sm:text-xs font-semibold text-slate-500">Boxes</span>
-            </div>
-          </div>
-          <div className="p-1.5 sm:p-2 bg-orange-100 text-[#ea580c] rounded-lg border border-orange-200 shrink-0 ml-1.5">
-            <Package size={15} />
+            <button
+              onClick={fetchInventoryData}
+              disabled={loading}
+              className="flex items-center gap-1 px-2 py-1 rounded-lg bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 text-[11px] font-bold transition-all cursor-pointer shadow-2xs shrink-0"
+              title="Refresh Inventory"
+            >
+              <RefreshCw size={11} className={loading ? 'animate-spin' : ''} />
+              <span className="hidden xs:inline">Refresh</span>
+            </button>
           </div>
         </div>
       </div>
 
-      {/* Tabs & Top-Right Bar (Same Line on Desktop, Clean Responsive Wrap on Tablet/Mobile) */}
-      <div className="bg-[#FDFBF7] p-2 sm:p-2.5 rounded-2xl border border-[#E8DCCB] shadow-2xs flex flex-col lg:flex-row lg:items-center justify-between gap-2 sm:gap-2.5 w-full">
-        {/* Left: Tab Buttons */}
-        <div className="flex gap-1.5 overflow-x-auto pb-1 lg:pb-0 scrollbar-none shrink-0">
+      {/* KPI Cards Strip (Ultra-Compact High-Density / Minimizable) */}
+      {showStatsStrip ? (
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-1.5 sm:gap-2 md:gap-2.5 w-full">
+          {/* Card 1: Total Fish Stock */}
+          <div className="bg-[#FDFBF7] border border-[#E8DCCB] rounded-xl px-2.5 py-1.5 sm:px-3 sm:py-2 shadow-2xs flex items-center justify-between">
+            <div className="min-w-0">
+              <span className="text-[8.5px] sm:text-[9.5px] font-bold text-slate-500 uppercase tracking-wide truncate block leading-tight">Total Fish Stock</span>
+              <div className="text-xs sm:text-sm md:text-base font-black text-sky-800 font-mono leading-tight mt-0.5 truncate">
+                {totalStockKg.toFixed(1)} <span className="text-[9px] sm:text-[10px] font-semibold text-slate-500">Kg</span>
+              </div>
+            </div>
+            <div className="p-1 sm:p-1.5 bg-sky-100 text-sky-700 rounded-lg border border-sky-200 shrink-0 ml-1">
+              <Scale size={13} />
+            </div>
+          </div>
+
+          {/* Card 2: Active Varieties */}
+          <div className="bg-[#FDFBF7] border border-[#E8DCCB] rounded-xl px-2.5 py-1.5 sm:px-3 sm:py-2 shadow-2xs flex items-center justify-between">
+            <div className="min-w-0">
+              <span className="text-[8.5px] sm:text-[9.5px] font-bold text-slate-500 uppercase tracking-wide truncate block leading-tight">Active Varieties</span>
+              <div className="text-xs sm:text-sm md:text-base font-black text-emerald-800 font-mono leading-tight mt-0.5 truncate">
+                {fishList.length} <span className="text-[9px] sm:text-[10px] font-semibold text-slate-500">Items</span>
+              </div>
+            </div>
+            <div className="p-1 sm:p-1.5 bg-emerald-100 text-emerald-700 rounded-lg border border-emerald-200 shrink-0 ml-1">
+              <ShieldCheck size={13} />
+            </div>
+          </div>
+
+          {/* Card 3: Low Stock Alert */}
+          <div className="bg-[#FDFBF7] border border-[#E8DCCB] rounded-xl px-2.5 py-1.5 sm:px-3 sm:py-2 shadow-2xs flex items-center justify-between">
+            <div className="min-w-0">
+              <span className="text-[8.5px] sm:text-[9.5px] font-bold text-slate-500 uppercase tracking-wide truncate block leading-tight">Low Stock Alert</span>
+              <div className="text-xs sm:text-sm md:text-base font-black text-amber-800 font-mono leading-tight mt-0.5 truncate">
+                {lowStockCount} <span className="text-[9px] sm:text-[10px] font-semibold text-slate-500">Varieties</span>
+              </div>
+            </div>
+            <div className="p-1 sm:p-1.5 bg-amber-100 text-amber-700 rounded-lg border border-amber-200 shrink-0 ml-1">
+              <AlertTriangle size={13} />
+            </div>
+          </div>
+
+          {/* Card 4: Cold Storage Crates */}
+          <div className="bg-[#FDFBF7] border border-[#E8DCCB] rounded-xl px-2.5 py-1.5 sm:px-3 sm:py-2 shadow-2xs flex items-center justify-between">
+            <div className="min-w-0">
+              <span className="text-[8.5px] sm:text-[9.5px] font-bold text-slate-500 uppercase tracking-wide truncate block leading-tight">Storage Crates</span>
+              <div className="text-xs sm:text-sm md:text-base font-black text-orange-800 font-mono leading-tight mt-0.5 truncate">
+                ~{totalCratesEqv} <span className="text-[9px] sm:text-[10px] font-semibold text-slate-500">Boxes</span>
+              </div>
+            </div>
+            <div className="p-1 sm:p-1.5 bg-orange-100 text-[#ea580c] rounded-lg border border-orange-200 shrink-0 ml-1">
+              <Package size={13} />
+            </div>
+          </div>
+        </div>
+      ) : (
+        /* Collapsed Ultra-Slim Micro-Bar (Takes just 26px and keeps all 4 metrics directly visible) */
+        <div 
+          onClick={toggleStatsStrip}
+          className="bg-[#FAF0E4]/70 hover:bg-[#FAF0E4] border border-[#fed7aa] rounded-xl px-2.5 py-1 flex items-center justify-between gap-2 text-xs font-bold text-slate-700 cursor-pointer shadow-2xs transition-all"
+        >
+          <div className="flex items-center gap-2 sm:gap-3 overflow-x-auto scrollbar-none text-[10.5px] font-mono">
+            <span className="text-sky-800 flex items-center gap-1 font-bold">
+              <Scale size={11} className="text-sky-600" /> {totalStockKg.toFixed(1)} Kg Stock
+            </span>
+            <span className="text-slate-300">•</span>
+            <span className="text-emerald-800 flex items-center gap-1 font-bold">
+              <ShieldCheck size={11} className="text-emerald-600" /> {fishList.length} Varieties
+            </span>
+            <span className="text-slate-300">•</span>
+            <span className="text-amber-800 flex items-center gap-1 font-bold">
+              <AlertTriangle size={11} className="text-amber-600" /> {lowStockCount} Low
+            </span>
+            <span className="text-slate-300">•</span>
+            <span className="text-orange-800 flex items-center gap-1 font-bold">
+              <Package size={11} className="text-[#ea580c]" /> ~{totalCratesEqv} Boxes
+            </span>
+          </div>
+          <span className="text-[9.5px] text-[#ea580c] font-black shrink-0 flex items-center gap-0.5">
+            Expand <ChevronDown size={11} />
+          </span>
+        </div>
+      )}
+
+      {/* ── ROW 1: Dedicated Module Navigation Bar (Direct 1-Click Access across all screen sizes) ── */}
+      <div className="bg-[#FDFBF7] p-1.5 sm:p-2 rounded-2xl border border-[#E8DCCB] shadow-2xs flex items-center justify-between gap-2 w-full">
+        <div className="flex items-center gap-1 sm:gap-1.5 overflow-x-auto scrollbar-none py-0.5 w-full">
           {[
             { id: 'overview', label: 'Stock Ledger', icon: Package },
-            { id: 'procurement', label: 'Catch Stock-In', icon: ArrowDownLeft },
+            { id: 'local', label: 'Local Stock-In', icon: ArrowDownLeft, badge: 'Harbor' },
+            { id: 'dam', label: 'Dam Stock-In', icon: Anchor, badge: 'DAM' },
+            { id: 'supplies', label: 'Supplies & Boxes', icon: Boxes },
             { id: 'logs', label: 'Audit Trail', icon: History }
           ].map((tab) => {
             const Icon = tab.icon;
-            const isActive = activeTab === tab.id;
+            const isTabActive = activeTab === 'overview'
+              ? tab.id === 'overview'
+              : (activeTab === 'logs'
+                  ? tab.id === 'logs'
+                  : (stockInSubTab === tab.id));
+
             return (
               <button
                 key={tab.id}
-                onClick={() => { setActiveTab(tab.id); setMessage({ text: '', type: '' }); }}
-                className={`flex items-center gap-1.5 px-3 py-2 rounded-xl font-bold text-xs sm:text-sm transition-all cursor-pointer whitespace-nowrap ${
-                  isActive
-                    ? 'bg-[#ea580c] text-white shadow-xs font-black'
+                onClick={() => {
+                  setMessage({ text: '', type: '' });
+                  if (tab.id === 'overview') {
+                    setActiveTab('overview');
+                  } else if (tab.id === 'logs') {
+                    setActiveTab('logs');
+                  } else {
+                    setActiveTab('procurement');
+                    setStockInSubTab(tab.id);
+                  }
+                }}
+                className={`flex items-center gap-1 sm:gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl font-bold text-xs sm:text-sm transition-all cursor-pointer whitespace-nowrap shrink-0 ${
+                  isTabActive
+                    ? tab.id === 'dam'
+                      ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-xs font-black'
+                      : tab.id === 'local'
+                        ? 'bg-gradient-to-r from-orange-500 to-[#ea580c] text-white shadow-xs font-black'
+                        : 'bg-[#ea580c] text-white shadow-xs font-black'
                     : 'bg-white text-slate-700 hover:text-slate-900 hover:bg-[#F5E8D8] border border-[#E8DCCB]'
                 }`}
               >
-                <Icon size={14} />
+                <Icon size={13} />
                 <span>{tab.label}</span>
+                {tab.badge && (
+                  <span className={`text-[8.5px] px-1.5 py-0.2 rounded-full font-black ${
+                    isTabActive ? 'bg-white/25 text-white' : 'bg-slate-100 text-slate-600 border border-slate-200'
+                  }`}>
+                    {tab.badge}
+                  </span>
+                )}
               </button>
             );
           })}
         </div>
 
-        {/* Center: Live Database Filters for Stock Ledger (Desktop: Single Row without emojis) */}
-        {activeTab === 'overview' && (
-          <div className="hidden lg:flex items-center justify-center gap-1.5 xl:gap-2 flex-nowrap flex-1 px-1 min-w-0">
-            {/* Catch Source Filter Pills - Clean Text Only (No emojis) */}
-            <div className="inline-flex items-center p-0.5 bg-white/90 rounded-xl border border-[#E8DCCB] shadow-2xs shrink-0">
+        {activeTab === 'logs' && (
+          <div className="hidden sm:flex items-center gap-2 shrink-0 pr-1">
+            <span className="text-[10.5px] sm:text-xs font-bold text-slate-600 whitespace-nowrap">
+              {filteredStockLogs.length} logs • P.{logsPage}/{totalLogsPages}
+            </span>
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                disabled={logsPage <= 1}
+                onClick={() => setLogsPage(p => Math.max(1, p - 1))}
+                className="p-1 rounded-lg bg-white border border-[#E8DCCB] hover:bg-slate-100 disabled:opacity-30 disabled:cursor-not-allowed transition-all cursor-pointer text-slate-700"
+                title="Previous Page"
+              >
+                <ChevronLeft size={13} />
+              </button>
+              <button
+                type="button"
+                disabled={logsPage >= totalLogsPages}
+                onClick={() => setLogsPage(p => Math.min(totalLogsPages, p + 1))}
+                className="p-1 rounded-lg bg-white border border-[#E8DCCB] hover:bg-slate-100 disabled:opacity-30 disabled:cursor-not-allowed transition-all cursor-pointer text-slate-700"
+                title="Next Page"
+              >
+                <ChevronRight size={13} />
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* ── ROW 2: Stock Ledger Toolbar (Sources, Date Range, Search & Pagination - Spacious, Never Collides) ── */}
+      {activeTab === 'overview' && (
+        <div className="bg-[#FAF3E8]/90 p-2 sm:p-2.5 rounded-2xl border border-[#fed7aa] shadow-2xs flex flex-col md:flex-row md:items-center justify-between gap-2.5 w-full">
+          {/* Left: Source Filter Pills & Date Range (Desktop/Tablet) */}
+          <div className="hidden md:flex items-center gap-2 flex-wrap min-w-0">
+            {/* Catch Source Filter Pills */}
+            <div className="inline-flex items-center p-0.5 bg-white rounded-xl border border-[#E8DCCB] shadow-2xs shrink-0">
               <button
                 type="button"
                 onClick={() => handleSelectSource('all')}
-                className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
                   overviewSourceFilter === 'all'
                     ? 'bg-slate-800 text-white shadow-2xs font-black'
                     : 'text-slate-600 hover:text-slate-900 hover:bg-[#FAF3E8]'
@@ -1772,7 +1886,7 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack }) {
               <button
                 type="button"
                 onClick={() => handleSelectSource('local')}
-                className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
                   overviewSourceFilter === 'local'
                     ? 'bg-gradient-to-r from-orange-500 to-[#ea580c] text-white shadow-2xs font-black'
                     : 'text-slate-600 hover:text-slate-900 hover:bg-[#FAF3E8]'
@@ -1783,7 +1897,7 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack }) {
               <button
                 type="button"
                 onClick={() => handleSelectSource('dam')}
-                className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
                   overviewSourceFilter === 'dam'
                     ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-2xs font-black'
                     : 'text-slate-600 hover:text-slate-900 hover:bg-[#FAF3E8]'
@@ -1794,33 +1908,33 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack }) {
             </div>
 
             {/* Date Range Inputs with Visual Validation */}
-            <div className="flex items-center gap-1 bg-white border border-[#E8DCCB] rounded-xl px-2 py-1 shadow-2xs shrink-0">
-              <Calendar size={12} className="text-slate-400 shrink-0" />
-              <span className="text-[9px] font-bold uppercase tracking-wider text-slate-500">From</span>
+            <div className="flex items-center gap-1.5 bg-white border border-[#E8DCCB] rounded-xl px-2.5 py-1 shadow-2xs shrink-0">
+              <Calendar size={13} className="text-slate-400 shrink-0" />
+              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">From</span>
               <input
                 type="date"
                 value={overviewStartDate}
                 max={overviewEndDate || todayStr}
                 onChange={(e) => handleStartDateChange(e.target.value)}
-                className="bg-transparent text-[11px] font-bold font-mono text-slate-800 focus:outline-none cursor-pointer py-0.5 w-[96px]"
+                className="bg-transparent text-xs font-bold font-mono text-slate-800 focus:outline-none cursor-pointer py-0.5 w-[115px]"
                 title="Filter Start Date"
               />
               <span className="text-slate-300 text-xs font-bold">→</span>
-              <span className="text-[9px] font-bold uppercase tracking-wider text-slate-500">To</span>
+              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">To</span>
               <input
                 type="date"
                 value={overviewEndDate}
                 min={overviewStartDate || undefined}
                 max={todayStr}
                 onChange={(e) => handleEndDateChange(e.target.value)}
-                className="bg-transparent text-[11px] font-bold font-mono text-slate-800 focus:outline-none cursor-pointer py-0.5 w-[96px]"
+                className="bg-transparent text-xs font-bold font-mono text-slate-800 focus:outline-none cursor-pointer py-0.5 w-[115px]"
                 title="Filter End Date"
               />
             </div>
 
             {/* Validation Error Banner (if any) */}
             {overviewDateError && (
-              <span className="text-[10px] font-bold text-rose-600 bg-rose-50 border border-rose-200 px-1.5 py-0.5 rounded-lg whitespace-nowrap shrink-0">
+              <span className="text-[10.5px] font-bold text-rose-600 bg-rose-50 border border-rose-200 px-2 py-0.5 rounded-lg whitespace-nowrap">
                 {overviewDateError}
               </span>
             )}
@@ -1830,145 +1944,80 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack }) {
               <button
                 type="button"
                 onClick={handleClearOverviewFilters}
-                className="inline-flex items-center gap-1 px-2 py-1 rounded-xl text-[11px] font-bold bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 transition-all cursor-pointer shadow-2xs whitespace-nowrap shrink-0"
+                className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-bold bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 transition-all cursor-pointer shadow-2xs whitespace-nowrap"
                 title="Reset all filters"
               >
-                <RotateCcw size={10} />
+                <RotateCcw size={11} />
                 <span>Clear</span>
               </button>
             )}
           </div>
-        )}
 
-        {/* Right Corner: Controls, Search, Pagination & Mobile Toggle Button */}
-        {activeTab === 'overview' && (
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between lg:justify-end gap-2 w-full lg:w-auto border-t lg:border-t-0 pt-2 lg:pt-0 border-[#fed7aa]/40 shrink-0">
-            {/* Mobile Filters Toggle Button */}
-            <button
-              type="button"
-              onClick={() => setShowMobileFilters(prev => !prev)}
-              className={`lg:hidden flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold border transition-all cursor-pointer whitespace-nowrap ${
-                showMobileFilters || isOverviewFilterActive
-                  ? 'bg-[#ea580c] text-white border-[#ea580c] shadow-xs font-black'
-                  : 'bg-white text-slate-700 border-[#E8DCCB] hover:bg-slate-50'
-              }`}
-            >
-              <Filter size={13} />
-              <span>{showMobileFilters ? 'Hide Filters' : 'Filters'}</span>
-              {isOverviewFilterActive && (
-                <span className="w-1.5 h-1.5 rounded-full bg-white" />
-              )}
-              <ChevronDown size={13} className={`transition-transform duration-200 ${showMobileFilters ? 'rotate-180' : ''}`} />
-            </button>
-
-            <div className="relative w-full sm:w-48 xl:w-56">
+          {/* Right: Search Input, Mobile Filter Toggle & Pagination Controls */}
+          <div className="flex items-center justify-between md:justify-end gap-2 w-full md:w-auto">
+            {/* Search Input */}
+            <div className="relative flex-1 md:w-48 lg:w-60">
               <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
               <input
                 type="text"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                placeholder="Search fish species..."
-                className="w-full bg-white border border-[#E8DCCB] rounded-xl pl-7 pr-2.5 py-1.5 text-xs sm:text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:border-[#ea580c]"
+                placeholder="Search species..."
+                className="w-full bg-white border border-[#E8DCCB] rounded-xl pl-8 pr-2.5 py-1.5 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-[#ea580c] shadow-2xs"
               />
             </div>
-            <div className="flex items-center justify-between sm:justify-end gap-2 shrink-0">
+
+            {/* Mobile Filters Toggle Button */}
+            <button
+              type="button"
+              onClick={() => setShowMobileFilters(prev => !prev)}
+              className={`md:hidden flex items-center justify-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-bold border transition-all cursor-pointer whitespace-nowrap shrink-0 ${
+                showMobileFilters || isOverviewFilterActive
+                  ? 'bg-[#ea580c] text-white border-[#ea580c] shadow-xs font-black'
+                  : 'bg-white text-slate-700 border-[#E8DCCB] hover:bg-slate-50'
+              }`}
+            >
+              <Filter size={12} />
+              <span>{showMobileFilters ? 'Hide' : 'Filters'}</span>
+              {isOverviewFilterActive && (
+                <span className="w-1.5 h-1.5 rounded-full bg-white" />
+              )}
+              <ChevronDown size={12} className={`transition-transform duration-200 ${showMobileFilters ? 'rotate-180' : ''}`} />
+            </button>
+
+            {/* Pagination Controls */}
+            <div className="flex items-center gap-2 shrink-0 pl-1">
               <span className="text-[11px] sm:text-xs font-bold text-slate-600 whitespace-nowrap">
-                {filteredFish.length} items • Page {overviewPage} of {totalOverviewPages}
+                {filteredFish.length} items • P.{overviewPage}/{totalOverviewPages}
               </span>
               <div className="flex items-center gap-1">
                 <button
                   type="button"
                   disabled={overviewPage <= 1}
                   onClick={() => setOverviewPage(p => Math.max(1, p - 1))}
-                  className="p-1.5 rounded-lg bg-white border border-[#E8DCCB] hover:bg-slate-100 disabled:opacity-30 disabled:cursor-not-allowed transition-all cursor-pointer text-slate-700"
+                  className="p-1.5 rounded-lg bg-white border border-[#E8DCCB] hover:bg-slate-100 disabled:opacity-30 disabled:cursor-not-allowed transition-all cursor-pointer text-slate-700 shadow-2xs"
                   title="Previous Page"
                 >
-                  <ChevronLeft size={14} />
+                  <ChevronLeft size={13} />
                 </button>
                 <button
                   type="button"
                   disabled={overviewPage >= totalOverviewPages}
                   onClick={() => setOverviewPage(p => Math.min(totalOverviewPages, p + 1))}
-                  className="p-1.5 rounded-lg bg-white border border-[#E8DCCB] hover:bg-slate-100 disabled:opacity-30 disabled:cursor-not-allowed transition-all cursor-pointer text-slate-700"
+                  className="p-1.5 rounded-lg bg-white border border-[#E8DCCB] hover:bg-slate-100 disabled:opacity-30 disabled:cursor-not-allowed transition-all cursor-pointer text-slate-700 shadow-2xs"
                   title="Next Page"
                 >
-                  <ChevronRight size={14} />
+                  <ChevronRight size={13} />
                 </button>
               </div>
             </div>
           </div>
-        )}
-
-        {activeTab === 'logs' && (
-          <div className="flex items-center justify-between md:justify-end gap-2 w-full md:w-auto border-t md:border-t-0 pt-2 md:pt-0 border-[#fed7aa]/40">
-            <span className="text-[11px] sm:text-xs font-bold text-slate-600 whitespace-nowrap">
-              {filteredStockLogs.length} logs • Page {logsPage} of {totalLogsPages}
-            </span>
-            <div className="flex items-center gap-1">
-              <button
-                type="button"
-                disabled={logsPage <= 1}
-                onClick={() => setLogsPage(p => Math.max(1, p - 1))}
-                className="p-1.5 rounded-lg bg-white border border-[#E8DCCB] hover:bg-slate-100 disabled:opacity-30 disabled:cursor-not-allowed transition-all cursor-pointer text-slate-700"
-                title="Previous Page"
-              >
-                <ChevronLeft size={14} />
-              </button>
-              <button
-                type="button"
-                disabled={logsPage >= totalLogsPages}
-                onClick={() => setLogsPage(p => Math.min(totalLogsPages, p + 1))}
-                className="p-1.5 rounded-lg bg-white border border-[#E8DCCB] hover:bg-slate-100 disabled:opacity-30 disabled:cursor-not-allowed transition-all cursor-pointer text-slate-700"
-                title="Next Page"
-              >
-                <ChevronRight size={14} />
-              </button>
-            </div>
-          </div>
-        )}
-
-        {activeTab === 'procurement' && (
-          <div className="flex items-center gap-1.5 bg-[#FAF0E4] p-1 rounded-xl border border-[#fed7aa] shrink-0 w-full md:w-auto justify-between md:justify-end">
-            <button
-              type="button"
-              onClick={() => setStockInSubTab('local')}
-              className={`flex-1 md:flex-initial px-3 py-1.5 rounded-lg font-bold text-xs transition-all cursor-pointer whitespace-nowrap ${
-                stockInSubTab === 'local'
-                  ? 'bg-gradient-to-r from-orange-500 to-[#ea580c] text-white shadow-xs font-black'
-                  : 'text-slate-700 hover:text-slate-900 hover:bg-white/70'
-              }`}
-            >
-              Local Catch
-            </button>
-            <button
-              type="button"
-              onClick={() => setStockInSubTab('dam')}
-              className={`flex-1 md:flex-initial px-3 py-1.5 rounded-lg font-bold text-xs transition-all cursor-pointer whitespace-nowrap ${
-                stockInSubTab === 'dam'
-                  ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-xs font-black'
-                  : 'text-slate-700 hover:text-slate-900 hover:bg-white/70'
-              }`}
-            >
-              Dam Catch
-            </button>
-            <button
-              type="button"
-              onClick={() => setStockInSubTab('supplies')}
-              className={`flex-1 md:flex-initial px-3 py-1.5 rounded-lg font-bold text-xs transition-all cursor-pointer whitespace-nowrap ${
-                stockInSubTab === 'supplies'
-                  ? 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-xs font-black'
-                  : 'text-slate-700 hover:text-slate-900 hover:bg-white/70'
-              }`}
-            >
-              Supplies & Boxes
-            </button>
-          </div>
-        )}
-      </div>
+        </div>
+      )}
 
       {/* Mobile / Tablet Accordion Panel for Filters (Open / Close) */}
       {activeTab === 'overview' && showMobileFilters && (
-        <div className="lg:hidden bg-[#FAF3E8] p-3 rounded-2xl border border-[#fed7aa] flex flex-col gap-2.5 shadow-2xs transition-all">
+        <div className="md:hidden bg-[#FAF3E8] p-2.5 rounded-xl border border-[#fed7aa] flex flex-col gap-2 shadow-2xs transition-all">
           <div className="flex items-center justify-between">
             <span className="text-xs font-bold text-slate-700 uppercase tracking-wide flex items-center gap-1.5">
               <Filter size={13} className="text-[#ea580c]" />
@@ -2212,14 +2261,14 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack }) {
           {/* SUB-TAB 1: LOCAL FISH CATCH INTAKE (MULTI-FISH & BOXES)  */}
           {/* ════════════════════════════════════════════════════════ */}
           {stockInSubTab === 'local' && (
-            <div className="bg-[#FDFBF7] border border-[#E8DCCB] rounded-2xl px-1.5 py-3.5 sm:p-6 shadow-2xs space-y-4 sm:space-y-5 w-full">
-              <div className="flex items-center justify-between border-b border-[#fed7aa]/60 pb-3 px-1 sm:px-0">
+            <div className="bg-[#FDFBF7] border border-[#E8DCCB] rounded-2xl px-2 py-2.5 sm:p-5 md:p-6 shadow-2xs space-y-3 sm:space-y-4 w-full">
+              <div className="flex items-center justify-between border-b border-[#fed7aa]/60 pb-2 sm:pb-3 px-1 sm:px-0">
                 <div>
-                  <h2 className="text-base font-extrabold text-[#1e293b] flex items-center gap-2 m-0">
-                    <span className="p-1.5 bg-orange-100 text-[#ea580c] rounded-lg">📍</span>
+                  <h2 className="text-sm sm:text-base font-extrabold text-[#1e293b] flex items-center gap-2 m-0">
+                    <span className="p-1 sm:p-1.5 bg-orange-100 text-[#ea580c] rounded-lg text-xs sm:text-sm">📍</span>
                     <span>Local Fish Intake / Weighment</span>
                   </h2>
-                  <p className="text-xs text-slate-500 mt-0.5 font-medium m-0">
+                  <p className="text-[11px] sm:text-xs text-slate-500 mt-0.5 font-medium m-0 hidden sm:block">
                     Record multiple fish varieties, boxes, and scale weights received from local harbor landings or fishermen.
                   </p>
                 </div>
@@ -2900,14 +2949,14 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack }) {
           {/* SUB-TAB 2: DAM CATCH UNLOADING (MULTI-FISH CONSIGNMENT)  */}
           {/* ════════════════════════════════════════════════════════ */}
           {stockInSubTab === 'dam' && (
-            <div className="bg-[#FDFBF7] border border-[#E8DCCB] rounded-2xl px-1.5 py-3.5 sm:p-6 shadow-2xs space-y-4 sm:space-y-5 w-full">
-              <div className="flex items-center justify-between border-b border-[#fed7aa]/60 pb-3 flex-wrap gap-2 px-1 sm:px-0">
+            <div className="bg-[#FDFBF7] border border-[#E8DCCB] rounded-2xl px-2 py-2.5 sm:p-5 md:p-6 shadow-2xs space-y-3 sm:space-y-4 w-full">
+              <div className="flex items-center justify-between border-b border-[#fed7aa]/60 pb-2 sm:pb-3 flex-wrap gap-2 px-1 sm:px-0">
                 <div>
-                  <h2 className="text-base font-extrabold text-[#1e293b] flex items-center gap-2 m-0">
-                    <span className="p-1.5 bg-blue-100 text-blue-700 rounded-lg">🌊</span>
+                  <h2 className="text-sm sm:text-base font-extrabold text-[#1e293b] flex items-center gap-2 m-0">
+                    <span className="p-1 sm:p-1.5 bg-blue-100 text-blue-700 rounded-lg text-xs sm:text-sm">🌊</span>
                     <span>Dam Catch Unloading</span>
                   </h2>
-                  <p className="text-xs text-slate-500 mt-0.5 font-medium m-0">
+                  <p className="text-[11px] sm:text-xs text-slate-500 mt-0.5 font-medium m-0 hidden sm:block">
                     Record multi-variety fish shipments received from dam syndicates and reservoir contractors.
                   </p>
                 </div>
