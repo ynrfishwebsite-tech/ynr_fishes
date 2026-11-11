@@ -290,6 +290,18 @@ export default function GlobalSearchBar({
       keywords: ['day book', 'ledger', 'cash in', 'cash out', 'daily accounts', 'transactions']
     },
     {
+      id: 'khata',
+      title: 'Khata Book',
+      subtitle: 'Customer Dues & Credit Ledger',
+      category: 'Finance',
+      icon: BookMarked,
+      iconColor: '#dc2626',
+      iconBg: '#fef2f2',
+      navView: 'khata',
+      navOptions: {},
+      keywords: ['khata', 'khata book', 'katha', 'katha book', 'credit', 'dues', 'customer dues', 'debtors', 'credit accounts', 'unpaid bills', 'customer statement']
+    },
+    {
       id: 'expenses',
       title: 'Daily Expenses',
       subtitle: 'Petty Cash & Overhead',

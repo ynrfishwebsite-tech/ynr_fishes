@@ -381,6 +381,20 @@ export default function MainEntranceDashboard({
       navOptions: {},
       keywords: ['day book', 'ledger', 'cash in', 'cash out', 'daily accounts', 'transactions']
     },
+    // 10. Khata Book (Customer Dues & Credit Ledger)
+    {
+      id: 'khata',
+      title: 'Khata Book',
+      subtitle: 'Customer Dues & Ledger',
+      category: 'Finance',
+      icon: BookMarked,
+      iconColor: '#dc2626',
+      iconBg: '#fef2f2',
+      borderColor: '#fca5a5',
+      navView: 'khata',
+      navOptions: {},
+      keywords: ['khata', 'khata book', 'katha', 'katha book', 'credit', 'dues', 'customer dues', 'debtors', 'credit ledger', 'ledger', 'balance']
+    },
     // 10. Stock Catch Ledger
     {
       id: 'inventory',

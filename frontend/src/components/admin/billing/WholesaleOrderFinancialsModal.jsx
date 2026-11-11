@@ -220,7 +220,7 @@ export default function WholesaleOrderFinancialsModal({
                 Wholesale Financials & Dealer Ledger
               </h3>
               <p className="text-xs text-slate-500 font-medium">
-                Order <strong>#{order.billNumber || order.tableNo}</strong> • {order.customerName || 'Wholesale Dealer'} ({order.customerPhone || 'N/A'})
+                Order <strong>#{order.billNumber || order.tableNo}</strong> • {ledgerData?.customer?.name || order.customerName || 'Wholesale Dealer'} ({order.customerPhone || 'N/A'})
               </p>
             </div>
           </div>

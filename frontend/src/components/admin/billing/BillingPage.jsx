@@ -434,7 +434,7 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
   // Delivery / CRM fields
   const [orderSource, setOrderSource] = useState('Direct');
   const [customerPhone, setCustomerPhone] = useState(() => {
-    if (initialTable && initialTable !== 'NEW_ORDER') return '';
+    if (!initialTable || initialTable === 'NEW_ORDER' || initialTable.includes('NEW')) return '';
     try {
       return localStorage.getItem('billing_customer_phone') || '';
     } catch {
@@ -442,7 +442,7 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
     }
   });
   const [customerName, setCustomerName] = useState(() => {
-    if (initialTable && initialTable !== 'NEW_ORDER') return '';
+    if (!initialTable || initialTable === 'NEW_ORDER' || initialTable.includes('NEW')) return '';
     try {
       return localStorage.getItem('billing_customer_name') || '';
     } catch {
@@ -450,7 +450,7 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
     }
   });
   const [customerInfo, setCustomerInfo] = useState(() => {
-    if (initialTable && initialTable !== 'NEW_ORDER') return null;
+    if (!initialTable || initialTable === 'NEW_ORDER' || initialTable.includes('NEW')) return null;
     try {
       const saved = localStorage.getItem('billing_customer_info');
       return saved ? JSON.parse(saved) : null;

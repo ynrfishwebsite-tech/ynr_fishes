@@ -118,6 +118,7 @@ export default function ChannelHub({
   const [khataLoading, setKhataLoading] = useState(false);
   const [khataSearch, setKhataSearch] = useState('');
   const [khataFilterMode, setKhataFilterMode] = useState('all'); // 'all' | 'high' | 'recent'
+  const [khataChannelFilter, setKhataChannelFilter] = useState(() => (initialTab === 'khata' ? 'All' : channelKey));
   const [isKhataDropdownOpen, setIsKhataDropdownOpen] = useState(false);
   const khataDropdownRef = useRef(null);
 
@@ -276,7 +277,7 @@ export default function ChannelHub({
   const loadKhataData = async () => {
     setKhataLoading(true);
     try {
-      const data = await getKhataAccounts({ page: 1, limit: 50, search: khataSearch, category: channelKey });
+      const data = await getKhataAccounts({ page: 1, limit: 50, search: khataSearch, category: khataChannelFilter });
       const accList = data?.accounts || [];
       setKhataAccounts(accList);
       setStats(prev => ({
@@ -289,6 +290,12 @@ export default function ChannelHub({
       setKhataLoading(false);
     }
   };
+
+  useEffect(() => {
+    if (activeTab === 'khata') {
+      loadKhataData();
+    }
+  }, [khataChannelFilter, khataSearch]);
 
   // ── Load Channel Aggregate Stats & Financial Breakdown ───────────────────────
   const loadChannelStats = async () => {
@@ -1290,6 +1297,29 @@ export default function ChannelHub({
           {activeTab === 'khata' && (
             <div className="h-full flex flex-col overflow-hidden p-2.5">
               
+              {/* Channel Filter Pills: All | Wholesale | Retail | Export */}
+              <div className="shrink-0 flex items-center gap-1.5 overflow-x-auto pb-1 mb-1.5">
+                {[
+                  { id: 'All', label: t('All Debtors') },
+                  { id: 'Wholesale', label: t('Wholesale') },
+                  { id: 'Retail', label: t('Retail') },
+                  { id: 'Export', label: t('Export') }
+                ].map(pill => (
+                  <button
+                    key={pill.id}
+                    type="button"
+                    onClick={() => setKhataChannelFilter(pill.id)}
+                    className={`px-3 py-1 rounded-lg text-xs font-bold transition-all shrink-0 cursor-pointer ${
+                      khataChannelFilter === pill.id
+                        ? 'bg-[#ea580c] text-white shadow-xs'
+                        : 'bg-surface border border-border text-text-muted hover:text-text-main hover:bg-surface-hover'
+                    }`}
+                  >
+                    {pill.label}
+                  </button>
+                ))}
+              </div>
+
               {/* HYBRID SEARCH-SELECT COMBOBOX BAR */}
               <div className="shrink-0 mb-2 space-y-2">
                 <div ref={khataDropdownRef} className="relative w-full">

@@ -267,19 +267,20 @@ const ActiveOrders = ({
   const availablePersons = useMemo(() => {
     const map = new Map();
     channelScopedOrders.forEach((o) => {
-      const name = (o.customerName || '').trim() || 'Counter Walk-in';
       const phone = (o.customerPhone || '').trim();
       const cleanPhone = phone.replace(/\D/g, '').slice(-10);
-      const matchedCust = customerMap[cleanPhone] || (name ? customerMap[name.toLowerCase()] : null);
+      const rawName = (o.customerName || '').trim();
+      const matchedCust = customerMap[cleanPhone] || (rawName ? customerMap[rawName.toLowerCase()] : null);
+      const resolvedName = matchedCust?.name || rawName || 'Counter Walk-in';
       const photo = o.customerPhoto || matchedCust?.photo || '';
-      const key = `${name}__${phone}`;
+      const key = `${resolvedName}__${phone}`;
       if (!map.has(key)) {
         map.set(key, {
           key,
-          name,
+          name: resolvedName,
           phone,
           photo,
-          label: phone ? `${name} (${phone})` : name,
+          label: phone ? `${resolvedName} (${phone})` : resolvedName,
           orderCount: 0,
           totalAmount: 0
         });
@@ -365,9 +366,12 @@ const ActiveOrders = ({
 
       // Person check
       if (selectedPerson !== 'All') {
-        const oName = (o.customerName || '').trim() || 'Counter Walk-in';
         const oPhone = (o.customerPhone || '').trim();
-        const oKey = `${oName}__${oPhone}`;
+        const cleanPhone = oPhone.replace(/\D/g, '').slice(-10);
+        const rawName = (o.customerName || '').trim();
+        const matchedCust = customerMap[cleanPhone] || (rawName ? customerMap[rawName.toLowerCase()] : null);
+        const resolvedName = matchedCust?.name || rawName || 'Counter Walk-in';
+        const oKey = `${resolvedName}__${oPhone}`;
         if (oKey !== selectedPerson) return false;
       }
 
@@ -375,14 +379,18 @@ const ActiveOrders = ({
       if (searchTerm && searchTerm.trim() !== '') {
         const query = searchTerm.trim().toLowerCase();
         const tNo = String(o.tableNo || o.orderNo || '').toLowerCase();
-        const cName = String(o.customerName || '').toLowerCase();
-        const cPhone = String(o.customerPhone || '').toLowerCase();
+        const oPhone = (o.customerPhone || '').trim();
+        const cleanPhone = oPhone.replace(/\D/g, '').slice(-10);
+        const rawName = (o.customerName || '').trim();
+        const matchedCust = customerMap[cleanPhone] || (rawName ? customerMap[rawName.toLowerCase()] : null);
+        const resolvedName = (matchedCust?.name || rawName).toLowerCase();
+        const cPhone = oPhone.toLowerCase();
         const matchesItems = Array.isArray(o.items) && o.items.some(it => {
           if (!it || it.isCancelled) return false;
           return String(it.name || '').toLowerCase().includes(query) ||
                  String(it.nameTelugu || '').toLowerCase().includes(query);
         });
-        if (!tNo.includes(query) && !cName.includes(query) && !cPhone.includes(query) && !matchesItems) {
+        if (!tNo.includes(query) && !resolvedName.includes(query) && !cPhone.includes(query) && !matchesItems) {
           return false;
         }
       }
@@ -941,8 +949,9 @@ const ActiveOrders = ({
                     {(() => {
                       const cleanPhone = String(order.customerPhone || '').replace(/\D/g, '').slice(-10);
                       const matchedCust = customerMap[cleanPhone] || (order.customerName ? customerMap[order.customerName.trim().toLowerCase()] : null);
+                      const displayName = matchedCust?.name || order.customerName || t('Counter Walk-in');
                       const photoUrl = order.customerPhoto || matchedCust?.photo || '';
-                      const initialLetter = ((order.customerName || 'C').trim().charAt(0) || 'C').toUpperCase();
+                      const initialLetter = ((displayName || 'C').trim().charAt(0) || 'C').toUpperCase();
                       const shopOrBusiness = order.businessName || matchedCust?.businessName || '';
 
                       return (
@@ -951,7 +960,7 @@ const ActiveOrders = ({
                             {photoUrl ? (
                               <img
                                 src={photoUrl}
-                                alt={order.customerName || 'Customer'}
+                                alt={displayName}
                                 className="w-11 h-11 sm:w-12 sm:h-12 rounded-full object-cover border-2 border-amber-400/90 shadow-xs shrink-0"
                               />
                             ) : (
@@ -962,7 +971,7 @@ const ActiveOrders = ({
 
                             <div className="min-w-0 flex-1">
                               <div className="text-sm sm:text-[15px] font-black text-slate-900 leading-tight truncate">
-                                {order.customerName || t('Counter Walk-in')}
+                                {displayName}
                               </div>
                               <div className="flex items-center gap-1.5 text-xs sm:text-[13px] font-bold text-slate-700 font-mono mt-0.5">
                                 {order.customerPhone ? (
@@ -1174,20 +1183,21 @@ const ActiveOrders = ({
             {(() => {
               const dPhone = String(dispatchOrder.customerPhone || '').replace(/\D/g, '').slice(-10);
               const dCust = customerMap[dPhone] || (dispatchOrder.customerName ? customerMap[dispatchOrder.customerName.trim().toLowerCase()] : null);
+              const dName = dCust?.name || dispatchOrder.customerName || 'Registered Dealer';
               const dPhoto = dispatchOrder.customerPhoto || dCust?.photo || '';
               return (
                 <div className="p-4 bg-[#FAF0E4]/60 border-b border-[#fed7aa]/60 flex items-center justify-between text-xs gap-3">
                   <div className="flex items-center gap-3 min-w-0">
                     {dPhoto ? (
-                      <img src={dPhoto} alt={dispatchOrder.customerName} className="w-11 h-11 rounded-full object-cover border-2 border-amber-400 shrink-0" />
+                      <img src={dPhoto} alt={dName} className="w-11 h-11 rounded-full object-cover border-2 border-amber-400 shrink-0" />
                     ) : (
                       <div className="w-11 h-11 rounded-full bg-amber-600 text-white font-black text-base flex items-center justify-center shrink-0">
-                        {((dispatchOrder.customerName || 'D').trim().charAt(0) || 'D').toUpperCase()}
+                        {((dName || 'D').trim().charAt(0) || 'D').toUpperCase()}
                       </div>
                     )}
                     <div className="min-w-0">
                       <div className="font-black text-slate-900 text-sm sm:text-base leading-tight truncate">
-                        {dispatchOrder.customerName || 'Registered Dealer'}
+                        {dName}
                       </div>
                       <div className="font-mono text-slate-700 font-bold text-xs flex items-center gap-1 mt-0.5">
                         <Phone size={11} className="text-[#ea580c] shrink-0" />

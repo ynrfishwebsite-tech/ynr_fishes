@@ -14,6 +14,7 @@ import { getTableMatchCondition, getDynamicTaxRate, getTenantShopName } from '..
 import { getISTDayRange } from '../../utils/helpers/timezoneHelper.js';
 const syncOrderKotsWithItems = () => {};
 import CreditAccountDefault from '../../models/finance/CreditAccount.js';
+import CustomerDefault from '../../models/crm/Customer.js';
 
 import { asyncHandler } from '../../utils/helpers/asyncHandler.js';
 import { AppError } from '../../utils/helpers/AppError.js';
@@ -459,6 +460,27 @@ export const saveOrder = async (req, res) => {
       ? (customerAddress.fullAddress || [customerAddress.line1, customerAddress.area, customerAddress.city, customerAddress.district, customerAddress.state, customerAddress.pincode].filter(Boolean).join(', ') || '')
       : (typeof customerAddress === 'string' ? customerAddress : '');
 
+    // Authoritatively resolve customer identity against MongoDB CRM Customer collection by phone number
+    let resolvedCustomerName = customerName;
+    let resolvedCustomerPhoto = customerPhoto;
+    if (customerPhone) {
+      const cleanP = String(customerPhone).trim().replace(/\D/g, '').slice(-10);
+      if (cleanP) {
+        try {
+          const Customer = getTenantModel(req, 'Customer', CustomerDefault);
+          const existingCust = await Customer.findOne({
+            $or: [{ phone: customerPhone }, { phone: cleanP }]
+          }).select('name photo businessName').lean();
+          if (existingCust?.name && existingCust.name !== 'Guest' && existingCust.name.trim() !== '') {
+            resolvedCustomerName = existingCust.name;
+          }
+          if (existingCust?.photo && !resolvedCustomerPhoto) {
+            resolvedCustomerPhoto = existingCust.photo;
+          }
+        } catch (crmLookupErr) {}
+      }
+    }
+
     // Assign default daily counter order number in IST if no tableNo provided
     let effectiveTableNo = tableNo || req.body.orderNo;
     if (!effectiveTableNo || effectiveTableNo === 'NEW_ORDER' || effectiveTableNo === 'DEL-NEW' || effectiveTableNo === 'TAK-NEW') {
@@ -815,11 +837,11 @@ export const saveOrder = async (req, res) => {
       }
 
       order.items = updatedItems;
-      if (customerName !== undefined) order.customerName = customerName;
+      if (customerName !== undefined || resolvedCustomerName) order.customerName = resolvedCustomerName || customerName;
       if (customerPhone !== undefined) order.customerPhone = customerPhone;
       if (customerCategory) order.customerCategory = customerCategory;
       if (exportSubCategory !== undefined) order.exportSubCategory = exportSubCategory;
-      if (customerPhoto !== undefined) order.customerPhoto = customerPhoto;
+      if (customerPhoto !== undefined || resolvedCustomerPhoto) order.customerPhoto = resolvedCustomerPhoto || customerPhoto;
       if (customerAddress !== undefined) order.customerAddress = resolvedCustomerAddress;
       if (isOrderLocked !== undefined) order.isOrderLocked = isOrderLocked;
       if (orderLockedAt !== undefined) order.orderLockedAt = orderLockedAt;
@@ -951,8 +973,9 @@ export const saveOrder = async (req, res) => {
             const newOrderData = {
               tableNo,
               items: updatedItems,
-              customerName,
+              customerName: resolvedCustomerName || customerName,
               customerPhone,
+              customerPhoto: resolvedCustomerPhoto || customerPhoto || '',
               kitchenNotes,
               billType: billType || 'Dine-In',
               discountType: dType,
@@ -1058,11 +1081,11 @@ export const saveOrder = async (req, res) => {
         total: req.body.total !== undefined ? Number(req.body.total) : calculatedTotal,
         status: 'Open',
         billType: billType || 'Retail',
-        customerName,
+        customerName: resolvedCustomerName || customerName,
         customerPhone,
         customerCategory: customerCategory || (billType === 'Wholesale' ? 'Wholesale' : (billType === 'Export' ? 'Export' : 'Retail')),
         exportSubCategory: exportSubCategory || null,
-        customerPhoto: customerPhoto || '',
+        customerPhoto: resolvedCustomerPhoto || customerPhoto || '',
         customerAddress: resolvedCustomerAddress,
         isOrderLocked: isOrderLocked || false,
         orderLockedAt: orderLockedAt || (isOrderLocked ? new Date() : null),
@@ -1742,6 +1765,50 @@ export const getOpenOrders = async (req, res) => {
           total: finalTotal
         };
       });
+
+    // Cross-reference CRM Customer directory by phone number to ensure customerName, customerPhoto & businessName are authoritative
+    const phones = formattedOrders.map(o => o.customerPhone).filter(Boolean);
+    const cleanPhones = phones.map(p => String(p).replace(/\D/g, '').slice(-10)).filter(Boolean);
+    if (cleanPhones.length > 0) {
+      try {
+        const Customer = getTenantModel(req, 'Customer', CustomerDefault);
+        const crmCustomers = await Customer.find({
+          $or: [
+            { phone: { $in: phones } },
+            { phone: { $in: cleanPhones } }
+          ]
+        }).select('name phone photo businessName').lean();
+
+        const crmMap = {};
+        crmCustomers.forEach(c => {
+          const cp = String(c.phone || '').replace(/\D/g, '').slice(-10);
+          if (cp) crmMap[cp] = c;
+          if (c.phone) crmMap[c.phone] = c;
+        });
+
+        formattedOrders.forEach(o => {
+          if (o.customerPhone) {
+            const cp = String(o.customerPhone).replace(/\D/g, '').slice(-10);
+            const c = crmMap[cp] || crmMap[o.customerPhone];
+            if (c?.name && c.name !== 'Guest' && c.name.trim() !== '') {
+              if (o.customerName !== c.name) {
+                // Background self-healing in MongoDB so the order document is permanently corrected
+                Bill.updateOne({ _id: o._id }, { customerName: c.name }).catch(() => {});
+              }
+              o.customerName = c.name;
+            }
+            if (c?.photo && !o.customerPhoto) {
+              o.customerPhoto = c.photo;
+            }
+            if (c?.businessName && !o.businessName) {
+              o.businessName = c.businessName;
+            }
+          }
+        });
+      } catch (crmErr) {
+        console.warn('[getOpenOrders] CRM lookup warning:', crmErr.message);
+      }
+    }
 
     cache.set(`openOrders_${req.tenantDb || req.headers?.['x-tenant-db'] || 'default'}`, formattedOrders, 3); // 3s short TTL to absorb burst calls
     res.json(formattedOrders);

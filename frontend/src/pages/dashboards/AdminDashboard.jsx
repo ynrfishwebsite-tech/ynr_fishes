@@ -937,10 +937,10 @@ export default function AdminDashboard() {
             />
           )}
 
-          {/* Khata Book -> Direct to Wholesale Hub Khata Tab */}
+          {/* Khata Book -> Direct to Khata Tab (All Channels / Wholesale / Retail / Export) */}
           {currentView === 'khata' && (
             <ChannelHub
-              channel="Wholesale"
+              channel="All"
               initialTab="khata"
               user={user}
               onNavigate={navigateTo}
