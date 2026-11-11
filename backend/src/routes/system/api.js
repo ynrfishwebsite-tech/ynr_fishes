@@ -36,4 +36,30 @@ router.get("/imagekit/auth", (req, res) => {
   }
 });
 
+// Proxy external image to bypass CORS and prevent tainted canvas
+router.get("/proxy-image", async (req, res) => {
+  try {
+    const { url } = req.query;
+    if (!url || (!url.startsWith("http://") && !url.startsWith("https://"))) {
+      return res.status(400).json({ success: false, message: "Valid image URL required" });
+    }
+    const response = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+    if (!response.ok) {
+      return res.status(response.status).json({ success: false, message: "Failed to fetch image" });
+    }
+    const contentType = response.headers.get("content-type") || "image/jpeg";
+    res.setHeader("Content-Type", contentType);
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Cache-Control", "public, max-age=86400");
+    const buffer = await response.arrayBuffer();
+    res.send(Buffer.from(buffer));
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Failed to proxy image",
+      error: error.message,
+    });
+  }
+});
+
 export default router;

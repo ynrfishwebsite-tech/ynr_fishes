@@ -6,7 +6,7 @@ import {
   FileText, ArrowLeft, RefreshCw, Send, DollarSign, Wallet, 
   Check, X, Shield, Bell, MessageSquare, CreditCard, ChevronRight, ChevronDown, ChevronUp,
   TrendingUp, Award, Camera, Loader2, BookOpen, Sparkles, Filter,
-  PieChart, Activity, Zap, ExternalLink, QrCode, ArrowUpRight, UserPlus
+  PieChart, Activity, Zap, ExternalLink, QrCode, ArrowUpRight, UserPlus, Crop
 } from 'lucide-react';
 import BackButton from '../common/BackButton';
 import CustomTimePicker from '../common/CustomTimePicker';
@@ -1681,7 +1681,13 @@ export default function ChannelHub({
               {/* Photo Upload with Circle Crop */}
               <div className="flex items-center gap-3.5 p-3 bg-background rounded-2xl border border-border">
                 {customerModal.data.photo ? (
-                  <img src={customerModal.data.photo} alt="Profile" className="w-14 h-14 rounded-full object-cover border-2 border-amber-400 shadow-xs shrink-0" />
+                  <img
+                    src={customerModal.data.photo}
+                    alt="Profile"
+                    onClick={() => setCropperModal({ isOpen: true, imageSrc: customerModal.data.photo })}
+                    title={t('Click to crop photo')}
+                    className="w-14 h-14 rounded-full object-cover border-2 border-amber-400 shadow-xs shrink-0 cursor-pointer hover:opacity-85 transition-opacity"
+                  />
                 ) : (
                   <div className="w-14 h-14 rounded-full bg-amber-100 text-amber-800 font-black text-xl flex items-center justify-center shrink-0 border border-amber-300">
                     {((customerModal.data.name || 'C').charAt(0) || 'C').toUpperCase()}
@@ -1702,14 +1708,27 @@ export default function ChannelHub({
                       }
                     }}
                   />
-                  <button
-                    type="button"
-                    onClick={() => fileInputRef.current?.click()}
-                    className="px-3 py-1 bg-surface hover:bg-surface-hover border border-border rounded-xl text-xs font-bold text-text-main flex items-center gap-1.5 shadow-2xs"
-                  >
-                    <Camera size={13} />
-                    <span>{customerModal.data.photo ? t('Change Photo') : t('Upload Photo')}</span>
-                  </button>
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      className="px-3 py-1 bg-surface hover:bg-surface-hover border border-border rounded-xl text-xs font-bold text-text-main flex items-center gap-1.5 shadow-2xs cursor-pointer active:scale-95 transition-all"
+                    >
+                      <Camera size={13} />
+                      <span>{customerModal.data.photo ? t('Change Photo') : t('Upload Photo')}</span>
+                    </button>
+                    {customerModal.data.photo && (
+                      <button
+                        type="button"
+                        onClick={() => setCropperModal({ isOpen: true, imageSrc: customerModal.data.photo })}
+                        title={t('Crop current photo')}
+                        className="px-2.5 py-1 bg-orange-100 hover:bg-orange-200 text-[#ea580c] border border-orange-300 rounded-xl text-xs font-bold flex items-center gap-1 shadow-2xs cursor-pointer active:scale-95 transition-all"
+                      >
+                        <Crop size={12} />
+                        <span>{t('Crop')}</span>
+                      </button>
+                    )}
+                  </div>
                   <p className="text-[10px] text-text-muted">{t('Auto-cropped circle profile avatar')}</p>
                 </div>
               </div>

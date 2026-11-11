@@ -11,7 +11,7 @@ import { getActiveOrder, saveOrder, generateBill, settleBill, apiReopenOrder, ap
 import { sendWhatsAppBill, getWhatsAppStatus } from '../../../api/communication/whatsapp';
 import api from '../../../api/system/axios';
 import { getCachedOpenOrders, upsertCachedOpenOrder, removeCachedOpenOrder } from '../../../db/offlineDb';
-import { Search, UtensilsCrossed, Maximize, Minimize, TrendingUp, ShoppingBag, ShoppingCart, LayoutGrid, Menu, ChevronLeft, ChevronRight, ChevronDown, Lock, Unlock, X, User, UserPlus, Phone, Loader2, Plus, Check, Printer, Camera, Building, MapPin } from 'lucide-react';
+import { Search, UtensilsCrossed, Maximize, Minimize, TrendingUp, ShoppingBag, ShoppingCart, LayoutGrid, Menu, ChevronLeft, ChevronRight, ChevronDown, Lock, Unlock, X, User, UserPlus, Phone, Loader2, Plus, Check, Printer, Camera, Building, MapPin, Crop } from 'lucide-react';
 import useDebounce from '../../../hooks/useDebounce';
 import Invoice from './Invoice';
 import { getBillTotalWeightKg, resolveItemQtyAndRate } from './BillHistory';
@@ -360,6 +360,13 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
   }, []);
 
   const [cart, setCart] = useState(() => {
+    // If opening an existing active order, NEVER preload stale localStorage cart from another order!
+    if (initialTable && initialTable !== 'NEW_ORDER') {
+      return [];
+    }
+    if (initialAction === 'new') {
+      return [];
+    }
     try {
       const saved = localStorage.getItem('billing_active_cart');
       return saved ? JSON.parse(saved) : [];
@@ -368,7 +375,12 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
     }
   });
   const [mobileTab, setMobileTab] = useState(() => {
-    if (initialAction === 'new' || initialFishMode === 'bulk' || initialFishMode === 'export') {
+    // If an existing order is provided (e.g. opened from Active Orders), always open directly to the Bill/Cart (last page)
+    if (initialTable && initialTable !== 'NEW_ORDER' && initialAction !== 'new') {
+      try { localStorage.setItem('billing_mobile_tab', 'cart'); } catch {}
+      return 'cart';
+    }
+    if (initialAction === 'new') {
       try { localStorage.setItem('billing_mobile_tab', 'menu'); } catch {}
       return 'menu';
     }
@@ -422,6 +434,7 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
   // Delivery / CRM fields
   const [orderSource, setOrderSource] = useState('Direct');
   const [customerPhone, setCustomerPhone] = useState(() => {
+    if (initialTable && initialTable !== 'NEW_ORDER') return '';
     try {
       return localStorage.getItem('billing_customer_phone') || '';
     } catch {
@@ -429,6 +442,7 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
     }
   });
   const [customerName, setCustomerName] = useState(() => {
+    if (initialTable && initialTable !== 'NEW_ORDER') return '';
     try {
       return localStorage.getItem('billing_customer_name') || '';
     } catch {
@@ -436,6 +450,7 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
     }
   });
   const [customerInfo, setCustomerInfo] = useState(() => {
+    if (initialTable && initialTable !== 'NEW_ORDER') return null;
     try {
       const saved = localStorage.getItem('billing_customer_info');
       return saved ? JSON.parse(saved) : null;
@@ -545,16 +560,19 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
     } catch (e) {}
   }, [mobileTab]);
 
-  // Ensure 'menu' tab is active if cart is empty, or when switching orders/modes
+  // Ensure 'menu' tab is active only if cart is truly empty and NO active order is being loaded
   useEffect(() => {
-    if (cart.length === 0 && mobileTab === 'cart') {
+    if (cart.length === 0 && mobileTab === 'cart' && !initialTable && !activeTable) {
       setMobileTab('menu');
       try { localStorage.setItem('billing_mobile_tab', 'menu'); } catch (e) {}
     }
-  }, [cart.length, mobileTab]);
+  }, [cart.length, mobileTab, initialTable, activeTable]);
 
   useEffect(() => {
-    if (initialAction === 'new' || initialFishMode === 'bulk' || initialFishMode === 'export') {
+    if (initialTable && initialTable !== 'NEW_ORDER' && initialAction !== 'new') {
+      setMobileTab('cart');
+      try { localStorage.setItem('billing_mobile_tab', 'cart'); } catch (e) {}
+    } else if (initialAction === 'new') {
       setMobileTab('menu');
       try { localStorage.setItem('billing_mobile_tab', 'menu'); } catch (e) {}
     }
@@ -1282,10 +1300,21 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
       } else {
         setActiveTable(initialTable);
         setMobileTab('cart');
+        // Reset previous cart and customer immediately so no stale items from other orders leak
+        setCart([]);
+        cartRef.current = [];
+        setCustomerName('');
+        setCustomerPhone('');
+        setCustomerInfo(null);
+        setOrderId(null);
         if (initialTable.startsWith('DEL-')) {
           setBillType('Delivery');
+          setFishOrderMode('individual');
+          setCustomerCategory('Retail');
         } else if (initialTable.startsWith('TAK-')) {
           setBillType('Takeaway');
+          setFishOrderMode('individual');
+          setCustomerCategory('Retail');
         } else if (initialTable.startsWith('WS-')) {
           setBillType('Takeaway');
           setFishOrderMode('bulk');
@@ -1300,6 +1329,8 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
           setCustomerCategory('Retail');
         } else {
           setBillType('Dine-In');
+          setFishOrderMode('individual');
+          setCustomerCategory('Retail');
         }
         fetchActiveOrder(initialTable, true);
       }
@@ -1916,17 +1947,14 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
 
         if (validItems.length > 0) {
           setCart(prev => {
-            if (hasLocalEdits() && prev && prev.length > 0) {
+            if (!forceReset && hasLocalEdits() && prev && prev.length > 0 && isTableMatching(tableToFetch, prevActiveTableRef.current)) {
               const localOnlyItems = prev.filter(pItem => !validItems.some(vItem => (vItem._id && vItem._id === pItem._id) || vItem.name === pItem.name));
               const merged = [...validItems, ...localOnlyItems];
               cartRef.current = merged;
               return merged;
             }
-            if (!prev || prev.length === 0 || forceReset) {
-              cartRef.current = validItems;
-              return validItems;
-            }
-            return prev;
+            cartRef.current = validItems;
+            return validItems;
           });
           setOrderId(cached._id);
           setOrderStatus(cached.status);
@@ -1934,31 +1962,39 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
           setBillType(cached.billType || (cached.tableNo?.startsWith('DEL-') ? 'Delivery' : (cached.tableNo?.startsWith('TAK-') ? 'Takeaway' : 'Dine-In')));
 
           // ⚡ Automatically sync catalog view mode with order type (Retail vs Wholesale vs Export)
-          const isCachedExport = cached.customerCategory === 'Export' || cached.orderChannel?.includes('Export') || cached.orderMode === 'export' || cached.billType === 'Export' || Boolean(cached.exportSubCategory);
-          const isCachedWholesale = cached.customerCategory === 'Wholesale' || cached.orderChannel === 'Wholesale-Box' || cached.orderMode === 'bulk' || cached.billType === 'Wholesale' || (Number(cached.totalBoxes) > 0) || (Array.isArray(cached.boxes) && cached.boxes.length > 0) || cached.items?.some(i => i.isWholesaleBox || Number(i.boxNumber || 0) > 0 || i.pricingTier === 'wholesale' || Number(i.weight || i.weightKg || i.enteredWeight || 0) >= 20);
-
-          if (isCachedExport) {
+          if (tableToFetch.startsWith('RET-')) {
+            setFishOrderMode('individual');
+            setCustomerCategory('Retail');
+          } else if (tableToFetch.startsWith('WS-')) {
+            setFishOrderMode('bulk');
+            setCustomerCategory('Wholesale');
+          } else if (tableToFetch.startsWith('EXP-')) {
             setFishOrderMode('export');
             setCustomerCategory('Export');
             if (cached.exportSubCategory) setExportSubCategory(cached.exportSubCategory);
-          } else if (isCachedWholesale) {
-            setFishOrderMode('bulk');
-            setCustomerCategory('Wholesale');
           } else {
-            setFishOrderMode('individual');
-            setCustomerCategory('Retail');
+            const isCachedExport = cached.customerCategory === 'Export' || cached.orderChannel?.includes('Export') || cached.orderMode === 'export' || cached.billType === 'Export' || Boolean(cached.exportSubCategory);
+            const isCachedWholesale = cached.customerCategory === 'Wholesale' || cached.orderChannel === 'Wholesale-Box' || cached.orderMode === 'bulk' || cached.billType === 'Wholesale';
+
+            if (isCachedExport) {
+              setFishOrderMode('export');
+              setCustomerCategory('Export');
+              if (cached.exportSubCategory) setExportSubCategory(cached.exportSubCategory);
+            } else if (isCachedWholesale) {
+              setFishOrderMode('bulk');
+              setCustomerCategory('Wholesale');
+            } else {
+              setFishOrderMode('individual');
+              setCustomerCategory('Retail');
+            }
           }
           if (cached.orderSource) {
             setOrderSource(cached.orderSource);
           } else if (cached.billType === 'Delivery' || cached.tableNo?.startsWith('DEL-')) {
             setOrderSource('Direct');
           }
-          if (cached.customerPhone) {
-            setCustomerPhone(cached.customerPhone);
-          }
-          if (cached.customerName) {
-            setCustomerName(cached.customerName);
-          }
+          setCustomerPhone(cached.customerPhone || '');
+          setCustomerName(cached.customerName || (cached.tableNo?.startsWith('RET-') ? 'Counter Walk-in' : ''));
           setDeliveryCharge(cached.deliveryCharge !== undefined ? String(cached.deliveryCharge) : '0');
           setContainerCharge(cached.containerCharge !== undefined ? String(cached.containerCharge) : '0');
           const isRetailCached = !isCachedWholesale && !isCachedExport;
@@ -1975,6 +2011,10 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
           }
           setLoading(false);
           const currentAction = initialAction || (typeof window !== 'undefined' ? sessionStorage.getItem('ms_initial_action') : null);
+          if (tableToFetch && tableToFetch !== 'NEW_ORDER' && currentAction !== 'new') {
+            setMobileTab('cart');
+            try { localStorage.setItem('billing_mobile_tab', 'cart'); } catch (e) {}
+          }
           if (currentAction === 'settle') {
             try { sessionStorage.removeItem('ms_initial_action'); } catch (e) { }
             setShowPayment(true);
@@ -2112,7 +2152,7 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
           return;
         }
 
-        if (hasLocalEdits()) {
+        if (!forceReset && hasLocalEdits() && isTableMatching(tableToFetch, prevActiveTableRef.current)) {
           setCart(prev => {
             const current = prev || [];
             const localOnlyItems = current.filter(pItem => !backendItems.some(bItem => (bItem._id && bItem._id === pItem._id) || bItem.name === pItem.name));
@@ -2131,29 +2171,37 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
         setBillType(order.billType || 'Dine-In');
 
         // ⚡ Automatically sync catalog view mode with order type (Retail vs Wholesale vs Export)
-        const isOrderExport = order.customerCategory === 'Export' || order.orderChannel?.includes('Export') || order.orderMode === 'export' || order.billType === 'Export' || Boolean(order.exportSubCategory);
-        const isOrderWholesale = order.customerCategory === 'Wholesale' || order.orderChannel === 'Wholesale-Box' || order.orderMode === 'bulk' || order.billType === 'Wholesale' || (Number(order.totalBoxes) > 0) || (Array.isArray(order.boxes) && order.boxes.length > 0) || order.items?.some(i => i.isWholesaleBox || Number(i.boxNumber || 0) > 0 || i.pricingTier === 'wholesale' || Number(i.weight || i.weightKg || i.enteredWeight || 0) >= 20);
-
-        if (isOrderExport) {
+        if (tableToFetch.startsWith('RET-')) {
+          setFishOrderMode('individual');
+          setCustomerCategory('Retail');
+        } else if (tableToFetch.startsWith('WS-')) {
+          setFishOrderMode('bulk');
+          setCustomerCategory('Wholesale');
+        } else if (tableToFetch.startsWith('EXP-')) {
           setFishOrderMode('export');
           setCustomerCategory('Export');
           if (order.exportSubCategory) setExportSubCategory(order.exportSubCategory);
-        } else if (isOrderWholesale) {
-          setFishOrderMode('bulk');
-          setCustomerCategory('Wholesale');
         } else {
-          setFishOrderMode('individual');
-          setCustomerCategory('Retail');
+          const isOrderExport = order.customerCategory === 'Export' || order.orderChannel?.includes('Export') || order.orderMode === 'export' || order.billType === 'Export' || Boolean(order.exportSubCategory);
+          const isOrderWholesale = order.customerCategory === 'Wholesale' || order.orderChannel === 'Wholesale-Box' || order.orderMode === 'bulk' || order.billType === 'Wholesale';
+
+          if (isOrderExport) {
+            setFishOrderMode('export');
+            setCustomerCategory('Export');
+            if (order.exportSubCategory) setExportSubCategory(order.exportSubCategory);
+          } else if (isOrderWholesale) {
+            setFishOrderMode('bulk');
+            setCustomerCategory('Wholesale');
+          } else {
+            setFishOrderMode('individual');
+            setCustomerCategory('Retail');
+          }
         }
         if (order.billType === 'Delivery') {
           setOrderSource(order.orderSource || 'Direct');
         }
-        if (order.customerPhone) {
-          setCustomerPhone(order.customerPhone);
-        }
-        if (order.customerName) {
-          setCustomerName(order.customerName);
-        }
+        setCustomerPhone(order.customerPhone || '');
+        setCustomerName(order.customerName || (order.tableNo?.startsWith('RET-') ? 'Counter Walk-in' : ''));
         setDeliveryCharge(order.transportCharges !== undefined ? String(order.transportCharges) : (order.deliveryCharge !== undefined ? String(order.deliveryCharge) : '0'));
         setContainerCharge(order.boxCharges !== undefined ? String(order.boxCharges) : (order.containerCharge !== undefined ? String(order.containerCharge) : '0'));
         setIceCharges(order.iceCharges !== undefined ? String(order.iceCharges) : '0');
@@ -2183,6 +2231,10 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
           setTaxRate('');
         }
         const currentAction = initialAction || (typeof window !== 'undefined' ? sessionStorage.getItem('ms_initial_action') : null);
+        if (tableToFetch && tableToFetch !== 'NEW_ORDER' && currentAction !== 'new') {
+          setMobileTab('cart');
+          try { localStorage.setItem('billing_mobile_tab', 'cart'); } catch (e) {}
+        }
         if (currentAction === 'settle') {
           try { sessionStorage.removeItem('ms_initial_action'); } catch (e) { }
           setShowPayment(true);
@@ -4887,7 +4939,9 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
                   <img
                     src={tempCustomerPhoto}
                     alt="Profile"
-                    className="w-14 h-14 rounded-full object-cover border-2 border-amber-400 shadow-xs shrink-0"
+                    onClick={() => setCropperModal({ isOpen: true, imageSrc: tempCustomerPhoto })}
+                    title={t('Click to crop photo')}
+                    className="w-14 h-14 rounded-full object-cover border-2 border-amber-400 shadow-xs shrink-0 cursor-pointer hover:opacity-85 transition-opacity"
                   />
                 ) : (
                   <div className="w-14 h-14 rounded-full bg-amber-100 text-amber-800 font-black text-xl flex items-center justify-center shrink-0 border border-amber-300">
@@ -4909,14 +4963,27 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
                       }
                     }}
                   />
-                  <button
-                    type="button"
-                    onClick={() => crmFileInputRef.current?.click()}
-                    className="px-3 py-1 bg-white hover:bg-slate-50 border border-[#E8DCCB] rounded-xl text-xs font-bold text-slate-800 flex items-center gap-1.5 shadow-2xs cursor-pointer active:scale-95 transition-all"
-                  >
-                    <Camera size={13} className="text-[#ea580c]" />
-                    <span>{tempCustomerPhoto ? t('Change Photo') : t('Upload Photo')}</span>
-                  </button>
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => crmFileInputRef.current?.click()}
+                      className="px-3 py-1 bg-white hover:bg-slate-50 border border-[#E8DCCB] rounded-xl text-xs font-bold text-slate-800 flex items-center gap-1.5 shadow-2xs cursor-pointer active:scale-95 transition-all"
+                    >
+                      <Camera size={13} className="text-[#ea580c]" />
+                      <span>{tempCustomerPhoto ? t('Change Photo') : t('Upload Photo')}</span>
+                    </button>
+                    {tempCustomerPhoto && (
+                      <button
+                        type="button"
+                        onClick={() => setCropperModal({ isOpen: true, imageSrc: tempCustomerPhoto })}
+                        title={t('Crop current photo')}
+                        className="px-2.5 py-1 bg-orange-100 hover:bg-orange-200 text-[#ea580c] border border-orange-300 rounded-xl text-xs font-bold flex items-center gap-1 shadow-2xs cursor-pointer active:scale-95 transition-all"
+                      >
+                        <Crop size={12} />
+                        <span>{t('Crop')}</span>
+                      </button>
+                    )}
+                  </div>
                   <p className="text-[10px] text-slate-500 font-medium">{t('Auto-cropped circle profile avatar')}</p>
                 </div>
               </div>

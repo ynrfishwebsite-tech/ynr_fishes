@@ -808,7 +808,16 @@ export default function SupplierManagement({ onGoBack }) {
                     <div className="flex items-center justify-between p-2 bg-orange-50/60 border border-orange-200 rounded-xl gap-2">
                       <div className="flex items-center gap-2 min-w-0">
                         {formData.profileImage ? (
-                          <img src={formData.profileImage} alt="Preview" className="w-9 h-9 rounded-lg object-cover border border-orange-300 shrink-0" />
+                          <img
+                            src={formData.profileImage}
+                            alt="Preview"
+                            onClick={() => {
+                              setCropperRawSrc(formData.profileImage);
+                              setIsCropperOpen(true);
+                            }}
+                            title={t("Click to crop photo")}
+                            className="w-9 h-9 rounded-lg object-cover border border-orange-300 shrink-0 cursor-pointer hover:opacity-85 transition-opacity"
+                          />
                         ) : null}
                         <div className="min-w-0">
                           <span className="text-xs font-bold text-slate-800 truncate block">
@@ -820,9 +829,22 @@ export default function SupplierManagement({ onGoBack }) {
                         </div>
                       </div>
                       <div className="flex items-center gap-1 shrink-0">
-                       
-                        <label className="px-2 py-1 bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 rounded-lg text-[10.5px] font-bold cursor-pointer transition-colors">
-                          <span>Change</span>
+                        {formData.profileImage && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setCropperRawSrc(formData.profileImage);
+                              setIsCropperOpen(true);
+                            }}
+                            title={t("Crop current photo")}
+                            className="px-2 py-1 bg-orange-100 hover:bg-orange-200 text-[#ea580c] border border-orange-300 rounded-lg text-[10.5px] font-bold cursor-pointer transition-colors flex items-center gap-1 shadow-2xs"
+                          >
+                            <Crop size={11} />
+                            <span>{t("Crop")}</span>
+                          </button>
+                        )}
+                        <label className="px-2 py-1 bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 rounded-lg text-[10.5px] font-bold cursor-pointer transition-colors shadow-2xs">
+                          <span>{t("Change")}</span>
                           <input
                             type="file"
                             accept="image/*"
@@ -842,7 +864,7 @@ export default function SupplierManagement({ onGoBack }) {
                           }}
                           className="px-2 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-lg text-[10.5px] font-bold cursor-pointer transition-colors"
                         >
-                          Remove
+                          {t("Remove")}
                         </button>
                       </div>
                     </div>

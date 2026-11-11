@@ -150,12 +150,16 @@ export default function AdminDashboard() {
     if (!isPagePermitted(view)) return;
 
     if (view === 'billing') {
-      try {
-        localStorage.setItem('billing_mobile_tab', 'menu');
-      } catch (e) {}
-      if (options.mode) {
-        setSelectedOrderMode(options.mode);
-        try { localStorage.setItem('billing_fish_order_mode', options.mode); } catch (e) {}
+      let resolvedMode = options.mode;
+      if (!resolvedMode && options.table) {
+        if (options.table.startsWith('RET-')) resolvedMode = 'individual';
+        else if (options.table.startsWith('WS-')) resolvedMode = 'bulk';
+        else if (options.table.startsWith('EXP-')) resolvedMode = 'export';
+      }
+
+      if (resolvedMode) {
+        setSelectedOrderMode(resolvedMode);
+        try { localStorage.setItem('billing_fish_order_mode', resolvedMode); } catch (e) {}
       }
       const isNew = options.action === 'new' || options.table === 'NEW_ORDER';
       if (isNew) {
@@ -165,6 +169,17 @@ export default function AdminDashboard() {
           localStorage.removeItem('billing_wholesale_available_fish');
           localStorage.removeItem('wholesale_wizard_data_bulk');
           localStorage.removeItem('wholesale_wizard_data_export');
+          localStorage.removeItem('billing_active_cart');
+          localStorage.removeItem('billing_customer_phone');
+          localStorage.removeItem('billing_customer_name');
+          localStorage.setItem('billing_mobile_tab', 'menu');
+        } catch (e) {}
+      } else if (options.table) {
+        try {
+          localStorage.removeItem('billing_active_cart');
+          localStorage.removeItem('billing_customer_phone');
+          localStorage.removeItem('billing_customer_name');
+          localStorage.setItem('billing_mobile_tab', 'cart');
         } catch (e) {}
       }
       const tableToSet = isNew ? null : (options.table !== undefined ? options.table : (options.preserveTable ? selectedOrderTable : null));
@@ -185,9 +200,8 @@ export default function AdminDashboard() {
           sessionStorage.removeItem('ms_initial_action');
         }
       } catch (e) {}
-      if (currentView !== 'billing' || options.forceRemount) {
-        setBillingKey(k => k + 1);
-      }
+      // Always remount BillingPage when navigating to an order so previous order items NEVER leak
+      setBillingKey(k => k + 1);
     } else {
       try {
         localStorage.removeItem('billing_show_wholesale_wizard');
@@ -786,7 +800,15 @@ export default function AdminDashboard() {
               user={user}
               onNavigate={navigateTo}
               onSelectOrder={(tableNo, action, mode) => {
-                navigateTo('billing', { table: tableNo, action, mode });
+                let resolvedMode = mode;
+                if (!resolvedMode) {
+                  if (tableNo && tableNo.startsWith('RET-')) resolvedMode = 'individual';
+                  else if (tableNo && tableNo.startsWith('WS-')) resolvedMode = 'bulk';
+                  else if (tableNo && tableNo.startsWith('EXP-')) resolvedMode = 'export';
+                  else resolvedMode = 'individual';
+                }
+                try { localStorage.setItem('billing_mobile_tab', 'cart'); } catch (e) {}
+                navigateTo('billing', { table: tableNo, action, mode: resolvedMode });
               }}
               onGoBack={goBack}
             />
@@ -798,6 +820,7 @@ export default function AdminDashboard() {
               user={user}
               onNavigate={navigateTo}
               onSelectOrder={(tableNo, action, mode) => {
+                try { localStorage.setItem('billing_mobile_tab', 'cart'); } catch (e) {}
                 navigateTo('billing', { table: tableNo, action, mode: mode || 'individual' });
               }}
               onGoBack={goBack}
@@ -813,6 +836,7 @@ export default function AdminDashboard() {
               user={user}
               onNavigate={navigateTo}
               onSelectOrder={(tableNo, action, mode) => {
+                try { localStorage.setItem('billing_mobile_tab', 'cart'); } catch (e) {}
                 navigateTo('billing', { table: tableNo, action, mode: mode || 'bulk' });
               }}
               onGoBack={goBack}
@@ -828,6 +852,7 @@ export default function AdminDashboard() {
               user={user}
               onNavigate={navigateTo}
               onSelectOrder={(tableNo, action, mode) => {
+                try { localStorage.setItem('billing_mobile_tab', 'cart'); } catch (e) {}
                 navigateTo('billing', { table: tableNo, action, mode: mode || 'export' });
               }}
               onGoBack={goBack}

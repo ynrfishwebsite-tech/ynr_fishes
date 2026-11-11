@@ -427,6 +427,7 @@ const ActiveOrders = ({
         sessionStorage.setItem('ms_initial_table', tableNo);
       }
       sessionStorage.removeItem('ms_initial_action');
+      localStorage.setItem('billing_mobile_tab', 'cart');
     } catch (e) {
       console.warn('sessionStorage error', e);
     }

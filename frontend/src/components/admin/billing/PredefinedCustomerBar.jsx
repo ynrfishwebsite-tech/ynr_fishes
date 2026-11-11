@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { 
   User, Users, Search, Check, Lock, Unlock, Plus, Phone, 
-  MapPin, X, ChevronDown, Building, ArrowUpRight, Camera, Loader2 
+  MapPin, X, ChevronDown, Building, ArrowUpRight, Camera, Loader2, Crop 
 } from 'lucide-react';
 import { useLanguage } from '../../../context/LanguageContext';
 import { getCachedCustomers, fetchPredefinedCustomers, saveCustomerToCache } from '../../../api/crm/customerApi';
@@ -582,21 +582,42 @@ export default function PredefinedCustomerBar({
                   <img
                     src={quickAddData.photo}
                     alt="Customer / Dealer"
-                    className="w-12 h-12 rounded-full object-cover border-2 border-[#ea580c] shrink-0"
+                    onClick={() => {
+                      setCropperSrc(quickAddData.photo);
+                      setShowCropper(true);
+                    }}
+                    title={t("Click to crop photo")}
+                    className="w-12 h-12 rounded-full object-cover border-2 border-[#ea580c] shrink-0 cursor-pointer hover:opacity-85 transition-opacity"
                   />
                 ) : (
                   <div className="w-12 h-12 rounded-full bg-slate-100 border border-dashed border-slate-300 flex items-center justify-center text-slate-400 shrink-0">
                     <Camera size={18} />
                   </div>
                 )}
-                <div>
-                  <button
-                    type="button"
-                    onClick={() => fileInputRef.current?.click()}
-                    className="text-xs font-bold text-[#ea580c] hover:underline cursor-pointer"
-                  >
-                    {quickAddData.photo ? t('Change Photo') : t('+ Upload Photo')}
-                  </button>
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      className="text-xs font-bold text-[#ea580c] hover:underline cursor-pointer"
+                    >
+                      {quickAddData.photo ? t('Change Photo') : t('+ Upload Photo')}
+                    </button>
+                    {quickAddData.photo && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setCropperSrc(quickAddData.photo);
+                          setShowCropper(true);
+                        }}
+                        title={t("Crop current photo")}
+                        className="px-2 py-0.5 bg-orange-100 hover:bg-orange-200 text-[#ea580c] border border-orange-300 rounded-lg text-[10.5px] font-bold flex items-center gap-1 shadow-2xs cursor-pointer active:scale-95 transition-all"
+                      >
+                        <Crop size={11} />
+                        <span>{t("Crop")}</span>
+                      </button>
+                    )}
+                  </div>
                   <p className="text-[10px] text-slate-400">{t('Auto-cropped to circle')}</p>
                 </div>
               </div>

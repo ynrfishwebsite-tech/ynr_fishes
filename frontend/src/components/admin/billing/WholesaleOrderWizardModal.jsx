@@ -25,7 +25,8 @@ import {
   Calendar,
   History,
   Trash2,
-  Camera
+  Camera,
+  Crop
 } from 'lucide-react';
 import { getItemPricePerKg, getItemSizeGrades, formatImageUrl, getItemWaterType } from '../catalog/MenuGrid';
 import api from '../../../api/system/axios';
@@ -41,6 +42,48 @@ export const formatAddress = (addr) => {
     return addr.fullAddress || [addr.line1, addr.area, addr.city, addr.district, addr.state, addr.pincode].filter(Boolean).join(', ') || '';
   }
   return '';
+};
+
+/**
+ * Safely format entered weights to clearly display Kgs and Grams
+ * e.g. 41 Kg & 730 g -> "41 kgs 730 grams"
+ * 41 Kg & 0 g -> "41 kgs"
+ * 0 Kg & 730 g -> "730 grams"
+ */
+export const formatWeightDisplay = (kgVal, gramsVal) => {
+  const rawKg = parseFloat(kgVal) || 0;
+  const rawGrams = parseFloat(gramsVal) || 0;
+
+  if (rawKg === 0 && rawGrams === 0) return '0 kgs';
+
+  // If grams is provided separately:
+  if (rawGrams > 0) {
+    const wholeKg = Math.floor(rawKg);
+    const extraGramsFromKg = Math.round((rawKg - wholeKg) * 1000);
+    const totalGrams = Math.round(rawGrams + extraGramsFromKg);
+    const finalKg = wholeKg + Math.floor(totalGrams / 1000);
+    const finalG = totalGrams % 1000;
+
+    if (finalKg > 0 && finalG > 0) {
+      return `${finalKg} kgs ${finalG} grams`;
+    }
+    if (finalKg > 0) {
+      return `${finalKg} kgs`;
+    }
+    return `${finalG} grams`;
+  }
+
+  // If only kg was entered, check if it has decimal grams:
+  const wholeKg = Math.floor(rawKg);
+  const gramsFromDecimal = Math.round((rawKg - wholeKg) * 1000);
+  if (gramsFromDecimal > 0) {
+    if (wholeKg > 0) {
+      return `${wholeKg} kgs ${gramsFromDecimal} grams`;
+    }
+    return `${gramsFromDecimal} grams`;
+  }
+
+  return `${wholeKg} kgs`;
 };
 
 /**
@@ -110,6 +153,7 @@ export default function WholesaleOrderWizardModal({
   const [discountType, setDiscountType] = useState(() => savedWizardData?.discountType || 'flat'); // 'flat' (₹) | 'percentage' (%)
   const [discountValue, setDiscountValue] = useState(() => savedWizardData?.discountValue ?? '');
   const [editableTotal, setEditableTotal] = useState(() => savedWizardData?.editableTotal ?? '');
+  const [activeStep3ChargeId, setActiveStep3ChargeId] = useState(null);
   const step2ContainerRef = useRef(null);
 
   // ── Step 2 New Dealer / Customer Modal with Circle Cropper ──
@@ -729,13 +773,14 @@ export default function WholesaleOrderWizardModal({
 
       const savedCustName = selectedCustomer.name;
       const savedFishName = selectedFish?.name || 'Seafood';
-      const savedWeight = totalNetKg;
+      const savedWeightFormatted = formatWeightDisplay(weightKg, weightGrams);
 
       setLastSavedSummary({
         fishName: savedFishName,
         customerName: savedCustName,
         customerPhone: selectedCustomer.phone,
-        weightKg: savedWeight,
+        weightFormatted: savedWeightFormatted,
+        weightKg: totalNetKg,
         grandTotal: grandItemTotal,
         discount: effectiveDiscountInRupees,
         discountType: discountType,
@@ -743,16 +788,31 @@ export default function WholesaleOrderWizardModal({
         previousItemsCount: existingOrderInfo?.itemsCount || 0
       });
 
-      // Clear customer-specific fields for the next dealer
+      // Clear all details so nothing carries over to another dealer (manual entry per dealer)
       setSelectedCustomer(null);
+      setWeightKg('');
+      setWeightGrams('');
+      setBoxesCount('1');
+      setLotCharges([
+        { id: 'ice', name: 'Ice', amount: '', type: 'Cr', isCustom: false },
+        { id: 'box', name: 'Boxes', amount: '', type: 'Cr', isCustom: false },
+        { id: 'trans', name: 'Trans', amount: '', type: 'Cr', isCustom: false }
+      ]);
       setDiscountValue('');
+      setDiscountType('flat');
       setEditableTotal('');
+      setNotes('');
+      setActiveStep3ChargeId(null);
 
-      // Option 1: Directly navigate to Step 2 (Dealer Cards) with exact same fish, weight, rate, size grade, and extra charges preserved!
-      setCurrentStep(2);
+      try {
+        localStorage.removeItem(STORAGE_KEY);
+      } catch (e) {}
+
+      // Navigate to Step 1 so user manually enters fresh weight & details for next dealer
+      setCurrentStep(1);
 
       if (showToast) {
-        showToast(`✅ Saved to ${savedCustName}'s bill! Pick next dealer for ${savedFishName} (${savedWeight.toFixed(2)} Kg)`, 'success');
+        showToast(`✅ Saved to ${savedCustName}'s bill! Enter details for next dealer`, 'success');
       }
     } catch (err) {
       console.error('Error saving wholesale item:', err);
@@ -763,17 +823,39 @@ export default function WholesaleOrderWizardModal({
   };
 
   // ── "Circle Rotates" Flow Options After Save ──
-  // Option A: Assign Next Customer for Same Fish & Same Weight (returns to Step 2)
+  // Option A: Assign Next Dealer (Resets weight & charges for clean manual entry)
   const handleAssignNextCustomerSameFish = () => {
     setShowSuccessDialog(false);
     setSelectedCustomer(null);
-    setCurrentStep(2); // Keep same fish and same weight, pick next customer!
+    setWeightKg('');
+    setWeightGrams('');
+    setBoxesCount('1');
+    setLotCharges([
+      { id: 'ice', name: 'Ice', amount: '', type: 'Cr', isCustom: false },
+      { id: 'box', name: 'Boxes', amount: '', type: 'Cr', isCustom: false },
+      { id: 'trans', name: 'Trans', amount: '', type: 'Cr', isCustom: false }
+    ]);
+    setDiscountValue('');
+    setDiscountType('flat');
+    setEditableTotal('');
+    setCurrentStep(1); // Return to first step for fresh entry
   };
 
   // Option B: Select Another Fish (returns to Step 1 / All Menu Items)
   const handleSelectAnotherFish = () => {
     setShowSuccessDialog(false);
     setSelectedCustomer(null);
+    setWeightKg('');
+    setWeightGrams('');
+    setBoxesCount('1');
+    setLotCharges([
+      { id: 'ice', name: 'Ice', amount: '', type: 'Cr', isCustom: false },
+      { id: 'box', name: 'Boxes', amount: '', type: 'Cr', isCustom: false },
+      { id: 'trans', name: 'Trans', amount: '', type: 'Cr', isCustom: false }
+    ]);
+    setDiscountValue('');
+    setDiscountType('flat');
+    setEditableTotal('');
     setCurrentStep(1); // Return to first step!
   };
 
@@ -920,10 +1002,15 @@ export default function WholesaleOrderWizardModal({
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
               {/* Weight Inputs */}
               <div className="bg-white p-3.5 rounded-2xl border border-[#E8DCCB] shadow-2xs space-y-3">
-                <span className="text-xs font-bold text-slate-700 uppercase tracking-wide flex items-center gap-1.5">
-                  <Scale size={14} className="text-[#ea580c]" />
-                  Enter Lot / Box Weight
-                </span>
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-slate-700 uppercase tracking-wide flex items-center gap-1.5">
+                    <Scale size={14} className="text-[#ea580c]" />
+                    Enter Lot / Box Weight
+                  </span>
+                  <span className="text-[11px] font-mono font-black text-[#ea580c] bg-orange-50 px-2 py-0.5 rounded-md border border-orange-200">
+                    {formatWeightDisplay(weightKg, weightGrams)}
+                  </span>
+                </div>
 
                 <div className="grid grid-cols-2 gap-2">
                   <div>
@@ -1171,7 +1258,7 @@ export default function WholesaleOrderWizardModal({
                 {/* Live Amount Box */}
                 <div className="bg-[#FAF0E4] p-3 rounded-xl border border-amber-300 space-y-1">
                   <div className="flex justify-between text-xs text-slate-600 font-medium">
-                    <span>Base Fish Amount ({totalNetKg.toFixed(2)} Kg @ ₹{ratePerKg}):</span>
+                    <span>Base Fish Amount ({formatWeightDisplay(weightKg, weightGrams)} @ ₹{ratePerKg}):</span>
                     <span className="font-mono font-bold text-slate-800">₹{baseItemAmount.toFixed(2)}</span>
                   </div>
 
@@ -1289,7 +1376,7 @@ export default function WholesaleOrderWizardModal({
                 <div className="flex items-center gap-1.5 truncate">
                   <span className="text-[9px] sm:text-[9.5px] px-1.5 py-0.2 rounded bg-amber-200/90 text-amber-900 font-black uppercase shrink-0">Assigning</span>
                   <span className="truncate text-slate-900 font-black text-[11px] sm:text-xs">
-                    {selectedFish?.name} • <span className="font-mono text-emerald-800">{totalNetKg.toFixed(2)} Kg</span>
+                    {selectedFish?.name} • <span className="font-mono text-emerald-800">{formatWeightDisplay(weightKg, weightGrams)}</span>
                     <span className="text-slate-500 font-medium ml-1">({sizeGrade} @ ₹{ratePerKg})</span>
                   </span>
                 </div>
@@ -1545,22 +1632,64 @@ export default function WholesaleOrderWizardModal({
                   <span>⚖️ Weight & Price Breakdown</span>
                 </span>
                 <span className="text-[10.5px] font-mono font-bold text-[#ea580c]">
-                  {totalNetKg.toFixed(2)} Kg Lot
+                  {formatWeightDisplay(weightKg, weightGrams)} Lot
                 </span>
               </div>
 
               <div className="p-0 overflow-x-auto">
                 <table className="w-full text-left text-xs border-collapse">
                   <tbody>
-                    <tr className="border-b border-slate-100 hover:bg-slate-50/50">
-                      <td className="py-1.5 px-3 font-semibold text-slate-500 text-xs w-1/2">Net Weight</td>
-                      <td className="py-1.5 px-3 text-right font-mono font-bold text-slate-900 text-xs">
-                        {totalNetKg.toFixed(2)} Kg
-                        {parseInt(boxesCount) > 1 && (
-                          <span className="text-[10px] text-slate-500 font-normal ml-1">
-                            ({boxesCount} Boxes)
-                          </span>
-                        )}
+                    {/* Editable Net Weight Row */}
+                    <tr className="border-b border-slate-100 bg-orange-50/20 hover:bg-orange-50/40 transition-colors">
+                      <td className="py-2 px-3 font-semibold text-slate-700 text-xs">
+                        <div className="flex items-center gap-1.5">
+                          <Scale size={13} className="text-[#ea580c]" />
+                          <span className="font-bold text-slate-800">Net Weight</span>
+                        </div>
+                        <div className="text-[11px] font-mono font-black text-[#ea580c] mt-0.5">
+                          {formatWeightDisplay(weightKg, weightGrams)}
+                          {parseInt(boxesCount) > 1 && (
+                            <span className="text-[10px] text-slate-500 font-normal ml-1">
+                              ({boxesCount} Boxes)
+                            </span>
+                          )}
+                        </div>
+                      </td>
+                      <td className="py-2 px-3 text-right">
+                        <div className="inline-flex items-center gap-1.5 justify-end flex-wrap">
+                          {/* Kg Input */}
+                          <div className="inline-flex items-center gap-0.5 bg-white border border-[#ea580c]/50 rounded-lg px-2 py-1 shadow-2xs">
+                            <input
+                              type="number"
+                              step="any"
+                              min="0"
+                              value={weightKg}
+                              onChange={(e) => setWeightKg(e.target.value)}
+                              onFocus={(e) => handleNumberInputFocus(e, weightKg, setWeightKg)}
+                              onClick={(e) => { if (weightKg === '0' || weightKg === 0) setWeightKg(''); e.target.select(); }}
+                              placeholder="0"
+                              className="w-14 sm:w-16 text-right font-mono font-black text-xs sm:text-sm text-slate-900 focus:outline-none"
+                            />
+                            <span className="text-[10.5px] text-slate-500 font-bold">Kg</span>
+                          </div>
+
+                          {/* Grams Input */}
+                          <div className="inline-flex items-center gap-0.5 bg-white border border-[#ea580c]/50 rounded-lg px-2 py-1 shadow-2xs">
+                            <input
+                              type="number"
+                              step="10"
+                              min="0"
+                              max="999"
+                              value={weightGrams}
+                              onChange={(e) => setWeightGrams(e.target.value)}
+                              onFocus={(e) => handleNumberInputFocus(e, weightGrams, setWeightGrams)}
+                              onClick={(e) => { if (weightGrams === '0' || weightGrams === 0) setWeightGrams(''); e.target.select(); }}
+                              placeholder="0"
+                              className="w-12 sm:w-14 text-right font-mono font-black text-xs sm:text-sm text-slate-900 focus:outline-none"
+                            />
+                            <span className="text-[10.5px] text-slate-500 font-bold">g</span>
+                          </div>
+                        </div>
                       </td>
                     </tr>
 
@@ -1596,30 +1725,112 @@ export default function WholesaleOrderWizardModal({
                       </td>
                     </tr>
 
-                    {/* Assigned Additional Charges Breakdown */}
-                    {assignedCharges.map((charge) => {
-                      const isDr = charge.type === 'Dr';
-                      const val = parseFloat(charge.amount) || 0;
-                      return (
-                        <tr key={charge.id} className={`border-b border-slate-100 ${isDr ? 'bg-rose-50/40' : 'bg-sky-50/40'}`}>
-                          <td className="py-1.5 px-3 font-medium text-xs flex items-center gap-1">
-                            <span className={isDr ? 'text-rose-800' : 'text-sky-800'}>
-                              {charge.name}
-                            </span>
-                            <span className={`text-[9px] font-black px-1 rounded ${
-                              isDr 
-                                ? 'bg-rose-100 text-rose-800 border border-rose-300' 
-                                : 'bg-emerald-100 text-emerald-800 border border-emerald-300'
-                            }`}>
-                              {isDr ? 'Dr' : 'Cr'}
-                            </span>
-                          </td>
-                          <td className={`py-1.5 px-3 text-right font-mono font-bold text-xs ${isDr ? 'text-rose-700' : 'text-sky-900'}`}>
-                            {isDr ? `-₹${val.toFixed(2)}` : `+₹${val.toFixed(2)}`}
-                          </td>
-                        </tr>
-                      );
-                    })}
+                    {/* Editable Assigned Additional Charges Breakdown */}
+                    {lotCharges
+                      .filter(charge => (parseFloat(charge.amount) > 0 || charge.amount === '0' || activeStep3ChargeId === charge.id))
+                      .map((charge) => {
+                        const isDr = charge.type === 'Dr';
+                        return (
+                          <tr key={charge.id} className={`border-b border-slate-100 ${isDr ? 'bg-rose-50/40' : 'bg-sky-50/40'} transition-colors`}>
+                            <td className="py-1.5 px-3 font-medium text-xs">
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <span className={`font-bold ${isDr ? 'text-rose-900' : 'text-sky-900'}`}>
+                                  {charge.name}
+                                </span>
+                                {/* Cr. / Dr. Toggle Button */}
+                                <button
+                                  type="button"
+                                  onClick={() => handleToggleChargeType(charge.id)}
+                                  className={`text-[9.5px] font-black px-1.5 py-0.5 rounded cursor-pointer transition-all active:scale-95 shadow-2xs ${
+                                    isDr 
+                                      ? 'bg-rose-600 hover:bg-rose-700 text-white' 
+                                      : 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                                  }`}
+                                  title={`Click to switch to ${isDr ? 'Credit (+)' : 'Debit (-)'}`}
+                                >
+                                  {isDr ? 'Dr (-)' : 'Cr (+)'}
+                                </button>
+                              </div>
+                            </td>
+                            <td className="py-1.5 px-3 text-right">
+                              <div className="inline-flex items-center gap-1 justify-end">
+                                <div className={`inline-flex items-center gap-0.5 bg-white border rounded-lg px-2 py-0.5 shadow-2xs ${
+                                  isDr ? 'border-rose-300' : 'border-sky-300'
+                                }`}>
+                                  <span className={`text-xs font-mono font-bold ${isDr ? 'text-rose-600' : 'text-sky-600'}`}>
+                                    {isDr ? '-₹' : '+₹'}
+                                  </span>
+                                  <input
+                                    type="number"
+                                    step="any"
+                                    min="0"
+                                    value={charge.amount}
+                                    onChange={(e) => handleUpdateChargeAmount(charge.id, e.target.value)}
+                                    onFocus={(e) => handleNumberInputFocus(e, charge.amount, (v) => handleUpdateChargeAmount(charge.id, v))}
+                                    onClick={(e) => { if (charge.amount === '0' || charge.amount === 0 || charge.amount === '0.00') handleUpdateChargeAmount(charge.id, ''); e.target.select(); }}
+                                    placeholder="0"
+                                    className={`w-16 sm:w-20 text-right font-mono font-black text-xs sm:text-sm focus:outline-none ${
+                                      isDr ? 'text-rose-900' : 'text-sky-900'
+                                    }`}
+                                  />
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    handleUpdateChargeAmount(charge.id, '');
+                                    if (activeStep3ChargeId === charge.id) setActiveStep3ChargeId(null);
+                                  }}
+                                  className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-md transition-colors cursor-pointer"
+                                  title={`Remove ${charge.name}`}
+                                >
+                                  <X size={12} />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+
+                    {/* Quick Add Charge Row directly in Step 3 */}
+                    <tr className="border-b border-slate-100 bg-[#FAF0E4]/30">
+                      <td colSpan={2} className="py-1 px-3">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-0.5 shrink-0">
+                            <Plus size={11} className="text-[#ea580c]" /> Charge:
+                          </span>
+                          {['Trans', 'Ice', 'Boxes', 'Hamali', 'Loading'].map((preset) => {
+                            const existing = lotCharges.find(c => c.name.toLowerCase() === preset.toLowerCase());
+                            const isActive = existing && (parseFloat(existing.amount) > 0 || existing.amount === '0' || activeStep3ChargeId === existing.id);
+                            if (isActive) return null;
+                            return (
+                              <button
+                                key={preset}
+                                type="button"
+                                onClick={() => {
+                                  if (existing) {
+                                    handleUpdateChargeAmount(existing.id, '0');
+                                    setActiveStep3ChargeId(existing.id);
+                                  } else {
+                                    const newId = `custom_${Date.now()}_${preset.toLowerCase()}`;
+                                    setLotCharges(prev => [...prev, {
+                                      id: newId,
+                                      name: preset,
+                                      amount: '0',
+                                      type: 'Cr',
+                                      isCustom: true
+                                    }]);
+                                    setActiveStep3ChargeId(newId);
+                                  }
+                                }}
+                                className="px-2 py-0.5 rounded-md bg-white hover:bg-orange-50 text-slate-700 hover:text-[#ea580c] text-[10px] font-bold border border-slate-200 hover:border-orange-300 shadow-2xs transition-all cursor-pointer active:scale-95"
+                              >
+                                + {preset}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </td>
+                    </tr>
 
                     {/* Consolidated Line with Dynamic Brackets: ONLY show when multiple charges to prevent duplicate single charge line! */}
                     {assignedCharges.length > 1 && (
@@ -1772,10 +1983,21 @@ export default function WholesaleOrderWizardModal({
                   setDiscountValue('');
                   setDiscountType('flat');
                   setEditableTotal('');
-                  setCurrentStep(2);
+                  setWeightKg('');
+                  setWeightGrams('');
+                  setBoxesCount('1');
+                  setLotCharges([
+                    { id: 'ice', name: 'Ice', amount: '', type: 'Cr', isCustom: false },
+                    { id: 'box', name: 'Boxes', amount: '', type: 'Cr', isCustom: false },
+                    { id: 'trans', name: 'Trans', amount: '', type: 'Cr', isCustom: false }
+                  ]);
+                  try {
+                    localStorage.removeItem(STORAGE_KEY);
+                  } catch (e) {}
+                  setCurrentStep(1);
                 }}
                 className="min-h-[38px] inline-flex items-center gap-1 px-2.5 sm:px-3 py-2 rounded-xl text-xs font-black bg-rose-50 text-rose-700 hover:bg-rose-100 border border-rose-200 transition-all cursor-pointer shadow-xs active:scale-95 whitespace-nowrap"
-                title="Clear selected dealer"
+                title="Clear all lot details & customer"
               >
                 <X size={13} />
                 <span>Clear</span>
@@ -1842,7 +2064,7 @@ export default function WholesaleOrderWizardModal({
                   Lot Saved Successfully!
                 </h3>
                 <p className="text-xs text-slate-600 mt-1">
-                  <strong>{lastSavedSummary?.weightKg} Kg</strong> of <strong>{lastSavedSummary?.fishName}</strong> (₹{lastSavedSummary?.grandTotal.toFixed(2)}) has been added to <strong>{lastSavedSummary?.customerName}</strong>'s bill.
+                  <strong>{lastSavedSummary?.weightFormatted || `${lastSavedSummary?.weightKg} Kg`}</strong> of <strong>{lastSavedSummary?.fishName}</strong> (₹{lastSavedSummary?.grandTotal.toFixed(2)}) has been added to <strong>{lastSavedSummary?.customerName}</strong>'s bill.
                 </p>
                 {lastSavedSummary?.isGrouped && (
                   <p className="text-[11px] text-emerald-700 font-bold bg-emerald-50 rounded-lg p-1 mt-1 border border-emerald-200">
@@ -1859,7 +2081,7 @@ export default function WholesaleOrderWizardModal({
                   className="w-full py-2.5 px-4 bg-gradient-to-r from-orange-500 to-[#ea580c] hover:from-orange-600 hover:to-orange-700 text-white rounded-xl text-xs sm:text-sm font-black shadow-md cursor-pointer transition-all flex items-center justify-center gap-1.5"
                 >
                   <RotateCcw size={14} />
-                  <span>Assign Next Dealer (Same Fish & Weight)</span>
+                  <span>Enter Details for Next Dealer</span>
                 </button>
 
                 <button
@@ -1913,7 +2135,9 @@ export default function WholesaleOrderWizardModal({
                     <img
                       src={newCustPhoto}
                       alt="Profile"
-                      className="w-14 h-14 rounded-full object-cover border-2 border-amber-400 shadow-xs shrink-0"
+                      onClick={() => setCropperModal({ isOpen: true, imageSrc: newCustPhoto })}
+                      title="Click to crop photo"
+                      className="w-14 h-14 rounded-full object-cover border-2 border-amber-400 shadow-xs shrink-0 cursor-pointer hover:opacity-85 transition-opacity"
                     />
                   ) : (
                     <div className="w-14 h-14 rounded-full bg-amber-100 text-amber-800 font-black text-xl flex items-center justify-center shrink-0 border border-amber-300">
@@ -1935,14 +2159,27 @@ export default function WholesaleOrderWizardModal({
                         }
                       }}
                     />
-                    <button
-                      type="button"
-                      onClick={() => newCustFileInputRef.current?.click()}
-                      className="px-3 py-1 bg-white hover:bg-slate-50 border border-[#E8DCCB] rounded-xl text-xs font-bold text-slate-800 flex items-center gap-1.5 shadow-2xs cursor-pointer active:scale-95 transition-all"
-                    >
-                      <Camera size={13} className="text-[#ea580c]" />
-                      <span>{newCustPhoto ? 'Change Photo' : 'Upload Photo'}</span>
-                    </button>
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => newCustFileInputRef.current?.click()}
+                        className="px-3 py-1 bg-white hover:bg-slate-50 border border-[#E8DCCB] rounded-xl text-xs font-bold text-slate-800 flex items-center gap-1.5 shadow-2xs cursor-pointer active:scale-95 transition-all"
+                      >
+                        <Camera size={13} className="text-[#ea580c]" />
+                        <span>{newCustPhoto ? 'Change Photo' : 'Upload Photo'}</span>
+                      </button>
+                      {newCustPhoto && (
+                        <button
+                          type="button"
+                          onClick={() => setCropperModal({ isOpen: true, imageSrc: newCustPhoto })}
+                          title="Crop current photo"
+                          className="px-2.5 py-1 bg-orange-100 hover:bg-orange-200 text-[#ea580c] border border-orange-300 rounded-xl text-xs font-bold flex items-center gap-1 shadow-2xs cursor-pointer active:scale-95 transition-all"
+                        >
+                          <Crop size={12} />
+                          <span>Crop</span>
+                        </button>
+                      )}
+                    </div>
                     <p className="text-[10px] text-slate-500 font-medium">Auto-cropped circle profile avatar</p>
                   </div>
                 </div>

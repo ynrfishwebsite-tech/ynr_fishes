@@ -2098,7 +2098,12 @@ export default function VehicleManagement({ onNavigate, onGoBack }) {
                       <img
                         src={vehicleForm.driverPhoto}
                         alt="Driver Preview"
-                        className="w-10 h-10 rounded-full object-cover border border-orange-300 shrink-0 shadow-2xs"
+                        onClick={() => {
+                          setCropperRawSrc(vehicleForm.driverPhoto);
+                          setIsCropperOpen(true);
+                        }}
+                        title="Click to crop photo"
+                        className="w-10 h-10 rounded-full object-cover border border-orange-300 shrink-0 shadow-2xs cursor-pointer hover:opacity-85 transition-opacity"
                       />
                       <div className="min-w-0">
                         <span className="text-xs font-bold text-slate-800 truncate block">
@@ -2110,7 +2115,21 @@ export default function VehicleManagement({ onNavigate, onGoBack }) {
                       </div>
                     </div>
                     <div className="flex items-center gap-1 shrink-0">
-                      <label className="px-2 py-1 bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 rounded-lg text-[10.5px] font-bold cursor-pointer transition-colors">
+                      {vehicleForm.driverPhoto && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setCropperRawSrc(vehicleForm.driverPhoto);
+                            setIsCropperOpen(true);
+                          }}
+                          title="Crop current driver photo"
+                          className="px-2 py-1 bg-orange-100 hover:bg-orange-200 text-[#ea580c] border border-orange-300 rounded-lg text-[10.5px] font-bold cursor-pointer transition-colors flex items-center gap-1 shadow-2xs"
+                        >
+                          <Crop size={11} />
+                          <span>Crop</span>
+                        </button>
+                      )}
+                      <label className="px-2 py-1 bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 rounded-lg text-[10.5px] font-bold cursor-pointer transition-colors shadow-2xs">
                         <span>Change</span>
                         <input
                           type="file"

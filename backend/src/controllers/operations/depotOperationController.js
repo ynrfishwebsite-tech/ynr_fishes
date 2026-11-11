@@ -517,7 +517,19 @@ export const updateSupplier = async (req, res) => {
     if (updateData.harbor) updateData.harbor = updateData.harbor.trim();
     if (updateData.address) updateData.address = updateData.address.trim();
 
-    const updated = await Supplier.findByIdAndUpdate(id, updateData, { new: true });
+    let updated = await Supplier.findByIdAndUpdate(id, updateData, { new: true });
+
+    // Fallback: If not found in tenant DB, check and update in fishes master DB
+    if (!updated && mongoose.connection.readyState === 1) {
+      try {
+        const fallbackDb = mongoose.connection.useDb('fishes', { useCache: true });
+        const FallbackSupplier = fallbackDb.model('Supplier', SupplierDefault.schema);
+        updated = await FallbackSupplier.findByIdAndUpdate(id, updateData, { new: true });
+      } catch (fbErr) {
+        console.warn('[Supplier] Master DB fallback update error:', fbErr.message);
+      }
+    }
+
     if (!updated) {
       return res.status(404).json({ success: false, message: 'Supplier not found' });
     }
@@ -532,7 +544,19 @@ export const deleteSupplier = async (req, res) => {
     const Supplier = getSupplierModel(req);
     const Vehicle = getVehicleModel(req);
     const { id } = req.params;
-    const updated = await Supplier.findByIdAndUpdate(id, { status: 'Inactive' }, { new: true });
+    let updated = await Supplier.findByIdAndUpdate(id, { status: 'Inactive' }, { new: true });
+
+    // Fallback: If not found in tenant DB, check and update in fishes master DB
+    if (!updated && mongoose.connection.readyState === 1) {
+      try {
+        const fallbackDb = mongoose.connection.useDb('fishes', { useCache: true });
+        const FallbackSupplier = fallbackDb.model('Supplier', SupplierDefault.schema);
+        updated = await FallbackSupplier.findByIdAndUpdate(id, { status: 'Inactive' }, { new: true });
+      } catch (fbErr) {
+        console.warn('[Supplier] Master DB fallback delete error:', fbErr.message);
+      }
+    }
+
     if (!updated) {
       return res.status(404).json({ success: false, message: 'Supplier not found' });
     }
