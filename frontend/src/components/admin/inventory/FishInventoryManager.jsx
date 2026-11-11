@@ -1646,7 +1646,7 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack }) {
             <div className="min-w-0">
               <div className="flex items-center gap-1.5 flex-wrap">
                 <h1 className="text-xs sm:text-sm font-black text-slate-900 tracking-tight leading-tight m-0 truncate">
-                  Fish Inventory & Catch Ledger
+                  Fish Inventory
                 </h1>
                 <span className="text-[8.5px] sm:text-[9.5px] font-black px-1.5 py-0.2 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200 shrink-0">
                   Live Cold Storage
