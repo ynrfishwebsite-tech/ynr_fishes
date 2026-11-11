@@ -102,6 +102,7 @@ export default function WholesaleOrderWizardModal({
   fishOrderMode = 'bulk', // 'bulk' | 'export'
   initialFish = null,
   initialCustomer = null,
+  initialDraft = null,
   availableFishList = [],
   customersList = [],
   openOrdersList = [],
@@ -129,30 +130,68 @@ export default function WholesaleOrderWizardModal({
     }
   }, [STORAGE_KEY]);
 
+  // Prefer fresh draft values from 3D Rotate dial / Grid whenever opened cleanly or draft is newer
+  const preferDraft = Boolean(
+    initialDraft && (!savedWizardData || (Number(initialDraft.openedAt || 0) > Number(savedWizardData.openedAt || 0)))
+  );
+
   // ── Step State: 1 = Fish & Weight, 2 = Customer Cards, 3 = Overall Preview ──
-  const [currentStep, setCurrentStep] = useState(() => savedWizardData?.currentStep || 1);
+  const [currentStep, setCurrentStep] = useState(() => (!preferDraft && savedWizardData?.currentStep) || 1);
 
   // ── Step 1: Selected Fish & Weights ──
-  const [selectedFish, setSelectedFish] = useState(() => savedWizardData?.selectedFish || initialFish || availableFishList[0] || null);
-  const [sizeGrade, setSizeGrade] = useState(() => savedWizardData?.sizeGrade || 'medium');
-  const [weightKg, setWeightKg] = useState(() => savedWizardData?.weightKg ?? '1'); // Initial weight default is 1 Kg
-  const [weightGrams, setWeightGrams] = useState(() => savedWizardData?.weightGrams ?? '');
-  const [boxesCount, setBoxesCount] = useState(() => savedWizardData?.boxesCount ?? '1');
-  const [ratePerKg, setRatePerKg] = useState(() => savedWizardData?.ratePerKg ?? '');
+  const [selectedFish, setSelectedFish] = useState(() =>
+    preferDraft ? (initialDraft?.fish || initialFish || availableFishList[0] || null)
+      : (savedWizardData?.selectedFish || initialDraft?.fish || initialFish || availableFishList[0] || null)
+  );
+  const [sizeGrade, setSizeGrade] = useState(() =>
+    preferDraft ? (initialDraft?.grade || initialFish?.defaultSizeGrade || 'medium')
+      : (savedWizardData?.sizeGrade || initialDraft?.grade || 'medium')
+  );
+  const [weightKg, setWeightKg] = useState(() =>
+    preferDraft ? (initialDraft?.weightKg !== undefined ? String(initialDraft.weightKg) : '1')
+      : (savedWizardData?.weightKg ?? (initialDraft?.weightKg !== undefined ? String(initialDraft.weightKg) : '1'))
+  );
+  const [weightGrams, setWeightGrams] = useState(() =>
+    preferDraft ? (initialDraft?.weightGrams !== undefined ? String(initialDraft.weightGrams) : '')
+      : (savedWizardData?.weightGrams ?? (initialDraft?.weightGrams !== undefined ? String(initialDraft.weightGrams) : ''))
+  );
+  const [boxesCount, setBoxesCount] = useState(() =>
+    preferDraft ? (initialDraft?.boxesCount !== undefined ? String(initialDraft.boxesCount) : '1')
+      : (savedWizardData?.boxesCount ?? '1')
+  );
+  const [ratePerKg, setRatePerKg] = useState(() =>
+    preferDraft && initialDraft?.ratePerKg !== undefined && initialDraft?.ratePerKg !== null
+      ? String(initialDraft.ratePerKg)
+      : (savedWizardData?.ratePerKg ?? (initialDraft?.ratePerKg !== undefined && initialDraft?.ratePerKg !== null ? String(initialDraft.ratePerKg) : ''))
+  );
   // ── Flexible Lot Charges with Cr. / Dr. and Custom Category Support ──
-  const [lotCharges, setLotCharges] = useState(() => savedWizardData?.lotCharges || [
+  const [lotCharges, setLotCharges] = useState(() => (!preferDraft && savedWizardData?.lotCharges) || [
     { id: 'ice', name: 'Ice', amount: '', type: 'Cr', isCustom: false },
     { id: 'box', name: 'Boxes', amount: '', type: 'Cr', isCustom: false },
     { id: 'trans', name: 'Trans', amount: '', type: 'Cr', isCustom: false }
   ]);
   const [showAddChargeInput, setShowAddChargeInput] = useState(false);
   const [newCustomChargeName, setNewCustomChargeName] = useState('');
-  const [notes, setNotes] = useState(() => savedWizardData?.notes ?? '');
+  const [notes, setNotes] = useState(() => (!preferDraft && savedWizardData?.notes) ?? '');
 
   // ── Step 3: Rate, Discount & Total Handlers ──
-  const [discountType, setDiscountType] = useState(() => savedWizardData?.discountType || 'flat'); // 'flat' (₹) | 'percentage' (%)
-  const [discountValue, setDiscountValue] = useState(() => savedWizardData?.discountValue ?? '');
-  const [editableTotal, setEditableTotal] = useState(() => savedWizardData?.editableTotal ?? '');
+  const [discountType, setDiscountType] = useState(() =>
+    (preferDraft && (initialDraft?.discount > 0 || initialDraft?.customTotal !== null))
+      ? 'flat'
+      : ((!preferDraft && savedWizardData?.discountType) || 'flat')
+  ); // 'flat' (₹) | 'percentage' (%)
+  const [discountValue, setDiscountValue] = useState(() =>
+    preferDraft
+      ? (initialDraft?.discount > 0 ? String(Number(initialDraft.discount).toFixed(2)) : '')
+      : (savedWizardData?.discountValue ?? '')
+  );
+  const [editableTotal, setEditableTotal] = useState(() =>
+    preferDraft
+      ? (initialDraft?.customTotal !== null && initialDraft?.customTotal !== undefined
+          ? String(Number(initialDraft.customTotal).toFixed(2))
+          : (initialDraft?.total !== undefined ? String(Number(initialDraft.total).toFixed(2)) : ''))
+      : (savedWizardData?.editableTotal ?? '')
+  );
   const [activeStep3ChargeId, setActiveStep3ChargeId] = useState(null);
   const step2ContainerRef = useRef(null);
 
@@ -272,23 +311,39 @@ export default function WholesaleOrderWizardModal({
   };
 
   // ── Step 2: Customer Card Selection & Search ──
-  const [selectedCustomer, setSelectedCustomer] = useState(() => savedWizardData?.selectedCustomer || initialCustomer || null);
+  const matchCustomerFromList = (targetCust) => {
+    if (!targetCust) return null;
+    const cleanTargetPhone = String(targetCust.phone || '').replace(/\D/g, '').slice(-10);
+    const cleanTargetName = String(targetCust.name || '').trim().toLowerCase();
+    const fullMatch = (customersList || []).find(c =>
+      (targetCust._id && (c._id === targetCust._id || c.id === targetCust._id)) ||
+      (cleanTargetPhone && c.phone && String(c.phone).replace(/\D/g, '').slice(-10) === cleanTargetPhone) ||
+      (cleanTargetName && c.name && c.name.trim().toLowerCase() === cleanTargetName)
+    );
+    return fullMatch || targetCust;
+  };
+
+  const [selectedCustomer, setSelectedCustomer] = useState(() => {
+    const baseCust = preferDraft
+      ? (initialDraft?.customer || initialCustomer || null)
+      : (savedWizardData?.selectedCustomer || initialDraft?.customer || initialCustomer || null);
+    return matchCustomerFromList(baseCust);
+  });
   const [customerSearch, setCustomerSearch] = useState('');
   const [exportSubFilter, setExportSubFilter] = useState('All');
   // Local presence overrides map: phone or ID -> 'Present' | 'Absent'
   const [localPresenceMap, setLocalPresenceMap] = useState({});
 
-  // Sync initialCustomer from dial CRM popup into selectedCustomer
+  // Sync initialCustomer / initialDraft.customer from dial CRM popup into selectedCustomer
   useEffect(() => {
-    if (initialCustomer && !selectedCustomer) {
-      const fullMatch = (customersList || []).find(c =>
-        (initialCustomer._id && (c._id === initialCustomer._id || c.id === initialCustomer._id)) ||
-        (initialCustomer.phone && c.phone && c.phone.replace(/\D/g, '').slice(-10) === initialCustomer.phone.replace(/\D/g, '').slice(-10)) ||
-        (initialCustomer.name && c.name && c.name.trim().toLowerCase() === initialCustomer.name.trim().toLowerCase())
-      );
-      setSelectedCustomer(fullMatch || initialCustomer);
+    const incoming = initialDraft?.customer || initialCustomer;
+    if (incoming) {
+      const matched = matchCustomerFromList(incoming);
+      if (!selectedCustomer || (matched && (matched._id !== selectedCustomer._id || matched.phone !== selectedCustomer.phone))) {
+        setSelectedCustomer(matched);
+      }
     }
-  }, [initialCustomer, customersList]);
+  }, [initialCustomer, initialDraft?.customer, customersList]);
 
   // ── Step 3: Saved Confirmation Dialog ──
   const [showSuccessDialog, setShowSuccessDialog] = useState(false);
@@ -299,6 +354,7 @@ export default function WholesaleOrderWizardModal({
   useEffect(() => {
     try {
       const dataToSave = {
+        openedAt: initialDraft?.openedAt || savedWizardData?.openedAt || Date.now(),
         currentStep,
         selectedFish,
         sizeGrade,
@@ -317,6 +373,7 @@ export default function WholesaleOrderWizardModal({
     } catch (e) {}
   }, [
     STORAGE_KEY,
+    initialDraft?.openedAt,
     currentStep,
     selectedFish,
     sizeGrade,
@@ -338,6 +395,7 @@ export default function WholesaleOrderWizardModal({
       localStorage.removeItem('billing_show_wholesale_wizard');
       localStorage.removeItem('billing_wholesale_wizard_fish');
       localStorage.removeItem('billing_wholesale_available_fish');
+      localStorage.removeItem('billing_wholesale_wizard_draft');
     } catch (e) {}
     if (onClose) onClose();
   };
@@ -360,15 +418,25 @@ export default function WholesaleOrderWizardModal({
     ];
   }, [selectedFish, fishOrderMode]);
 
-  // Sync size grades & default rate whenever selected fish or grade changes
+  // Sync size grades & default rate ONLY when switching fish after mount or when rate is empty
+  // so custom grades & rates entered on the 3D Rotate dial are preserved!
+  const prevFishIdRef = useRef(selectedFish?._id);
   useEffect(() => {
     if (!selectedFish) return;
-    const grades = getItemSizeGrades(selectedFish, fishOrderMode);
+    const grades = availableGrades;
     const validGrade = grades.some(g => g.key === sizeGrade) ? sizeGrade : (grades[0]?.key || 'medium');
-    const autoRate = getItemPricePerKg(selectedFish, fishOrderMode, validGrade);
-    setSizeGrade(validGrade);
-    setRatePerKg(String(autoRate || selectedFish.price || 0));
-  }, [selectedFish, fishOrderMode]);
+    if (sizeGrade !== validGrade) {
+      setSizeGrade(validGrade);
+    }
+
+    const fishChanged = prevFishIdRef.current !== selectedFish._id;
+    prevFishIdRef.current = selectedFish._id;
+
+    if (fishChanged || ratePerKg === '' || ratePerKg === null || ratePerKg === undefined) {
+      const autoRate = getItemPricePerKg(selectedFish, fishOrderMode, validGrade);
+      setRatePerKg(String(autoRate || selectedFish.price || 0));
+    }
+  }, [selectedFish, fishOrderMode, availableGrades]);
 
   // Handle grade change
   const handleGradeChange = (gradeKey) => {
@@ -419,7 +487,14 @@ export default function WholesaleOrderWizardModal({
   }, [discountValue, discountType, originalCalculatedTotal]);
 
   // Keep editableTotal in sync when original total or effective discount changes
+  const skipInitialEditableTotalSyncRef = useRef(
+    Boolean(preferDraft && initialDraft?.customTotal !== null && initialDraft?.customTotal !== undefined && Number(initialDraft.customTotal) > originalCalculatedTotal)
+  );
   useEffect(() => {
+    if (skipInitialEditableTotalSyncRef.current) {
+      skipInitialEditableTotalSyncRef.current = false;
+      return;
+    }
     const finalTot = Math.max(0, originalCalculatedTotal - effectiveDiscountInRupees);
     setEditableTotal(finalTot > 0 ? String(finalTot.toFixed(2)) : '');
   }, [originalCalculatedTotal, effectiveDiscountInRupees]);

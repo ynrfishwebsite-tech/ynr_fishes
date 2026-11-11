@@ -300,7 +300,7 @@ export default function FishSmartwatchDial({
 
     setTimeout(() => {
       const success = handleAddCurrentToBill();
-      if (success) {
+      if (success && !success?.openedWizard) {
         setIsDialLocked(false);
         setTimeout(() => {
           setIsCrmBlinking(true);
@@ -690,11 +690,34 @@ export default function FishSmartwatchDial({
     const finalItemTotal = effectiveTotal;
     const finalDiscount = calculatedDiscount;
 
-    if (finalDiscount > 0 && setDiscount) {
-      setDiscount({ type: 'flat', value: finalDiscount, name: 'Negotiated Discount' });
-    }
-
     if (isBoxBasedMode) {
+      if (openBoxPackerModal) {
+        const passedWeight = parseFloat(boxWeightKg) || (netGrams / 1000) || 1;
+        const wholeKgPart = Math.floor(passedWeight);
+        const gramsPart = Math.round((passedWeight - wholeKgPart) * 1000);
+        const dialCustomerObj = localCustomer || ((effectiveCustomerName || effectiveCustomerPhone) ? {
+          name: effectiveCustomerName,
+          phone: effectiveCustomerPhone,
+          photo: effectiveCustomerPhoto
+        } : null);
+
+        openBoxPackerModal(currentItem, activeGrade, passedWeight, {
+          grade: activeGrade,
+          weightKg: String(wholeKgPart),
+          weightGrams: gramsPart > 0 ? String(gramsPart) : '',
+          ratePerKg: finalPricePerKg,
+          hasCustomRate: customRate !== null && !isNaN(parseFloat(customRate)) && parseFloat(customRate) > 0,
+          customTotal: customTotal !== null && !isNaN(parseFloat(customTotal)) ? parseFloat(customTotal) : null,
+          total: finalItemTotal,
+          discount: finalDiscount,
+          customer: dialCustomerObj,
+          cutType: selectedCutType
+        });
+        return { openedWizard: true };
+      }
+      if (finalDiscount > 0 && setDiscount) {
+        setDiscount({ type: 'flat', value: finalDiscount, name: 'Negotiated Discount' });
+      }
       if (boxFishMode === 'mixed') {
         if (netKg <= 0) {
           if (showToast) showToast(`Please enter valid weight in Kg for Box #${activeBoxNumber}`, 'error');
@@ -805,6 +828,10 @@ export default function FishSmartwatchDial({
     if (netKg <= 0) {
       if (showToast) showToast('Please enter a valid weight in Kilograms', 'error');
       return false;
+    }
+
+    if (finalDiscount > 0 && setDiscount) {
+      setDiscount({ type: 'flat', value: finalDiscount, name: 'Negotiated Discount' });
     }
 
     const itemToAdd = {

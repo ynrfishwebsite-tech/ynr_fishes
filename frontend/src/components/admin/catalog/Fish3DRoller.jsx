@@ -114,11 +114,7 @@ export default function Fish3DRoller({
   const fractionLabel = formatKgFraction ? formatKgFraction(netKg) : `${netKg.toFixed(3)} Kg`;
 
   // Calculations for Wholesale & Export Box Mode
-  const boxRate = currentItem
-    ? (fishOrderMode === 'export'
-        ? (parseFloat(currentItem.exportPricePerKg) || parseFloat(currentItem.wholesalePricePerKg) || parseFloat(currentItem.price) || 0)
-        : (parseFloat(currentItem.wholesalePricePerKg) || parseFloat(currentItem.price) || 0))
-    : 0;
+  const boxRate = activeRate;
   const totalBoxWeightKg = boxCount * (parseFloat(boxWeightKg) || 0);
   const totalBoxPrice = parseFloat((totalBoxWeightKg * boxRate).toFixed(2));
 
@@ -191,6 +187,24 @@ export default function Fish3DRoller({
     touchStartXRef.current = null;
   };
 
+  // Helper to open Wholesale / Export wizard with all current roller inputs
+  const openBoxWizardWithRollerState = () => {
+    const passedWeight = totalBoxWeightKg > 0 ? totalBoxWeightKg : (parseFloat(boxWeightKg) || 1);
+    const wholeKgPart = Math.floor(passedWeight);
+    const gramsPart = Math.round((passedWeight - wholeKgPart) * 1000);
+    if (openBoxPackerModal) {
+      openBoxPackerModal(currentItem, activeGrade, passedWeight, {
+        grade: activeGrade,
+        weightKg: String(wholeKgPart),
+        weightGrams: gramsPart > 0 ? String(gramsPart) : '',
+        boxesCount: String(boxCount || 1),
+        ratePerKg: boxRate
+      });
+    } else if (setShowBoxPacker) {
+      setShowBoxPacker(true);
+    }
+  };
+
   // Add Item to Order Cart
   const handleAddCurrentToBill = () => {
     if (!currentItem) return;
@@ -200,11 +214,7 @@ export default function Fish3DRoller({
     }
 
     if (isBoxBasedMode) {
-      if (openBoxPackerModal) {
-        openBoxPackerModal(currentItem, activeGrade, parseFloat(boxWeightKg) || 1);
-      } else if (setShowBoxPacker) {
-        setShowBoxPacker(true);
-      }
+      openBoxWizardWithRollerState();
       return;
     }
 
@@ -357,8 +367,7 @@ export default function Fish3DRoller({
                 <div
                   onClick={() => {
                     if (isBoxBasedMode) {
-                      if (openBoxPackerModal) openBoxPackerModal(currentItem, activeGrade, parseFloat(boxWeightKg) || 1);
-                      else if (setShowBoxPacker) setShowBoxPacker(true);
+                      openBoxWizardWithRollerState();
                     }
                   }}
                   className={`relative w-full ${viewportWidth < 880 ? 'h-24 sm:h-32 md:h-52' : 'h-24 sm:h-36 md:h-64'} rounded-xl md:rounded-2xl overflow-hidden bg-slate-100 border border-slate-100 shadow-inner group ${isBoxBasedMode ? 'cursor-pointer hover:ring-2 hover:ring-amber-500/50 transition-all' : ''}`}
@@ -666,13 +675,7 @@ export default function Fish3DRoller({
                     <span>{fishOrderMode === 'export' ? 'Export Boxes' : 'Wholesale Boxes'}</span>
                     <button
                       type="button"
-                      onClick={() => {
-                        if (openBoxPackerModal) {
-                          openBoxPackerModal(currentItem, activeGrade, parseFloat(boxWeightKg) || 1);
-                        } else if (setShowBoxPacker) {
-                          setShowBoxPacker(true);
-                        }
-                      }}
+                      onClick={openBoxWizardWithRollerState}
                       className="text-[10px] md:text-xs font-bold text-amber-800 underline hover:text-amber-950 cursor-pointer flex items-center gap-1"
                     >
                       <Package size={12} className="md:w-3.5 md:h-3.5" />

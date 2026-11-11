@@ -514,6 +514,7 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
         localStorage.removeItem('billing_show_wholesale_wizard');
         localStorage.removeItem('billing_wholesale_wizard_fish');
         localStorage.removeItem('billing_wholesale_available_fish');
+        localStorage.removeItem('billing_wholesale_wizard_draft');
         localStorage.removeItem('wholesale_wizard_data_bulk');
         localStorage.removeItem('wholesale_wizard_data_export');
       } catch (e) {}
@@ -539,6 +540,14 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
       return saved ? JSON.parse(saved) : [];
     } catch {
       return [];
+    }
+  });
+  const [wholesaleWizardDraft, setWholesaleWizardDraft] = useState(() => {
+    try {
+      const saved = localStorage.getItem('billing_wholesale_wizard_draft');
+      return saved ? JSON.parse(saved) : null;
+    } catch {
+      return null;
     }
   });
   const [crmCustomers, setCrmCustomers] = useState([]);
@@ -599,13 +608,17 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
         if (wholesaleAvailableFish && wholesaleAvailableFish.length > 0) {
           localStorage.setItem('billing_wholesale_available_fish', JSON.stringify(wholesaleAvailableFish));
         }
+        if (wholesaleWizardDraft) {
+          localStorage.setItem('billing_wholesale_wizard_draft', JSON.stringify(wholesaleWizardDraft));
+        }
       } else {
         localStorage.removeItem('billing_show_wholesale_wizard');
         localStorage.removeItem('billing_wholesale_wizard_fish');
         localStorage.removeItem('billing_wholesale_available_fish');
+        localStorage.removeItem('billing_wholesale_wizard_draft');
       }
     } catch (e) {}
-  }, [showWholesaleWizard, wholesaleWizardFish, wholesaleAvailableFish]);
+  }, [showWholesaleWizard, wholesaleWizardFish, wholesaleAvailableFish, wholesaleWizardDraft]);
 
   useEffect(() => {
     fetchPredefinedCustomers('All', 'All', true).then((custs) => {
@@ -1788,7 +1801,16 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
   };
 
   const handlePredefinedCustomerSelect = (cust) => {
-    if (!cust) return;
+    if (!cust) {
+      setCustomerPhone('');
+      setCustomerName('');
+      setCustomerInfo(null);
+      setCustomerPhoto('');
+      setCustomerAddress('');
+      setIsOrderLocked(false);
+      setLockedTimestamp('');
+      return;
+    }
     const cleanPhone = cust.phone ? cust.phone.trim().replace(/\D/g, '') : '';
     setCustomerPhone(cleanPhone);
     setCustomerName(cust.name || 'Guest');
@@ -3407,6 +3429,7 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
 
     if (targetMode === 'individual') {
       setShowWholesaleWizard(false);
+      setWholesaleWizardDraft(null);
     }
     setMobileTab('menu');
   }, []);
@@ -4561,11 +4584,16 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
               >
             {showWholesaleWizard && (fishOrderMode === 'bulk' || fishOrderMode === 'export') ? (
               <WholesaleOrderWizardModal
+                key={wholesaleWizardDraft?.openedAt || 'wizard'}
                 isOpen={true}
-                onClose={() => setShowWholesaleWizard(false)}
+                onClose={() => {
+                  setWholesaleWizardDraft(null);
+                  setShowWholesaleWizard(false);
+                }}
                 fishOrderMode={fishOrderMode}
                 initialFish={wholesaleWizardFish}
-                initialCustomer={customerInfo || (customerName ? { name: customerName, phone: customerPhone, photo: customerPhoto } : null)}
+                initialCustomer={wholesaleWizardDraft?.customer || customerInfo || (customerName ? { name: customerName, phone: customerPhone, photo: customerPhoto } : null)}
+                initialDraft={wholesaleWizardDraft}
                 availableFishList={wholesaleAvailableFish}
                 customersList={crmCustomers}
                 openOrdersList={openOrdersList}
@@ -4617,8 +4645,28 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
                 onSaveOrder={(overrideItems) => handleSaveOrder(false, overrideItems)}
                 onGenerateBill={(overrideItems) => handleGenerateBill(overrideItems)}
                 actionLoading={actionLoading}
-                onOpenWholesaleWizard={(fish, itemsList) => {
+                onOpenWholesaleWizard={(fish, itemsList, initialGradeOverride = null, initialWeightKg = null, draftOptions = null) => {
+                  const weightNum = parseFloat(initialWeightKg);
+                  const wholeKg = !isNaN(weightNum) && weightNum > 0 ? Math.floor(weightNum) : 1;
+                  const fracG = !isNaN(weightNum) && weightNum > 0 ? Math.round((weightNum - wholeKg) * 1000) : 0;
+
+                  const resolvedDraft = {
+                    ...(draftOptions || {}),
+                    fish: fish || null,
+                    grade: initialGradeOverride || draftOptions?.grade || null,
+                    weightKg: draftOptions?.weightKg !== undefined ? String(draftOptions.weightKg) : String(wholeKg),
+                    weightGrams: draftOptions?.weightGrams !== undefined ? String(draftOptions.weightGrams) : (fracG > 0 ? String(fracG) : ''),
+                    customer: draftOptions?.customer || customerInfo || ((customerName || customerPhone) ? { name: customerName, phone: customerPhone, photo: customerPhoto } : null),
+                    openedAt: Date.now()
+                  };
+
+                  try {
+                    localStorage.removeItem('wholesale_wizard_data_bulk');
+                    localStorage.removeItem('wholesale_wizard_data_export');
+                  } catch (e) {}
+
                   setWholesaleWizardFish(fish);
+                  setWholesaleWizardDraft(resolvedDraft);
                   if (itemsList && itemsList.length > 0) {
                     setWholesaleAvailableFish(itemsList);
                   }

@@ -605,9 +605,13 @@ const MenuGrid = ({
   }, [items, fishOrderMode]);
 
   // Open the Wholesale Box Builder / Wholesale Wizard
-  const openBoxPackerModal = useCallback((initialFish = null, initialGradeOverride = null, initialWeightKg = null) => {
+  const openBoxPackerModal = useCallback((initialFish = null, initialGradeOverride = null, initialWeightKg = null, wizardDraftOptions = null) => {
     if (onOpenWholesaleWizard && (fishOrderMode === 'bulk' || fishOrderMode === 'export')) {
-      onOpenWholesaleWizard(initialFish, items, initialGradeOverride, initialWeightKg);
+      const mergedDraft = {
+        ...(wizardDraftOptions || {}),
+        customer: wizardDraftOptions?.customer || selectedCustomerObj || null
+      };
+      onOpenWholesaleWizard(initialFish, items, initialGradeOverride, initialWeightKg, mergedDraft);
       return;
     }
     setBoxSlotCount(1);
@@ -645,7 +649,7 @@ const MenuGrid = ({
     }];
     setBoxSlots(initialSlots);
     setShowBoxPacker(true);
-  }, [items, fishOrderMode, onOpenWholesaleWizard]);
+  }, [items, fishOrderMode, onOpenWholesaleWizard, selectedCustomerObj]);
 
   // Handle changing the number of items in this box (1 to 10)
   const handleSlotCountChange = (newCount) => {
@@ -2195,7 +2199,7 @@ const MenuGrid = ({
 
                       // In Wholesale (Boxes) or Export (Bulk) mode, open the Bulk / Box Packer Modal
                       if (fishOrderMode === 'bulk' || fishOrderMode === 'export') {
-                        openBoxPackerModal(item, null, inputKg || 1);
+                        openBoxPackerModal(item, null, inputKg || 1, selectedCustomerObj ? { customer: selectedCustomerObj } : null);
                         return;
                       }
 
