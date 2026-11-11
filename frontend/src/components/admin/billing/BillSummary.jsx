@@ -1858,67 +1858,99 @@ const BillSummary = ({
               </button>
             </div>
 
-            {/* Floating Negotiated Total Amount Popover */}
+            {/* Fully Responsive Negotiated Settlement Total Modal */}
             {isNegotiatingSettlement && (
               <div
-                onClick={(e) => e.stopPropagation()}
-                className="absolute z-50 right-2 bottom-full mb-1 bg-white/98 backdrop-blur-md border-2 border-emerald-400 rounded-2xl p-3 shadow-2xl w-64 animate-in fade-in zoom-in-95 duration-150"
+                className="fixed inset-0 z-[120] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-150"
+                onClick={() => setIsNegotiatingSettlement(false)}
               >
-                <div className="flex justify-between items-center pb-1.5 mb-1.5 border-b border-emerald-100">
-                  <span className="text-xs font-black text-slate-800">Negotiated Total Amount</span>
-                  <button
-                    type="button"
-                    onClick={() => setIsNegotiatingSettlement(false)}
-                    className="w-5 h-5 rounded-full bg-slate-100 text-slate-500 hover:text-slate-900 flex items-center justify-center text-xs font-bold cursor-pointer"
-                  >
-                    ×
-                  </button>
-                </div>
-                <div className="text-[11px] text-slate-500 mb-1 flex justify-between">
-                  <span>Standard Total:</span>
-                  <span className="font-bold font-mono text-slate-700">₹{standardTotalBeforeDiscount.toFixed(2)}</span>
-                </div>
-                <div className="flex items-center gap-1.5 bg-emerald-50/80 border border-emerald-300 rounded-xl px-2.5 py-1 mb-2">
-                  <span className="text-sm font-black text-emerald-900 font-mono">₹</span>
-                  <input
-                    type="number"
-                    step="any"
-                    autoFocus
-                    value={tempNegotiatedSettlement}
-                    onChange={(e) => setTempNegotiatedSettlement(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') handleSaveNegotiatedSettlement();
-                      if (e.key === 'Escape') setIsNegotiatingSettlement(false);
-                    }}
-                    className="w-full text-base font-black font-mono text-slate-900 bg-transparent border-0 outline-none focus:outline-none"
-                    placeholder="Total ₹"
-                  />
-                </div>
-                {/* Live Discount Difference Preview */}
-                {(() => {
-                  const entered = parseFloat(tempNegotiatedSettlement);
-                  const previewDiff = !isNaN(entered) && standardTotalBeforeDiscount > entered ? standardTotalBeforeDiscount - entered : 0;
-                  return previewDiff > 0 ? (
-                    <div className="text-[11px] font-bold text-emerald-800 bg-emerald-100/90 rounded-lg px-2 py-0.5 mb-2 text-center">
-                      Auto-Discount: -₹{previewDiff.toFixed(2)}
+                <div
+                  onClick={(e) => e.stopPropagation()}
+                  className="w-full sm:max-w-sm bg-white rounded-t-3xl sm:rounded-2xl shadow-2xl border-2 border-emerald-400 p-4 sm:p-5 space-y-3.5 animate-in slide-in-from-bottom-6 sm:zoom-in-95 duration-150 max-h-[90vh] overflow-y-auto"
+                >
+                  {/* Modal Header */}
+                  <div className="flex justify-between items-center pb-2 border-b border-emerald-100">
+                    <div className="flex items-center gap-2">
+                      <div className="w-7 h-7 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center">
+                        <Sparkles size={16} />
+                      </div>
+                      <span className="text-sm font-black text-slate-900">Negotiate Settlement Total</span>
                     </div>
-                  ) : null;
-                })()}
-                <div className="flex gap-1.5">
-                  <button
-                    type="button"
-                    onClick={handleResetNegotiatedSettlement}
-                    className="flex-1 py-1 text-[11px] font-bold text-slate-600 hover:bg-slate-100 rounded-lg cursor-pointer transition-colors"
-                  >
-                    Reset
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleSaveNegotiatedSettlement}
-                    className="flex-1 py-1 text-[11px] font-black bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg cursor-pointer transition-colors"
-                  >
-                    Apply Total
-                  </button>
+                    <button
+                      type="button"
+                      onClick={() => setIsNegotiatingSettlement(false)}
+                      className="w-7 h-7 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 hover:text-slate-800 flex items-center justify-center transition-colors cursor-pointer"
+                    >
+                      <X size={15} />
+                    </button>
+                  </div>
+
+                  {/* Standard Total Box */}
+                  <div className="bg-slate-50 border border-slate-200 rounded-xl p-2.5 flex items-center justify-between text-xs">
+                    <span className="text-slate-500 font-bold">Standard Bill Total:</span>
+                    <span className="font-black font-mono text-slate-800 text-sm">
+                      ₹{standardTotalBeforeDiscount.toFixed(2)}
+                    </span>
+                  </div>
+
+                  {/* Negotiated Input */}
+                  <div className="space-y-1">
+                    <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide">
+                      Agreed / Final Total (₹)
+                    </label>
+                    <div className="flex items-center gap-2 bg-emerald-50/90 border-2 border-emerald-400 focus-within:border-emerald-600 focus-within:ring-2 focus-within:ring-emerald-200 rounded-xl px-3 py-2 transition-all">
+                      <span className="text-lg font-black text-emerald-800 font-mono">₹</span>
+                      <input
+                        type="number"
+                        step="any"
+                        min="0"
+                        autoFocus
+                        value={tempNegotiatedSettlement}
+                        onChange={(e) => setTempNegotiatedSettlement(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') handleSaveNegotiatedSettlement();
+                          if (e.key === 'Escape') setIsNegotiatingSettlement(false);
+                        }}
+                        className="w-full text-xl sm:text-2xl font-black font-mono text-slate-900 bg-transparent border-0 outline-none focus:outline-none"
+                        placeholder="Enter agreed total"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Live Discount Difference Preview */}
+                  {(() => {
+                    const entered = parseFloat(tempNegotiatedSettlement);
+                    const previewDiff = !isNaN(entered) && standardTotalBeforeDiscount > entered
+                      ? standardTotalBeforeDiscount - entered
+                      : 0;
+                    const pct = !isNaN(entered) && standardTotalBeforeDiscount > 0 && previewDiff > 0
+                      ? Math.round((previewDiff / standardTotalBeforeDiscount) * 100)
+                      : 0;
+                    return previewDiff > 0 ? (
+                      <div className="text-xs font-black text-emerald-800 bg-emerald-100 border border-emerald-300 rounded-xl px-3 py-1.5 flex items-center justify-between animate-in fade-in">
+                        <span>Auto-Discount:</span>
+                        <span className="font-mono text-emerald-900">-₹{previewDiff.toFixed(2)} ({pct}% OFF)</span>
+                      </div>
+                    ) : null;
+                  })()}
+
+                  {/* Actions */}
+                  <div className="flex items-center gap-2 pt-1">
+                    <button
+                      type="button"
+                      onClick={handleResetNegotiatedSettlement}
+                      className="flex-1 py-2 px-3 text-xs font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors cursor-pointer text-center"
+                    >
+                      Reset Standard
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleSaveNegotiatedSettlement}
+                      className="flex-1 py-2 px-3 text-xs font-black text-white bg-emerald-600 hover:bg-emerald-700 active:scale-95 shadow-md shadow-emerald-600/20 rounded-xl transition-all cursor-pointer text-center"
+                    >
+                      Apply Total
+                    </button>
+                  </div>
                 </div>
               </div>
             )}

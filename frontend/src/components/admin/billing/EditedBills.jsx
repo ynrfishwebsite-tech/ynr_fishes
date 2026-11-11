@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { getEditedBills } from '../../../api/billing/billing';
 import { useLanguage } from '../../../context/LanguageContext';
 import { ArrowLeft, Clock, FileText, Search, User, Eye, AlertCircle, Calendar, ChevronLeft, ChevronRight, RotateCcw, Loader2 } from 'lucide-react';
@@ -9,6 +9,33 @@ import { getCachedEditedBills, cacheEditedBills } from '../../../db/offlineDb';
 
 const RECORDS_PER_PAGE = 15;
 
+export const getBillSalesType = (bill) => {
+  if (!bill) return 'Retail';
+  const isExp = bill.customerCategory === 'Export' ||
+    bill.orderMode === 'export' ||
+    bill.billType === 'Export' ||
+    String(bill.orderChannel || '').includes('Export') ||
+    String(bill.billNumber || '').startsWith('EXP-') ||
+    String(bill.tableNo || '').startsWith('EXP-') ||
+    Boolean(bill.exportSubCategory);
+
+  if (isExp) return 'Export';
+
+  const isWs = bill.customerCategory === 'Wholesale' ||
+    bill.orderMode === 'bulk' ||
+    bill.billType === 'Wholesale' ||
+    bill.orderChannel === 'Wholesale-Box' ||
+    String(bill.billNumber || '').startsWith('WS-') ||
+    String(bill.tableNo || '').startsWith('WS-') ||
+    Number(bill.totalBoxes || 0) > 0 ||
+    (Array.isArray(bill.boxes) && bill.boxes.length > 0) ||
+    (Array.isArray(bill.items) && bill.items.some(i => i.isWholesaleBox || Number(i.boxNumber || 0) > 0 || i.pricingTier === 'wholesale' || Number(i.weight || i.weightKg || i.enteredWeight || 0) >= 20));
+
+  if (isWs) return 'Wholesale';
+
+  return 'Retail';
+};
+
 const EditedBills = ({ onNavigate, onGoBack }) => {
   const { t } = useLanguage();
   const [bills, setBills] = useState([]);
@@ -16,6 +43,7 @@ const EditedBills = ({ onNavigate, onGoBack }) => {
   const [search, setSearch] = useState('');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
+  const [salesTypeFilter, setSalesTypeFilter] = useState('All');
   const [currentPage, setCurrentPage] = useState(1);
   const [selectedBill, setSelectedBill] = useState(null);
 
@@ -81,40 +109,85 @@ const EditedBills = ({ onNavigate, onGoBack }) => {
     }
   };
 
-  const filteredBills = bills.filter(bill => {
+  const categoryCounts = useMemo(() => {
+    let all = 0, retail = 0, wholesale = 0, exportCnt = 0;
     const q = search.toLowerCase().trim();
-    const matchesSearch = !q || (
-      (bill.billNumber || '').toLowerCase().includes(q) ||
-      (bill.tableNo || '').toLowerCase().includes(q) ||
-      (bill.customerName || '').toLowerCase().includes(q)
-    );
-    if (!matchesSearch) return false;
 
-    const totalEdits = bill.editHistory?.length || 0;
-    const lastEdit = totalEdits > 0 ? bill.editHistory[totalEdits - 1] : null;
-    const dateStr = lastEdit ? lastEdit.editedAt : (bill.updatedAt || bill.createdAt);
-    if (!dateStr) return true;
+    (bills || []).forEach(bill => {
+      const matchesSearch = !q || (
+        (bill.billNumber || '').toLowerCase().includes(q) ||
+        (bill.tableNo || '').toLowerCase().includes(q) ||
+        (bill.customerName || '').toLowerCase().includes(q)
+      );
+      if (!matchesSearch) return;
 
-    const billDate = new Date(dateStr);
+      const totalEdits = bill.editHistory?.length || 0;
+      const lastEdit = totalEdits > 0 ? bill.editHistory[totalEdits - 1] : null;
+      const dateStr = lastEdit ? lastEdit.editedAt : (bill.updatedAt || bill.createdAt);
+      if (dateStr) {
+        const billDate = new Date(dateStr);
+        if (startDate) {
+          const sDate = new Date(startDate);
+          sDate.setHours(0, 0, 0, 0);
+          if (billDate < sDate) return;
+        }
+        if (endDate) {
+          const eDate = new Date(endDate);
+          eDate.setHours(23, 59, 59, 999);
+          if (billDate > eDate) return;
+        }
+      }
 
-    if (startDate) {
-      const sDate = new Date(startDate);
-      sDate.setHours(0, 0, 0, 0);
-      if (billDate < sDate) return false;
-    }
+      all++;
+      const st = getBillSalesType(bill);
+      if (st === 'Retail') retail++;
+      else if (st === 'Wholesale') wholesale++;
+      else if (st === 'Export') exportCnt++;
+    });
 
-    if (endDate) {
-      const eDate = new Date(endDate);
-      eDate.setHours(23, 59, 59, 999);
-      if (billDate > eDate) return false;
-    }
+    return { all, retail, wholesale, export: exportCnt };
+  }, [bills, search, startDate, endDate]);
 
-    return true;
-  });
+  const filteredBills = useMemo(() => {
+    return bills.filter(bill => {
+      if (salesTypeFilter !== 'All') {
+        if (getBillSalesType(bill) !== salesTypeFilter) return false;
+      }
+
+      const q = search.toLowerCase().trim();
+      const matchesSearch = !q || (
+        (bill.billNumber || '').toLowerCase().includes(q) ||
+        (bill.tableNo || '').toLowerCase().includes(q) ||
+        (bill.customerName || '').toLowerCase().includes(q)
+      );
+      if (!matchesSearch) return false;
+
+      const totalEdits = bill.editHistory?.length || 0;
+      const lastEdit = totalEdits > 0 ? bill.editHistory[totalEdits - 1] : null;
+      const dateStr = lastEdit ? lastEdit.editedAt : (bill.updatedAt || bill.createdAt);
+      if (!dateStr) return true;
+
+      const billDate = new Date(dateStr);
+
+      if (startDate) {
+        const sDate = new Date(startDate);
+        sDate.setHours(0, 0, 0, 0);
+        if (billDate < sDate) return false;
+      }
+
+      if (endDate) {
+        const eDate = new Date(endDate);
+        eDate.setHours(23, 59, 59, 999);
+        if (billDate > eDate) return false;
+      }
+
+      return true;
+    });
+  }, [bills, salesTypeFilter, search, startDate, endDate]);
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [search, startDate, endDate]);
+  }, [search, startDate, endDate, salesTypeFilter]);
 
   const totalPages = Math.max(1, Math.ceil(filteredBills.length / RECORDS_PER_PAGE));
   const paginatedBills = filteredBills.slice((currentPage - 1) * RECORDS_PER_PAGE, currentPage * RECORDS_PER_PAGE);
@@ -208,7 +281,7 @@ const EditedBills = ({ onNavigate, onGoBack }) => {
               <button
                 onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
                 disabled={currentPage === 1}
-                className="p-0.5 rounded-md text-slate-700 hover:bg-slate-100 disabled:opacity-30 disabled:hover:bg-transparent transition-colors"
+                className="p-0.5 rounded-md text-slate-700 hover:bg-slate-100 disabled:opacity-30 disabled:hover:bg-transparent transition-colors cursor-pointer"
                 title={t("Previous Page")}
               >
                 <ChevronLeft size={13} />
@@ -219,7 +292,7 @@ const EditedBills = ({ onNavigate, onGoBack }) => {
               <button
                 onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
                 disabled={currentPage === totalPages}
-                className="p-0.5 rounded-md text-slate-700 hover:bg-slate-100 disabled:opacity-30 disabled:hover:bg-transparent transition-colors"
+                className="p-0.5 rounded-md text-slate-700 hover:bg-slate-100 disabled:opacity-30 disabled:hover:bg-transparent transition-colors cursor-pointer"
                 title={t("Next Page")}
               >
                 <ChevronRight size={13} />
@@ -227,6 +300,73 @@ const EditedBills = ({ onNavigate, onGoBack }) => {
             </div>
           </div>
 
+        </div>
+
+        {/* Channel Filter Pills: All, Retail, Wholesale, Export */}
+        <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pt-1.5 border-t border-slate-200/80">
+          <span className="text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-wider shrink-0 mr-1">
+            {t("Channel")}:
+          </span>
+
+          <button
+            type="button"
+            onClick={() => setSalesTypeFilter('All')}
+            className={`px-2.5 sm:px-3 py-1 rounded-full text-[11px] sm:text-xs font-bold transition-all border cursor-pointer flex items-center gap-1.5 shrink-0 whitespace-nowrap ${
+              salesTypeFilter === 'All'
+                ? 'bg-slate-800 text-white border-slate-800 shadow-xs'
+                : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100'
+            }`}
+          >
+            {t("All")}
+            <span className={`text-[9px] sm:text-[10px] font-extrabold px-1.5 py-0.5 rounded-full leading-none ${salesTypeFilter === 'All' ? 'bg-white/25 text-white' : 'bg-slate-100 text-slate-600'}`}>
+              {categoryCounts.all}
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setSalesTypeFilter('Retail')}
+            className={`px-2.5 sm:px-3 py-1 rounded-full text-[11px] sm:text-xs font-bold transition-all border cursor-pointer flex items-center gap-1.5 shrink-0 whitespace-nowrap ${
+              salesTypeFilter === 'Retail'
+                ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
+                : 'bg-emerald-50/80 text-emerald-800 border-emerald-200 hover:bg-emerald-100'
+            }`}
+          >
+            {t("Retail")}
+            <span className={`text-[9px] sm:text-[10px] font-extrabold px-1.5 py-0.5 rounded-full leading-none ${salesTypeFilter === 'Retail' ? 'bg-white/25 text-white' : 'bg-emerald-100 text-emerald-800'}`}>
+              {categoryCounts.retail}
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setSalesTypeFilter('Wholesale')}
+            className={`px-2.5 sm:px-3 py-1 rounded-full text-[11px] sm:text-xs font-bold transition-all border cursor-pointer flex items-center gap-1.5 shrink-0 whitespace-nowrap ${
+              salesTypeFilter === 'Wholesale'
+                ? 'bg-amber-600 text-white border-amber-600 shadow-xs'
+                : 'bg-amber-50/80 text-amber-800 border-amber-200 hover:bg-amber-100'
+            }`}
+          >
+            {t("Wholesale")}
+            <span className={`text-[9px] sm:text-[10px] font-extrabold px-1.5 py-0.5 rounded-full leading-none ${salesTypeFilter === 'Wholesale' ? 'bg-white/25 text-white' : 'bg-amber-100 text-amber-800'}`}>
+              {categoryCounts.wholesale}
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setSalesTypeFilter('Export')}
+            className={`px-2.5 sm:px-3 py-1 rounded-full text-[11px] sm:text-xs font-bold transition-all border cursor-pointer flex items-center gap-1.5 shrink-0 whitespace-nowrap ${
+              salesTypeFilter === 'Export'
+                ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
+                : 'bg-blue-50/80 text-blue-800 border-blue-200 hover:bg-blue-100'
+            }`}
+          >
+            {t("Export")}
+            <span className={`text-[9px] sm:text-[10px] font-extrabold px-1.5 py-0.5 rounded-full leading-none ${salesTypeFilter === 'Export' ? 'bg-white/25 text-white' : 'bg-blue-100 text-blue-800'}`}>
+              {categoryCounts.export}
+            </span>
+          </button>
         </div>
       </header>
 
@@ -248,12 +388,12 @@ const EditedBills = ({ onNavigate, onGoBack }) => {
             </div>
             <h3 className="text-base sm:text-lg font-bold text-slate-900 mb-1">{t("No edited bills found")}</h3>
             <p className="text-xs sm:text-sm text-slate-600 mb-3">
-              {search || startDate || endDate ? t("Try adjusting your filter or date range criteria.") : t("Bills that are reopened and modified will appear here.")}
+              {search || startDate || endDate || salesTypeFilter !== 'All' ? t("Try adjusting your filter or date range criteria.") : t("Bills that are reopened and modified will appear here.")}
             </p>
-            {(startDate || endDate || search) && (
+            {(startDate || endDate || search || salesTypeFilter !== 'All') && (
               <button
-                onClick={() => { setStartDate(''); setEndDate(''); setSearch(''); }}
-                className="px-4 py-2 bg-sky-500/20 text-sky-400 border border-sky-500/30 font-bold rounded-xl text-xs flex items-center gap-1.5 hover:bg-sky-500/30 transition-colors"
+                onClick={() => { setStartDate(''); setEndDate(''); setSearch(''); setSalesTypeFilter('All'); }}
+                className="px-4 py-2 bg-sky-500/20 text-sky-400 border border-sky-500/30 font-bold rounded-xl text-xs flex items-center gap-1.5 hover:bg-sky-500/30 transition-colors cursor-pointer"
               >
                 <RotateCcw size={13} />
                 <span>{t("Reset All Filters")}</span>
@@ -287,6 +427,28 @@ const EditedBills = ({ onNavigate, onGoBack }) => {
                           <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${getStatusColor(bill.status)}`}>
                             {bill.status}
                           </span>
+                          {(() => {
+                            const type = getBillSalesType(bill);
+                            if (type === 'Export') {
+                              return (
+                                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold tracking-wider bg-blue-50 text-blue-700 border border-blue-200">
+                                  {t("Export")}
+                                </span>
+                              );
+                            }
+                            if (type === 'Wholesale') {
+                              return (
+                                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold tracking-wider bg-amber-50 text-amber-700 border border-amber-200">
+                                  {t("Wholesale")}
+                                </span>
+                              );
+                            }
+                            return (
+                              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold tracking-wider bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                {t("Retail")}
+                              </span>
+                            );
+                          })()}
                         </div>
                         <div className="flex flex-wrap items-center gap-x-2.5 gap-y-0.5 text-xs font-medium text-slate-400">
                           <div className="flex items-center gap-1">
