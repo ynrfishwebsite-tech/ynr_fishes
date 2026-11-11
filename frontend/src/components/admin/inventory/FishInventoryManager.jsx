@@ -44,6 +44,7 @@ import {
 import BackButton from '../common/BackButton';
 import SearchableDropdown from '../../common/SearchableDropdown';
 import FishInwardInvoice from './FishInwardInvoice';
+import FishIntakeOrbitalDial from './FishIntakeOrbitalDial';
 
 export default function FishInventoryManager({ user, onNavigate, onGoBack }) {
   const [activeTab, setActiveTab] = useState(() => {
@@ -133,6 +134,56 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack }) {
     customSettlements: [],
     notes: ''
   });
+
+  // 3D Orbital Dial vs Fast Table selector mode for catch intake ('ring' | 'table')
+  const [localSelectorMode, setLocalSelectorMode] = useState('ring');
+  const [damSelectorMode, setDamSelectorMode] = useState('ring');
+
+  const handleAddLocalLotFromDial = useCallback((lotPayload) => {
+    setLocalStockInForm(prev => {
+      const isFirstItemEmpty = prev.items.length === 1 && (!prev.items[0].menuItemId || !prev.items[0].itemName);
+      const newLot = {
+        id: Date.now(),
+        menuItemId: lotPayload.menuItemId,
+        itemName: lotPayload.itemName,
+        sizeGrade: lotPayload.sizeGrade,
+        sizeBracket: lotPayload.sizeBracket,
+        weightOption: lotPayload.weightOption,
+        boxes: String(lotPayload.boxes || 0),
+        kgPerBox: Number(lotPayload.kgPerBox || 60),
+        kg: String(lotPayload.kg || 0),
+        grams: String(lotPayload.grams || 0),
+        ratePerKg: String(lotPayload.ratePerKg || 0)
+      };
+      if (isFirstItemEmpty) {
+        return { ...prev, items: [newLot] };
+      }
+      return { ...prev, items: [...prev.items, newLot] };
+    });
+  }, []);
+
+  const handleAddDamLotFromDial = useCallback((lotPayload) => {
+    setDamStockInForm(prev => {
+      const isFirstItemEmpty = prev.tallyItems.length === 1 && (!prev.tallyItems[0].menuItemId || !prev.tallyItems[0].itemName);
+      const newLot = {
+        id: Date.now(),
+        menuItemId: lotPayload.menuItemId,
+        itemName: lotPayload.itemName,
+        sizeGrade: lotPayload.sizeGrade,
+        sizeBracket: lotPayload.sizeBracket,
+        weightOption: lotPayload.weightOption,
+        boxes: String(lotPayload.boxes || 0),
+        kgPerBox: Number(lotPayload.kgPerBox || 60),
+        kg: String(lotPayload.kg || 0),
+        grams: String(lotPayload.grams || 0),
+        price: String(lotPayload.ratePerKg || 0)
+      };
+      if (isFirstItemEmpty) {
+        return { ...prev, tallyItems: [newLot] };
+      }
+      return { ...prev, tallyItems: [...prev.tallyItems, newLot] };
+    });
+  }, []);
 
   // Procurement single quick-form state
   const [procurementForm, setProcurementForm] = useState({
@@ -2543,13 +2594,42 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack }) {
                   </div>
                 </div>
 
-                {/* 2. Multi-Fish Intake Table with Boxes */}
+                {/* 2. Multi-Fish Intake Section (3D Ring Selector + Consignment Lots Table) */}
                 <div className="border border-[#fed7aa] rounded-xl overflow-hidden bg-white shadow-2xs">
-                  <div className="p-3 bg-[#FAF0E4] border-b border-[#fed7aa] flex items-center justify-between flex-wrap gap-2">
-                    <span className="text-xs font-black text-slate-800 uppercase tracking-wide flex items-center gap-1.5">
-                      <Scale size={14} className="text-[#ea580c]" />
-                      <span>Fish Items Unloaded ({localStockInForm.items.length})</span>
-                    </span>
+                  <div className="p-2.5 sm:p-3 bg-[#FAF0E4] border-b border-[#fed7aa] flex items-center justify-between flex-wrap gap-2">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-black text-slate-800 uppercase tracking-wide flex items-center gap-1.5">
+                        <Scale size={14} className="text-[#ea580c]" />
+                        <span>Fish Items Unloaded ({localStockInForm.items.filter(it => it.itemName).length})</span>
+                      </span>
+
+                      {/* View Mode Toggle: 3D Ring vs Fast Table */}
+                      <div className="inline-flex items-center p-0.5 bg-white rounded-lg border border-[#fed7aa] shadow-2xs ml-1">
+                        <button
+                          type="button"
+                          onClick={() => setLocalSelectorMode('ring')}
+                          className={`px-2.5 py-1 rounded-md text-[11px] font-bold transition-all cursor-pointer ${
+                            localSelectorMode === 'ring'
+                              ? 'bg-[#ea580c] text-white shadow-2xs font-black'
+                              : 'text-slate-600 hover:text-slate-900'
+                          }`}
+                        >
+                          🔄 3D Ring
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setLocalSelectorMode('table')}
+                          className={`px-2.5 py-1 rounded-md text-[11px] font-bold transition-all cursor-pointer ${
+                            localSelectorMode === 'table'
+                              ? 'bg-slate-800 text-white shadow-2xs font-black'
+                              : 'text-slate-600 hover:text-slate-900'
+                          }`}
+                        >
+                          📋 Table
+                        </button>
+                      </div>
+                    </div>
+
                     <button
                       type="button"
                       onClick={() => {
@@ -2561,12 +2641,23 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack }) {
                           ]
                         }));
                       }}
-                      className="px-3 py-1 bg-[#ea580c] hover:bg-[#c2410c] text-white rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1"
+                      className="px-3 py-1 bg-[#ea580c] hover:bg-[#c2410c] text-white rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1 shadow-2xs"
                     >
                       <Plus size={13} />
-                      <span>Add Fish Item</span>
+                      <span>Add Fish Row</span>
                     </button>
                   </div>
+
+                  {/* 3D Ring Dial Mode for Local Catch */}
+                  {localSelectorMode === 'ring' && (
+                    <div className="p-3 sm:p-5 bg-gradient-to-b from-[#FAF3E8]/70 via-white to-[#FAF0E4]/30 border-b border-[#fed7aa]/60">
+                      <FishIntakeOrbitalDial
+                        items={fishList}
+                        onAddFishLot={handleAddLocalLotFromDial}
+                        mode="local"
+                      />
+                    </div>
+                  )}
 
                   <div className="overflow-x-auto w-full">
                     <table className="w-full text-left text-xs sm:text-sm border-collapse">
@@ -3225,13 +3316,42 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack }) {
                   </div>
                 </div>
 
-                {/* 2. Multi-Fish Tally Table with Boxes */}
+                {/* 2. Multi-Fish Tally Section (3D Ring Selector + Consignment Lots Table) */}
                 <div className="border border-[#fed7aa] rounded-xl overflow-hidden bg-white shadow-2xs">
-                  <div className="p-3 bg-[#FAF0E4] border-b border-[#fed7aa] flex items-center justify-between flex-wrap gap-2">
-                    <span className="text-xs font-black text-slate-800 uppercase tracking-wide flex items-center gap-1.5">
-                      <Scale size={14} className="text-blue-700" />
-                      <span>Consignment Fish Varieties ({damStockInForm.tallyItems.length})</span>
-                    </span>
+                  <div className="p-2.5 sm:p-3 bg-[#FAF0E4] border-b border-[#fed7aa] flex items-center justify-between flex-wrap gap-2">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-black text-slate-800 uppercase tracking-wide flex items-center gap-1.5">
+                        <Scale size={14} className="text-blue-700" />
+                        <span>Consignment Fish Varieties ({damStockInForm.tallyItems.filter(it => it.itemName).length})</span>
+                      </span>
+
+                      {/* View Mode Toggle: 3D Ring vs Fast Table */}
+                      <div className="inline-flex items-center p-0.5 bg-white rounded-lg border border-[#fed7aa] shadow-2xs ml-1">
+                        <button
+                          type="button"
+                          onClick={() => setDamSelectorMode('ring')}
+                          className={`px-2.5 py-1 rounded-md text-[11px] font-bold transition-all cursor-pointer ${
+                            damSelectorMode === 'ring'
+                              ? 'bg-blue-600 text-white shadow-2xs font-black'
+                              : 'text-slate-600 hover:text-slate-900'
+                          }`}
+                        >
+                          🔄 3D Ring
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setDamSelectorMode('table')}
+                          className={`px-2.5 py-1 rounded-md text-[11px] font-bold transition-all cursor-pointer ${
+                            damSelectorMode === 'table'
+                              ? 'bg-slate-800 text-white shadow-2xs font-black'
+                              : 'text-slate-600 hover:text-slate-900'
+                          }`}
+                        >
+                          📋 Table
+                        </button>
+                      </div>
+                    </div>
+
                     <button
                       type="button"
                       onClick={() => {
@@ -3243,12 +3363,23 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack }) {
                           ]
                         }));
                       }}
-                      className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1"
+                      className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1 shadow-2xs"
                     >
                       <Plus size={13} />
                       <span>Add Fish Lot Row</span>
                     </button>
                   </div>
+
+                  {/* 3D Ring Dial Mode for Dam Catch */}
+                  {damSelectorMode === 'ring' && (
+                    <div className="p-3 sm:p-5 bg-gradient-to-b from-blue-50/60 via-white to-indigo-50/30 border-b border-[#fed7aa]/60">
+                      <FishIntakeOrbitalDial
+                        items={fishList}
+                        onAddFishLot={handleAddDamLotFromDial}
+                        mode="dam"
+                      />
+                    </div>
+                  )}
 
                   <div className="overflow-x-auto w-full">
                     <table className="w-full text-left text-xs sm:text-sm border-collapse">
