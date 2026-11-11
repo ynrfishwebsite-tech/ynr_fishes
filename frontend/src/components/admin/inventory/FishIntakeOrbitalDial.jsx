@@ -13,7 +13,10 @@ import {
   X,
   Check,
   CheckCircle,
-  Sparkles
+  Sparkles,
+  Lock,
+  Unlock,
+  Fish
 } from 'lucide-react';
 
 // Robust seafood photo URL resolver
@@ -69,6 +72,16 @@ export default function FishIntakeOrbitalDial({
     : 0;
 
   const currentFish = items && items.length > 0 ? items[safeActiveIndex] : null;
+
+  // Dial Lock State
+  const [isDialLocked, setIsDialLocked] = useState(false);
+  const isDialLockedRef = useRef(false);
+  useEffect(() => {
+    isDialLockedRef.current = isDialLocked;
+  }, [isDialLocked]);
+
+  // Center Disc Click Feedback
+  const [justAddedPulse, setJustAddedPulse] = useState(false);
 
   // 6 Fields State for Currently Selected Fish
   const [sizeGrade, setSizeGrade] = useState('medium');
@@ -224,6 +237,7 @@ export default function FishIntakeOrbitalDial({
   const wasDraggingRef = useRef(false);
 
   const handleDialStart = (clientX, clientY, target) => {
+    if (isDialLocked || isDialLockedRef.current) return;
     if (target && (target.closest('input') || target.closest('select') || target.closest('.no-dial-drag'))) {
       return;
     }
@@ -239,7 +253,7 @@ export default function FishIntakeOrbitalDial({
   };
 
   const handleDialMove = (clientX, clientY) => {
-    if (!dialRef.current || !dragStartPosRef.current) return;
+    if (!dialRef.current || isDialLocked || isDialLockedRef.current || !dragStartPosRef.current) return;
     const dist = Math.hypot(clientX - dragStartPosRef.current.x, clientY - dragStartPosRef.current.y);
     if (!hasMovedRef.current) {
       if (dist < 8) return;
@@ -404,11 +418,16 @@ export default function FishIntakeOrbitalDial({
       {/* Top Header Pill: Active Species Variety Name & Rate */}
       <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/95 border border-[#fed7aa] shadow-2xs text-xs font-black text-slate-800">
         <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
-        <span className="text-slate-900 truncate max-w-[220px] sm:max-w-[320px]">
+        <span className="text-slate-900 truncate max-w-[200px] sm:max-w-[300px]">
           {currentFish?.name || 'Choose Fish'}
         </span>
         <span className="text-slate-300">•</span>
         <span className="text-[#ea580c] font-mono">₹{ratePerKg || 0}/Kg</span>
+        {isDialLocked && (
+          <span className="ml-1 px-1.5 py-0.5 rounded-full bg-orange-100 text-orange-700 text-[10px] font-bold border border-orange-300 flex items-center gap-0.5">
+            <Lock size={10} /> Locked
+          </span>
+        )}
       </div>
 
       {/* ── THE 3D ORBITAL DIAL CONTAINER (Scales smoothly to screen width) ── */}
@@ -434,6 +453,26 @@ export default function FishIntakeOrbitalDial({
           boxShadow: '0 16px 42px -10px rgba(245, 158, 11, 0.3), inset 0 2px 10px rgba(255, 255, 255, 0.95), inset 0 -6px 14px rgba(217, 119, 6, 0.12)'
         }}
       >
+        {/* ── LOCK / UNLOCK TOGGLE BUTTON (Top-Left of Dial) ── */}
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            setIsDialLocked(!isDialLocked);
+          }}
+          className={`no-dial-drag absolute top-2 left-2 sm:top-3 sm:left-3 z-40 w-8 h-8 sm:w-9 sm:h-9 rounded-full flex items-center justify-center transition-all shadow-md border cursor-pointer pointer-events-auto ${
+            isDialLocked
+              ? 'bg-orange-500 text-white border-orange-600 ring-2 ring-orange-300 scale-105'
+              : 'bg-white/95 text-slate-700 border-amber-300 hover:bg-amber-50'
+          }`}
+          title={isDialLocked ? 'Dial is locked. Tap to unlock' : 'Dial is unlocked. Tap to lock'}
+        >
+          {isDialLocked ? (
+            <Lock size={15} className="stroke-[2.5]" />
+          ) : (
+            <Unlock size={15} className="stroke-[2.2]" />
+          )}
+        </button>
         {/* SVG Canvas for Track, Halo Bezel and Exactly 6 Petals */}
         <svg viewBox="0 0 440 440" className="absolute inset-0 w-full h-full pointer-events-none">
           <defs>
@@ -566,7 +605,7 @@ export default function FishIntakeOrbitalDial({
 
           {/* ── 6 CURVED SECTOR PETALS (rIn=92, rOut=156) ── */}
 
-          {/* PETAL 1: Top (12 o'clock / 0°) - Grade & Weight Range */}
+          {/* PETAL 1: Top (12 o'clock / 0°) - Grade */}
           <path
             d={createRoundedAnnularSector(220, 220, 92, 156, 331, 29, 8)}
             fill="url(#gradGradeIntake)"
@@ -672,6 +711,7 @@ export default function FishIntakeOrbitalDial({
                 type="button"
                 onClick={(e) => {
                   e.stopPropagation();
+                  if (isDialLocked || isDialLockedRef.current) return;
                   if (wasDraggingRef.current || hasMovedRef.current) return;
                   setActiveIndex(idx);
                 }}
@@ -683,12 +723,14 @@ export default function FishIntakeOrbitalDial({
                   transition: isDraggingDialRef.current ? 'none' : 'transform 0.25s cubic-bezier(0.2, 0.8, 0.2, 1)',
                   pointerEvents: 'auto'
                 }}
-                className={`overflow-hidden flex items-center justify-center rounded-full cursor-pointer transition-all relative ${
+                className={`overflow-hidden flex items-center justify-center rounded-full transition-all relative ${
+                  isDialLocked ? 'cursor-not-allowed opacity-90' : 'cursor-pointer'
+                } ${
                   isSelected
                     ? 'w-12 h-12 sm:w-14 sm:h-14 bg-white rounded-full ring-2 ring-amber-500 border-2 border-amber-600 shadow-xl scale-110 z-40'
                     : 'w-9 h-9 sm:w-11 sm:h-11 bg-white/95 rounded-full border border-amber-300 shadow-2xs hover:scale-115 hover:border-amber-500 z-30'
                 }`}
-                title={item.name}
+                title={isDialLocked ? `${item.name} (Dial Locked)` : item.name}
               >
                 {imgUrl ? (
                   <img
@@ -704,10 +746,10 @@ export default function FishIntakeOrbitalDial({
                   />
                 ) : null}
                 <div
-                  className="fish-dial-thumb-fallback w-full h-full items-center justify-center bg-gradient-to-br from-amber-100 to-orange-100 text-amber-800 rounded-full font-bold text-[13px] sm:text-sm select-none pointer-events-none"
+                  className="fish-dial-thumb-fallback w-full h-full items-center justify-center bg-gradient-to-br from-amber-100 to-orange-100 text-amber-800 rounded-full font-bold select-none pointer-events-none"
                   style={{ display: imgUrl ? 'none' : 'flex' }}
                 >
-                  🐟
+                  <Fish size={16} className="text-amber-700" />
                 </div>
               </button>
             );
@@ -717,30 +759,36 @@ export default function FishIntakeOrbitalDial({
         {/* ── NAVIGATION ARROWS (9 o'clock & 3 o'clock) ── */}
         <button
           type="button"
-          disabled={safeActiveIndex === 0}
+          disabled={safeActiveIndex === 0 || isDialLocked}
           onClick={(e) => {
             e.stopPropagation();
+            if (isDialLocked || isDialLockedRef.current) return;
             setActiveIndex(Math.max(0, safeActiveIndex - 1));
             setDialRingRotation(prev => prev - ROTATION_STEP_DEG);
           }}
           style={{ position: 'absolute', left: '21%', top: '50%', transform: 'translate(-50%, -50%)', zIndex: 35 }}
-          className="no-dial-drag w-6 h-6 sm:w-7 sm:h-7 rounded-full bg-white shadow-md border border-slate-200 flex items-center justify-center text-slate-800 hover:bg-amber-50 active:scale-90 transition-all disabled:opacity-20 cursor-pointer pointer-events-auto"
-          title="Previous Fish"
+          className={`no-dial-drag w-6 h-6 sm:w-7 sm:h-7 rounded-full bg-white shadow-md border border-slate-200 flex items-center justify-center text-slate-800 transition-all ${
+            isDialLocked ? 'opacity-30 cursor-not-allowed' : 'hover:bg-amber-50 active:scale-90 disabled:opacity-20 cursor-pointer pointer-events-auto'
+          }`}
+          title={isDialLocked ? "Dial is locked" : "Previous Fish"}
         >
           <ChevronLeft size={16} className="stroke-[2.5]" />
         </button>
 
         <button
           type="button"
-          disabled={safeActiveIndex >= items.length - 1}
+          disabled={safeActiveIndex >= items.length - 1 || isDialLocked}
           onClick={(e) => {
             e.stopPropagation();
+            if (isDialLocked || isDialLockedRef.current) return;
             setActiveIndex(Math.min(items.length - 1, safeActiveIndex + 1));
             setDialRingRotation(prev => prev + ROTATION_STEP_DEG);
           }}
           style={{ position: 'absolute', left: '79%', top: '50%', transform: 'translate(-50%, -50%)', zIndex: 35 }}
-          className="no-dial-drag w-6 h-6 sm:w-7 sm:h-7 rounded-full bg-white shadow-md border border-slate-200 flex items-center justify-center text-slate-800 hover:bg-amber-50 active:scale-90 transition-all disabled:opacity-20 cursor-pointer pointer-events-auto"
-          title="Next Fish"
+          className={`no-dial-drag w-6 h-6 sm:w-7 sm:h-7 rounded-full bg-white shadow-md border border-slate-200 flex items-center justify-center text-slate-800 transition-all ${
+            isDialLocked ? 'opacity-30 cursor-not-allowed' : 'hover:bg-amber-50 active:scale-90 disabled:opacity-20 cursor-pointer pointer-events-auto'
+          }`}
+          title={isDialLocked ? "Dial is locked" : "Next Fish"}
         >
           <ChevronRight size={16} className="stroke-[2.5]" />
         </button>
@@ -748,53 +796,67 @@ export default function FishIntakeOrbitalDial({
         {/* ── CENTER CIRCULAR PHOTO DISC (Click to Add Lot) ── */}
         <div
           onClick={handleAddCurrentLot}
-          className="no-dial-drag relative w-[38%] h-[38%] rounded-full border-[3px] border-[#fdba74] shadow-lg overflow-hidden z-20 cursor-pointer active:scale-95 transition-transform bg-white flex flex-col items-center justify-center p-2 group"
+          className={`no-dial-drag relative w-[38%] h-[38%] rounded-full border-[3px] shadow-lg overflow-hidden z-20 cursor-pointer active:scale-95 transition-all bg-white flex flex-col items-center justify-center p-2 group ${
+            justAddedPulse
+              ? 'border-emerald-500 ring-4 ring-emerald-300 scale-95'
+              : 'border-[#fdba74] hover:border-orange-500'
+          }`}
           style={{
-            boxShadow: '0 6px 20px -2px rgba(245, 158, 11, 0.22), inset 0 2px 6px rgba(255, 255, 255, 0.95)'
+            boxShadow: justAddedPulse
+              ? '0 0 24px rgba(16, 185, 129, 0.45), inset 0 2px 6px rgba(255, 255, 255, 0.95)'
+              : '0 6px 20px -2px rgba(245, 158, 11, 0.22), inset 0 2px 6px rgba(255, 255, 255, 0.95)'
           }}
           title={`Click to Add ${currentFish?.name || 'Fish'} Lot`}
         >
-          {(() => {
-            const centerImgUrl = formatImageUrl(currentFish?.image);
-            return (
-              <>
-                {centerImgUrl ? (
-                  <img
-                    src={centerImgUrl}
-                    alt={currentFish?.name || 'Fish'}
-                    className="max-w-[85%] max-h-[85%] object-contain pointer-events-none transition-transform duration-300 drop-shadow-md select-none group-hover:scale-105"
-                    onError={(e) => {
-                      e.currentTarget.style.display = 'none';
-                      const fallback = e.currentTarget.parentElement?.querySelector('.center-disc-fallback');
-                      if (fallback) fallback.style.display = 'flex';
-                    }}
-                  />
-                ) : null}
-                <div
-                  className="center-disc-fallback flex flex-col items-center justify-center pointer-events-none select-none text-center"
-                  style={{ display: centerImgUrl ? 'none' : 'flex' }}
-                >
-                  <span className="text-3xl sm:text-4xl drop-shadow-sm leading-none">🐟</span>
-                  <span className="text-[9.5px] sm:text-[10.5px] font-black text-amber-900/90 tracking-wide mt-1 max-w-[85px] truncate">
-                    {currentFish?.name?.split('/')[0]?.trim() || 'Lot'}
-                  </span>
-                </div>
-              </>
-            );
-          })()}
-          <span className="absolute bottom-1 px-1.5 py-0.5 rounded-full bg-[#ea580c] text-white text-[8px] sm:text-[9px] font-black uppercase tracking-wider shadow-xs">
-            + Add Lot
-          </span>
+          {justAddedPulse ? (
+            <div className="flex flex-col items-center justify-center animate-in zoom-in-75 duration-200 text-center">
+              <CheckCircle size={34} className="text-emerald-600 drop-shadow-sm" />
+              <span className="text-[10px] font-black text-emerald-700 uppercase tracking-wider mt-1">
+                Added!
+              </span>
+            </div>
+          ) : (
+            <>
+              {(() => {
+                const centerImgUrl = formatImageUrl(currentFish?.image);
+                return (
+                  <>
+                    {centerImgUrl ? (
+                      <img
+                        src={centerImgUrl}
+                        alt={currentFish?.name || 'Fish'}
+                        className="max-w-[88%] max-h-[88%] object-contain pointer-events-none transition-transform duration-300 drop-shadow-md select-none group-hover:scale-105"
+                        onError={(e) => {
+                          e.currentTarget.style.display = 'none';
+                          const fallback = e.currentTarget.parentElement?.querySelector('.center-disc-fallback');
+                          if (fallback) fallback.style.display = 'flex';
+                        }}
+                      />
+                    ) : null}
+                    <div
+                      className="center-disc-fallback flex flex-col items-center justify-center pointer-events-none select-none text-center"
+                      style={{ display: centerImgUrl ? 'none' : 'flex' }}
+                    >
+                      <Fish size={36} className="text-amber-700 drop-shadow-sm" />
+                      <span className="text-[10px] sm:text-[11px] font-black text-amber-900/90 tracking-wide mt-1 max-w-[85px] truncate">
+                        {currentFish?.name?.split('/')[0]?.trim() || 'Lot'}
+                      </span>
+                    </div>
+                  </>
+                );
+              })()}
+            </>
+          )}
         </div>
 
         {/* ── 6 CURVED PETAL CONTENT OVERLAYS ── */}
 
-        {/* PETAL 1: Top (12 o'clock / 0°) - Grade & Weight Range */}
+        {/* PETAL 1: Top (12 o'clock / 0°) - Grade */}
         <div
           style={getCurvedSectorCenterStyle(0)}
           onClick={handleCycleGrade}
           className="no-dial-drag pointer-events-auto flex flex-col items-center justify-center text-center cursor-pointer active:scale-95 transition-transform max-w-[80px] sm:max-w-[95px]"
-          title="Tap to Cycle Size Grade (Small / Medium / Big)"
+          title="Grade"
         >
           <div className="flex items-center gap-0.5 text-purple-900 font-bold text-[8px] sm:text-[9px] uppercase tracking-wide">
             <Award size={10} className="text-purple-700" />
@@ -813,7 +875,7 @@ export default function FishIntakeOrbitalDial({
           style={getCurvedSectorCenterStyle(60)}
           onClick={handleCycleKpb}
           className="no-dial-drag pointer-events-auto flex flex-col items-center justify-center text-center cursor-pointer active:scale-95 transition-transform max-w-[80px] sm:max-w-[95px]"
-          title="Tap to Change Crate Size (40/50/60/70 Kg/Bx)"
+          title="Kg / Box"
         >
           <div className="flex items-center gap-0.5 text-sky-900 font-bold text-[8px] sm:text-[9px] uppercase tracking-wide">
             <Package size={10} className="text-sky-700" />
@@ -822,16 +884,13 @@ export default function FishIntakeOrbitalDial({
           <div className="text-[11px] sm:text-xs font-black text-sky-950 font-mono leading-tight">
             {kgPerBox} Kg
           </div>
-          <div className="text-[8px] text-sky-800/80 font-bold">
-            Tap to cycle
-          </div>
         </div>
 
         {/* PETAL 3: Bottom-Right (4 o'clock / 120°) - Boxes */}
         <div
           style={getCurvedSectorCenterStyle(120)}
           className="no-dial-drag pointer-events-auto flex flex-col items-center justify-center text-center max-w-[80px] sm:max-w-[95px]"
-          title="Crates Unloaded"
+          title="Boxes"
         >
           <div className="flex items-center gap-0.5 text-orange-900 font-bold text-[8px] sm:text-[9px] uppercase tracking-wide">
             <Boxes size={10} className="text-orange-700" />
@@ -859,9 +918,6 @@ export default function FishIntakeOrbitalDial({
               +
             </button>
           </div>
-          <div className="text-[8px] text-orange-800/80 font-bold">
-            Crates
-          </div>
         </div>
 
         {/* PETAL 4: Bottom (6 o'clock / 180°) - Scale Weight */}
@@ -869,7 +925,7 @@ export default function FishIntakeOrbitalDial({
           style={getCurvedSectorCenterStyle(180)}
           onClick={() => { setEditModalField('scaleKg'); setEditInputVal(String(scaleKg)); }}
           className="no-dial-drag pointer-events-auto flex flex-col items-center justify-center text-center cursor-pointer active:scale-95 transition-transform max-w-[85px] sm:max-w-[105px]"
-          title="Scale Net Weight (Tap to edit exact weight)"
+          title="Scale Weight"
         >
           <div className="flex items-center gap-0.5 text-amber-900 font-bold text-[8px] sm:text-[9px] uppercase tracking-wide">
             <Scale size={10} className="text-amber-700" />
@@ -878,9 +934,6 @@ export default function FishIntakeOrbitalDial({
           <div className="text-xs sm:text-sm font-black text-amber-950 font-mono leading-tight">
             {netWeightKg.toFixed(1)} <span className="text-[9px] font-semibold">Kg</span>
           </div>
-          <div className="text-[8px] text-amber-800/80 font-bold">
-            Tap to edit
-          </div>
         </div>
 
         {/* PETAL 5: Bottom-Left (8 o'clock / 240°) - Rate (₹/Kg) */}
@@ -888,7 +941,7 @@ export default function FishIntakeOrbitalDial({
           style={getCurvedSectorCenterStyle(240)}
           onClick={() => { setEditModalField('rate'); setEditInputVal(String(ratePerKg)); }}
           className="no-dial-drag pointer-events-auto flex flex-col items-center justify-center text-center cursor-pointer active:scale-95 transition-transform max-w-[80px] sm:max-w-[95px]"
-          title="Landing / Purchase Rate (Tap to edit)"
+          title="Rate"
         >
           <div className="flex items-center gap-0.5 text-rose-900 font-bold text-[8px] sm:text-[9px] uppercase tracking-wide">
             <Tag size={10} className="text-rose-700" />
@@ -897,16 +950,13 @@ export default function FishIntakeOrbitalDial({
           <div className="text-[11px] sm:text-xs font-black text-rose-950 font-mono leading-tight">
             ₹{ratePerKg}
           </div>
-          <div className="text-[8px] text-rose-800/80 font-bold">
-            per Kg
-          </div>
         </div>
 
         {/* PETAL 6: Top-Left (10 o'clock / 300°) - Total (₹) */}
         <div
           style={getCurvedSectorCenterStyle(300)}
           className="no-dial-drag pointer-events-auto flex flex-col items-center justify-center text-center max-w-[85px] sm:max-w-[105px]"
-          title="Total Cost (Scale Weight × Rate)"
+          title="Total"
         >
           <div className="flex items-center gap-0.5 text-emerald-900 font-bold text-[8px] sm:text-[9px] uppercase tracking-wide">
             <Calculator size={10} className="text-emerald-700" />
@@ -915,27 +965,14 @@ export default function FishIntakeOrbitalDial({
           <div className="text-xs sm:text-sm font-black text-emerald-950 font-mono leading-tight truncate max-w-full">
             ₹{Math.round(totalAmount).toLocaleString('en-IN')}
           </div>
-          <div className="text-[8px] text-emerald-800/80 font-bold">
-            Calculated
-          </div>
         </div>
       </div>
-
-      {/* ── BIG PRIMARY ACTION: ADD LOT BUTTON ── */}
-      <button
-        type="button"
-        onClick={handleAddCurrentLot}
-        className="w-full max-w-xs py-2 px-4 rounded-xl bg-gradient-to-r from-orange-500 to-[#ea580c] hover:from-orange-600 hover:to-orange-700 text-white font-black text-xs sm:text-sm shadow-md active:scale-95 transition-all flex items-center justify-center gap-2 cursor-pointer"
-      >
-        <Plus size={16} />
-        <span>Add Lot to Consignment (₹{Math.round(totalAmount).toLocaleString('en-IN')})</span>
-      </button>
 
       {/* Added success banner */}
       {addedSuccessToast && (
         <div className="text-xs font-bold text-emerald-800 bg-emerald-100 border border-emerald-300 px-3 py-1 rounded-full flex items-center gap-1.5 animate-in fade-in duration-150">
           <CheckCircle size={13} className="text-emerald-600" />
-          <span>Added {currentFish?.name} ({boxes} Bx • {netWeightKg.toFixed(1)} Kg)</span>
+          <span>Added {currentFish?.name?.split('/')[0]?.trim() || 'Lot'} ({boxes} Bx • {netWeightKg.toFixed(1)} Kg)</span>
         </div>
       )}
 

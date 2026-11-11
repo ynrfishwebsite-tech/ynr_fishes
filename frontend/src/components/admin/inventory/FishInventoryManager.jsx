@@ -2474,7 +2474,9 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack }) {
               <div className="flex items-center justify-between border-b border-[#fed7aa]/60 pb-2 sm:pb-3 px-1 sm:px-0">
                 <div>
                   <h2 className="text-sm sm:text-base font-extrabold text-[#1e293b] flex items-center gap-2 m-0">
-                    <span className="p-1 sm:p-1.5 bg-orange-100 text-[#ea580c] rounded-lg text-xs sm:text-sm">📍</span>
+                    <span className="p-1 sm:p-1.5 bg-orange-100 text-[#ea580c] rounded-lg text-xs sm:text-sm flex items-center justify-center">
+                      <MapPin size={16} />
+                    </span>
                     <span>Local Fish Intake / Weighment</span>
                   </h2>
                   <p className="text-[11px] sm:text-xs text-slate-500 mt-0.5 font-medium m-0 hidden sm:block">
@@ -2643,7 +2645,7 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack }) {
                         <span>Fish Items Unloaded ({localStockInForm.items.filter(it => it.itemName).length})</span>
                       </span>
 
-                      {/* View Mode Toggle: 3D Ring vs Fast Table */}
+                      {/* View Mode Toggle: 3D vs Table */}
                       <div className="inline-flex items-center p-0.5 bg-white rounded-lg border border-[#fed7aa] shadow-2xs ml-1">
                         <button
                           type="button"
@@ -2654,7 +2656,7 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack }) {
                               : 'text-slate-600 hover:text-slate-900'
                           }`}
                         >
-                          🔄 3D Ring
+                          3D
                         </button>
                         <button
                           type="button"
@@ -2665,7 +2667,7 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack }) {
                               : 'text-slate-600 hover:text-slate-900'
                           }`}
                         >
-                          📋 Table
+                          Table
                         </button>
                       </div>
                     </div>
@@ -2704,12 +2706,12 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack }) {
                       <thead className="bg-[#FDFBF7] text-slate-700 font-black border-b border-[#fed7aa]/50 text-[11px] sm:text-xs uppercase tracking-wider">
                         <tr>
                           <th className="py-2.5 px-2.5 text-center w-8">#</th>
-                          <th className="py-2.5 px-2.5 min-w-[200px]">Fish Species Variety *</th>
-                          <th className="py-2.5 px-2.5 min-w-[160px]">Grade & Weight Range</th>
+                          <th className="py-2.5 px-2.5 min-w-[200px]">Fish Variety</th>
+                          <th className="py-2.5 px-2.5 min-w-[140px]">Grade</th>
                           <th className="py-2.5 px-2.5 text-center min-w-[80px]">Boxes</th>
                           <th className="py-2.5 px-2.5 text-center min-w-[80px]">Kg / Box</th>
-                          <th className="py-2.5 px-2.5 text-center min-w-[150px]">Scale Weight (Kg + Gm)</th>
-                          <th className="py-2.5 px-2.5 text-right min-w-[90px]">Rate (₹/Kg)</th>
+                          <th className="py-2.5 px-2.5 text-center min-w-[130px]">Scale Wt (Kg)</th>
+                          <th className="py-2.5 px-2.5 text-right min-w-[90px]">Rate (₹)</th>
                           <th className="py-2.5 px-2.5 text-right min-w-[100px]">Total (₹)</th>
                           <th className="py-2.5 px-2 text-center w-10"></th>
                         </tr>
@@ -3202,7 +3204,9 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack }) {
               <div className="flex items-center justify-between border-b border-[#fed7aa]/60 pb-2 sm:pb-3 flex-wrap gap-2 px-1 sm:px-0">
                 <div>
                   <h2 className="text-sm sm:text-base font-extrabold text-[#1e293b] flex items-center gap-2 m-0">
-                    <span className="p-1 sm:p-1.5 bg-blue-100 text-blue-700 rounded-lg text-xs sm:text-sm">🌊</span>
+                    <span className="p-1 sm:p-1.5 bg-blue-100 text-blue-700 rounded-lg text-xs sm:text-sm flex items-center justify-center">
+                      <Anchor size={16} />
+                    </span>
                     <span>Dam Catch Unloading</span>
                   </h2>
                   <p className="text-[11px] sm:text-xs text-slate-500 mt-0.5 font-medium m-0 hidden sm:block">
@@ -3365,7 +3369,7 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack }) {
                         <span>Consignment Fish Varieties ({damStockInForm.tallyItems.filter(it => it.itemName).length})</span>
                       </span>
 
-                      {/* View Mode Toggle: 3D Ring vs Fast Table */}
+                      {/* View Mode Toggle: 3D vs Table */}
                       <div className="inline-flex items-center p-0.5 bg-white rounded-lg border border-[#fed7aa] shadow-2xs ml-1">
                         <button
                           type="button"
@@ -3376,7 +3380,7 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack }) {
                               : 'text-slate-600 hover:text-slate-900'
                           }`}
                         >
-                          🔄 3D Ring
+                          3D
                         </button>
                         <button
                           type="button"
@@ -3387,7 +3391,7 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack }) {
                               : 'text-slate-600 hover:text-slate-900'
                           }`}
                         >
-                          📋 Table
+                          Table
                         </button>
                       </div>
                     </div>
@@ -3426,12 +3430,12 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack }) {
                       <thead className="bg-[#FDFBF7] text-slate-700 font-black border-b border-[#fed7aa]/50 text-[11px] sm:text-xs uppercase tracking-wider">
                         <tr>
                           <th className="py-2.5 px-2.5 text-center w-8">#</th>
-                          <th className="py-2.5 px-2.5 min-w-[200px]">Fish Species Variety *</th>
-                          <th className="py-2.5 px-2.5 min-w-[160px]">Grade & Weight Range</th>
+                          <th className="py-2.5 px-2.5 min-w-[200px]">Fish Variety</th>
+                          <th className="py-2.5 px-2.5 min-w-[140px]">Grade</th>
                           <th className="py-2.5 px-2.5 text-center min-w-[80px]">Boxes</th>
                           <th className="py-2.5 px-2.5 text-center min-w-[80px]">Kg / Box</th>
-                          <th className="py-2.5 px-2.5 text-center min-w-[150px]">Scale Weight (Kg + Gm)</th>
-                          <th className="py-2.5 px-2.5 text-right min-w-[90px]">Rate (₹/Kg)</th>
+                          <th className="py-2.5 px-2.5 text-center min-w-[130px]">Scale Wt (Kg)</th>
+                          <th className="py-2.5 px-2.5 text-right min-w-[90px]">Rate (₹)</th>
                           <th className="py-2.5 px-2.5 text-right min-w-[100px]">Total (₹)</th>
                           <th className="py-2.5 px-2 text-center w-10"></th>
                         </tr>
@@ -3906,7 +3910,9 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack }) {
               <div className="flex items-center justify-between border-b border-[#fed7aa]/60 pb-3 flex-wrap gap-2 px-1 sm:px-0">
                 <div>
                   <h2 className="text-base font-extrabold text-[#1e293b] flex items-center gap-2 m-0">
-                    <span className="p-1.5 bg-emerald-100 text-emerald-700 rounded-lg">📦</span>
+                    <span className="p-1.5 bg-emerald-100 text-emerald-700 rounded-lg flex items-center justify-center">
+                      <Boxes size={16} />
+                    </span>
                     <span>Packaging & Depot Supplies Intake</span>
                   </h2>
                   <p className="text-xs text-slate-500 mt-0.5 font-medium m-0">
