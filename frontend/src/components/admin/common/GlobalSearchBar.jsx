@@ -160,7 +160,7 @@ export default function GlobalSearchBar({
     {
       id: 'retail-bill-history',
       title: 'Retail Management Hub',
-      subtitle: 'Retail Bills • CRM • Khata Book',
+      subtitle: 'CRM • Khata Book • Retail Bills',
       category: 'Billing',
       icon: FileText,
       iconColor: '#059669',
@@ -172,7 +172,7 @@ export default function GlobalSearchBar({
     {
       id: 'wholesale-bill-history',
       title: 'Wholesale Management Hub',
-      subtitle: 'Wholesale Bills • Dealers CRM • Khata Ledger',
+      subtitle: 'Dealers CRM • Khata Ledger • Wholesale Bills',
       category: 'Billing',
       icon: FileText,
       iconColor: '#d97706',
@@ -184,7 +184,7 @@ export default function GlobalSearchBar({
     {
       id: 'export-bill-history',
       title: 'Export Management Hub',
-      subtitle: 'Export Consignments • Clients CRM • Freight Khata',
+      subtitle: 'Clients CRM • Freight Khata • Export Consignments',
       category: 'Billing',
       icon: FileText,
       iconColor: '#2563eb',

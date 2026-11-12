@@ -299,7 +299,7 @@ export default function MainEntranceDashboard({
     {
       id: 'retail-bill-history',
       title: 'Retail Bills',
-      subtitle: 'Bills • CRM • Khata',
+      subtitle: 'CRM • Khata • Bills',
       category: 'Billing',
       icon: FileText,
       iconColor: '#059669',
@@ -313,7 +313,7 @@ export default function MainEntranceDashboard({
     {
       id: 'wholesale-bill-history',
       title: 'Wholesale Bills',
-      subtitle: 'Bills • CRM • Khata',
+      subtitle: 'CRM • Khata • Bills',
       category: 'Billing',
       icon: FileText,
       iconColor: '#d97706',
@@ -327,7 +327,7 @@ export default function MainEntranceDashboard({
     {
       id: 'export-bill-history',
       title: 'Export Bills',
-      subtitle: 'Bills • CRM • Khata',
+      subtitle: 'CRM • Khata • Bills',
       category: 'Billing',
       icon: FileText,
       iconColor: '#2563eb',

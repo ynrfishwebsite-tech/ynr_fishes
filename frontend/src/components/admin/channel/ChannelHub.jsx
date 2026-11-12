@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useRef, Suspense, lazy } from 'rea
 import { useLanguage } from '../../../context/LanguageContext';
 import { 
   Building, Phone, MapPin, User, Users, Clock, Calendar, 
-  CheckCircle, AlertCircle, Search, Plus, Edit2, Trash2, Eye, 
+  CheckCircle, AlertCircle, AlertTriangle, Search, Plus, Edit2, Trash2, Eye, 
   FileText, ArrowLeft, RefreshCw, Send, DollarSign, Wallet, 
   Check, X, Shield, Bell, MessageSquare, CreditCard, ChevronRight, ChevronDown, ChevronUp,
   TrendingUp, Award, Camera, Loader2, BookOpen, Sparkles, Filter,
@@ -19,7 +19,7 @@ import { QRCodeCanvas } from 'qrcode.react';
 import WhatsAppConnectModal from '../communication/WhatsAppConnectModal';
 import Toast from '../system/Toast';
 import api from '../../../api/system/axios';
-import { getCachedCustomers, fetchPredefinedCustomers, saveCustomerToCache } from '../../../api/crm/customerApi';
+import { getCachedCustomers, fetchPredefinedCustomers, saveCustomerToCache, deleteCustomer } from '../../../api/crm/customerApi';
 import { getKhataAccounts, getKhataLedger, settleKhata, sendKhataReminder } from '../../../api/finance/khata';
 import { getBills, getBillById } from '../../../api/billing/billing';
 import { getWhatsAppStatus } from '../../../api/communication/whatsapp';
@@ -43,13 +43,17 @@ export default function ChannelHub({
   user,
   onNavigate,
   onGoBack,
-  initialTab = 'bills'
+  initialTab = 'crm'
 }) {
   const { t } = useLanguage();
-  const [activeTab, setActiveTab] = useState(initialTab); // 'bills' | 'crm' | 'khata'
+  const [activeTab, setActiveTab] = useState(initialTab); // 'crm' | 'khata' | 'bills'
+  useEffect(() => {
+    setActiveTab(initialTab);
+  }, [initialTab]);
   const [toast, setToast] = useState(null);
 
   // Channel Meta Properties
+  const isAllChannels = channel === 'All';
   const channelKey = channel === 'Wholesale' ? 'Wholesale' : (channel === 'Export' ? 'Export' : 'Retail');
   const isWholesale = channelKey === 'Wholesale';
   const isExport = channelKey === 'Export';
@@ -60,10 +64,10 @@ export default function ChannelHub({
     : (isExport ? t('Export Management Hub') : t('Retail Management Hub'));
 
   const channelSubtitle = isWholesale
-    ? t('Wholesale Box Bills • Registered Dealers CRM • Khata Ledger')
+    ? t('Registered Dealers CRM • Khata Ledger • Wholesale Box Bills')
     : (isExport 
-        ? t('Export Consignment Bills • Cold Storage Clients • Freight Khata') 
-        : t('Retail Counter Bills • Customer Directory • Khata Book'));
+        ? t('Cold Storage Clients • Freight Khata • Export Consignment Bills') 
+        : t('Customer Directory • Khata Book • Retail Counter Bills'));
 
   const personRole = isWholesale ? t('Dealer') : (isExport ? t('Client') : t('Customer'));
   const personRolePlural = isWholesale ? t('Dealers') : (isExport ? t('Clients') : t('Customers'));
@@ -80,6 +84,7 @@ export default function ChannelHub({
   const [financialInsights, setFinancialInsights] = useState({
     cashSales: 0,
     upiSales: 0,
+    cardSales: 0,
     khataSales: 0,
     paidBillsCount: 0,
     unpaidBillsCount: 0,
@@ -111,6 +116,13 @@ export default function ChannelHub({
     }
   });
   const [cropperModal, setCropperModal] = useState({ isOpen: false, imageSrc: '' });
+  const [deleteConfirmModal, setDeleteConfirmModal] = useState({
+    isOpen: false,
+    customer: null,
+    dueAmount: 0,
+    confirmChecked: false,
+    loading: false
+  });
   const fileInputRef = useRef(null);
 
   // ── Khata State ─────────────────────────────────────────────────────────────
@@ -118,7 +130,11 @@ export default function ChannelHub({
   const [khataLoading, setKhataLoading] = useState(false);
   const [khataSearch, setKhataSearch] = useState('');
   const [khataFilterMode, setKhataFilterMode] = useState('all'); // 'all' | 'high' | 'recent'
-  const [khataChannelFilter, setKhataChannelFilter] = useState(() => (initialTab === 'khata' ? 'All' : channelKey));
+  const [khataChannelFilter, setKhataChannelFilter] = useState(() => (isAllChannels ? 'All' : channelKey));
+  useEffect(() => {
+    setKhataChannelFilter(isAllChannels ? 'All' : channelKey);
+  }, [isAllChannels, channelKey]);
+  const effectiveKhataChannel = isAllChannels ? khataChannelFilter : channelKey;
   const [isKhataDropdownOpen, setIsKhataDropdownOpen] = useState(false);
   const khataDropdownRef = useRef(null);
 
@@ -277,7 +293,7 @@ export default function ChannelHub({
   const loadKhataData = async () => {
     setKhataLoading(true);
     try {
-      const data = await getKhataAccounts({ page: 1, limit: 50, search: khataSearch, category: khataChannelFilter });
+      const data = await getKhataAccounts({ page: 1, limit: 50, search: khataSearch, category: effectiveKhataChannel });
       const accList = data?.accounts || [];
       setKhataAccounts(accList);
       setStats(prev => ({
@@ -295,24 +311,44 @@ export default function ChannelHub({
     if (activeTab === 'khata') {
       loadKhataData();
     }
-  }, [khataChannelFilter, khataSearch]);
+  }, [effectiveKhataChannel, khataSearch, activeTab]);
 
   // ── Load Channel Aggregate Stats & Financial Breakdown ───────────────────────
   const loadChannelStats = async () => {
     try {
-      const billsRes = await getBills({ limit: 100, salesCategory: channelKey });
-      const billsList = billsRes?.bills || [];
-      const totalSales = billsList.filter(b => b.status === 'Paid').reduce((sum, b) => sum + (Number(b.total) || 0), 0);
-      
+      let page = 1;
+      let billsList = [];
+      let totalBillsFromApi = 0;
+      while (true) {
+        const billsRes = await getBills({ page, limit: 500, salesCategory: channelKey });
+        const batch = billsRes?.bills || [];
+        billsList = billsList.concat(batch);
+        if (page === 1) {
+          totalBillsFromApi = billsRes?.pagination?.totalBills || batch.length;
+        }
+        if (!billsRes?.pagination?.hasMore || batch.length === 0 || page >= 10) break;
+        page += 1;
+      }
+
       // Calculate breakdown for insight panel
+      let totalSales = 0;
       let cash = 0;
       let upi = 0;
+      let card = 0;
       let khata = 0;
       let paidCount = 0;
       let unpaidCount = 0;
       let todaySalesSum = 0;
       let todayCount = 0;
       const todayStr = getTodayIST();
+
+      const addByMode = (modeRaw, amount) => {
+        const m = String(modeRaw || 'Cash').toLowerCase();
+        if (m.includes('card')) card += amount;
+        else if (m.includes('upi')) upi += amount;
+        else if (m.includes('khata') || m.includes('credit') || m.includes('unpaid')) khata += amount;
+        else cash += amount;
+      };
 
       billsList.forEach(b => {
         const amt = Number(b.total || 0);
@@ -324,10 +360,31 @@ export default function ChannelHub({
 
         if (b.status === 'Paid') {
           paidCount += 1;
+          totalSales += amt;
           const mode = (b.paymentMethod || b.paymentMode || 'Cash').toLowerCase();
-          if (mode.includes('upi')) upi += amt;
-          else if (mode.includes('khata') || mode.includes('credit')) khata += amt;
-          else cash += amt;
+          if ((mode.includes('mixed') || mode.includes('split')) && b.splitPayments) {
+            const sCash = Number(b.splitPayments.cash) || 0;
+            const sUpi = Number(b.splitPayments.upi) || 0;
+            const sCard = Number(b.splitPayments.card) || 0;
+            if (sCash + sUpi + sCard > 0) {
+              cash += sCash;
+              upi += sUpi;
+              card += sCard;
+            } else {
+              cash += amt;
+            }
+          } else {
+            addByMode(mode, amt);
+          }
+        } else if (b.status === 'Partial') {
+          unpaidCount += 1;
+          const partialPaid = Number(b.paidAmount ?? b.amountPaid ?? b.partialPayment?.paidAmount ?? 0);
+          const partialDue = Number(b.dueAmount ?? b.partialPayment?.dueAmount ?? Math.max(0, amt - partialPaid));
+          totalSales += partialPaid;
+          khata += partialDue;
+          if (partialPaid > 0) {
+            addByMode(b.partialPayment?.method || b.paymentMode || 'Cash', partialPaid);
+          }
         } else if (b.status === 'Unpaid') {
           unpaidCount += 1;
           khata += amt;
@@ -337,6 +394,7 @@ export default function ChannelHub({
       setFinancialInsights({
         cashSales: Math.round(cash),
         upiSales: Math.round(upi),
+        cardSales: Math.round(card),
         khataSales: Math.round(khata),
         paidBillsCount: paidCount,
         unpaidBillsCount: unpaidCount,
@@ -346,7 +404,7 @@ export default function ChannelHub({
 
       setStats(prev => ({
         ...prev,
-        totalBills: billsRes?.pagination?.totalBills || billsList.length,
+        totalBills: totalBillsFromApi || billsList.length,
         totalSales: Math.round(totalSales)
       }));
     } catch (e) {
@@ -371,7 +429,7 @@ export default function ChannelHub({
       window.removeEventListener('customersUpdated', onUpdate);
       window.removeEventListener('billCreated', onUpdate);
     };
-  }, [channelKey]);
+  }, [channelKey, isAllChannels]);
 
   // ── Match Customer Khata Balances Map ───────────────────────────────────────
   const customerDueMap = useMemo(() => {
@@ -487,6 +545,37 @@ export default function ChannelHub({
     }
   };
 
+  // ── Customer Delete Confirmation Submission ──────────────────────────────────
+  const handleConfirmDeleteCustomer = async () => {
+    const cust = deleteConfirmModal.customer;
+    if (!cust || !deleteConfirmModal.confirmChecked || deleteConfirmModal.loading) return;
+
+    setDeleteConfirmModal(prev => ({ ...prev, loading: true }));
+    try {
+      await deleteCustomer(cust.phone);
+      const cleanTarget = String(cust.phone || '').replace(/\D/g, '').slice(-10);
+      setCustomers(prev => prev.filter(c => {
+        const cp = String(c?.phone || '').replace(/\D/g, '').slice(-10);
+        return cp !== cleanTarget && c?.phone !== cust.phone;
+      }));
+      if (statementCustomer && String(statementCustomer.phone || '').replace(/\D/g, '').slice(-10) === cleanTarget) {
+        setStatementCustomer(null);
+      }
+      setDeleteConfirmModal({ isOpen: false, customer: null, dueAmount: 0, confirmChecked: false, loading: false });
+      setToast({
+        message: `${personRole} "${cust.name || cust.phone}" ${t('permanently deleted from CRM.')}`,
+        type: 'success'
+      });
+    } catch (err) {
+      console.error('Failed to delete customer:', err);
+      setToast({
+        message: err.response?.data?.message || t(`Failed to delete ${personRole.toLowerCase()}`),
+        type: 'error'
+      });
+      setDeleteConfirmModal(prev => ({ ...prev, loading: false }));
+    }
+  };
+
   // ── Open Customer Statement Drawer ───────────────────────────────────────────
   const handleOpenStatement = async (cust) => {
     setStatementCustomer(cust);
@@ -529,8 +618,11 @@ export default function ChannelHub({
     setSelectedLedgerAccount(account);
     setLedgerLoading(true);
     try {
-      const data = await getKhataLedger(account.phoneNumber);
+      const data = await getKhataLedger(account.phoneNumber, effectiveKhataChannel);
       setLedgerBills(data.bills || []);
+      if (data?.account) {
+        setSelectedLedgerAccount(prev => (prev ? { ...prev, balance: data.account.balance ?? prev.balance } : prev));
+      }
     } catch (err) {
       console.error('Failed to load ledger:', err);
       setToast({ message: t('Failed to load Khata bills'), type: 'error' });
@@ -823,18 +915,33 @@ export default function ChannelHub({
   const handleSettleSubmit = async (paymentDetails) => {
     setSubmittingPayment(true);
     try {
-      const amt = paymentTargetBill ? paymentTargetBill.total : paymentAccount.balance;
+      const targetDue = paymentTargetBill
+        ? (paymentTargetBill.status === 'Partial'
+            ? (paymentTargetBill.dueAmount ?? Math.max(0, (paymentTargetBill.total || 0) - (paymentTargetBill.paidAmount || paymentTargetBill.amountPaid || 0)))
+            : (paymentTargetBill.total || 0))
+        : (paymentAccount?.balance || 0);
+      const isPartialMode = paymentDetails.mode === 'Partial';
+      const amt = isPartialMode
+        ? Number(paymentDetails.paidAmount ?? paymentDetails.amountPaid ?? paymentDetails.partialPayment?.paidAmount ?? 0)
+        : Number(targetDue || 0);
+      const partialMethod = paymentDetails.partialPayment?.method || 'Cash';
+      const upiApp = isPartialMode
+        ? (paymentDetails.partialPayment?.upiApp || paymentDetails.upiApp)
+        : paymentDetails.upiApp;
+
       await settleKhata({
         phoneNumber: paymentAccount.phoneNumber,
         amount: amt,
         paymentMode: paymentDetails.mode || 'Cash',
         splitPayments: paymentDetails.splitPayments,
-        upiApp: paymentDetails.upiApp,
-        note: `Settlement for ${channelKey} Khata via ${paymentDetails.mode}`,
-        targetBillId: paymentTargetBill?._id
+        upiApp,
+        partialMethod,
+        note: `Settlement for ${effectiveKhataChannel} Khata via ${isPartialMode ? `Partial (${partialMethod})` : paymentDetails.mode}`,
+        targetBillId: paymentTargetBill?._id,
+        category: effectiveKhataChannel
       });
 
-      setToast({ message: `Payment of ₹${amt} settled successfully!`, type: 'success' });
+      setToast({ message: `Payment of ₹${amt.toLocaleString()} settled successfully!`, type: 'success' });
       setPaymentModalOpen(false);
       setPaymentAccount(null);
       setPaymentTargetBill(null);
@@ -979,34 +1086,60 @@ export default function ChannelHub({
           </div>
         </div>
 
-        {/* ── 4 KPI CARDS (Compact Live Channel Snapshot) ── */}
+        {/* ── 4 KPI CARDS (Compact Live Channel Snapshot — Clickable Tab Shortcuts) ── */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 mt-2 pt-2 border-t border-border/60">
-          <div className="p-2 bg-background rounded-xl border border-border shadow-2xs">
+          <button
+            type="button"
+            onClick={() => setActiveTab('bills')}
+            className={`p-2 bg-background rounded-xl border shadow-2xs text-left cursor-pointer transition-all hover:border-[#ea580c]/60 hover:shadow-xs active:scale-[0.99] ${
+              activeTab === 'bills' ? 'border-emerald-400 ring-1 ring-emerald-400/30' : 'border-border'
+            }`}
+            title={t('Open Bills & History')}
+          >
             <span className="text-[9.5px] font-bold text-text-muted uppercase tracking-wider block">{t('Total Revenue')}</span>
             <span className="text-sm font-black text-emerald-700 font-mono">₹{stats.totalSales.toLocaleString()}</span>
-          </div>
-          <div className="p-2 bg-background rounded-xl border border-border shadow-2xs">
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('bills')}
+            className={`p-2 bg-background rounded-xl border shadow-2xs text-left cursor-pointer transition-all hover:border-[#ea580c]/60 hover:shadow-xs active:scale-[0.99] ${
+              activeTab === 'bills' ? 'border-[#ea580c]/60 ring-1 ring-[#ea580c]/20' : 'border-border'
+            }`}
+            title={t('Open Bills & History')}
+          >
             <span className="text-[9.5px] font-bold text-text-muted uppercase tracking-wider block">{t('Total Bills')}</span>
             <span className="text-sm font-black text-text-main font-mono">{stats.totalBills}</span>
-          </div>
-          <div className="p-2 bg-background rounded-xl border border-border shadow-2xs">
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('crm')}
+            className={`p-2 bg-background rounded-xl border shadow-2xs text-left cursor-pointer transition-all hover:border-[#ea580c]/60 hover:shadow-xs active:scale-[0.99] ${
+              activeTab === 'crm' ? 'border-[#ea580c]/60 ring-1 ring-[#ea580c]/20' : 'border-border'
+            }`}
+            title={t(`Open ${personRolePlural} CRM`)}
+          >
             <span className="text-[9.5px] font-bold text-text-muted uppercase tracking-wider block">{personRolePlural}</span>
             <span className="text-sm font-black text-text-main font-mono">{filteredCustomers.length}</span>
-          </div>
-          <div className={`p-2 rounded-xl border shadow-2xs ${
-            stats.totalDues > 0 ? 'bg-rose-50 border-rose-300' : 'bg-background border-border'
-          }`}>
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('khata')}
+            className={`p-2 rounded-xl border shadow-2xs text-left cursor-pointer transition-all hover:border-rose-400 hover:shadow-xs active:scale-[0.99] ${
+              stats.totalDues > 0 ? 'bg-rose-50 border-rose-300' : 'bg-background border-border'
+            } ${activeTab === 'khata' ? 'ring-1 ring-rose-400/40' : ''}`}
+            title={t('Open Khata & Dues')}
+          >
             <span className="text-[9.5px] font-bold text-rose-700 uppercase tracking-wider block">{t('Market Dues (Khata)')}</span>
             <span className="text-sm font-black text-rose-700 font-mono">₹{stats.totalDues.toLocaleString()}</span>
-          </div>
+          </button>
         </div>
 
         {/* ── 3 UNIFIED NAVIGATION TABS ── */}
         <div className="flex items-center gap-1.5 mt-2 pt-1 overflow-x-auto no-scrollbar">
           {[
-            { id: 'bills', label: t('Bills & History'), icon: FileText, count: stats.totalBills },
             { id: 'crm', label: `${personRolePlural} CRM`, icon: Users, count: filteredCustomers.length },
-            { id: 'khata', label: t('Khata & Dues'), icon: BookOpen, count: khataAccounts.length }
+            { id: 'khata', label: t('Khata & Dues'), icon: BookOpen, count: khataAccounts.length },
+            { id: 'bills', label: t('Bills & History'), icon: FileText, count: stats.totalBills }
           ].map(tab => {
             const Icon = tab.icon;
             const isActive = activeTab === tab.id;
@@ -1249,7 +1382,7 @@ export default function ChannelHub({
                             </div>
                           </div>
 
-                          {/* Card Footer: Statement Drawer + Edit */}
+                          {/* Card Footer: Statement Drawer + Edit + Delete */}
                           <div className="pt-2 border-t border-border/60 flex items-center justify-between gap-2">
                             <button
                               type="button"
@@ -1283,6 +1416,20 @@ export default function ChannelHub({
                             >
                               <Edit2 size={13} />
                             </button>
+                            <button
+                              type="button"
+                              onClick={() => setDeleteConfirmModal({
+                                isOpen: true,
+                                customer: cust,
+                                dueAmount: due,
+                                confirmChecked: false,
+                                loading: false
+                              })}
+                              className="p-1.5 bg-rose-50 hover:bg-rose-600 text-rose-600 hover:text-white border border-rose-200 hover:border-rose-600 rounded-xl cursor-pointer transition-all shrink-0"
+                              title={t(`Delete ${personRole.toLowerCase()}`)}
+                            >
+                              <Trash2 size={13} />
+                            </button>
                           </div>
                         </div>
                       );
@@ -1297,28 +1444,30 @@ export default function ChannelHub({
           {activeTab === 'khata' && (
             <div className="h-full flex flex-col overflow-hidden p-2.5">
               
-              {/* Channel Filter Pills: All | Wholesale | Retail | Export */}
-              <div className="shrink-0 flex items-center gap-1.5 overflow-x-auto pb-1 mb-1.5">
-                {[
-                  { id: 'All', label: t('All Debtors') },
-                  { id: 'Wholesale', label: t('Wholesale') },
-                  { id: 'Retail', label: t('Retail') },
-                  { id: 'Export', label: t('Export') }
-                ].map(pill => (
-                  <button
-                    key={pill.id}
-                    type="button"
-                    onClick={() => setKhataChannelFilter(pill.id)}
-                    className={`px-3 py-1 rounded-lg text-xs font-bold transition-all shrink-0 cursor-pointer ${
-                      khataChannelFilter === pill.id
-                        ? 'bg-[#ea580c] text-white shadow-xs'
-                        : 'bg-surface border border-border text-text-muted hover:text-text-main hover:bg-surface-hover'
-                    }`}
-                  >
-                    {pill.label}
-                  </button>
-                ))}
-              </div>
+              {/* Channel Filter Pills: All | Wholesale | Retail | Export (only in standalone All-Channels Khata page) */}
+              {isAllChannels && (
+                <div className="shrink-0 flex items-center gap-1.5 overflow-x-auto pb-1 mb-1.5">
+                  {[
+                    { id: 'All', label: t('All Debtors') },
+                    { id: 'Wholesale', label: t('Wholesale') },
+                    { id: 'Retail', label: t('Retail') },
+                    { id: 'Export', label: t('Export') }
+                  ].map(pill => (
+                    <button
+                      key={pill.id}
+                      type="button"
+                      onClick={() => setKhataChannelFilter(pill.id)}
+                      className={`px-3 py-1 rounded-lg text-xs font-bold transition-all shrink-0 cursor-pointer ${
+                        khataChannelFilter === pill.id
+                          ? 'bg-[#ea580c] text-white shadow-xs'
+                          : 'bg-surface border border-border text-text-muted hover:text-text-main hover:bg-surface-hover'
+                      }`}
+                    >
+                      {pill.label}
+                    </button>
+                  ))}
+                </div>
+              )}
 
               {/* HYBRID SEARCH-SELECT COMBOBOX BAR */}
               <div className="shrink-0 mb-2 space-y-2">
@@ -1479,7 +1628,7 @@ export default function ChannelHub({
                             </div>
                           </div>
 
-                          {/* ACTION ROW: COMPACT ICON-ONLY WHATSAPP BUTTON + SETTLE + LEDGER */}
+                          {/* ACTION ROW: COMPACT ICON-ONLY WHATSAPP BUTTON + SINGLE VIEW & SETTLE BUTTON */}
                           <div className="pt-2 border-t border-border/60 flex items-center gap-1.5 mt-1">
                             {/* SMALL ICON-ONLY WHATSAPP BUTTON (Direct Background Dispatch) */}
                             <button
@@ -1496,28 +1645,14 @@ export default function ChannelHub({
                               )}
                             </button>
 
-                            {/* SETTLE DUES BUTTON */}
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setPaymentAccount(account);
-                                setPaymentTargetBill(null);
-                                setPaymentModalOpen(true);
-                              }}
-                              className="flex-1 py-1.5 px-2 bg-gradient-to-r from-[#ea580c] to-[#c2410c] hover:from-[#c2410c] hover:to-[#9a3412] text-white rounded-xl text-xs font-black shadow-xs cursor-pointer active:scale-95 transition-all flex items-center justify-center gap-1.5"
-                            >
-                              <CreditCard size={12} />
-                              <span>{t('Settle Dues')}</span>
-                            </button>
-
-                            {/* LEDGER BUTTON */}
+                            {/* SINGLE VIEW & SETTLE BUTTON */}
                             <button
                               type="button"
                               onClick={() => handleOpenLedger(account)}
-                              className="w-8 h-8 rounded-xl bg-surface hover:bg-surface-hover text-text-muted hover:text-text-main border border-border flex items-center justify-center cursor-pointer transition-all shrink-0"
-                              title={t('View Full Ledger')}
+                              className="flex-1 py-1.5 px-2.5 bg-gradient-to-r from-[#ea580c] to-[#c2410c] hover:from-[#c2410c] hover:to-[#9a3412] text-white rounded-xl text-xs font-black shadow-xs cursor-pointer active:scale-95 transition-all flex items-center justify-center gap-1.5"
                             >
-                              <BookOpen size={12} />
+                              <CreditCard size={12} />
+                              <span>{t('View & Settle')}</span>
                             </button>
                           </div>
                         </div>
@@ -1565,7 +1700,7 @@ export default function ChannelHub({
             })()}
 
             {/* Payment Modes Split */}
-            <div className="grid grid-cols-2 gap-1.5 pt-1 text-[11px] font-mono">
+            <div className="grid grid-cols-3 gap-1.5 pt-1 text-[11px] font-mono">
               <div className="p-2 bg-background rounded-xl border border-border">
                 <span className="text-[9.5px] font-bold text-text-muted uppercase block">{t('Cash Sales')}</span>
                 <span className="font-black text-text-main">₹{financialInsights.cashSales.toLocaleString()}</span>
@@ -1573,6 +1708,10 @@ export default function ChannelHub({
               <div className="p-2 bg-background rounded-xl border border-border">
                 <span className="text-[9.5px] font-bold text-text-muted uppercase block">{t('UPI Sales')}</span>
                 <span className="font-black text-text-main">₹{financialInsights.upiSales.toLocaleString()}</span>
+              </div>
+              <div className="p-2 bg-background rounded-xl border border-border">
+                <span className="text-[9.5px] font-bold text-text-muted uppercase block">{t('Card Sales')}</span>
+                <span className="font-black text-text-main">₹{financialInsights.cardSales.toLocaleString()}</span>
               </div>
             </div>
           </div>
@@ -2080,24 +2219,30 @@ export default function ChannelHub({
                         <Eye size={12} />
                         <span>{t('View Bill')}</span>
                       </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const acc = selectedLedgerAccount;
-                          setSelectedLedgerAccount(null);
-                          setPaymentAccount(acc);
-                          setPaymentTargetBill(b);
-                          setPaymentModalOpen(true);
-                        }}
-                        className="px-2.5 py-1 bg-[#ea580c] hover:bg-[#c2410c] text-white rounded-lg font-bold text-[11px] cursor-pointer transition-colors shadow-2xs"
-                      >
-                        {t('Pay Bill')}
-                      </button>
                     </div>
                   </div>
                 ))
               )}
             </div>
+
+            {(selectedLedgerAccount.balance || 0) > 0 && (
+              <div className="p-3.5 border-t border-border bg-background shrink-0">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const acc = selectedLedgerAccount;
+                    setSelectedLedgerAccount(null);
+                    setPaymentAccount(acc);
+                    setPaymentTargetBill(null);
+                    setPaymentModalOpen(true);
+                  }}
+                  className="w-full py-2.5 px-4 bg-gradient-to-r from-[#ea580c] to-[#c2410c] hover:from-[#c2410c] hover:to-[#9a3412] text-white rounded-xl text-xs font-black shadow-md cursor-pointer active:scale-95 transition-all flex items-center justify-center gap-2"
+                >
+                  <CreditCard size={14} />
+                  <span>{t('Settle Full Amount')} (₹{(selectedLedgerAccount.balance || 0).toLocaleString()})</span>
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -2317,13 +2462,20 @@ export default function ChannelHub({
       {/* ── CENTRALIZED PAYMENT MODAL (SETTLE KHATA) ── */}
       {paymentModalOpen && paymentAccount && (
         <PaymentModal
-          total={Number(paymentTargetBill ? paymentTargetBill.total : (paymentAccount?.balance || 0))}
+          total={Number(
+            paymentTargetBill
+              ? (paymentTargetBill.status === 'Partial'
+                  ? (paymentTargetBill.dueAmount ?? Math.max(0, (paymentTargetBill.total || 0) - (paymentTargetBill.paidAmount || paymentTargetBill.amountPaid || 0)))
+                  : (paymentTargetBill.total || 0))
+              : (paymentAccount?.balance || 0)
+          )}
           billNumber={paymentTargetBill ? paymentTargetBill.billNumber : `KHATA-${paymentAccount._id || paymentAccount.phoneNumber}`}
           tableNo={paymentTargetBill ? (paymentTargetBill.tableNo || '') : ''}
           customerPhone={paymentAccount?.phoneNumber || ''}
           customerName={paymentAccount?.customerName || 'Customer'}
           isLoading={submittingPayment}
           hideUnpaid={true}
+          allowPartial={true}
           onClose={() => {
             setPaymentModalOpen(false);
             setPaymentAccount(null);
@@ -2803,6 +2955,152 @@ export default function ChannelHub({
           }}
         />
       )}
+
+      {/* ── CRM DELETE STRONG WARNING CONFIRMATION MODAL ── */}
+      {deleteConfirmModal.isOpen && deleteConfirmModal.customer && (() => {
+        const target = deleteConfirmModal.customer;
+        const dueAmt = Number(deleteConfirmModal.dueAmount || 0);
+        return (
+          <div className="fixed inset-0 bg-black/70 backdrop-blur-xs z-[999999] flex items-center justify-center p-3 sm:p-4 animate-fade-in">
+            <div className="bg-surface border-2 border-rose-300 rounded-3xl w-full max-w-md overflow-hidden shadow-2xl flex flex-col animate-slide-up">
+              {/* Danger Header */}
+              <div className="p-4 bg-gradient-to-r from-rose-600 to-red-700 text-white flex items-start justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-2xl bg-white/15 border border-white/25 flex items-center justify-center shrink-0">
+                    <AlertTriangle size={20} className="text-amber-200 animate-pulse" />
+                  </div>
+                  <div>
+                    <span className="inline-block px-2 py-0.5 rounded-md bg-black/25 text-[9.5px] font-black uppercase tracking-widest mb-1">
+                      {t('Danger Zone • Irreversible')}
+                    </span>
+                    <h3 className="font-black text-base leading-tight">
+                      {t(`Delete ${personRole} Permanently?`)}
+                    </h3>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  disabled={deleteConfirmModal.loading}
+                  onClick={() => setDeleteConfirmModal({ isOpen: false, customer: null, dueAmount: 0, confirmChecked: false, loading: false })}
+                  className="p-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-white cursor-pointer transition-colors disabled:opacity-50"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+
+              <div className="p-4 space-y-3 text-xs">
+                {/* Target Customer / Dealer / Client Card */}
+                <div className="p-3 bg-background rounded-2xl border border-border space-y-2.5">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      {target.photo ? (
+                        <img src={target.photo} alt={target.name} className="w-10 h-10 rounded-full object-cover border-2 border-rose-300 shrink-0" />
+                      ) : (
+                        <div className="w-10 h-10 rounded-full bg-rose-100 text-rose-800 font-black text-sm flex items-center justify-center shrink-0 border border-rose-200">
+                          {(target.name || 'C').charAt(0).toUpperCase()}
+                        </div>
+                      )}
+                      <div className="min-w-0">
+                        <div className="font-black text-sm text-text-main truncate">{target.name || 'Guest'}</div>
+                        {target.businessName && (
+                          <div className="text-[10.5px] text-text-muted truncate">{target.businessName}</div>
+                        )}
+                        <div className="text-[11px] font-mono font-bold text-slate-600 flex items-center gap-1">
+                          <Phone size={10} className="text-rose-600 shrink-0" />
+                          <span>{target.phone}</span>
+                        </div>
+                      </div>
+                    </div>
+                    <span className="px-2 py-0.5 rounded-md text-[9.5px] font-black uppercase tracking-wider bg-rose-50 text-rose-700 border border-rose-200 shrink-0">
+                      {channelKey}
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-1.5 pt-2 border-t border-border/70 text-center">
+                    <div className="p-1.5 bg-surface rounded-xl border border-border/70">
+                      <span className="text-[9px] font-bold text-text-muted uppercase block">{t('Orders')}</span>
+                      <span className="font-mono font-black text-text-main">{target.totalVisits || 0}</span>
+                    </div>
+                    <div className="p-1.5 bg-surface rounded-xl border border-border/70">
+                      <span className="text-[9px] font-bold text-text-muted uppercase block">{t('Total Spend')}</span>
+                      <span className="font-mono font-black text-emerald-700">₹{Number(target.totalSpend || 0).toLocaleString()}</span>
+                    </div>
+                    <div className={`p-1.5 rounded-xl border ${dueAmt > 0 ? 'bg-rose-50 border-rose-300' : 'bg-surface border-border/70'}`}>
+                      <span className="text-[9px] font-bold text-text-muted uppercase block">{t('Khata Due')}</span>
+                      <span className={`font-mono font-black ${dueAmt > 0 ? 'text-rose-700' : 'text-slate-500'}`}>
+                        {dueAmt > 0 ? `₹${dueAmt.toLocaleString()}` : t('Clear')}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Strong Warning Box */}
+                <div className="p-3 rounded-2xl bg-rose-50 border-2 border-rose-300 text-rose-950 space-y-1.5">
+                  <div className="flex items-center gap-1.5 font-black text-rose-700 text-xs uppercase tracking-wide">
+                    <Shield size={14} className="shrink-0" />
+                    <span>{t('Strong Warning — Permanent Removal')}</span>
+                  </div>
+                  <ul className="space-y-1 text-[11px] font-semibold text-rose-900 list-disc pl-4 leading-snug">
+                    <li>{t(`This ${personRole.toLowerCase()} profile, saved address, photo, and CRM loyalty summary will be permanently erased.`)}</li>
+                    <li>{t('This action cannot be undone once confirmed.')}</li>
+                    {dueAmt > 0 && (
+                      <li className="font-black text-red-700">
+                        {t('ACTIVE KHATA BALANCE DETECTED:')} ₹{dueAmt.toLocaleString()} {t('is still unpaid! Existing bills & Khata dues stay in ledger records, but this CRM link will be lost.')}
+                      </li>
+                    )}
+                  </ul>
+                </div>
+
+                {/* Explicit Confirmation Checkbox */}
+                <label className="flex items-start gap-2.5 p-2.5 rounded-xl bg-background border border-border hover:border-rose-300 cursor-pointer select-none transition-colors">
+                  <input
+                    type="checkbox"
+                    checked={deleteConfirmModal.confirmChecked}
+                    disabled={deleteConfirmModal.loading}
+                    onChange={(e) => setDeleteConfirmModal(prev => ({ ...prev, confirmChecked: e.target.checked }))}
+                    className="mt-0.5 w-4 h-4 accent-rose-600 rounded cursor-pointer shrink-0"
+                  />
+                  <span className="text-[11px] font-bold text-text-main leading-snug">
+                    {t('I understand this is permanent and want to delete')}{' '}
+                    <span className="text-rose-700 font-black">"{target.name || target.phone}"</span>{' '}
+                    {t(`from ${channelKey} CRM.`)}
+                  </span>
+                </label>
+
+                {/* Actions */}
+                <div className="flex items-center gap-2 pt-1">
+                  <button
+                    type="button"
+                    disabled={deleteConfirmModal.loading}
+                    onClick={() => setDeleteConfirmModal({ isOpen: false, customer: null, dueAmount: 0, confirmChecked: false, loading: false })}
+                    className="flex-1 py-2.5 bg-background border border-border text-text-main hover:bg-surface-hover rounded-xl font-bold text-xs cursor-pointer transition-colors disabled:opacity-50"
+                  >
+                    {t('Cancel, Keep Record')}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={!deleteConfirmModal.confirmChecked || deleteConfirmModal.loading}
+                    onClick={handleConfirmDeleteCustomer}
+                    className="flex-1 py-2.5 bg-rose-600 hover:bg-rose-700 disabled:bg-rose-300 text-white rounded-xl font-black text-xs flex items-center justify-center gap-1.5 shadow-md shadow-rose-600/20 cursor-pointer disabled:cursor-not-allowed active:scale-95 transition-all"
+                  >
+                    {deleteConfirmModal.loading ? (
+                      <>
+                        <Loader2 size={13} className="animate-spin" />
+                        <span>{t('Deleting...')}</span>
+                      </>
+                    ) : (
+                      <>
+                        <Trash2 size={13} />
+                        <span>{t('Delete Permanently')}</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }

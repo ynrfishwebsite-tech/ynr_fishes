@@ -38,6 +38,43 @@ export const saveCustomerToCache = (newCustomer) => {
 };
 
 /**
+ * Remove a deleted customer from local CRM cache immediately
+ * and dispatch window event so open views stay synchronized
+ */
+export const removeCustomerFromCache = (phone) => {
+  if (!phone) return;
+  try {
+    const cleanPhone = String(phone).replace(/\D/g, '').slice(-10);
+    const raw = localStorage.getItem(CRM_CACHE_KEY);
+    if (raw) {
+      const list = JSON.parse(raw);
+      if (Array.isArray(list)) {
+        const filtered = list.filter(c => {
+          const p = String(c?.phone || '').replace(/\D/g, '').slice(-10);
+          return p !== cleanPhone && String(c?.phone || '') !== String(phone);
+        });
+        localStorage.setItem(CRM_CACHE_KEY, JSON.stringify(filtered));
+      }
+    }
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('customersUpdated', { detail: { deletedPhone: cleanPhone } }));
+    }
+  } catch (e) {
+    console.warn('Failed to remove customer from cache:', e);
+  }
+};
+
+/**
+ * Permanently delete a CRM customer/dealer/client by phone
+ */
+export const deleteCustomer = async (phone) => {
+  const cleanPhone = String(phone || '').replace(/\D/g, '').slice(-10) || String(phone || '').trim();
+  const res = await api.delete(`/customers/${encodeURIComponent(cleanPhone)}`);
+  removeCustomerFromCache(cleanPhone);
+  return res.data;
+};
+
+/**
  * Merge an array of customers into local CRM cache by clean phone
  */
 export const updateAllCustomersCache = (incomingList) => {

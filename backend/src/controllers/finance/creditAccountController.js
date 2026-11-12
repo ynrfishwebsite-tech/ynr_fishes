@@ -216,13 +216,18 @@ export const getKhataLedger = async (req, res) => {
     const Bill = getTenantModel(req, 'Bill', BillDefault);
 
     const { phoneNumber } = req.params;
+    const category = (req.query.category || '').trim();
     const cleanPhone = String(phoneNumber).replace(/\D/g, '').slice(-10);
 
     // Get all Unpaid and Partial Khata bills for this customer with complete itemized data
-    const bills = await Bill.find({
+    const billQuery = {
       customerPhone: { $regex: cleanPhone, $options: 'i' },
       status: { $in: ['Unpaid', 'Partial'] }
-    })
+    };
+    if (category && category !== 'All') {
+      billQuery.customerCategory = category;
+    }
+    const bills = await Bill.find(billQuery)
       .sort({ createdAt: -1 })
       .lean();
 
@@ -301,7 +306,7 @@ export const settleKhataPayment = async (req, res) => {
   try {
     const CreditAccount = getTenantModel(req, 'CreditAccount', CreditAccountDefault);
     const Bill = getTenantModel(req, 'Bill', BillDefault);
-    const { phoneNumber, amount, paymentMode = 'Cash', splitPayments, upiApp, note, targetBillId } = req.body;
+    const { phoneNumber, amount, paymentMode = 'Cash', splitPayments, upiApp, partialMethod = 'Cash', note, targetBillId, category } = req.body;
 
     if (!phoneNumber || !amount || isNaN(amount) || Number(amount) <= 0) {
       return res.status(400).json({ message: 'Valid phoneNumber and amount are required' });
@@ -311,10 +316,14 @@ export const settleKhataPayment = async (req, res) => {
     const paidAmount = Number(amount);
 
     // ── Step 1: Fetch all genuine unpaid & partial Khata bills for this customer ──
-    const unpaidBills = await Bill.find({
+    const unpaidFilter = {
       customerPhone: { $regex: cleanPhone, $options: 'i' },
       status: { $in: ['Unpaid', 'Partial'] }
-    }).sort({ createdAt: 1 }); // oldest first default
+    };
+    if (category && category !== 'All') {
+      unpaidFilter.customerCategory = category;
+    }
+    const unpaidBills = await Bill.find(unpaidFilter).sort({ createdAt: 1 }); // oldest first default
 
     const getBillDue = (b) => {
       if (b.status === 'Partial') {
@@ -331,17 +340,18 @@ export const settleKhataPayment = async (req, res) => {
     
     const clearedBillIds = [];
     const now = new Date();
+    const resolvedFinalMode = paymentMode === 'Partial' ? (partialMethod || 'Cash') : paymentMode;
 
     const applyPaymentToBill = (tBill) => {
       tBill.status = 'Paid';
-      tBill.paymentMode = paymentMode;
+      tBill.paymentMode = resolvedFinalMode;
       tBill.amountPaid = tBill.total;
       tBill.paidAmount = tBill.total;
       tBill.dueAmount = 0;
       tBill.clearedAt = now;
       if (upiApp) tBill.upiApp = upiApp;
 
-      if (paymentMode === 'Mixed') {
+      if (resolvedFinalMode === 'Mixed') {
         let bTotal = tBill.total;
         tBill.splitPayments = { cash: 0, upi: 0, card: 0 };
         
@@ -361,6 +371,31 @@ export const settleKhataPayment = async (req, res) => {
       }
     };
 
+    const applyPartialToBill = (tBill, payAmt) => {
+      const prevPaid = tBill.status === 'Partial'
+        ? Number(tBill.paidAmount ?? tBill.amountPaid ?? tBill.partialPayment?.paidAmount ?? 0)
+        : 0;
+      const newPaid = Math.min(Number(tBill.total || 0), Number((prevPaid + payAmt).toFixed(2)));
+      const newDue = Math.max(0, Number(((tBill.total || 0) - newPaid).toFixed(2)));
+      if (newDue <= 0.01) {
+        applyPaymentToBill(tBill);
+        clearedBillIds.push(tBill._id);
+        return;
+      }
+      tBill.status = 'Partial';
+      tBill.paymentMode = 'Partial';
+      tBill.paidAmount = newPaid;
+      tBill.amountPaid = newPaid;
+      tBill.dueAmount = newDue;
+      tBill.partialPayment = {
+        paidAmount: newPaid,
+        dueAmount: newDue,
+        method: partialMethod || (paymentMode !== 'Partial' ? paymentMode : 'Cash'),
+        upiApp: upiApp || tBill.partialPayment?.upiApp
+      };
+      if (upiApp) tBill.upiApp = upiApp;
+    };
+
     // If a specific target bill was provided (Clear Due on single row), process that first
     if (targetBillId) {
       const targetBillIndex = unpaidBills.findIndex(b => b._id.toString() === targetBillId);
@@ -373,6 +408,11 @@ export const settleKhataPayment = async (req, res) => {
           remaining -= bDue;
           clearedBillIds.push(tBill._id);
           unpaidBills.splice(targetBillIndex, 1); // Remove from list so we don't process it again
+        } else if (remaining > 0) {
+          applyPartialToBill(tBill, remaining);
+          await tBill.save();
+          remaining = 0;
+          unpaidBills.splice(targetBillIndex, 1);
         }
       }
     }
@@ -386,6 +426,10 @@ export const settleKhataPayment = async (req, res) => {
         await bill.save();
         remaining -= bDue;
         clearedBillIds.push(bill._id);
+      } else if (remaining > 0) {
+        applyPartialToBill(bill, remaining);
+        await bill.save();
+        remaining = 0;
       }
     }
 

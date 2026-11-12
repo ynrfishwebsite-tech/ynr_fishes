@@ -26,7 +26,8 @@ const PaymentModal = ({
   isLoading,
   onClose,
   onComplete,
-  hideUnpaid = false
+  hideUnpaid = false,
+  allowPartial = false
 }) => {
   const { t } = useLanguage();
   const [mode, setMode] = useState('Cash');
@@ -84,9 +85,11 @@ const PaymentModal = ({
   };
 
 
-  const paymentModes = ['Cash', 'UPI', 'Card', 'Mixed', 'Partial', 'Unpaid'].filter(
-    (m) => !(hideUnpaid && (m === 'Unpaid' || m === 'Partial'))
-  );
+  const paymentModes = ['Cash', 'UPI', 'Card', 'Mixed', 'Partial', 'Unpaid'].filter((m) => {
+    if (hideUnpaid && m === 'Unpaid') return false;
+    if (hideUnpaid && m === 'Partial' && !allowPartial) return false;
+    return true;
+  });
 
   return (
     <div className="fixed inset-0 bg-black/80 backdrop-blur-xs flex items-center justify-center z-[99999] p-1.5 sm:p-4 overflow-y-auto">
@@ -124,7 +127,13 @@ const PaymentModal = ({
             <label className="text-[11px] sm:text-xs font-semibold text-text-muted mb-1.5 block uppercase tracking-wider">
               {t("Select Payment Mode")}
             </label>
-            <div className="grid grid-cols-3 sm:grid-cols-6 gap-1 sm:gap-1.5">
+            <div className={`grid gap-1 sm:gap-1.5 ${
+              paymentModes.length === 4
+                ? 'grid-cols-2 sm:grid-cols-4'
+                : paymentModes.length === 5
+                ? 'grid-cols-3 sm:grid-cols-5'
+                : 'grid-cols-3 sm:grid-cols-6'
+            }`}>
               {paymentModes.map((m) => (
                 <button
                   key={m}

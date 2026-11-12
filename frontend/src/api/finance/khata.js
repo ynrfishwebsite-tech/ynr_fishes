@@ -11,21 +11,25 @@ export const getKhataAccounts = async ({ page = 1, limit = 20, search = '', cate
 };
 
 // GET ledger (unpaid bills + transaction history) for a customer by phone
-export const getKhataLedger = async (phoneNumber) => {
-  const response = await api.get(`/credit-accounts/khata/${phoneNumber}/ledger`);
+export const getKhataLedger = async (phoneNumber, category = 'All') => {
+  const params = {};
+  if (category && category !== 'All') params.category = category;
+  const response = await api.get(`/credit-accounts/khata/${phoneNumber}/ledger`, { params });
   return response.data;
 };
 
 // POST settle a payment against a Khata account
-export const settleKhata = async ({ phoneNumber, amount, paymentMode, splitPayments, upiApp, note, targetBillId }) => {
+export const settleKhata = async ({ phoneNumber, amount, paymentMode, splitPayments, upiApp, partialMethod, note, targetBillId, category }) => {
   const response = await api.post('/credit-accounts/khata/settle', {
     phoneNumber,
     amount,
     paymentMode,
     splitPayments,
     upiApp,
+    partialMethod,
     note,
-    targetBillId
+    targetBillId,
+    category
   });
   return response.data;
 };
