@@ -156,6 +156,9 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack, initi
   const [message, setMessage] = useState({ text: '', type: '' });
   const [inwardInvoiceModal, setInwardInvoiceModal] = useState(null);
 
+  // Multi-Bill Selection & Combine Invoice State
+  const [selectedBillKeys, setSelectedBillKeys] = useState([]);
+
   // Local Stock-In Form State (Multi-fish + Boxes support)
   const [localStockInForm, setLocalStockInForm] = useState({
     supplierName: '',
@@ -175,6 +178,13 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack, initi
     },
     customSettlements: [],
     paymentMode: 'Cash',
+    paidAmount: '',
+    dueAmount: 0,
+    partialPaid: '',
+    partialMethod: 'Cash',
+    splitPayments: { cash: '', upi: '', bank: '', cheque: '' },
+    chequeDetails: { chequeNumber: '', bankName: '', chequeDate: '' },
+    bankDetails: { transactionId: '', bankName: '' },
     notes: ''
   });
 
@@ -199,6 +209,14 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack, initi
       festivalExpense: { label: '5) Other Expense', type: 'Dr', amount: '', isLocked: true }
     },
     customSettlements: [],
+    paymentMode: 'Cash',
+    paidAmount: '',
+    dueAmount: 0,
+    partialPaid: '',
+    partialMethod: 'Cash',
+    splitPayments: { cash: '', upi: '', bank: '', cheque: '' },
+    chequeDetails: { chequeNumber: '', bankName: '', chequeDate: '' },
+    bankDetails: { transactionId: '', bankName: '' },
     notes: ''
   });
 
@@ -312,6 +330,7 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack, initi
 
   const handleAddLocalLotFromDial = useCallback((lotPayload) => {
     setLocalStockInForm(prev => {
+      const activeDate = prev.items[prev.items.length - 1]?.date || new Date().toISOString().slice(0, 16);
       const isFirstItemEmpty = prev.items.length === 1 && (!prev.items[0].menuItemId || !prev.items[0].itemName);
       const newLot = {
         id: Date.now(),
@@ -325,7 +344,7 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack, initi
         kg: String(lotPayload.kg || 0),
         grams: String(lotPayload.grams || 0),
         ratePerKg: String(lotPayload.ratePerKg || 0),
-        date: lotPayload.date || new Date().toISOString().slice(0, 16),
+        date: lotPayload.date || activeDate,
         weighMode: lotPayload.weighMode || 'kg'
       };
       if (isFirstItemEmpty) {
@@ -337,6 +356,7 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack, initi
 
   const handleAddDamLotFromDial = useCallback((lotPayload) => {
     setDamStockInForm(prev => {
+      const activeDate = prev.tallyItems[prev.tallyItems.length - 1]?.date || new Date().toISOString().slice(0, 16);
       const isFirstItemEmpty = prev.tallyItems.length === 1 && (!prev.tallyItems[0].menuItemId || !prev.tallyItems[0].itemName);
       const newLot = {
         id: Date.now(),
@@ -350,7 +370,7 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack, initi
         kg: String(lotPayload.kg || 0),
         grams: String(lotPayload.grams || 0),
         price: String(lotPayload.ratePerKg || 0),
-        date: lotPayload.date || new Date().toISOString().slice(0, 16),
+        date: lotPayload.date || activeDate,
         weighMode: lotPayload.weighMode || 'kg'
       };
       if (isFirstItemEmpty) {
@@ -1347,6 +1367,219 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack, initi
     setLogsPage(1);
   }, [logTypeFilter, logSearchQuery, startDate, endDate]);
 
+  // ── Multi-Bill Combine & Invoice Generation Handlers ──
+  const handleToggleSelectBill = (entry) => {
+    const key = entry.invoiceNo || entry.primaryLog?._id;
+    if (!key) return;
+
+    const entrySupplier = (entry.primaryLog?.supplierName || '').trim();
+
+    if (selectedBillKeys.includes(key)) {
+      setSelectedBillKeys(prev => prev.filter(k => k !== key));
+      return;
+    }
+
+    // Check if previously selected bills belong to a different supplier
+    const activeSelectedEntry = groupedStockLogs.find(g => selectedBillKeys.includes(g.invoiceNo || g.primaryLog?._id));
+    const activeSupplier = (activeSelectedEntry?.primaryLog?.supplierName || '').trim();
+
+    if (activeSupplier && entrySupplier && activeSupplier.toLowerCase() !== entrySupplier.toLowerCase()) {
+      setMessage({
+        text: `Only bills from the same supplier ("${activeSupplier}") can be combined. Clear current selection to choose "${entrySupplier}".`,
+        type: 'error'
+      });
+      return;
+    }
+
+    setSelectedBillKeys(prev => [...prev, key]);
+  };
+
+  const selectedGroupEntries = useMemo(() => {
+    if (selectedBillKeys.length === 0) return [];
+    return groupedStockLogs.filter(entry => {
+      const key = entry.invoiceNo || entry.primaryLog?._id;
+      return selectedBillKeys.includes(key);
+    });
+  }, [groupedStockLogs, selectedBillKeys]);
+
+  const selectedSupplierName = selectedGroupEntries[0]?.primaryLog?.supplierName || '';
+
+  const selectedCombinedMetrics = useMemo(() => {
+    let totalKg = 0;
+    let totalBoxes = 0;
+    let grossValue = 0;
+    let allDates = [];
+
+    selectedGroupEntries.forEach(entry => {
+      totalKg += Number(entry.totalQuantityChange || Math.abs(Number(entry.primaryLog?.quantityChange || 0)));
+      totalBoxes += Number(entry.totalBoxes || entry.primaryLog?.boxes || 0);
+
+      const log = entry.primaryLog || {};
+      let gVal = Number(log.grossValue || 0);
+      if (!gVal) {
+        (entry.items || []).forEach(it => {
+          const itKg = Math.abs(Number(it.quantityChange || 0));
+          const itRate = Number(it.price || it.rate || 0);
+          gVal += itKg * itRate;
+        });
+      }
+      grossValue += gVal;
+
+      const dt = formatLogDateTime(log);
+      if (dt.dateStr) allDates.push(dt.dateStr);
+    });
+
+    const uniqueDates = [...new Set(allDates)];
+    const datePeriod = uniqueDates.length > 1
+      ? `${uniqueDates[uniqueDates.length - 1]} → ${uniqueDates[0]}`
+      : (uniqueDates[0] || '');
+
+    return { totalKg, totalBoxes, grossValue, datePeriod };
+  }, [selectedGroupEntries]);
+
+  const handleCombineSelectedBillsInvoice = () => {
+    if (selectedGroupEntries.length === 0) return;
+
+    let combinedItems = [];
+    let allDates = [];
+    let totalBoxes = 0;
+    let totalKg = 0;
+    let grossValue = 0;
+
+    let combinedSettlements = {
+      advance: { label: '1) Advance', type: 'Dr', amount: 0 },
+      khata: { label: '2) Khata', type: 'Dr', amount: 0 },
+      od: { label: '3) OD / Transport', type: 'Cr', amount: 0 },
+      expense: { label: '4) Depot Expense', type: 'Dr', amount: 0 },
+      festivalExpense: { label: '5) Other Expense', type: 'Dr', amount: 0 }
+    };
+    let combinedCustomSettlements = [];
+    let totalCr = 0;
+    let totalDr = 0;
+
+    // Sort entries chronologically (oldest to newest)
+    const sortedEntries = [...selectedGroupEntries].sort((a, b) => {
+      const ta = new Date(a.primaryLog?.createdAt || a.primaryLog?.date || 0).getTime();
+      const tb = new Date(b.primaryLog?.createdAt || b.primaryLog?.date || 0).getTime();
+      return ta - tb;
+    });
+
+    sortedEntries.forEach(entry => {
+      const log = entry.primaryLog || {};
+      const dt = formatLogDateTime(log);
+      if (dt.dateStr) allDates.push(dt.dateStr);
+
+      if (log.consignmentItems && Array.isArray(log.consignmentItems) && log.consignmentItems.length > 0) {
+        log.consignmentItems.forEach(item => {
+          const kg = Number(item.kg || 0) + Number(item.grams || 0) / 1000 || (Number(item.boxes || 0) * Number(item.kgPerBox || 0));
+          const rate = Number(item.price || item.rate || item.ratePerKg || 0);
+          const b = Number(item.boxes || 0);
+          totalBoxes += b;
+          totalKg += kg;
+          grossValue += (kg * rate);
+          combinedItems.push({
+            itemName: item.itemName || item.name || 'Fish Variety',
+            grade: item.sizeBracket && item.weightOption ? `${item.sizeBracket} (${item.weightOption})` : (item.grade || 'Grade A (1 - 4 Kg)'),
+            boxes: b || '—',
+            kgPerBox: item.kgPerBox || '—',
+            kg: kg,
+            rate: rate,
+            price: rate,
+            date: dt.dateStr,
+            time: dt.timeStr,
+            billNo: entry.invoiceNo || log.billNumber || 'CONSIGNMENT'
+          });
+        });
+      } else {
+        (entry.items || []).forEach(l => {
+          const qty = Math.abs(Number(l.quantityChange || 0));
+          let rate = Number(l.price || l.rate || 0);
+          let boxes = Number(l.boxes || 0);
+          let kgPerBox = l.kgPerBox;
+          if (!rate && l.notes) {
+            const m = l.notes.match(/@\s*₹?\s*([0-9.]+)\/kg/i);
+            if (m && m[1]) rate = Number(m[1]);
+          }
+          if (!boxes && l.notes) {
+            const bMatch = l.notes.match(/(\d+)\s*boxes/i);
+            if (bMatch && bMatch[1]) boxes = Number(bMatch[1]);
+          }
+          totalBoxes += boxes;
+          totalKg += qty;
+          grossValue += (qty * rate);
+          combinedItems.push({
+            itemName: l.itemName,
+            grade: l.grade && l.grade !== 'Standard' ? l.grade : 'Grade A (1 - 4 Kg)',
+            boxes: boxes || '—',
+            kgPerBox: kgPerBox || '—',
+            kg: qty,
+            rate: rate,
+            price: rate,
+            date: dt.dateStr,
+            time: dt.timeStr,
+            billNo: entry.invoiceNo || l.billNumber || 'CONSIGNMENT'
+          });
+        });
+      }
+
+      if (log.settlements) {
+        Object.entries(log.settlements).forEach(([key, val]) => {
+          if (combinedSettlements[key]) {
+            combinedSettlements[key].amount += Number(val.amount || 0);
+          }
+        });
+      }
+      if (log.customSettlements && Array.isArray(log.customSettlements)) {
+        combinedCustomSettlements.push(...log.customSettlements);
+      }
+      totalCr += Number(log.totalCr || 0);
+      totalDr += Number(log.totalDr || 0);
+    });
+
+    const netPayable = grossValue + totalCr - totalDr;
+    const firstLog = sortedEntries[0]?.primaryLog || {};
+    const isDam = firstLog.intakeMode === 'dam' || firstLog.type?.includes('Dam') || currentDedicatedMode === 'dam';
+
+    const regSupplier = (registeredSuppliers || []).find(s => 
+      s.name?.toLowerCase() === selectedSupplierName.toLowerCase() ||
+      s.companyName?.toLowerCase() === selectedSupplierName.toLowerCase()
+    );
+
+    const uniqueDates = [...new Set(allDates)];
+    const datePeriodStr = uniqueDates.length > 1
+      ? `${uniqueDates[0]} to ${uniqueDates[uniqueDates.length - 1]}`
+      : (uniqueDates[0] || new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }));
+
+    const combinedVoucherNo = `COMB-${new Date().toISOString().slice(2, 10).replace(/-/g, '')}-${selectedGroupEntries.length}`;
+
+    setInwardInvoiceModal({
+      mode: isDam ? 'dam' : 'local',
+      invoiceNo: combinedVoucherNo,
+      isCombined: true,
+      combinedCount: selectedGroupEntries.length,
+      dateRangeText: datePeriodStr,
+      supplierName: selectedSupplierName,
+      contractorName: selectedSupplierName,
+      supplierPhone: firstLog.supplierPhone || regSupplier?.phone || '',
+      companyName: firstLog.companyName || regSupplier?.companyName || '',
+      vehicleNumber: firstLog.vehicleNumber || regSupplier?.vehicleNumber || '',
+      harbor: firstLog.harbor || regSupplier?.harbor || (isDam ? 'Inland Reservoir' : 'Harbor Landing'),
+      date: new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }),
+      time: new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true }),
+      items: combinedItems,
+      totalBoxes,
+      totalKg,
+      grossValue,
+      settlements: combinedSettlements,
+      customSettlements: combinedCustomSettlements,
+      totalCr,
+      totalDr,
+      netPayable,
+      paymentMode: 'Consolidated Period Settlement',
+      notes: `Consolidated bill combining ${selectedGroupEntries.length} inward receipts (${datePeriodStr}).`
+    });
+  };
+
   // ── Dynamic Custom Settlement Category Helpers ──
   const handleAddLocalCustomCategory = () => {
     const newId = Date.now();
@@ -1544,7 +1777,15 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack, initi
         iceCharges: isSettlementsActive && localStockInForm.settlements?.ice?.isLocked === false ? Number(localStockInForm.settlements?.ice?.amount || 0) : 0,
         boxTapeCharges: isSettlementsActive ? ((localStockInForm.settlements?.boxes?.isLocked === false ? Number(localStockInForm.settlements?.boxes?.amount || 0) : 0) + (localStockInForm.settlements?.tape?.isLocked === false ? Number(localStockInForm.settlements?.tape?.amount || 0) : 0)) : 0,
         advanceAmount: isSettlementsActive && localStockInForm.settlements?.advance?.isLocked === false ? Number(localStockInForm.settlements?.advance?.amount || 0) : 0,
-        paymentMode: localStockInForm.paymentMode,
+        paymentMode: localStockInForm.paymentMode || 'Cash',
+        partialMethod: localStockInForm.partialMethod || 'Cash',
+        paidAmount: localStockInForm.paidAmount,
+        dueAmount: localStockInForm.dueAmount,
+        partialPaid: localStockInForm.partialPaid,
+        partialMethod: localStockInForm.partialMethod || 'Cash',
+        splitPayments: localStockInForm.splitPayments || {},
+        chequeDetails: localStockInForm.chequeDetails || {},
+        bankDetails: localStockInForm.bankDetails || {},
         notes: localStockInForm.notes
       };
 
@@ -1561,7 +1802,7 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack, initi
         companyName: localStockInForm.companyName?.trim() || '',
         vehicleNumber: localStockInForm.vehicleNumber?.trim() || '',
         harbor: localStockInForm.harbor?.trim() || 'Harbor',
-        status: 'Paid',
+        status: (localStockInForm.paymentMode === 'Credit' || localStockInForm.paymentMode === 'Unpaid') ? 'Unpaid' : (localStockInForm.paymentMode === 'Partial' ? 'Partially Paid' : 'Paid'),
         items: validRows.map(r => ({
           ...r,
           grade: r.sizeBracket && r.weightOption ? `${r.sizeBracket} (${r.weightOption})` : (r.sizeBracket || r.weightOption || r.grade || '—')
@@ -1573,6 +1814,9 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack, initi
         totalDr: localTotals.totalDr,
         netPayable: localTotals.netPayable,
         paymentMode: localStockInForm.paymentMode || 'Cash',
+        partialMethod: localStockInForm.partialMethod || 'Cash',
+        paidAmount: localStockInForm.paidAmount,
+        dueAmount: localStockInForm.dueAmount,
         showSettlements: isSettlementsActive,
         settlements: isSettlementsActive ? localStockInForm.settlements : {},
         customSettlements: activeCustomSettlements,
@@ -1599,6 +1843,13 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack, initi
         },
         customSettlements: [],
         paymentMode: 'Cash',
+        paidAmount: '',
+        dueAmount: 0,
+        partialPaid: '',
+        partialMethod: 'Cash',
+        splitPayments: { cash: '', upi: '', bank: '', cheque: '' },
+        chequeDetails: { chequeNumber: '', bankName: '', chequeDate: '' },
+        bankDetails: { transactionId: '', bankName: '' },
         notes: ''
       });
       fetchInventoryData();
@@ -1646,6 +1897,15 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack, initi
         tallyItems: validRows,
         settlements: damStockInForm.settlements,
         customSettlements: damStockInForm.customSettlements,
+        paymentMode: damStockInForm.paymentMode || 'Cash',
+        partialMethod: damStockInForm.partialMethod || 'Cash',
+        paidAmount: damStockInForm.paidAmount,
+        dueAmount: damStockInForm.dueAmount,
+        partialPaid: damStockInForm.partialPaid,
+        partialMethod: damStockInForm.partialMethod || 'Cash',
+        splitPayments: damStockInForm.splitPayments || {},
+        chequeDetails: damStockInForm.chequeDetails || {},
+        bankDetails: damStockInForm.bankDetails || {},
         notes: damStockInForm.notes
       };
 
@@ -1666,7 +1926,7 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack, initi
         companyName: damStockInForm.companyName?.trim() || '',
         vehicleNumber: damStockInForm.vehicleNumber?.trim() || '',
         harbor: damStockInForm.harbor?.trim() || 'Inland Reservoir',
-        status: 'Paid',
+        status: (damStockInForm.paymentMode === 'Credit' || damStockInForm.paymentMode === 'Unpaid') ? 'Unpaid' : (damStockInForm.paymentMode === 'Partial' ? 'Partially Paid' : 'Paid'),
         items: validRows.map(r => ({
           ...r,
           grade: r.sizeBracket && r.weightOption ? `${r.sizeBracket} (${r.weightOption})` : (r.sizeBracket || r.weightOption || r.grade || '—')
@@ -1677,7 +1937,10 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack, initi
         totalCr: damTotals.totalCr,
         totalDr: damTotals.totalDr,
         netPayable: damTotals.netSettlement,
-        paymentMode: 'Consignment Settlement',
+        paymentMode: damStockInForm.paymentMode || 'Cash',
+        partialMethod: damStockInForm.partialMethod || 'Cash',
+        paidAmount: damStockInForm.paidAmount,
+        dueAmount: damStockInForm.dueAmount,
         showSettlements: isDamSettlementsActive,
         settlements: isDamSettlementsActive ? damStockInForm.settlements : {},
         customSettlements: activeDamCustomSettlements,
@@ -1712,6 +1975,14 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack, initi
           festivalExpense: { label: '5) Other Expense', type: 'Dr', amount: '' , isLocked: true }
         },
         customSettlements: [],
+        paymentMode: 'Cash',
+        paidAmount: '',
+        dueAmount: 0,
+        partialPaid: '',
+        partialMethod: 'Cash',
+        splitPayments: { cash: '', upi: '', bank: '', cheque: '' },
+        chequeDetails: { chequeNumber: '', bankName: '', chequeDate: '' },
+        bankDetails: { transactionId: '', bankName: '' },
         notes: ''
       });
       fetchInventoryData();
@@ -2281,7 +2552,7 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack, initi
   return (
     <div className="px-1 py-1 sm:px-2.5 sm:py-2 md:px-3 md:py-2.5 space-y-2 sm:space-y-2.5 w-full text-slate-800">
       {/* Top Header Card (Ultra-Compact & Mobile-Responsive Header) */}
-      <div className="bg-[#FDFBF7] border border-[#E8DCCB] rounded-xl px-2.5 py-1.5 sm:px-3 sm:py-2 shadow-2xs w-full">
+      <div className="bg-[#FDFBF7] border border-[#E8DCCB] rounded-xl px-2.5 py-1.5 sm:px-3 sm:py-2 xl:py-1 xl:px-3 shadow-2xs w-full">
         <div className="flex items-center justify-between gap-1.5 sm:gap-2">
           {/* Left Title & Branding */}
           <div className="flex items-center gap-1.5 sm:gap-2.5 min-w-0">
@@ -2315,7 +2586,7 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack, initi
                             : 'Live Storage'))}
                 </span>
               </div>
-              <p className="text-[10px] text-slate-500 font-medium m-0 mt-0.5 truncate hidden sm:block">
+              <p className="text-[10px] text-slate-500 font-medium m-0 mt-0.5 truncate hidden sm:block xl:hidden">
                 {currentDedicatedMode === 'local'
                   ? (activeTab === 'srm'
                       ? 'Local harbor fishermen directory, supplier khata & inward catch vouchers'
@@ -2479,7 +2750,7 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack, initi
       )}
 
       {/* ── ROW 1: Dedicated Module Navigation Bar (Completely Separated Dedicated Pages) ── */}
-      <div className="bg-[#FDFBF7] p-1.5 sm:p-2 rounded-2xl border border-[#E8DCCB] shadow-2xs flex items-center justify-between gap-1.5 sm:gap-2 w-full flex-wrap">
+      <div className="bg-[#FDFBF7] p-1.5 sm:p-2 xl:py-1 xl:px-2.5 rounded-xl border border-[#E8DCCB] shadow-2xs flex items-center justify-between gap-1.5 sm:gap-2 w-full flex-wrap">
         {/* Navigation Tabs */}
         <div className="flex items-center gap-1 sm:gap-1.5 overflow-x-auto scrollbar-none py-0.5">
           {currentDedicatedMode === 'local' ? (

@@ -943,10 +943,47 @@ export default function ChannelHub({
 
       setToast({ message: `Payment of ₹${amt.toLocaleString()} settled successfully!`, type: 'success' });
       setPaymentModalOpen(false);
+
+      const wasSingleBill = !!paymentTargetBill;
+      const ledgerPhone = paymentAccount?.phoneNumber;
       setPaymentAccount(null);
       setPaymentTargetBill(null);
-      loadKhataData();
-      loadChannelStats();
+
+      if (wasSingleBill && ledgerPhone && selectedLedgerAccount) {
+        // Keep ledger modal open — re-fetch just this customer's bills from server
+        setLedgerLoading(true);
+        try {
+          const freshData = await getKhataLedger(ledgerPhone, effectiveKhataChannel);
+          setLedgerBills(freshData.bills || []);
+          if (freshData?.account) {
+            setSelectedLedgerAccount(prev => prev ? { ...prev, balance: freshData.account.balance ?? prev.balance } : prev);
+          }
+        } catch (e) {
+          // fallback: manual state update using targetDue
+          setLedgerBills(prev => prev
+            .map(b => {
+              if (String(b._id) !== String(paymentTargetBill?._id || '')) return b;
+              const prevDue = b.status === 'Partial'
+                ? (b.dueAmount ?? Math.max(0, (b.total || 0) - (b.paidAmount || b.amountPaid || 0)))
+                : (b.total || 0);
+              const newDue = Math.max(0, prevDue - amt);
+              if (newDue <= 0) return null;
+              return { ...b, paidAmount: (b.paidAmount || b.amountPaid || 0) + amt, dueAmount: newDue, status: 'Partial' };
+            })
+            .filter(Boolean)
+          );
+          setSelectedLedgerAccount(prev => prev ? { ...prev, balance: Math.max(0, (prev.balance || 0) - amt) } : prev);
+        } finally {
+          setLedgerLoading(false);
+        }
+        loadChannelStats();
+      } else {
+        // Full khata settle — close ledger and reload all
+        setSelectedLedgerAccount(null);
+        setLedgerBills([]);
+        loadKhataData();
+        loadChannelStats();
+      }
     } catch (err) {
       console.error('Error settling Khata:', err);
       setToast({ message: err.response?.data?.message || 'Settlement failed', type: 'error' });
@@ -2203,22 +2240,37 @@ export default function ChannelHub({
                           </span>
                         )}
                       </div>
-                      <button
-                        type="button"
-                        onClick={async () => {
-                          try {
-                            const full = await getBillById(b._id).catch(() => b);
-                            setViewInvoice(full);
-                          } catch (e) {
-                            setViewInvoice(b);
-                          }
-                        }}
-                        className="px-2.5 py-1 bg-surface-hover hover:bg-slate-200 dark:hover:bg-gray-700 text-text-main border border-border rounded-lg font-bold text-[11px] cursor-pointer flex items-center gap-1 transition-colors"
-                        title={t("View original bill receipt")}
-                      >
-                        <Eye size={12} />
-                        <span>{t('View Bill')}</span>
-                      </button>
+                      <div className="flex flex-col gap-1">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setPaymentAccount(selectedLedgerAccount);
+                            setPaymentTargetBill(b);
+                            setPaymentModalOpen(true);
+                          }}
+                          className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-bold text-[11px] cursor-pointer flex items-center gap-1 transition-colors whitespace-nowrap"
+                          title={t("Pay this bill")}
+                        >
+                          <CreditCard size={11} />
+                          <span>{t('Pay Bill')}</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            try {
+                              const full = await getBillById(b._id).catch(() => b);
+                              setViewInvoice(full);
+                            } catch (e) {
+                              setViewInvoice(b);
+                            }
+                          }}
+                          className="px-2.5 py-1 bg-surface-hover hover:bg-slate-200 dark:hover:bg-gray-700 text-text-main border border-border rounded-lg font-bold text-[11px] cursor-pointer flex items-center gap-1 transition-colors"
+                          title={t("View original bill receipt")}
+                        >
+                          <Eye size={12} />
+                          <span>{t('View Bill')}</span>
+                        </button>
+                      </div>
                     </div>
                   </div>
                 ))

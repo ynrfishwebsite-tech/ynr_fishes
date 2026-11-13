@@ -482,11 +482,11 @@ export default function FishIntakeOrbitalDial({
   }
 
   return (
-    <div className="flex flex-col items-center justify-center w-full max-w-xl mx-auto select-none space-y-2">
+    <div className="flex flex-col items-center justify-center w-full max-w-xl mx-auto select-none space-y-1">
       {/* Top Header Pill: Active Species Variety Name & Rate */}
-      <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/95 border border-[#fed7aa] shadow-2xs text-xs font-black text-slate-800">
-        <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
-        <span className="text-slate-900 truncate max-w-[200px] sm:max-w-[300px]">
+      <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white/95 border border-[#fed7aa] shadow-2xs text-[11px] sm:text-xs font-black text-slate-800">
+        <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+        <span className="text-slate-900 truncate max-w-[180px] sm:max-w-[280px]">
           {currentFish?.name || 'Choose Fish'}
         </span>
         <span className="text-slate-300">•</span>
@@ -515,7 +515,7 @@ export default function FishIntakeOrbitalDial({
         }}
         onMouseUp={handleDialEnd}
         onMouseLeave={handleDialEnd}
-        className="relative w-full max-w-[380px] sm:max-w-[420px] md:max-w-[440px] aspect-square rounded-full flex items-center justify-center cursor-grab active:cursor-grabbing touch-none select-none my-1"
+        className="relative w-full max-w-[340px] sm:max-w-[370px] xl:max-w-[365px] 2xl:max-w-[395px] aspect-square rounded-full flex items-center justify-center cursor-grab active:cursor-grabbing touch-none select-none my-0.5"
         style={{
           background: 'radial-gradient(circle at 50% 30%, #ffffff 0%, #faf6f0 55%, #f5eee3 85%, #ede2d3 100%)',
           boxShadow: '0 16px 42px -10px rgba(245, 158, 11, 0.3), inset 0 2px 10px rgba(255, 255, 255, 0.95), inset 0 -6px 14px rgba(217, 119, 6, 0.12)'

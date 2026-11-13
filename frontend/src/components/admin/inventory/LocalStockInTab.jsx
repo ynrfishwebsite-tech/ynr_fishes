@@ -17,14 +17,27 @@ import {
   Lock,
   Unlock,
   Printer,
-  Calculator
+  Calculator,
+  Calendar,
+  CalendarPlus,
+  ArrowRight,
+  CreditCard,
+  Landmark,
+  FileText,
+  PieChart,
+  Clock,
+  BookOpen
 } from 'lucide-react';
 import SearchableDropdown from '../../common/SearchableDropdown';
 import FishIntakeOrbitalDial from './FishIntakeOrbitalDial';
 import {
   splitKgPerBoxParts,
   buildUpdatedRowsWithKpb,
-  getFishGradeOptions
+  getFishGradeOptions,
+  calcItemWeightKg,
+  formatDateGroupLabel,
+  incrementIsoDay,
+  groupStockInItemsByDate
 } from './stockInHelpers';
 
 const LocalStockInTab = ({
@@ -101,6 +114,146 @@ const LocalStockInTab = ({
       setCalcExpression('');
     }
   };
+
+  // Group items by date for multi-date / multi-item intake
+  const dateGroups = useMemo(() => {
+    return groupStockInItemsByDate(localStockInForm.items);
+  }, [localStockInForm.items]);
+
+  // Update date for all items in a date group
+  const handleUpdateGroupDate = (oldDateKey, newDateVal) => {
+    if (!newDateVal) return;
+    const updated = localStockInForm.items.map(row => {
+      const rowDate = row.date || new Date().toISOString().slice(0, 16);
+      if (rowDate === oldDateKey) {
+        return { ...row, date: newDateVal };
+      }
+      return row;
+    });
+    setLocalStockInForm({ ...localStockInForm, items: updated });
+  };
+
+  // Add a new fish row under a specific date
+  const handleAddRowToDate = (dateKey) => {
+    const newRow = {
+      id: Date.now() + Math.random(),
+      menuItemId: '',
+      itemName: '',
+      sizeGrade: 'medium',
+      sizeBracket: 'Medium',
+      weightOption: '1 - 4 Kg',
+      boxes: '',
+      kgPerBox: 1,
+      kg: '',
+      grams: '',
+      ratePerKg: '',
+      date: dateKey,
+      weighMode: localWeighMode
+    };
+
+    const items = [...localStockInForm.items];
+    let insertIdx = -1;
+    for (let i = items.length - 1; i >= 0; i--) {
+      const rDate = items[i].date || new Date().toISOString().slice(0, 16);
+      if (rDate === dateKey) {
+        insertIdx = i + 1;
+        break;
+      }
+    }
+    if (insertIdx !== -1) {
+      items.splice(insertIdx, 0, newRow);
+    } else {
+      items.push(newRow);
+    }
+    setLocalStockInForm({ ...localStockInForm, items });
+  };
+
+  // Advance to Next Day: automatically increments date by +1 day (preserving AM/PM time) and adds a row
+  const handleNextDay = () => {
+    const lastItem = localStockInForm.items[localStockInForm.items.length - 1];
+    const curDate = lastItem?.date || new Date().toISOString().slice(0, 16);
+    const nextDate = incrementIsoDay(curDate);
+    const newRow = {
+      id: Date.now(),
+      menuItemId: '',
+      itemName: '',
+      sizeGrade: 'medium',
+      sizeBracket: 'Medium',
+      weightOption: '1 - 4 Kg',
+      boxes: '',
+      kgPerBox: 1,
+      kg: '',
+      grams: '',
+      ratePerKg: '',
+      date: nextDate,
+      weighMode: localWeighMode
+    };
+    setLocalStockInForm({
+      ...localStockInForm,
+      items: [...localStockInForm.items, newRow]
+    });
+  };
+
+  // Preview label for the next day button
+  const nextDayPreview = useMemo(() => {
+    const lastItem = localStockInForm.items[localStockInForm.items.length - 1];
+    const curDate = lastItem?.date || new Date().toISOString().slice(0, 16);
+    const nextDate = incrementIsoDay(curDate);
+    const lbl = formatDateGroupLabel(nextDate);
+    return lbl.dateFormatted;
+  }, [localStockInForm.items]);
+
+  // Delete entire date group
+  const handleDeleteDateGroup = (dateKey) => {
+    const remaining = localStockInForm.items.filter(r => (r.date || new Date().toISOString().slice(0, 16)) !== dateKey);
+    if (remaining.length === 0) {
+      setLocalStockInForm({
+        ...localStockInForm,
+        items: [{
+          id: Date.now(),
+          menuItemId: '',
+          itemName: '',
+          sizeGrade: 'medium',
+          sizeBracket: 'Medium',
+          weightOption: '1 - 4 Kg',
+          boxes: '',
+          kgPerBox: 1,
+          kg: '',
+          grams: '',
+          ratePerKg: '',
+          date: new Date().toISOString().slice(0, 16),
+          weighMode: localWeighMode
+        }]
+      });
+    } else {
+      setLocalStockInForm({ ...localStockInForm, items: remaining });
+    }
+  };
+
+  // Overall Grand Totals across all dates
+  const grandTotals = useMemo(() => {
+    let totalKg = 0;
+    let totalBoxes = 0;
+    let totalGross = 0;
+    localStockInForm.items.forEach(r => {
+      const w = calcItemWeightKg(r);
+      const rate = Number(r.ratePerKg || 0);
+      totalKg += w;
+      totalBoxes += Number(r.boxes || 0);
+      totalGross += w * rate;
+    });
+    const totalKgInt = Math.floor(totalKg);
+    const totalGmInt = Math.round((totalKg - totalKgInt) * 1000);
+    return {
+      totalKg: Number(totalKg.toFixed(3)),
+      totalKgInt,
+      totalGmInt,
+      totalBoxes,
+      totalGross: Number(totalGross.toFixed(2)),
+      datesCount: dateGroups.length,
+      itemsCount: localStockInForm.items.filter(r => r.itemName || r.menuItemId || r.kg).length || localStockInForm.items.length
+    };
+  }, [localStockInForm.items, dateGroups]);
   const [showLocalSpeciesMenu, setShowLocalSpeciesMenu] = useState(false);
   const [localSpeciesMenuCoords, setLocalSpeciesMenuCoords] = useState({ top: 0, left: 0 });
   const localSpeciesBtnRef = useRef(null);
@@ -183,8 +336,8 @@ const LocalStockInTab = ({
   };
 
   return (
-    <div className="bg-[#FDFBF7] border border-[#E8DCCB] rounded-xl sm:rounded-2xl p-1.5 sm:p-2.5 md:p-3 shadow-2xs space-y-2 sm:space-y-2.5 w-full">
-      <div className="flex items-center justify-between border-b border-[#fed7aa]/60 pb-1.5 px-0.5">
+    <div className="bg-[#FDFBF7] border border-[#E8DCCB] rounded-xl sm:rounded-2xl p-0.5 sm:p-1.5 md:p-2 shadow-2xs space-y-2 sm:space-y-2.5 w-full">
+      <div className="flex items-center justify-between border-b border-[#fed7aa]/60 pb-1.5 px-0.5 xl:hidden">
         <div>
           <h2 className="text-xs sm:text-sm font-black text-slate-900 uppercase tracking-wide m-0">
             Local Fish Intake / Weighment
@@ -198,7 +351,7 @@ const LocalStockInTab = ({
       <form onSubmit={handleLocalStockInSubmit} className="space-y-2 sm:space-y-3">
         {/* 1. Multi-Fish Intake Section (3D Ring Selector + Consignment Lots Table) - DISPLAYED FIRST */}
         <div className="border border-[#fed7aa] rounded-xl overflow-hidden bg-white shadow-2xs">
-          <div className="p-1.5 sm:p-2 bg-[#FAF0E4] border-b border-[#fed7aa] flex items-center justify-between gap-1 sm:gap-1.5 flex-nowrap">
+          <div className="p-1.5 sm:p-2 xl:py-1 xl:px-2.5 bg-[#FAF0E4] border-b border-[#fed7aa] flex items-center justify-between gap-1 sm:gap-1.5 flex-nowrap">
             <div className="flex items-center gap-1 sm:gap-1.5 min-w-0">
               <span className="text-[11px] sm:text-xs font-bold text-slate-800 uppercase tracking-wide truncate">
                 <span className="sm:hidden">Fish ({localStockInForm.items.filter(it => it.itemName).length})</span>
@@ -328,7 +481,7 @@ const LocalStockInTab = ({
           <div className={localSelectorMode === 'ring' ? 'xl:flex xl:items-start xl:gap-0' : ''}>
             {/* 3D Ring Dial Mode for Local Catch (LEFT on desktop) */}
             {localSelectorMode === 'ring' && (
-              <div className="xl:w-[420px] 2xl:w-[460px] xl:shrink-0 xl:border-r border-b xl:border-b-0 border-[#fed7aa]/60 p-2 sm:p-2.5 bg-gradient-to-b from-[#FAF3E8]/70 via-white to-[#FAF0E4]/30">
+              <div className="xl:w-[380px] 2xl:w-[410px] xl:shrink-0 xl:border-r border-b xl:border-b-0 border-[#fed7aa]/60 p-1.5 sm:p-2 bg-gradient-to-b from-[#FAF3E8]/70 via-white to-[#FAF0E4]/30">
                 <FishIntakeOrbitalDial
                   items={masterFishList.length > 0 ? masterFishList : fishList}
                   onAddFishLot={handleAddLocalLotFromDial}
@@ -340,453 +493,833 @@ const LocalStockInTab = ({
             )}
 
             {/* Table Area (RIGHT on desktop) */}
-            <div ref={itemsTableRef} className="flex-1 min-w-0">
-              <div className="overflow-x-auto w-full">
-                <table className="w-full text-left text-xs border-collapse">
-                  <thead className="bg-[#FDFBF7] text-slate-700 font-black border-b border-[#fed7aa]/50 text-[10px] sm:text-[11px] uppercase tracking-wider">
-                    <tr>
-                      <th className="py-2 px-1 text-center w-7">#</th>
-                      <th className="py-2 px-1 w-[122px] text-left">Date / Time</th>
-                      <th className="py-2 px-1.5 min-w-[150px]">Fish Variety</th>
-                      <th className="py-2 px-1 min-w-[100px] w-28">Grade</th>
-                      {localWeighMode === 'box' && <th className="py-2 px-1 text-center w-14">Boxes</th>}
-                      {localWeighMode === 'box' && <th className="py-2 px-1 text-center w-24">Kg / Box</th>}
-                      <th className="py-2 px-1.5 text-center min-w-[150px] w-40">
-                        <span className="inline-flex items-center gap-1">
-                          Scale Wt (Kg) <Calculator size={10} className="text-amber-600" />
+            <div ref={itemsTableRef} className="flex-1 min-w-0 p-1 sm:p-1.5 space-y-2">
+              {dateGroups.map((group, gIdx) => {
+                const dateKey = group.dateKey;
+                const colSpanBoxes = localWeighMode === 'box' ? 2 : 0;
+
+                return (
+                  <div key={dateKey || gIdx} className="border border-[#fed7aa] rounded-xl overflow-hidden bg-white shadow-2xs">
+                    {/* ── Date Group Header Bar ── */}
+                    <div className="bg-gradient-to-r from-[#FAF0E4] via-amber-50 to-[#FAF0E4] border-b border-[#fed7aa] px-2 py-1 flex flex-col gap-0.5">
+                      {/* Single Row: Date Picker | Subtotal | +Add | Delete */}
+                      <div className="flex items-center gap-1.5 flex-nowrap">
+                        <div className="flex items-center gap-1 bg-white border border-[#E8DCCB] rounded-lg px-1.5 py-0.5 shadow-2xs shrink-0">
+                          <Calendar size={12} className="text-[#ea580c] shrink-0" />
+                          <input
+                            type="datetime-local"
+                            value={dateKey}
+                            onChange={(e) => handleUpdateGroupDate(dateKey, e.target.value)}
+                            className="w-[148px] text-[11px] font-mono font-bold text-slate-800 bg-transparent focus:outline-none cursor-pointer tracking-tight shrink-0 [&::-webkit-calendar-picker-indicator]:cursor-pointer [&::-webkit-calendar-picker-indicator]:p-0 [&::-webkit-calendar-picker-indicator]:ml-0.5"
+                            title="Click to edit date and time"
+                          />
+                        </div>
+
+                        {/* Subtotal badge */}
+                        <div className="flex items-center gap-1 bg-amber-100/90 border border-amber-300 rounded-lg px-1.5 py-0.5 text-[11px] font-mono ml-auto shrink-0">
+                          <span className="font-black text-amber-950">
+                            {group.subtotalKgInt} Kg{group.subtotalGmInt > 0 ? ` ${group.subtotalGmInt} Gm` : ''}
+                          </span>
+                          <span className="text-amber-400">•</span>
+                          <span className="font-bold text-emerald-800">₹{group.subtotalValue.toLocaleString('en-IN')}</span>
+                        </div>
+
+                        {/* + Add button */}
+                        <button
+                          type="button"
+                          onClick={() => handleAddRowToDate(dateKey)}
+                          className="h-6 w-6 bg-white hover:bg-amber-100 text-[#ea580c] border border-orange-300 rounded-lg text-[11px] font-bold flex items-center justify-center transition-all cursor-pointer shadow-2xs shrink-0"
+                          title="Add another fish variety for this date"
+                        >
+                          <Plus size={12} />
+                        </button>
+
+                        {dateGroups.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteDateGroup(dateKey)}
+                            className="h-6 w-6 flex items-center justify-center text-slate-400 hover:text-rose-600 rounded-lg transition-colors cursor-pointer shrink-0"
+                            title="Delete this entire date group"
+                          >
+                            <Trash2 size={12} />
+                          </button>
+                        )}
+                      </div>
+
+                      {/* Second line: fullLabel + Items count — always visible */}
+                      <div className="flex items-center gap-1.5 flex-nowrap">
+                        <span className="text-[10px] font-bold text-slate-600 truncate flex-1">
+                          {group.label.fullLabel}
                         </span>
-                      </th>
-                      <th className="py-2 px-1 text-right w-18">Rate (₹)</th>
-                      <th className="py-2 px-1.5 text-right w-20">Total (₹)</th>
-                      <th className="py-2 px-1 text-center w-8"></th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-[#fed7aa]/30">
-                    {localStockInForm.items.map((row, idx) => {
-                      let rowKg = 0;
-                      const b = Number(row.boxes || 0);
-                      const kpb = Number(row.kgPerBox || 1);
-                      if (Number(row.kg || 0) > 0 || Number(row.grams || 0) > 0) {
-                        rowKg = Number((Number(row.kg || 0) + Number(row.grams || 0) / 1000).toFixed(3));
-                      } else if (b > 0 && kpb > 0) {
-                        rowKg = Number((b * kpb).toFixed(3));
-                      }
-                      const rowTotal = Number((rowKg * Number(row.ratePerKg || 0)).toFixed(2));
+                        <div className="flex items-center gap-0.5 shrink-0">
+                          <span className="text-[10px] font-bold text-slate-500">Items:</span>
+                          <span className="font-mono font-black text-[10px] text-amber-900">{group.items.length}</span>
+                        </div>
+                      </div>
+                    </div>
 
-                      return (
-                        <tr key={row.id || idx} className="hover:bg-amber-50/30">
-                          <td className="py-1.5 px-1 align-middle text-center font-mono text-slate-500 text-xs font-bold">
-                            {idx + 1}
-                          </td>
-                          {/* Date / Time picker per row */}
-                          <td className="py-1.5 px-1 align-middle">
-                            <input
-                              type="datetime-local"
-                              value={row.date || new Date().toISOString().slice(0, 16)}
-                              onChange={(e) => {
-                                const updated = [...localStockInForm.items];
-                                updated[idx] = { ...updated[idx], date: e.target.value };
-                                setLocalStockInForm({ ...localStockInForm, items: updated });
-                              }}
-                              className="h-8 w-[120px] bg-white border border-[#E8DCCB] rounded-lg px-1 text-[10px] font-mono text-slate-700 focus:outline-none focus:border-[#ea580c] cursor-pointer"
-                            />
-                          </td>
-                          <td className="py-1.5 px-1.5 align-middle">
-                            <SearchableDropdown
-                              mode="select"
-                              value={row.menuItemId}
-                              onChange={(selId, selOption) => {
-                                const sel = selOption?.raw || fishList.find(f => f._id === selId);
-                                const gradeOptions = getFishGradeOptions(sel);
-                                const defaultGrade = gradeOptions.find(g => g.key === 'medium') || gradeOptions[0];
-                                const itemKpb = Number(sel?.boxPackingKg || 1);
-                                const updated = [...localStockInForm.items];
-                                const curBoxes = Number(updated[idx].boxes || 0);
-                                let autoKg = updated[idx].kg;
-                                let autoGm = updated[idx].grams;
-                                if (curBoxes > 0) {
-                                  const tot = curBoxes * itemKpb;
-                                  const wKg = Math.floor(tot);
-                                  const remG = Math.round((tot - wKg) * 1000);
-                                  autoKg = String(wKg);
-                                  autoGm = remG > 0 ? String(remG) : '0';
-                                }
-                                updated[idx] = {
-                                  ...updated[idx],
-                                  menuItemId: selId,
-                                  itemName: sel?.name || '',
-                                  sizeGrade: defaultGrade?.key || 'medium',
-                                  sizeBracket: defaultGrade?.label || 'Medium',
-                                  weightOption: defaultGrade?.range || '1 - 4 Kg',
-                                  ratePerKg: defaultGrade?.rate ? String(defaultGrade.rate) : (sel?.purchasePrice ? String(sel.purchasePrice) : updated[idx].ratePerKg),
-                                  kgPerBox: itemKpb,
-                                  kgPerBoxKg: undefined,
-                                  kgPerBoxGrams: undefined,
-                                  kg: autoKg,
-                                  grams: autoGm
-                                };
-                                setLocalStockInForm({ ...localStockInForm, items: updated });
-                              }}
-                              options={fishOptions}
-                              placeholder="-- Variety --"
-                              searchPlaceholder="Search fish species..."
-                              className="w-full min-w-[140px]"
-                              inputClassName="!h-8 !py-0 !rounded-lg !text-[11px] flex items-center"
-                              minDropdownWidth={240}
-                              accentColor="orange"
-                              required
-                            />
-                          </td>
-                          <td className="py-1.5 px-1 align-middle">
-                            {(() => {
-                              const selFish = fishList.find(f => f._id === row.menuItemId);
-                              const gradeOptions = getFishGradeOptions(selFish);
-                              const activeGradeKey = row.sizeGrade || (row.sizeBracket ? row.sizeBracket.toLowerCase() : 'medium');
-                              const currentGrade = gradeOptions.find(g => g.key === activeGradeKey) || gradeOptions[0];
+                    {/* ── Mobile Layout (< md): 100% visible in single view with ZERO horizontal scroll ── */}
+                    <div className="md:hidden divide-y divide-[#fed7aa]/30 p-1.5 space-y-1.5">
+                      {group.items.map(({ item: row, originalIdx: idx }) => {
+                        let rowKg = 0;
+                        const b = Number(row.boxes || 0);
+                        const kpb = Number(row.kgPerBox || 1);
+                        if (Number(row.kg || 0) > 0 || Number(row.grams || 0) > 0) {
+                          rowKg = Number((Number(row.kg || 0) + Number(row.grams || 0) / 1000).toFixed(3));
+                        } else if (b > 0 && kpb > 0) {
+                          rowKg = Number((b * kpb).toFixed(3));
+                        }
+                        const rowTotal = Number((rowKg * Number(row.ratePerKg || 0)).toFixed(2));
 
-                              if (!row.menuItemId) {
-                                return (
-                                  <div className="h-8 flex items-center px-1.5 border border-dashed border-[#E8DCCB] rounded-lg bg-slate-50/60 text-[10px] text-slate-400 italic">
-                                    Pick fish first
-                                  </div>
-                                );
-                              }
+                        const selFish = fishList.find(f => f._id === row.menuItemId);
+                        const gradeOptions = getFishGradeOptions(selFish);
+                        const activeGradeKey = row.sizeGrade || (row.sizeBracket ? row.sizeBracket.toLowerCase() : 'medium');
+                        const currentGrade = gradeOptions.find(g => g.key === activeGradeKey) || gradeOptions[0];
 
-                              return (
-                                <select
-                                  value={currentGrade?.key || 'medium'}
-                                  onChange={(e) => {
-                                    const chosenKey = e.target.value;
-                                    const chosenGrade = gradeOptions.find(g => g.key === chosenKey);
+                        return (
+                          <div key={row.id || idx} className="p-1.5 bg-white border border-[#fed7aa]/60 rounded-xl space-y-1 shadow-2xs">
+                            {/* Row 1: Index + Fish Variety (Full Width, No Truncation!) + Delete */}
+                            <div className="flex items-center gap-1">
+                              <span className="w-5 text-center font-mono font-bold text-slate-400 text-xs shrink-0">{idx + 1}</span>
+                              <div className="flex-1 min-w-0">
+                                <SearchableDropdown
+                                  mode="select"
+                                  value={row.menuItemId}
+                                  onChange={(selId, selOption) => {
+                                    const sel = selOption?.raw || fishList.find(f => f._id === selId);
+                                    const gOpts = getFishGradeOptions(sel);
+                                    const defG = gOpts.find(g => g.key === 'medium') || gOpts[0];
+                                    const itemKpb = Number(sel?.boxPackingKg || 1);
                                     const updated = [...localStockInForm.items];
+                                    const curBoxes = Number(updated[idx].boxes || 0);
+                                    let autoKg = updated[idx].kg;
+                                    let autoGm = updated[idx].grams;
+                                    if (curBoxes > 0) {
+                                      const tot = curBoxes * itemKpb;
+                                      const wKg = Math.floor(tot);
+                                      const remG = Math.round((tot - wKg) * 1000);
+                                      autoKg = String(wKg);
+                                      autoGm = remG > 0 ? String(remG) : '0';
+                                    }
                                     updated[idx] = {
                                       ...updated[idx],
-                                      sizeGrade: chosenKey,
-                                      sizeBracket: chosenGrade?.label || 'Medium',
-                                      weightOption: chosenGrade?.range || '1 - 4 Kg',
-                                      ratePerKg: chosenGrade?.rate ? String(chosenGrade.rate) : updated[idx].ratePerKg
+                                      menuItemId: selId,
+                                      itemName: sel?.name || '',
+                                      sizeGrade: defG?.key || 'medium',
+                                      sizeBracket: defG?.label || 'Medium',
+                                      weightOption: defG?.range || '1 - 4 Kg',
+                                      ratePerKg: defG?.rate ? String(defG.rate) : (sel?.purchasePrice ? String(sel.purchasePrice) : updated[idx].ratePerKg),
+                                      kgPerBox: itemKpb,
+                                      kgPerBoxKg: undefined,
+                                      kgPerBoxGrams: undefined,
+                                      kg: autoKg,
+                                      grams: autoGm
                                     };
                                     setLocalStockInForm({ ...localStockInForm, items: updated });
                                   }}
-                                  className="w-full h-8 bg-white border border-[#E8DCCB] rounded-lg px-1 text-[11px] font-bold text-slate-800 focus:outline-none focus:border-[#ea580c] cursor-pointer"
-                                >
-                                  {gradeOptions.map(g => (
-                                    <option key={g.key} value={g.key}>
-                                      {g.label} ({g.range})
-                                    </option>
-                                  ))}
-                                </select>
-                              );
-                            })()}
-                          </td>
-                          {/* Boxes — hidden in KG-only mode */}
-                          {(row.weighMode || localWeighMode) !== 'kg' && (
-                            <td className="py-1.5 px-1 align-middle">
-                              <input
-                                type="number"
-                                min="0"
-                                step="any"
-                                placeholder="0"
-                                value={row.boxes}
-                                onChange={(e) => {
-                                  const val = e.target.value;
-                                  const updated = [...localStockInForm.items];
-                                  const curKpb = Number(updated[idx].kgPerBox || 1);
-                                  updated[idx].boxes = val;
-                                  if (val !== '' && !isNaN(Number(val)) && Number(val) > 0) {
-                                    const totalWeight = Number(val) * curKpb;
-                                    const wholeKg = Math.floor(totalWeight);
-                                    const remainderGrams = Math.round((totalWeight - wholeKg) * 1000);
-                                    updated[idx].kg = String(wholeKg);
-                                    updated[idx].grams = remainderGrams > 0 ? String(remainderGrams) : '0';
-                                  } else if (val === '') {
-                                    updated[idx].kg = '';
-                                    updated[idx].grams = '';
+                                  options={fishOptions}
+                                  placeholder="-- Variety / Species --"
+                                  searchPlaceholder="Search fish species..."
+                                  className="w-full"
+                                  inputClassName="!h-8 !py-0 !rounded-lg !text-xs font-semibold flex items-center"
+                                  minDropdownWidth={260}
+                                  accentColor="orange"
+                                  required
+                                />
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (localStockInForm.items.length > 1) {
+                                    setLocalStockInForm({
+                                      ...localStockInForm,
+                                      items: localStockInForm.items.filter((_, i) => i !== idx)
+                                    });
+                                  } else {
+                                    const now = new Date().toISOString().slice(0, 16);
+                                    setLocalStockInForm({
+                                      ...localStockInForm,
+                                      items: [{ id: Date.now(), menuItemId: '', itemName: '', sizeGrade: 'medium', sizeBracket: 'Medium', weightOption: '1 - 4 Kg', boxes: '', kgPerBox: 1, kg: '', grams: '', ratePerKg: '', date: now, weighMode: localWeighMode }]
+                                    });
                                   }
-                                  setLocalStockInForm({ ...localStockInForm, items: updated });
                                 }}
-                                className="w-full h-8 bg-white border border-[#E8DCCB] rounded-lg px-1 text-xs text-center font-mono font-bold text-slate-800 focus:outline-none focus:border-[#ea580c]"
-                              />
-                            </td>
-                          )}
-                          {/* Kg/Box — hidden in KG-only mode */}
-                          {(row.weighMode || localWeighMode) !== 'kg' && (
-                            <td className="py-1.5 px-1 align-middle">
-                              {(() => {
-                                const kpbParts = splitKgPerBoxParts(row);
-                                return (
-                                  <div className="flex items-center justify-center gap-0.5 h-8">
+                                className="h-8 w-7 flex items-center justify-center text-slate-300 hover:text-rose-600 rounded-lg cursor-pointer transition-colors shrink-0"
+                                title="Remove item"
+                              >
+                                <Trash2 size={13} />
+                              </button>
+                            </div>
+
+                            {/* Row 2: Grade Dropdown (Generous Width!) + Weights + Rate + Total */}
+                            <div className="flex items-center justify-between gap-1 pt-0.5 border-t border-dashed border-amber-100/90 text-xs">
+                              <div className="flex-1 min-w-[100px] max-w-[125px] shrink-0">
+                                {!row.menuItemId ? (
+                                  <div className="h-7.5 flex items-center px-2 border border-dashed border-[#E8DCCB] rounded-lg bg-slate-50 text-[10.5px] text-slate-400 italic">
+                                    Grade
+                                  </div>
+                                ) : (
+                                  <select
+                                    value={currentGrade?.key || 'medium'}
+                                    onChange={(e) => {
+                                      const chosenKey = e.target.value;
+                                      const chosenGrade = gradeOptions.find(g => g.key === chosenKey);
+                                      const updated = [...localStockInForm.items];
+                                      updated[idx] = {
+                                        ...updated[idx],
+                                        sizeGrade: chosenKey,
+                                        sizeBracket: chosenGrade?.label || 'Medium',
+                                        weightOption: chosenGrade?.range || '1 - 4 Kg',
+                                        ratePerKg: chosenGrade?.rate ? String(chosenGrade.rate) : updated[idx].ratePerKg
+                                      };
+                                      setLocalStockInForm({ ...localStockInForm, items: updated });
+                                    }}
+                                    className="w-full h-7.5 bg-white border border-[#E8DCCB] rounded-lg px-1.5 text-[10.5px] font-bold text-slate-800 focus:outline-none focus:border-[#ea580c] cursor-pointer truncate"
+                                  >
+                                    {gradeOptions.map(g => (
+                                      <option key={g.key} value={g.key}>
+                                        {g.label} ({g.range})
+                                      </option>
+                                    ))}
+                                  </select>
+                                )}
+                              </div>
+
+                              {/* Scale Weight inputs + Rate + Row Total */}
+                              <div className="flex items-center gap-1 ml-auto">
+                                {(row.weighMode || localWeighMode) !== 'kg' && (
+                                  <div className="flex items-center gap-0.5 shrink-0">
+                                    <input
+                                      type="number"
+                                      min="0"
+                                      placeholder="Bx"
+                                      value={row.boxes}
+                                      onChange={(e) => {
+                                        const val = e.target.value;
+                                        const updated = [...localStockInForm.items];
+                                        const curKpb = Number(updated[idx].kgPerBox || 1);
+                                        updated[idx].boxes = val;
+                                        if (val !== '' && !isNaN(Number(val)) && Number(val) > 0) {
+                                          const totalWeight = Number(val) * curKpb;
+                                          const wholeKg = Math.floor(totalWeight);
+                                          const remainderGrams = Math.round((totalWeight - wholeKg) * 1000);
+                                          updated[idx].kg = String(wholeKg);
+                                          updated[idx].grams = remainderGrams > 0 ? String(remainderGrams) : '0';
+                                        }
+                                        setLocalStockInForm({ ...localStockInForm, items: updated });
+                                      }}
+                                      className="w-10 h-7.5 bg-white border border-[#E8DCCB] rounded-lg text-center font-mono font-bold text-xs"
+                                    />
+                                    <span className="text-[10px] text-slate-400 font-bold">bx</span>
+                                  </div>
+                                )}
+
+                                {/* Scale Wt (Kg + Gm) */}
+                                <div className="flex items-center gap-0.5">
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    placeholder="Kg"
+                                    value={row.kg}
+                                    onChange={(e) => {
+                                      let val = e.target.value;
+                                      const updated = [...localStockInForm.items];
+                                      if (val.includes('.')) {
+                                        const parts = val.split('.');
+                                        updated[idx].kg = parts[0] || '0';
+                                        const gStr = (parts[1] || '').padEnd(3, '0').slice(0, 3);
+                                        updated[idx].grams = String(parseInt(gStr, 10) || 0);
+                                      } else {
+                                        updated[idx].kg = val;
+                                      }
+                                      setLocalStockInForm({ ...localStockInForm, items: updated });
+                                    }}
+                                    className="w-10 sm:w-11 h-7.5 bg-amber-50/50 border border-[#E8DCCB] rounded-lg px-1 text-center font-mono font-bold text-xs"
+                                  />
+                                  <span className="text-[10px] font-bold text-slate-400">+</span>
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    max="999"
+                                    placeholder="Gm"
+                                    value={row.grams}
+                                    onChange={(e) => {
+                                      let val = e.target.value.replace(/[^0-9]/g, '');
+                                      if (val.length > 3) val = val.slice(0, 3);
+                                      if (Number(val) > 999) val = '999';
+                                      const updated = [...localStockInForm.items];
+                                      updated[idx].grams = val;
+                                      setLocalStockInForm({ ...localStockInForm, items: updated });
+                                    }}
+                                    className="w-9 h-7.5 bg-amber-50/50 border border-[#E8DCCB] rounded-lg px-0.5 text-center font-mono font-bold text-xs"
+                                  />
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      if (calcRowIdx === idx) {
+                                        setCalcRowIdx(null);
+                                        setCalcExpression('');
+                                      } else {
+                                        setCalcRowIdx(idx);
+                                        setCalcExpression(row.kg ? (Number(row.grams || 0) > 0 ? `${row.kg}.${String(row.grams).padStart(3, '0')}` : row.kg) : '');
+                                      }
+                                    }}
+                                    className={`h-7.5 w-6 rounded border flex items-center justify-center shrink-0 cursor-pointer transition-colors ${
+                                      calcRowIdx === idx
+                                        ? 'bg-amber-600 text-white border-amber-600 shadow-xs'
+                                        : 'bg-amber-50 text-amber-800 border-amber-300 hover:bg-amber-100'
+                                    }`}
+                                    title="Quick Calculator"
+                                  >
+                                    <Calculator size={11} />
+                                  </button>
+                                </div>
+
+                                {/* Rate */}
+                                <div className="flex items-center gap-0.5">
+                                  <span className="text-[10px] text-slate-400 font-bold">₹</span>
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    placeholder="Rate"
+                                    value={row.ratePerKg}
+                                    onChange={(e) => {
+                                      const updated = [...localStockInForm.items];
+                                      updated[idx].ratePerKg = e.target.value;
+                                      setLocalStockInForm({ ...localStockInForm, items: updated });
+                                    }}
+                                    className="w-10 sm:w-11 h-7.5 bg-white border border-[#E8DCCB] rounded-lg px-1 text-right font-mono font-bold text-xs"
+                                  />
+                                </div>
+
+                                {/* Total */}
+                                <div className="font-mono font-black text-emerald-800 text-xs whitespace-nowrap pl-0.5 shrink-0">
+                                  ₹{rowTotal.toLocaleString('en-IN')}
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Mobile Calculator Drawer */}
+                            {calcRowIdx === idx && (
+                              <div className="p-2 bg-amber-50/90 border border-amber-300 rounded-xl space-y-1.5 animate-fadeIn">
+                                <div className="flex items-center justify-between">
+                                  <span className="text-[10px] font-black uppercase text-amber-950 flex items-center gap-1">
+                                    <Calculator size={11} className="text-amber-600" />
+                                    <span>Scale Calculator (e.g. 16 + 5 + 10 + 15)</span>
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={() => { setCalcRowIdx(null); setCalcExpression(''); }}
+                                    className="text-slate-400 hover:text-slate-600 p-0.5 rounded cursor-pointer"
+                                  >
+                                    <X size={12} />
+                                  </button>
+                                </div>
+                                <div className="flex items-center gap-1.5">
+                                  <input
+                                    type="text"
+                                    value={calcExpression}
+                                    onChange={(e) => setCalcExpression(e.target.value)}
+                                    onKeyDown={(e) => {
+                                      if (e.key === 'Enter') {
+                                        e.preventDefault();
+                                        handleApplyCalc(idx);
+                                      } else if (e.key === 'Escape') {
+                                        setCalcRowIdx(null);
+                                      }
+                                    }}
+                                    placeholder="16 + 5 + 10 + 15"
+                                    className="flex-1 h-7.5 bg-white border border-amber-300 rounded-lg px-2 text-xs font-mono font-bold text-slate-800 focus:outline-none focus:border-amber-600"
+                                    autoFocus
+                                  />
+                                  <button
+                                    type="button"
+                                    onClick={() => handleApplyCalc(idx)}
+                                    className="h-7.5 px-3 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-bold shadow-xs cursor-pointer flex items-center gap-1 shrink-0"
+                                  >
+                                    <CheckCircle size={11} />
+                                    <span>Apply</span>
+                                  </button>
+                                </div>
+                                {evaluateCalcSum(calcExpression) && (
+                                  <div className="text-[10px] font-mono text-amber-800 font-bold px-1">
+                                    Sum: {evaluateCalcSum(calcExpression).wholeKg} Kg {evaluateCalcSum(calcExpression).remGm > 0 ? `${evaluateCalcSum(calcExpression).remGm} Gm` : ''} ({evaluateCalcSum(calcExpression).total} kg)
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    {/* ── Desktop / Tablet Layout (hidden md:block) ── */}
+                    <div className="hidden md:block overflow-x-auto w-full">
+                      <table className="w-full text-left text-xs border-collapse">
+                        <thead className="bg-[#FDFBF7] text-slate-700 font-black border-b border-[#fed7aa]/50 text-[10px] sm:text-[11px] uppercase tracking-wider">
+                          <tr>
+                            <th className="py-2 px-1 text-center w-7">#</th>
+                            <th className="py-2 px-1.5 min-w-[150px]">Fish Variety</th>
+                            <th className="py-2 px-1 min-w-[100px] w-28">Grade</th>
+                            {localWeighMode === 'box' && <th className="py-2 px-1 text-center w-14">Boxes</th>}
+                            {localWeighMode === 'box' && <th className="py-2 px-1 text-center w-24">Kg / Box</th>}
+                            <th className="py-2 px-1.5 text-center min-w-[150px] w-40">
+                              <span className="inline-flex items-center gap-1">
+                                Scale Wt (Kg) <Calculator size={10} className="text-amber-600" />
+                              </span>
+                            </th>
+                            <th className="py-2 px-1 text-right w-18">Rate (₹)</th>
+                            <th className="py-2 px-1.5 text-right w-20">Total (₹)</th>
+                            <th className="py-2 px-1 text-center w-8"></th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-[#fed7aa]/30">
+                          {group.items.map(({ item: row, originalIdx: idx }) => {
+                            let rowKg = 0;
+                            const b = Number(row.boxes || 0);
+                            const kpb = Number(row.kgPerBox || 1);
+                            if (Number(row.kg || 0) > 0 || Number(row.grams || 0) > 0) {
+                              rowKg = Number((Number(row.kg || 0) + Number(row.grams || 0) / 1000).toFixed(3));
+                            } else if (b > 0 && kpb > 0) {
+                              rowKg = Number((b * kpb).toFixed(3));
+                            }
+                            const rowTotal = Number((rowKg * Number(row.ratePerKg || 0)).toFixed(2));
+
+                            return (
+                              <React.Fragment key={row.id || idx}>
+                                <tr className="hover:bg-amber-50/30">
+                                <td className="py-1.5 px-1 align-middle text-center font-mono text-slate-500 text-xs font-bold">
+                                  {idx + 1}
+                                </td>
+                                <td className="py-1.5 px-1.5 align-middle">
+                                  <SearchableDropdown
+                                    mode="select"
+                                    value={row.menuItemId}
+                                    onChange={(selId, selOption) => {
+                                      const sel = selOption?.raw || fishList.find(f => f._id === selId);
+                                      const gradeOptions = getFishGradeOptions(sel);
+                                      const defaultGrade = gradeOptions.find(g => g.key === 'medium') || gradeOptions[0];
+                                      const itemKpb = Number(sel?.boxPackingKg || 1);
+                                      const updated = [...localStockInForm.items];
+                                      const curBoxes = Number(updated[idx].boxes || 0);
+                                      let autoKg = updated[idx].kg;
+                                      let autoGm = updated[idx].grams;
+                                      if (curBoxes > 0) {
+                                        const tot = curBoxes * itemKpb;
+                                        const wKg = Math.floor(tot);
+                                        const remG = Math.round((tot - wKg) * 1000);
+                                        autoKg = String(wKg);
+                                        autoGm = remG > 0 ? String(remG) : '0';
+                                      }
+                                      updated[idx] = {
+                                        ...updated[idx],
+                                        menuItemId: selId,
+                                        itemName: sel?.name || '',
+                                        sizeGrade: defaultGrade?.key || 'medium',
+                                        sizeBracket: defaultGrade?.label || 'Medium',
+                                        weightOption: defaultGrade?.range || '1 - 4 Kg',
+                                        ratePerKg: defaultGrade?.rate ? String(defaultGrade.rate) : (sel?.purchasePrice ? String(sel.purchasePrice) : updated[idx].ratePerKg),
+                                        kgPerBox: itemKpb,
+                                        kgPerBoxKg: undefined,
+                                        kgPerBoxGrams: undefined,
+                                        kg: autoKg,
+                                        grams: autoGm
+                                      };
+                                      setLocalStockInForm({ ...localStockInForm, items: updated });
+                                    }}
+                                    options={fishOptions}
+                                    placeholder="-- Variety --"
+                                    searchPlaceholder="Search fish species..."
+                                    className="w-full min-w-[140px]"
+                                    inputClassName="!h-8 !py-0 !rounded-lg !text-[11px] flex items-center"
+                                    minDropdownWidth={240}
+                                    accentColor="orange"
+                                    required
+                                  />
+                                </td>
+                                <td className="py-1.5 px-1 align-middle">
+                                  {(() => {
+                                    const selFish = fishList.find(f => f._id === row.menuItemId);
+                                    const gradeOptions = getFishGradeOptions(selFish);
+                                    const activeGradeKey = row.sizeGrade || (row.sizeBracket ? row.sizeBracket.toLowerCase() : 'medium');
+                                    const currentGrade = gradeOptions.find(g => g.key === activeGradeKey) || gradeOptions[0];
+
+                                    if (!row.menuItemId) {
+                                      return (
+                                        <div className="h-8 flex items-center px-1.5 border border-dashed border-[#E8DCCB] rounded-lg bg-slate-50/60 text-[10px] text-slate-400 italic">
+                                          Pick fish first
+                                        </div>
+                                      );
+                                    }
+
+                                    return (
+                                      <select
+                                        value={currentGrade?.key || 'medium'}
+                                        onChange={(e) => {
+                                          const chosenKey = e.target.value;
+                                          const chosenGrade = gradeOptions.find(g => g.key === chosenKey);
+                                          const updated = [...localStockInForm.items];
+                                          updated[idx] = {
+                                            ...updated[idx],
+                                            sizeGrade: chosenKey,
+                                            sizeBracket: chosenGrade?.label || 'Medium',
+                                            weightOption: chosenGrade?.range || '1 - 4 Kg',
+                                            ratePerKg: chosenGrade?.rate ? String(chosenGrade.rate) : updated[idx].ratePerKg
+                                          };
+                                          setLocalStockInForm({ ...localStockInForm, items: updated });
+                                        }}
+                                        className="w-full h-8 bg-white border border-[#E8DCCB] rounded-lg px-1 text-[11px] font-bold text-slate-800 focus:outline-none focus:border-[#ea580c] cursor-pointer"
+                                      >
+                                        {gradeOptions.map(g => (
+                                          <option key={g.key} value={g.key}>
+                                            {g.label} ({g.range})
+                                          </option>
+                                        ))}
+                                      </select>
+                                    );
+                                  })()}
+                                </td>
+                                {/* Boxes — hidden in KG-only mode */}
+                                {(row.weighMode || localWeighMode) !== 'kg' && (
+                                  <td className="py-1.5 px-1 align-middle">
                                     <input
                                       type="number"
                                       min="0"
                                       step="any"
-                                      placeholder="Kg"
-                                      value={kpbParts.k}
+                                      placeholder="0"
+                                      value={row.boxes}
                                       onChange={(e) => {
-                                        const updated = buildUpdatedRowsWithKpb(
-                                          localStockInForm.items,
-                                          idx,
-                                          e.target.value,
-                                          kpbParts.g,
-                                          true
-                                        );
-                                        setLocalStockInForm({ ...localStockInForm, items: updated });
-                                      }}
-                                      className="w-11 h-8 bg-white border border-[#E8DCCB] rounded-lg px-1 text-xs text-center font-mono font-bold text-slate-800 focus:outline-none focus:border-[#ea580c]"
-                                    />
-                                    <span className="text-[10px] font-bold text-slate-400">+</span>
-                                    <input
-                                      type="number"
-                                      min="0"
-                                      max="999"
-                                      placeholder="Gm"
-                                      value={kpbParts.g}
-                                      onChange={(e) => {
-                                        let gVal = e.target.value.replace(/[^0-9]/g, '');
-                                        if (gVal.length > 3) gVal = gVal.slice(0, 3);
-                                        if (Number(gVal) > 999) gVal = '999';
-                                        const updated = buildUpdatedRowsWithKpb(
-                                          localStockInForm.items,
-                                          idx,
-                                          kpbParts.k,
-                                          gVal,
-                                          false
-                                        );
-                                        setLocalStockInForm({ ...localStockInForm, items: updated });
-                                      }}
-                                      className="w-10 h-8 bg-white border border-[#E8DCCB] rounded-lg px-0.5 text-xs text-center font-mono font-bold text-slate-800 focus:outline-none focus:border-[#ea580c]"
-                                    />
-                                  </div>
-                                );
-                              })()}
-                            </td>
-                          )}
-                          {/* Scale Wt (Kg) with inline Calculator */}
-                          <td className="py-1.5 px-1.5 align-middle">
-                            <div className="relative">
-                              <div className="flex items-center justify-center gap-0.5 h-8">
-                                <input
-                                  type="number"
-                                  min="0"
-                                  step="any"
-                                  placeholder="Kg"
-                                  value={row.kg}
-                                  onChange={(e) => {
-                                    let val = e.target.value;
-                                    const updated = [...localStockInForm.items];
-                                    if (val.includes('.')) {
-                                      const parts = val.split('.');
-                                      updated[idx].kg = parts[0] || '0';
-                                      const gStr = (parts[1] || '').padEnd(3, '0').slice(0, 3);
-                                      updated[idx].grams = String(parseInt(gStr, 10) || 0);
-                                    } else {
-                                      updated[idx].kg = val;
-                                    }
-                                    const curKpb = Number(updated[idx].kgPerBox || 1);
-                                    const totalWeight = Number(updated[idx].kg || 0) + (Number(updated[idx].grams || 0) / 1000);
-                                    if (totalWeight > 0 && (!updated[idx].boxes || updated[idx].boxes === '0')) {
-                                      updated[idx].boxes = String(Math.round(totalWeight / curKpb));
-                                    }
-                                    setLocalStockInForm({ ...localStockInForm, items: updated });
-                                  }}
-                                  className="w-13 sm:w-14 h-8 bg-white border border-[#E8DCCB] rounded-lg px-1 text-xs text-center font-mono font-bold text-slate-800 focus:outline-none focus:border-[#ea580c]"
-                                />
-                                <span className="text-[10px] font-bold text-slate-400">+</span>
-                                <input
-                                  type="number"
-                                  min="0"
-                                  max="999"
-                                  placeholder="Gm"
-                                  value={row.grams}
-                                  onChange={(e) => {
-                                    let val = e.target.value.replace(/[^0-9]/g, '');
-                                    if (val.length > 3) val = val.slice(0, 3);
-                                    if (Number(val) > 999) val = '999';
-                                    const updated = [...localStockInForm.items];
-                                    updated[idx].grams = val;
-                                    setLocalStockInForm({ ...localStockInForm, items: updated });
-                                  }}
-                                  className="w-11 sm:w-12 h-8 bg-white border border-[#E8DCCB] rounded-lg px-0.5 text-xs text-center font-mono font-bold text-slate-800 focus:outline-none focus:border-[#ea580c]"
-                                />
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    if (calcRowIdx === idx) {
-                                      setCalcRowIdx(null);
-                                      setCalcExpression('');
-                                    } else {
-                                      setCalcRowIdx(idx);
-                                      setCalcExpression(row.kg ? (Number(row.grams || 0) > 0 ? `${row.kg}.${String(row.grams).padStart(3, '0')}` : row.kg) : '');
-                                    }
-                                  }}
-                                  className={`h-8 w-7 rounded-lg border flex items-center justify-center transition-all cursor-pointer shrink-0 ${
-                                    calcRowIdx === idx
-                                      ? 'bg-amber-600 text-white border-amber-600 shadow-xs'
-                                      : 'bg-amber-50 hover:bg-amber-100 text-amber-800 border-amber-300'
-                                  }`}
-                                  title="Quick Scale Sum: e.g. 16+5+10+15"
-                                >
-                                  <Calculator size={12} />
-                                </button>
-                              </div>
-
-                              {/* Inline Calculator Drawer */}
-                              {calcRowIdx === idx && (
-                                <div className="absolute top-full left-1/2 -translate-x-1/2 mt-1 z-30 w-56 sm:w-64 bg-white border-2 border-amber-400 rounded-xl shadow-xl p-2 animate-in fade-in zoom-in-95 duration-100">
-                                  <div className="flex items-center justify-between pb-1 mb-1.5 border-b border-amber-100">
-                                    <span className="text-[10px] font-black uppercase text-amber-900 flex items-center gap-1">
-                                      <Calculator size={11} className="text-amber-600" />
-                                      <span>Scale Sum Calculator</span>
-                                    </span>
-                                    <button
-                                      type="button"
-                                      onClick={() => { setCalcRowIdx(null); setCalcExpression(''); }}
-                                      className="text-slate-400 hover:text-slate-600 p-0.5 rounded cursor-pointer"
-                                    >
-                                      <X size={11} />
-                                    </button>
-                                  </div>
-                                  <p className="text-[9.5px] text-slate-500 font-medium mb-1">
-                                    Enter weights with <code className="bg-amber-100 text-amber-900 px-1 py-0.2 rounded font-bold">+</code>:
-                                  </p>
-                                  <div className="flex items-center gap-1">
-                                    <input
-                                      type="text"
-                                      value={calcExpression}
-                                      onChange={(e) => setCalcExpression(e.target.value)}
-                                      onKeyDown={(e) => {
-                                        if (e.key === 'Enter') {
-                                          e.preventDefault();
-                                          handleApplyCalc(idx);
-                                        } else if (e.key === 'Escape') {
-                                          setCalcRowIdx(null);
+                                        const val = e.target.value;
+                                        const updated = [...localStockInForm.items];
+                                        const curKpb = Number(updated[idx].kgPerBox || 1);
+                                        updated[idx].boxes = val;
+                                        if (val !== '' && !isNaN(Number(val)) && Number(val) > 0) {
+                                          const totalWeight = Number(val) * curKpb;
+                                          const wholeKg = Math.floor(totalWeight);
+                                          const remainderGrams = Math.round((totalWeight - wholeKg) * 1000);
+                                          updated[idx].kg = String(wholeKg);
+                                          updated[idx].grams = remainderGrams > 0 ? String(remainderGrams) : '0';
+                                        } else if (val === '') {
+                                          updated[idx].kg = '';
+                                          updated[idx].grams = '';
                                         }
+                                        setLocalStockInForm({ ...localStockInForm, items: updated });
                                       }}
-                                      placeholder="16 + 5 + 10 + 15"
-                                      className="flex-1 h-7 bg-amber-50/50 border border-amber-300 rounded-lg px-2 text-xs font-mono font-bold text-slate-800 focus:outline-none focus:border-amber-500"
-                                      autoFocus
+                                      className="w-full h-8 bg-white border border-[#E8DCCB] rounded-lg px-1 text-xs text-center font-mono font-bold text-slate-800 focus:outline-none focus:border-[#ea580c]"
                                     />
-                                    <button
-                                      type="button"
-                                      onClick={() => handleApplyCalc(idx)}
-                                      className="h-7 px-2.5 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-black shadow-xs cursor-pointer flex items-center justify-center"
-                                      title="Apply Sum to row"
-                                    >
-                                      =
-                                    </button>
+                                  </td>
+                                )}
+                                {/* Kg/Box — hidden in KG-only mode */}
+                                {(row.weighMode || localWeighMode) !== 'kg' && (
+                                  <td className="py-1.5 px-1 align-middle">
+                                    {(() => {
+                                      const kpbParts = splitKgPerBoxParts(row);
+                                      return (
+                                        <div className="flex items-center justify-center gap-0.5 h-8">
+                                          <input
+                                            type="number"
+                                            min="0"
+                                            step="any"
+                                            placeholder="Kg"
+                                            value={kpbParts.k}
+                                            onChange={(e) => {
+                                              const updated = buildUpdatedRowsWithKpb(
+                                                localStockInForm.items,
+                                                idx,
+                                                e.target.value,
+                                                kpbParts.g,
+                                                true
+                                              );
+                                              setLocalStockInForm({ ...localStockInForm, items: updated });
+                                            }}
+                                            className="w-11 h-8 bg-white border border-[#E8DCCB] rounded-lg px-1 text-xs text-center font-mono font-bold text-slate-800 focus:outline-none focus:border-[#ea580c]"
+                                          />
+                                          <span className="text-[10px] font-bold text-slate-400">+</span>
+                                          <input
+                                            type="number"
+                                            min="0"
+                                            max="999"
+                                            placeholder="Gm"
+                                            value={kpbParts.g}
+                                            onChange={(e) => {
+                                              let gVal = e.target.value.replace(/[^0-9]/g, '');
+                                              if (gVal.length > 3) gVal = gVal.slice(0, 3);
+                                              if (Number(gVal) > 999) gVal = '999';
+                                              const updated = buildUpdatedRowsWithKpb(
+                                                localStockInForm.items,
+                                                idx,
+                                                kpbParts.k,
+                                                gVal,
+                                                false
+                                              );
+                                              setLocalStockInForm({ ...localStockInForm, items: updated });
+                                            }}
+                                            className="w-10 h-8 bg-white border border-[#E8DCCB] rounded-lg px-0.5 text-xs text-center font-mono font-bold text-slate-800 focus:outline-none focus:border-[#ea580c]"
+                                          />
+                                        </div>
+                                      );
+                                    })()}
+                                  </td>
+                                )}
+                                {/* Scale Wt (Kg) with inline Calculator */}
+                                <td className="py-1.5 px-1.5 align-middle">
+                                  <div className="relative">
+                                    <div className="flex items-center justify-center gap-0.5 h-8">
+                                      <input
+                                        type="number"
+                                        min="0"
+                                        step="any"
+                                        placeholder="Kg"
+                                        value={row.kg}
+                                        onChange={(e) => {
+                                          let val = e.target.value;
+                                          const updated = [...localStockInForm.items];
+                                          if (val.includes('.')) {
+                                            const parts = val.split('.');
+                                            updated[idx].kg = parts[0] || '0';
+                                            const gStr = (parts[1] || '').padEnd(3, '0').slice(0, 3);
+                                            updated[idx].grams = String(parseInt(gStr, 10) || 0);
+                                          } else {
+                                            updated[idx].kg = val;
+                                          }
+                                          const curKpb = Number(updated[idx].kgPerBox || 1);
+                                          const totalWeight = Number(updated[idx].kg || 0) + (Number(updated[idx].grams || 0) / 1000);
+                                          if (totalWeight > 0 && (!updated[idx].boxes || updated[idx].boxes === '0')) {
+                                            updated[idx].boxes = String(Math.round(totalWeight / curKpb));
+                                          }
+                                          setLocalStockInForm({ ...localStockInForm, items: updated });
+                                        }}
+                                        className="w-13 sm:w-14 h-8 bg-white border border-[#E8DCCB] rounded-lg px-1 text-xs text-center font-mono font-bold text-slate-800 focus:outline-none focus:border-[#ea580c]"
+                                      />
+                                      <span className="text-[10px] font-bold text-slate-400">+</span>
+                                      <input
+                                        type="number"
+                                        min="0"
+                                        max="999"
+                                        placeholder="Gm"
+                                        value={row.grams}
+                                        onChange={(e) => {
+                                          let val = e.target.value.replace(/[^0-9]/g, '');
+                                          if (val.length > 3) val = val.slice(0, 3);
+                                          if (Number(val) > 999) val = '999';
+                                          const updated = [...localStockInForm.items];
+                                          updated[idx].grams = val;
+                                          setLocalStockInForm({ ...localStockInForm, items: updated });
+                                        }}
+                                        className="w-11 sm:w-12 h-8 bg-white border border-[#E8DCCB] rounded-lg px-0.5 text-xs text-center font-mono font-bold text-slate-800 focus:outline-none focus:border-[#ea580c]"
+                                      />
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          if (calcRowIdx === idx) {
+                                            setCalcRowIdx(null);
+                                            setCalcExpression('');
+                                          } else {
+                                            setCalcRowIdx(idx);
+                                            setCalcExpression(row.kg ? (Number(row.grams || 0) > 0 ? `${row.kg}.${String(row.grams).padStart(3, '0')}` : row.kg) : '');
+                                          }
+                                        }}
+                                        className={`h-8 w-7 rounded-lg border flex items-center justify-center transition-all cursor-pointer shrink-0 ${
+                                          calcRowIdx === idx
+                                            ? 'bg-amber-600 text-white border-amber-600 shadow-xs'
+                                            : 'bg-amber-50 hover:bg-amber-100 text-amber-800 border-amber-300'
+                                        }`}
+                                        title="Quick Scale Sum: e.g. 16+5+10+15"
+                                      >
+                                        <Calculator size={12} />
+                                      </button>
+                                    </div>
                                   </div>
-                                  <div className="flex items-center justify-between gap-1 mt-1.5 pt-1 border-t border-slate-100 text-[9.5px]">
-                                    <span className="text-slate-400">Sum preview:</span>
-                                    <span className="font-mono font-black text-amber-900">
-                                      {(() => {
-                                        const res = evaluateCalcSum(calcExpression);
-                                        return res !== null ? `${res.wholeKg} Kg ${res.remGm > 0 ? `${res.remGm} Gm` : ''}` : '—';
-                                      })()}
-                                    </span>
+                                </td>
+                                <td className="py-1.5 px-1 align-middle text-right">
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    step="any"
+                                    placeholder="₹/Kg"
+                                    value={row.ratePerKg}
+                                    onChange={(e) => {
+                                      const updated = [...localStockInForm.items];
+                                      updated[idx].ratePerKg = e.target.value;
+                                      setLocalStockInForm({ ...localStockInForm, items: updated });
+                                    }}
+                                    className="w-16 h-8 bg-white border border-[#E8DCCB] rounded-lg px-1.5 text-xs text-right font-mono font-bold text-slate-800 focus:outline-none focus:border-[#ea580c]"
+                                  />
+                                </td>
+                                <td className="py-1.5 px-1.5 align-middle text-right">
+                                  <div className="h-8 flex items-center justify-end font-mono font-black text-xs sm:text-sm text-emerald-800">
+                                    ₹{rowTotal.toLocaleString('en-IN')}
                                   </div>
-                                </div>
+                                </td>
+                                <td className="py-1.5 px-1 align-middle text-center">
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      if (localStockInForm.items.length > 1) {
+                                        setLocalStockInForm({
+                                          ...localStockInForm,
+                                          items: localStockInForm.items.filter((_, i) => i !== idx)
+                                        });
+                                      } else {
+                                        const now = new Date().toISOString().slice(0, 16);
+                                        setLocalStockInForm({
+                                          ...localStockInForm,
+                                          items: [{ id: Date.now(), menuItemId: '', itemName: '', sizeGrade: 'medium', sizeBracket: 'Medium', weightOption: '1 - 4 Kg', boxes: '', kgPerBox: 1, kg: '', grams: '', ratePerKg: '', date: now, weighMode: localWeighMode }]
+                                        });
+                                      }
+                                    }}
+                                    className="h-8 w-8 flex items-center justify-center text-slate-300 hover:text-rose-600 rounded-lg cursor-pointer transition-colors mx-auto"
+                                    title={localStockInForm.items.length > 1 ? 'Remove row' : 'Clear row'}
+                                  >
+                                    <Trash2 size={13} />
+                                  </button>
+                                </td>
+                              </tr>
+
+                              {/* Desktop Inline Scale Calculator Sub-Row */}
+                              {calcRowIdx === idx && (
+                                <tr key={`calc-${idx}`} className="bg-amber-50/70 border-y-2 border-amber-400">
+                                  <td colSpan={localWeighMode === 'box' ? 9 : 7} className="p-2 sm:p-2.5">
+                                    <div className="flex flex-wrap items-center justify-between gap-2.5 bg-white p-2 sm:p-2.5 rounded-xl border border-amber-300 shadow-sm">
+                                      <div className="flex items-center gap-2">
+                                        <div className="w-7 h-7 rounded-lg bg-amber-500 text-white flex items-center justify-center font-bold shadow-xs">
+                                          <Calculator size={14} />
+                                        </div>
+                                        <div>
+                                          <div className="text-xs font-bold text-amber-950 flex items-center gap-1.5">
+                                            <span>Scale Sum Calculator (Row #{idx + 1}{row.itemName ? ` • ${row.itemName}` : ''})</span>
+                                          </div>
+                                          <div className="text-[10px] text-slate-500 font-medium">
+                                            Enter weights with <code className="bg-amber-100 text-amber-900 px-1 py-0.2 rounded font-mono font-bold">+</code>: e.g. <span className="font-mono text-slate-700">16 + 5 + 10 + 15</span>
+                                          </div>
+                                        </div>
+                                      </div>
+
+                                      <div className="flex items-center gap-2">
+                                        <input
+                                          type="text"
+                                          value={calcExpression}
+                                          onChange={(e) => setCalcExpression(e.target.value)}
+                                          onKeyDown={(e) => {
+                                            if (e.key === 'Enter') {
+                                              e.preventDefault();
+                                              handleApplyCalc(idx);
+                                            } else if (e.key === 'Escape') {
+                                              setCalcRowIdx(null);
+                                            }
+                                          }}
+                                          placeholder="16 + 5 + 10 + 15"
+                                          className="w-48 sm:w-64 h-8 bg-amber-50/50 border border-amber-300 rounded-lg px-2.5 text-xs font-mono font-bold text-slate-900 focus:outline-none focus:border-amber-600 focus:bg-white"
+                                          autoFocus
+                                        />
+                                        <button
+                                          type="button"
+                                          onClick={() => handleApplyCalc(idx)}
+                                          className="h-8 px-3.5 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-bold shadow-xs cursor-pointer flex items-center gap-1"
+                                        >
+                                          <CheckCircle size={12} />
+                                          <span>Apply Sum</span>
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => { setCalcRowIdx(null); setCalcExpression(''); }}
+                                          className="h-8 px-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg cursor-pointer flex items-center justify-center"
+                                          title="Cancel"
+                                        >
+                                          <X size={15} />
+                                        </button>
+                                      </div>
+
+                                      <div className="flex items-center gap-1.5 px-2.5 py-1 bg-amber-100/70 border border-amber-300/60 rounded-lg text-xs">
+                                        <span className="text-[10.5px] font-bold text-amber-800 uppercase tracking-wide">Sum:</span>
+                                        <span className="font-mono font-black text-amber-950">
+                                          {(() => {
+                                            const res = evaluateCalcSum(calcExpression);
+                                            return res !== null ? `${res.wholeKg} Kg ${res.remGm > 0 ? `${res.remGm} Gm` : ''}` : '—';
+                                          })()}
+                                        </span>
+                                      </div>
+                                    </div>
+                                  </td>
+                                </tr>
                               )}
-                            </div>
-                          </td>
-                          <td className="py-1.5 px-1 align-middle text-right">
-                            <input
-                              type="number"
-                              min="0"
-                              step="any"
-                              placeholder="₹/Kg"
-                              value={row.ratePerKg}
-                              onChange={(e) => {
-                                const updated = [...localStockInForm.items];
-                                updated[idx].ratePerKg = e.target.value;
-                                setLocalStockInForm({ ...localStockInForm, items: updated });
-                              }}
-                              className="w-16 h-8 bg-white border border-[#E8DCCB] rounded-lg px-1.5 text-xs text-right font-mono font-bold text-slate-800 focus:outline-none focus:border-[#ea580c]"
-                            />
-                          </td>
-                          <td className="py-1.5 px-1.5 align-middle text-right">
-                            <div className="h-8 flex items-center justify-end font-mono font-black text-xs sm:text-sm text-emerald-800">
-                              ₹{rowTotal.toLocaleString('en-IN')}
-                            </div>
-                          </td>
-                          <td className="py-1.5 px-1 align-middle text-center">
-                            <button
-                              type="button"
-                              onClick={() => {
-                                if (localStockInForm.items.length > 1) {
-                                  setLocalStockInForm({
-                                    ...localStockInForm,
-                                    items: localStockInForm.items.filter((_, i) => i !== idx)
-                                  });
-                                } else {
-                                  // Last row: clear it instead of removing
-                                  const now = new Date().toISOString().slice(0, 16);
-                                  setLocalStockInForm({
-                                    ...localStockInForm,
-                                    items: [{ id: Date.now(), menuItemId: '', itemName: '', sizeGrade: 'medium', sizeBracket: 'Medium', weightOption: '1 - 4 Kg', boxes: '', kgPerBox: 1, kg: '', grams: '', ratePerKg: '', date: now, weighMode: localWeighMode }]
-                                  });
-                                }
-                              }}
-                              className="h-8 w-8 flex items-center justify-center text-slate-300 hover:text-rose-600 rounded-lg cursor-pointer transition-colors mx-auto"
-                              title={localStockInForm.items.length > 1 ? 'Remove row' : 'Clear row'}
-                            >
-                              <Trash2 size={13} />
-                            </button>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                  {/* Totals Row */}
-                  {(() => {
-                    const totalKgAll = localStockInForm.items.reduce((acc, r) => {
-                      const rKg = Number(r.kg || 0);
-                      const rGm = Number(r.grams || 0);
-                      const b = Number(r.boxes || 0);
-                      const kpb = Number(r.kgPerBox || 1);
-                      if (rKg > 0 || rGm > 0) return acc + rKg + rGm / 1000;
-                      if (b > 0 && kpb > 0) return acc + b * kpb;
-                      return acc;
-                    }, 0);
-                    const totalKgInt = Math.floor(totalKgAll);
-                    const totalGmInt = Math.round((totalKgAll - totalKgInt) * 1000);
-                    const colSpanBoxes = localWeighMode === 'box' ? 2 : 0;
-                    return (
-                      <tfoot>
-                        <tr className="bg-amber-50/80 border-t-2 border-[#fed7aa] font-black">
-                          <td colSpan={4 + colSpanBoxes} className="py-2 px-2 text-right text-[10px] sm:text-[11px] uppercase tracking-wider text-slate-600 font-black">
-                            TOTAL KGS
-                          </td>
-                          <td className="py-2 px-1 text-center">
-                            <span className="inline-flex items-center gap-1 bg-amber-100 border border-amber-300 rounded-lg px-2 py-0.5 text-xs font-black text-amber-900">
-                              {totalKgInt} Kg {totalGmInt > 0 ? `${totalGmInt} Gm` : ''}
-                            </span>
-                          </td>
-                          <td colSpan={3} />
-                        </tr>
-                      </tfoot>
-                    );
-                  })()}
-                </table>
-              </div>
-              {/* Add Row Button */}
-              <div className="px-2.5 pb-2.5 pt-1.5 flex justify-start">
+                            </React.Fragment>
+                          );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+
+                    {/* Date Group Subtotal Footer */}
+                    <div className="bg-[#FAF0E4]/70 px-2.5 py-1 sm:px-3 sm:py-1.5 border-t border-[#fed7aa] flex items-center justify-between text-[10px] sm:text-xs">
+                      <span className="font-bold text-slate-600 uppercase tracking-wider text-[9px] sm:text-[10px] truncate">
+                        {group.label.dateFormatted} Subtotal:
+                      </span>
+                      <div className="flex items-center gap-1.5 sm:gap-2 font-mono shrink-0">
+                        <span className="font-black text-amber-950 bg-amber-100 border border-amber-300 px-1.5 sm:px-2 py-0.5 rounded text-[9.5px] sm:text-[11px]">
+                          {group.subtotalKgInt} Kg {group.subtotalGmInt > 0 ? `${group.subtotalGmInt} Gm` : ''}
+                        </span>
+                        <span className="font-black text-emerald-800 text-[10px] sm:text-xs">
+                          ₹{group.subtotalValue.toLocaleString('en-IN')}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+
+              {/* ── Table Action Buttons: Add Item, Next Day ── */}
+              <div className="flex items-center gap-1.5 sm:gap-2 w-full pt-1">
                 <button
                   type="button"
                   onClick={() => {
-                    const now = new Date().toISOString().slice(0, 16);
-                    setLocalStockInForm(prev => ({
-                      ...prev,
-                      items: [
-                        ...prev.items,
-                        { id: Date.now(), menuItemId: '', itemName: '', sizeGrade: 'medium', sizeBracket: 'Medium', weightOption: '1 - 4 Kg', boxes: '', kgPerBox: 1, kg: '', grams: '', ratePerKg: '', date: now, weighMode: localWeighMode }
-                      ]
-                    }));
+                    const lastItem = localStockInForm.items[localStockInForm.items.length - 1];
+                    const curDate = lastItem?.date || new Date().toISOString().slice(0, 16);
+                    handleAddRowToDate(curDate);
                   }}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-dashed border-[#ea580c]/60 bg-amber-50 hover:bg-amber-100 text-[#ea580c] text-xs font-bold transition-colors cursor-pointer"
+                  className="flex-1 flex items-center justify-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1.5 sm:py-2 rounded-xl border border-dashed border-[#ea580c]/60 bg-amber-50 hover:bg-amber-100 text-[#ea580c] text-[10px] sm:text-xs font-bold transition-all cursor-pointer shadow-2xs active:scale-95 whitespace-nowrap min-w-0"
                 >
-                  <Plus size={12} />
-                  Add Row
+                  <Plus size={12} className="shrink-0" />
+                  <span className="truncate">Add Item <span className="hidden sm:inline">(Same Date)</span></span>
                 </button>
+
+                <button
+                  type="button"
+                  onClick={handleNextDay}
+                  className="flex-1 flex items-center justify-center gap-1 sm:gap-1.5 px-2 sm:px-3.5 py-1.5 sm:py-2 rounded-xl bg-gradient-to-r from-orange-500 to-amber-600 hover:from-orange-600 hover:to-amber-700 text-white text-[10px] sm:text-xs font-black transition-all cursor-pointer shadow-md active:scale-95 whitespace-nowrap min-w-0"
+                  title="Advance to next calendar day with same time"
+                >
+                  <CalendarPlus size={12} className="shrink-0" />
+                  <span className="truncate">Next Day ({nextDayPreview})</span>
+                </button>
+              </div>
+
+              {/* ── GRAND TOTAL FOOTER (ALL DATES COMBINED) ── */}
+              <div className="bg-gradient-to-r from-amber-100/90 via-orange-50 to-amber-100/90 border border-[#ea580c]/40 rounded-xl px-2.5 py-1.5 sm:px-3.5 sm:py-2 shadow-2xs flex items-center justify-between gap-1.5 sm:gap-3">
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <span className="w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full bg-[#ea580c] shrink-0" />
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:gap-1.5 min-w-0">
+                    <span className="text-[10px] sm:text-xs font-black text-slate-900 uppercase tracking-wide truncate">
+                      Grand Total:
+                    </span>
+                    <span className="text-[8.5px] sm:text-[10px] font-semibold text-slate-500 truncate">
+                      {grandTotals.itemsCount} {grandTotals.itemsCount === 1 ? 'Variety' : 'Varieties'} • {grandTotals.datesCount} {grandTotals.datesCount === 1 ? 'Date' : 'Dates'}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-1.5 sm:gap-2 font-mono shrink-0">
+                  {grandTotals.totalBoxes > 0 && (
+                    <span className="text-[9px] sm:text-xs font-bold text-slate-600">
+                      {grandTotals.totalBoxes} <span className="hidden xs:inline">Boxes</span>
+                    </span>
+                  )}
+                  <span className="bg-[#ea580c] text-white px-1.5 sm:px-2 py-0.5 rounded-md font-black text-[9.5px] sm:text-xs shadow-2xs whitespace-nowrap">
+                    {grandTotals.totalKgInt} Kg{grandTotals.totalGmInt > 0 ? ` ${grandTotals.totalGmInt}g` : ''}
+                  </span>
+                  <span className="font-black text-emerald-800 text-[10.5px] sm:text-sm whitespace-nowrap">
+                    ₹{grandTotals.totalGross.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </span>
+                </div>
               </div>
             </div>
           </div>
@@ -1408,18 +1941,384 @@ const LocalStockInTab = ({
             <SearchableDropdown
               mode="select"
               searchable={false}
-              value={localStockInForm.paymentMode}
-              onChange={(val) => setLocalStockInForm({ ...localStockInForm, paymentMode: val })}
+              value={localStockInForm.paymentMode || 'Cash'}
+              onChange={(val) => {
+                const net = Math.max(0, Number(localTotals.netPayable || 0));
+                setLocalStockInForm(prev => {
+                  let pPaid = prev.partialPaid;
+                  let dAmt = 0;
+                  if (val === 'Partial') {
+                    pPaid = pPaid || Math.round(net * 0.5);
+                    dAmt = Math.max(0, Number((net - pPaid).toFixed(2)));
+                  } else if (val === 'Credit') {
+                    dAmt = net;
+                    pPaid = 0;
+                  }
+                  return {
+                    ...prev,
+                    paymentMode: val,
+                    partialPaid: pPaid,
+                    paidAmount: val === 'Partial' ? pPaid : (val === 'Credit' ? 0 : net),
+                    dueAmount: dAmt
+                  };
+                });
+              }}
               options={[
                 { value: 'Cash', label: 'Cash' },
                 { value: 'UPI', label: 'UPI / GPay' },
                 { value: 'Bank Transfer', label: 'Bank Transfer' },
-                { value: 'Credit', label: 'Credit (Pay Later)' }
+                { value: 'Cheque', label: 'Cheque' },
+                { value: 'Credit', label: 'Credit (Pay Later / Khata)' },
+                { value: 'Partial', label: 'Partial Payment' },
+                { value: 'Mixed', label: 'Mixed / Split' }
               ]}
               accentColor="orange"
             />
           </div>
         </div>
+
+        {/* 4a. Partial Payment Breakdown Panel */}
+        {localStockInForm.paymentMode === 'Partial' && (
+          <div className="p-3 bg-gradient-to-r from-orange-50/80 to-amber-50/80 rounded-xl border border-orange-200 space-y-2.5 animate-in fade-in">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-orange-950 flex items-center gap-1.5">
+                <Clock size={13} className="text-amber-600" /> Partial Advance / Khata Settlement
+              </span>
+              <span className="text-[11px] font-semibold text-slate-500">
+                Net Payable: <strong className="font-mono text-slate-800">₹{Math.max(0, Number(localTotals.netPayable || 0)).toLocaleString()}</strong>
+              </span>
+            </div>
+
+            {/* Row 1: Paid Now + Paid Via side-by-side in a single row */}
+            <div className="grid grid-cols-2 gap-2 items-end">
+              <div>
+                <label className="block text-[10px] sm:text-[10.5px] font-bold text-slate-700 mb-1">Paid Now (₹)</label>
+                <input
+                  type="number"
+                  min="0"
+                  max={Math.max(0, Number(localTotals.netPayable || 0))}
+                  placeholder="Amount paid now"
+                  value={localStockInForm.partialPaid ?? ''}
+                  onChange={(e) => {
+                    const val = e.target.value === '' ? '' : Math.max(0, Number(e.target.value));
+                    const net = Math.max(0, Number(localTotals.netPayable || 0));
+                    const due = Math.max(0, Number((net - (Number(val) || 0)).toFixed(2)));
+                    setLocalStockInForm(prev => ({
+                      ...prev,
+                      partialPaid: val,
+                      paidAmount: Number(val) || 0,
+                      dueAmount: due
+                    }));
+                  }}
+                  className="w-full h-8 bg-white border border-orange-300 rounded-lg px-2.5 text-xs font-bold text-emerald-700 font-mono focus:outline-none focus:border-[#ea580c]"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[10px] sm:text-[10.5px] font-bold text-slate-700 mb-1">Paid Via</label>
+                <select
+                  value={localStockInForm.partialMethod || 'Cash'}
+                  onChange={(e) => setLocalStockInForm(prev => ({ ...prev, partialMethod: e.target.value }))}
+                  className="w-full h-8 bg-white border border-orange-300 rounded-lg px-2 text-xs font-semibold text-slate-800 focus:outline-none focus:border-[#ea580c] cursor-pointer"
+                >
+                  <option value="Cash">Cash</option>
+                  <option value="UPI">UPI / GPay</option>
+                  <option value="Bank Transfer">Bank Transfer</option>
+                  <option value="Cheque">Cheque</option>
+                  <option value="Mixed">Mixed / Split</option>
+                </select>
+              </div>
+            </div>
+
+            {/* If Paid Via is Mixed in Partial Mode */}
+            {localStockInForm.partialMethod === 'Mixed' && (() => {
+              const targetPaid = Number(localStockInForm.partialPaid || 0);
+              const sp = localStockInForm.splitPayments || {};
+              const c = Number(sp.cash || 0);
+              const u = Number(sp.upi || 0);
+              const b = Number(sp.bank || 0);
+              const ch = Number(sp.cheque || 0);
+              const totalAllocated = Number((c + u + b + ch).toFixed(2));
+              const rem = Number((targetPaid - totalAllocated).toFixed(2));
+              const isFullyAllocated = Math.abs(rem) < 0.01;
+
+              return (
+                <div className="p-2.5 bg-white/90 rounded-xl border border-orange-200 space-y-2">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="font-bold text-orange-950 flex items-center gap-1">
+                      <PieChart size={12} className="text-orange-600" /> Split Paid Amount (₹{targetPaid.toLocaleString()}):
+                    </span>
+                    <span className={`font-mono font-bold text-[10.5px] px-2 py-0.5 rounded-md ${
+                      isFullyAllocated
+                        ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                        : rem > 0
+                        ? 'bg-amber-100 text-amber-800 border border-amber-300'
+                        : 'bg-rose-100 text-rose-800 border border-rose-300'
+                    }`}>
+                      ₹{totalAllocated.toLocaleString()} / ₹{targetPaid.toLocaleString()}
+                      {!isFullyAllocated && ` (${rem > 0 ? `₹${rem} rem` : `₹${Math.abs(rem)} over`})`}
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+                    {[
+                      { key: 'cash', label: 'Cash (₹)' },
+                      { key: 'upi', label: 'UPI (₹)' },
+                      { key: 'bank', label: 'Bank (₹)' },
+                      { key: 'cheque', label: 'Cheque (₹)' }
+                    ].map(field => (
+                      <div key={field.key}>
+                        <label className="block text-[9.5px] font-bold text-slate-600 mb-0.5">{field.label}</label>
+                        <input
+                          type="number"
+                          min="0"
+                          placeholder="0"
+                          value={localStockInForm.splitPayments?.[field.key] ?? ''}
+                          onChange={(e) => {
+                            const val = e.target.value === '' ? '' : Math.max(0, Number(e.target.value));
+                            setLocalStockInForm(prev => ({
+                              ...prev,
+                              splitPayments: {
+                                ...(prev.splitPayments || {}),
+                                [field.key]: val
+                              }
+                            }));
+                          }}
+                          className="w-full h-7 bg-white border border-orange-200 rounded-lg px-2 text-xs font-bold font-mono text-slate-800 focus:outline-none focus:border-[#ea580c]"
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })()}
+
+            {/* If Paid Via is Cheque in Partial Mode */}
+            {localStockInForm.partialMethod === 'Cheque' && (
+              <div className="p-2.5 bg-white/95 rounded-xl border border-orange-200 space-y-1.5 animate-in fade-in">
+                <span className="text-[10.5px] font-bold text-orange-950 flex items-center gap-1">
+                  <FileText size={12} className="text-amber-600" /> Cheque Information (Paid Now: ₹{Number(localStockInForm.partialPaid || 0).toLocaleString()}):
+                </span>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-1.5">
+                  <div>
+                    <label className="block text-[9.5px] font-bold text-slate-600 mb-0.5">Cheque Number</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. CHQ-482910"
+                      value={localStockInForm.chequeDetails?.chequeNumber || ''}
+                      onChange={(e) => setLocalStockInForm(prev => ({
+                        ...prev,
+                        chequeDetails: { ...(prev.chequeDetails || {}), chequeNumber: e.target.value }
+                      }))}
+                      className="w-full h-7 bg-amber-50/40 border border-orange-200 rounded-lg px-2 text-xs text-slate-800"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[9.5px] font-bold text-slate-600 mb-0.5">Bank Name</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. SBI, HDFC"
+                      value={localStockInForm.chequeDetails?.bankName || ''}
+                      onChange={(e) => setLocalStockInForm(prev => ({
+                        ...prev,
+                        chequeDetails: { ...(prev.chequeDetails || {}), bankName: e.target.value }
+                      }))}
+                      className="w-full h-7 bg-amber-50/40 border border-orange-200 rounded-lg px-2 text-xs text-slate-800"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[9.5px] font-bold text-slate-600 mb-0.5">Cheque Date</label>
+                    <input
+                      type="date"
+                      value={localStockInForm.chequeDetails?.chequeDate || ''}
+                      onChange={(e) => setLocalStockInForm(prev => ({
+                        ...prev,
+                        chequeDetails: { ...(prev.chequeDetails || {}), chequeDate: e.target.value }
+                      }))}
+                      className="w-full h-7 bg-amber-50/40 border border-orange-200 rounded-lg px-2 text-xs text-slate-800"
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Row 2: Remaining Khata Due Banner */}
+            <div className="h-8 bg-white/95 border border-amber-300 rounded-lg px-3 flex items-center justify-between shadow-2xs">
+              <span className="text-[10.5px] font-bold text-amber-800">Remaining Khata Due:</span>
+              <span className="text-xs font-black font-mono text-rose-600">
+                ₹{Math.max(0, Number((Math.max(0, Number(localTotals.netPayable || 0)) - (Number(localStockInForm.partialPaid) || 0)).toFixed(2))).toLocaleString()}
+              </span>
+            </div>
+          </div>
+        )}
+
+        {/* 4b. Mixed / Split Payment Breakdown Panel */}
+        {localStockInForm.paymentMode === 'Mixed' && (() => {
+          const net = Math.max(0, Number(localTotals.netPayable || 0));
+          const sp = localStockInForm.splitPayments || {};
+          const c = Number(sp.cash || 0);
+          const u = Number(sp.upi || 0);
+          const b = Number(sp.bank || 0);
+          const ch = Number(sp.cheque || 0);
+          const totalAllocated = Number((c + u + b + ch).toFixed(2));
+          const rem = Number((net - totalAllocated).toFixed(2));
+          const isFullyAllocated = Math.abs(rem) < 0.01;
+
+          return (
+            <div className="p-3 bg-gradient-to-r from-orange-50/80 via-amber-50/60 to-yellow-50/80 rounded-xl border border-orange-200 space-y-2.5 animate-in fade-in">
+              <div className="flex items-center justify-between text-xs">
+                <span className="font-bold text-orange-950 flex items-center gap-1.5">
+                  <PieChart size={13} className="text-orange-600" /> Mixed Split Payments
+                </span>
+                <span className={`font-mono font-bold text-[11px] px-2 py-0.5 rounded-md ${
+                  isFullyAllocated
+                    ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                    : rem > 0
+                    ? 'bg-amber-100 text-amber-800 border border-amber-300'
+                    : 'bg-rose-100 text-rose-800 border border-rose-300'
+                }`}>
+                  Allocated: ₹{totalAllocated.toLocaleString()} / ₹{net.toLocaleString()}
+                  {!isFullyAllocated && ` (${rem > 0 ? `₹${rem} remaining` : `₹${Math.abs(rem)} over`})`}
+                </span>
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                {[
+                  { key: 'cash', label: 'Cash (₹)' },
+                  { key: 'upi', label: 'UPI / GPay (₹)' },
+                  { key: 'bank', label: 'Bank Transfer (₹)' },
+                  { key: 'cheque', label: 'Cheque (₹)' }
+                ].map(field => (
+                  <div key={field.key}>
+                    <label className="block text-[10px] font-bold text-slate-600 mb-0.5">{field.label}</label>
+                    <input
+                      type="number"
+                      min="0"
+                      placeholder="0"
+                      value={localStockInForm.splitPayments?.[field.key] ?? ''}
+                      onChange={(e) => {
+                        const val = e.target.value === '' ? '' : Math.max(0, Number(e.target.value));
+                        setLocalStockInForm(prev => {
+                          const updated = {
+                            ...(prev.splitPayments || {}),
+                            [field.key]: val
+                          };
+                          const sum = Number((Number(updated.cash || 0) + Number(updated.upi || 0) + Number(updated.bank || 0) + Number(updated.cheque || 0)).toFixed(2));
+                          const due = Math.max(0, Number((net - sum).toFixed(2)));
+                          return {
+                            ...prev,
+                            splitPayments: updated,
+                            paidAmount: sum,
+                            dueAmount: due
+                          };
+                        });
+                      }}
+                      className="w-full h-8 bg-white border border-orange-200 rounded-lg px-2.5 text-xs font-bold font-mono text-slate-800 focus:outline-none focus:border-[#ea580c]"
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
+        })()}
+
+        {/* 4c. Cheque Details Panel */}
+        {localStockInForm.paymentMode === 'Cheque' && (
+          <div className="p-3 bg-orange-50/70 rounded-xl border border-orange-200 space-y-2 animate-in fade-in">
+            <span className="text-xs font-bold text-orange-950 flex items-center gap-1.5">
+              <FileText size={13} className="text-orange-600" /> Cheque Payment Details
+            </span>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+              <div>
+                <label className="block text-[10px] font-bold text-slate-600 mb-0.5">Cheque Number</label>
+                <input
+                  type="text"
+                  placeholder="e.g. CHQ-482910"
+                  value={localStockInForm.chequeDetails?.chequeNumber || ''}
+                  onChange={(e) => setLocalStockInForm(prev => ({
+                    ...prev,
+                    chequeDetails: { ...(prev.chequeDetails || {}), chequeNumber: e.target.value }
+                  }))}
+                  className="w-full h-8 bg-white border border-orange-200 rounded-lg px-2.5 text-xs text-slate-800 focus:outline-none focus:border-[#ea580c]"
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] font-bold text-slate-600 mb-0.5">Bank Name</label>
+                <input
+                  type="text"
+                  placeholder="e.g. SBI, HDFC"
+                  value={localStockInForm.chequeDetails?.bankName || ''}
+                  onChange={(e) => setLocalStockInForm(prev => ({
+                    ...prev,
+                    chequeDetails: { ...(prev.chequeDetails || {}), bankName: e.target.value }
+                  }))}
+                  className="w-full h-8 bg-white border border-orange-200 rounded-lg px-2.5 text-xs text-slate-800 focus:outline-none focus:border-[#ea580c]"
+                />
+              </div>
+              <div className="col-span-2 sm:col-span-1">
+                <label className="block text-[10px] font-bold text-slate-600 mb-0.5">Cheque Date</label>
+                <input
+                  type="date"
+                  value={localStockInForm.chequeDetails?.chequeDate || ''}
+                  onChange={(e) => setLocalStockInForm(prev => ({
+                    ...prev,
+                    chequeDetails: { ...(prev.chequeDetails || {}), chequeDate: e.target.value }
+                  }))}
+                  className="w-full h-8 bg-white border border-orange-200 rounded-lg px-2.5 text-xs text-slate-800 focus:outline-none focus:border-[#ea580c]"
+                />
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* 4d. Bank Transfer Details Panel */}
+        {localStockInForm.paymentMode === 'Bank Transfer' && (
+          <div className="p-2 sm:p-2.5 bg-orange-50/70 rounded-lg sm:rounded-xl border border-orange-200 space-y-1.5 animate-in fade-in">
+            <span className="text-[10px] sm:text-xs font-bold text-orange-950 flex items-center gap-1">
+              <Landmark size={11} className="text-orange-600 shrink-0" /> Bank Transfer / RTGS / NEFT Details
+            </span>
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="block text-[9.5px] font-bold text-slate-600 mb-0.5">Transaction ID / UTR</label>
+                <input
+                  type="text"
+                  placeholder="e.g. UTR49281039401"
+                  value={localStockInForm.bankDetails?.transactionId || ''}
+                  onChange={(e) => setLocalStockInForm(prev => ({
+                    ...prev,
+                    bankDetails: { ...(prev.bankDetails || {}), transactionId: e.target.value }
+                  }))}
+                  className="w-full h-7 sm:h-8 bg-white border border-orange-200 rounded-lg px-2 text-[11px] sm:text-xs text-slate-800 focus:outline-none focus:border-[#ea580c]"
+                />
+              </div>
+              <div>
+                <label className="block text-[9.5px] font-bold text-slate-600 mb-0.5">Bank / Account</label>
+                <input
+                  type="text"
+                  placeholder="e.g. HDFC Current A/C"
+                  value={localStockInForm.bankDetails?.bankName || ''}
+                  onChange={(e) => setLocalStockInForm(prev => ({
+                    ...prev,
+                    bankDetails: { ...(prev.bankDetails || {}), bankName: e.target.value }
+                  }))}
+                  className="w-full h-7 sm:h-8 bg-white border border-orange-200 rounded-lg px-2 text-[11px] sm:text-xs text-slate-800 focus:outline-none focus:border-[#ea580c]"
+                />
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* 4e. Credit / Khata Note */}
+        {localStockInForm.paymentMode === 'Credit' && (
+          <div className="px-2.5 py-1.5 sm:px-3 sm:py-2 bg-rose-50/80 rounded-lg sm:rounded-xl border border-rose-200 flex items-center justify-between gap-1.5 text-[10px] sm:text-xs animate-in fade-in">
+            <span className="font-bold text-rose-800 flex items-center gap-1 shrink-0">
+              <BookOpen size={11} className="text-rose-600 shrink-0" /> Pay Later (Khata)
+            </span>
+            <span className="text-[9.5px] sm:text-[11px] text-rose-700 text-right truncate">
+              <strong className="font-mono font-bold text-rose-900">₹{Math.max(0, Number(localTotals.netPayable || 0)).toLocaleString()}</strong> logged as due in SRM
+            </span>
+          </div>
+        )}
 
         {/* 5. Settlement Summary & Confirm Strip */}
         <div className="bg-gradient-to-r from-orange-50 via-amber-50/60 to-orange-50 p-2.5 sm:px-4 sm:py-2 rounded-xl border border-orange-200 flex flex-col md:flex-row md:items-center justify-between gap-3 shadow-2xs">

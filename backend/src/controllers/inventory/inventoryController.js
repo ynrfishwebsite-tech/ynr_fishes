@@ -1,6 +1,7 @@
 import mongoose from 'mongoose';
 import StockLogDefault from '../../models/inventory/StockLog.js';
 import MenuDefault from '../../models/catalog/Menu.js';
+import SupplierDefault from '../../models/operations/Supplier.js';
 import { getTenantModel } from '../../utils/database/tenantHelper.js';
 import { emitNotification } from '../../utils/communication/notificationHelper.js';
 import { emitSocketEvent } from '../../utils/communication/socket.js';
@@ -8,7 +9,8 @@ import { emitSocketEvent } from '../../utils/communication/socket.js';
 // Helper to get models from request (for multi-tenancy)
 const getModels = (req) => ({
   StockLog: getTenantModel(req, 'StockLog', StockLogDefault),
-  Menu: getTenantModel(req, 'Menu', MenuDefault)
+  Menu: getTenantModel(req, 'Menu', MenuDefault),
+  Supplier: getTenantModel(req, 'Supplier', SupplierDefault)
 });
 
 // 10. Get Stock Logs (Audit Trail with Backend Pagination & Filters)
@@ -623,7 +625,7 @@ export const getFishInventory = async (req, res) => {
 // 16. Local Stock-In (Fishermen / Local Market Catch with Multi-Fish & Box support)
 export const recordLocalStockIn = async (req, res) => {
   try {
-    const { Menu, StockLog } = getModels(req);
+    const { Menu, StockLog, Supplier } = getModels(req);
     const {
       supplierName,
       supplierPhone,
@@ -644,6 +646,15 @@ export const recordLocalStockIn = async (req, res) => {
       advanceAmount = 0,
       settlements = null,
       customSettlements = [],
+      paymentMode = 'Cash',
+      paymentStatus: clientPaymentStatus,
+      paidAmount: clientPaidAmount,
+      dueAmount: clientDueAmount,
+      partialPaid,
+      partialMethod = 'Cash',
+      splitPayments = {},
+      chequeDetails = {},
+      bankDetails = {},
       notes = ''
     } = req.body;
 
@@ -780,7 +791,35 @@ export const recordLocalStockIn = async (req, res) => {
       netPayable = Number((subtotal - Number(advanceAmount || 0)).toFixed(2));
     }
 
-    // Update netPayable & grossValue on created logs
+    // Calculate Payment Details & Balance Dues
+    const mode = paymentMode || 'Cash';
+    let computedPaymentStatus = 'Paid';
+    let computedPaidAmount = 0;
+    let computedDueAmount = 0;
+
+    if (mode === 'Unpaid' || mode === 'Credit') {
+      computedPaymentStatus = 'Unpaid';
+      computedPaidAmount = 0;
+      computedDueAmount = Math.max(0, netPayable);
+    } else if (mode === 'Partial') {
+      const pPaid = clientPaidAmount !== undefined ? Number(clientPaidAmount) : (partialPaid !== undefined ? Number(partialPaid) : 0);
+      computedPaidAmount = Math.min(netPayable, Math.max(0, pPaid));
+      computedDueAmount = Math.max(0, Number((netPayable - computedPaidAmount).toFixed(2)));
+      computedPaymentStatus = computedDueAmount > 0 ? (computedPaidAmount > 0 ? 'Partially Paid' : 'Unpaid') : 'Paid';
+    } else if (mode === 'Mixed') {
+      const sp = splitPayments || {};
+      const mixedSum = Number((Number(sp.cash || 0) + Number(sp.upi || 0) + Number(sp.bank || 0) + Number(sp.cheque || 0) + Number(sp.card || 0)).toFixed(2));
+      computedPaidAmount = mixedSum;
+      computedDueAmount = Math.max(0, Number((netPayable - computedPaidAmount).toFixed(2)));
+      computedPaymentStatus = computedDueAmount > 0 ? 'Partially Paid' : 'Paid';
+    } else {
+      // Full payment (Cash, UPI, Bank Transfer, Cheque)
+      computedPaymentStatus = 'Paid';
+      computedPaidAmount = netPayable;
+      computedDueAmount = 0;
+    }
+
+    // Update netPayable, grossValue & payment details on created logs
     await StockLog.updateMany(
       { invoiceNo: generatedInvoiceNo },
       {
@@ -788,9 +827,52 @@ export const recordLocalStockIn = async (req, res) => {
         netPayable: netPayable,
         totalCr: totalCredits,
         totalDr: totalDebits,
-        totalBoxes: totalConsignmentBoxes
+        totalBoxes: totalConsignmentBoxes,
+        paymentMode: mode,
+        paymentStatus: computedPaymentStatus,
+        paidAmount: computedPaidAmount,
+        dueAmount: computedDueAmount,
+        paymentBreakdown: splitPayments || {},
+        chequeDetails: chequeDetails || {},
+        bankDetails: bankDetails || {}
       }
     );
+
+    // Update Supplier Balance in Khata (SRM) if dueAmount > 0
+    if (supplierName && supplierName.trim() && computedDueAmount > 0) {
+      try {
+        const cleanName = supplierName.trim();
+        const suppRegex = new RegExp(`^${cleanName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i');
+        let supplierDoc = await Supplier.findOne({
+          $or: [
+            { name: suppRegex },
+            { companyName: suppRegex },
+            ...(supplierPhone ? [{ phone: supplierPhone.trim() }] : [])
+          ]
+        });
+
+        if (!supplierDoc && mongoose.connection.readyState === 1) {
+          const fallbackDb = mongoose.connection.useDb('fishes', { useCache: true });
+          const FallbackSupplier = fallbackDb.model('Supplier', SupplierDefault.schema);
+          supplierDoc = await FallbackSupplier.findOne({
+            $or: [
+              { name: suppRegex },
+              { companyName: suppRegex },
+              ...(supplierPhone ? [{ phone: supplierPhone.trim() }] : [])
+            ]
+          });
+        }
+
+        if (supplierDoc) {
+          supplierDoc.balance = Number(((Number(supplierDoc.balance) || 0) + computedDueAmount).toFixed(2));
+          const auditNote = `[${new Date().toLocaleDateString('en-IN')}] Local Catch #${generatedInvoiceNo}: Net ₹${netPayable}, Paid ₹${computedPaidAmount} (${mode}), Due ₹${computedDueAmount} added to Khata.`;
+          supplierDoc.notes = supplierDoc.notes ? `${supplierDoc.notes}\n${auditNote}` : auditNote;
+          await supplierDoc.save();
+        }
+      } catch (suppErr) {
+        console.error('[InventoryController] Error updating supplier balance:', suppErr);
+      }
+    }
 
     res.status(200).json({
       success: true,
@@ -814,7 +896,7 @@ export const recordLocalStockIn = async (req, res) => {
 // 17. DAM Consignment Stock-In (Multi-Fish Consignment & Settlements)
 export const recordDamStockIn = async (req, res) => {
   try {
-    const { Menu, StockLog } = getModels(req);
+    const { Menu, StockLog, Supplier } = getModels(req);
     const {
       contractorId,
       contractorName,
@@ -830,6 +912,15 @@ export const recordDamStockIn = async (req, res) => {
         expense: { type: 'Dr', amount: 0 },
         festivalExpense: { type: 'Dr', amount: 0 }
       },
+      paymentMode = 'Cash',
+      paymentStatus: clientPaymentStatus,
+      paidAmount: clientPaidAmount,
+      dueAmount: clientDueAmount,
+      partialPaid,
+      partialMethod = 'Cash',
+      splitPayments = {},
+      chequeDetails = {},
+      bankDetails = {},
       notes = ''
     } = req.body;
 
@@ -958,7 +1049,35 @@ export const recordDamStockIn = async (req, res) => {
 
     const netConsignmentSettlement = Number((catchTotalValue + totalCredits - totalDebits).toFixed(2));
 
-    // Update netPayable & grossValue on created logs
+    // Calculate Payment Details & Balance Dues
+    const mode = paymentMode || 'Cash';
+    let computedPaymentStatus = 'Paid';
+    let computedPaidAmount = 0;
+    let computedDueAmount = 0;
+
+    if (mode === 'Unpaid' || mode === 'Credit') {
+      computedPaymentStatus = 'Unpaid';
+      computedPaidAmount = 0;
+      computedDueAmount = Math.max(0, netConsignmentSettlement);
+    } else if (mode === 'Partial') {
+      const pPaid = clientPaidAmount !== undefined ? Number(clientPaidAmount) : (partialPaid !== undefined ? Number(partialPaid) : 0);
+      computedPaidAmount = Math.min(netConsignmentSettlement, Math.max(0, pPaid));
+      computedDueAmount = Math.max(0, Number((netConsignmentSettlement - computedPaidAmount).toFixed(2)));
+      computedPaymentStatus = computedDueAmount > 0 ? (computedPaidAmount > 0 ? 'Partially Paid' : 'Unpaid') : 'Paid';
+    } else if (mode === 'Mixed') {
+      const sp = splitPayments || {};
+      const mixedSum = Number((Number(sp.cash || 0) + Number(sp.upi || 0) + Number(sp.bank || 0) + Number(sp.cheque || 0) + Number(sp.card || 0)).toFixed(2));
+      computedPaidAmount = mixedSum;
+      computedDueAmount = Math.max(0, Number((netConsignmentSettlement - computedPaidAmount).toFixed(2)));
+      computedPaymentStatus = computedDueAmount > 0 ? 'Partially Paid' : 'Paid';
+    } else {
+      // Full payment (Cash, UPI, Bank Transfer, Cheque)
+      computedPaymentStatus = 'Paid';
+      computedPaidAmount = netConsignmentSettlement;
+      computedDueAmount = 0;
+    }
+
+    // Update netPayable, grossValue & payment details on created logs
     await StockLog.updateMany(
       { invoiceNo: generatedInvoiceNo },
       {
@@ -966,9 +1085,53 @@ export const recordDamStockIn = async (req, res) => {
         netPayable: netConsignmentSettlement,
         totalCr: totalCredits,
         totalDr: totalDebits,
-        totalBoxes: totalConsignmentBoxes
+        totalBoxes: totalConsignmentBoxes,
+        paymentMode: mode,
+        paymentStatus: computedPaymentStatus,
+        paidAmount: computedPaidAmount,
+        dueAmount: computedDueAmount,
+        paymentBreakdown: splitPayments || {},
+        chequeDetails: chequeDetails || {},
+        bankDetails: bankDetails || {}
       }
     );
+
+    // Update Contractor Balance in Khata (SRM) if dueAmount > 0
+    const suppName = contractorName || companyName;
+    if (suppName && suppName.trim() && computedDueAmount > 0) {
+      try {
+        const cleanName = suppName.trim();
+        const suppRegex = new RegExp(`^${cleanName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i');
+        let supplierDoc = await Supplier.findOne({
+          $or: [
+            { name: suppRegex },
+            { companyName: suppRegex },
+            ...(contractorPhone ? [{ phone: contractorPhone.trim() }] : [])
+          ]
+        });
+
+        if (!supplierDoc && mongoose.connection.readyState === 1) {
+          const fallbackDb = mongoose.connection.useDb('fishes', { useCache: true });
+          const FallbackSupplier = fallbackDb.model('Supplier', SupplierDefault.schema);
+          supplierDoc = await FallbackSupplier.findOne({
+            $or: [
+              { name: suppRegex },
+              { companyName: suppRegex },
+              ...(contractorPhone ? [{ phone: contractorPhone.trim() }] : [])
+            ]
+          });
+        }
+
+        if (supplierDoc) {
+          supplierDoc.balance = Number(((Number(supplierDoc.balance) || 0) + computedDueAmount).toFixed(2));
+          const auditNote = `[${new Date().toLocaleDateString('en-IN')}] DAM Catch #${generatedInvoiceNo}: Net ₹${netConsignmentSettlement}, Paid ₹${computedPaidAmount} (${mode}), Due ₹${computedDueAmount} added to Khata.`;
+          supplierDoc.notes = supplierDoc.notes ? `${supplierDoc.notes}\n${auditNote}` : auditNote;
+          await supplierDoc.save();
+        }
+      } catch (suppErr) {
+        console.error('[InventoryController] Error updating DAM contractor balance:', suppErr);
+      }
+    }
 
     res.status(200).json({
       success: true,

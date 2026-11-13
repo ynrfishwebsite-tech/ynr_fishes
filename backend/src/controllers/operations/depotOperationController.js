@@ -516,6 +516,11 @@ export const updateSupplier = async (req, res) => {
     if (updateData.vehicleNumber) updateData.vehicleNumber = updateData.vehicleNumber.trim();
     if (updateData.harbor) updateData.harbor = updateData.harbor.trim();
     if (updateData.address) updateData.address = updateData.address.trim();
+    if (updateData.payoutRecord) {
+      if (!updateData.$push) updateData.$push = {};
+      updateData.$push.payoutHistory = updateData.payoutRecord;
+      delete updateData.payoutRecord;
+    }
 
     let updated = await Supplier.findByIdAndUpdate(id, updateData, { new: true });
 

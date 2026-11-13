@@ -100,6 +100,35 @@ const stockLogSchema = new mongoose.Schema({
     type: String,
     default: 'local'
   },
+  paymentMode: {
+    type: String,
+    default: 'Cash'
+  },
+  paymentStatus: {
+    type: String,
+    enum: ['Paid', 'Partially Paid', 'Unpaid', 'Credit', 'Settled'],
+    default: 'Paid'
+  },
+  paidAmount: {
+    type: Number,
+    default: 0
+  },
+  dueAmount: {
+    type: Number,
+    default: 0
+  },
+  paymentBreakdown: {
+    type: mongoose.Schema.Types.Mixed,
+    default: {}
+  },
+  chequeDetails: {
+    type: mongoose.Schema.Types.Mixed,
+    default: {}
+  },
+  bankDetails: {
+    type: mongoose.Schema.Types.Mixed,
+    default: {}
+  },
   grossValue: {
     type: Number,
     default: 0

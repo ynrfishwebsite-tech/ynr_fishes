@@ -67,6 +67,25 @@ const supplierSchema = new mongoose.Schema({
     type: String,
     default: ''
   },
+  payoutHistory: [{
+    amount: { type: Number, default: 0 },
+    paymentMode: { type: String, default: 'Cash' },
+    refNo: { type: String, default: '' },
+    notes: { type: String, default: '' },
+    paymentBreakdown: {
+      cash: { type: Number, default: 0 },
+      upi: { type: Number, default: 0 },
+      card: { type: Number, default: 0 },
+      bank: { type: Number, default: 0 },
+      cheque: { type: Number, default: 0 }
+    },
+    chequeDetails: {
+      chequeNo: { type: String, default: '' },
+      bankName: { type: String, default: '' },
+      chequeDate: { type: String, default: '' }
+    },
+    date: { type: Date, default: Date.now }
+  }],
   status: {
     type: String,
     enum: ['Active', 'Inactive'],

@@ -265,7 +265,7 @@ export default function FishInwardInvoice({ data, onClose }) {
   const totalCr = Number(data.totalCr || 0);
   const totalDr = Number(data.totalDr || 0);
   const netPayable = Number(data.netPayable !== undefined ? data.netPayable : (data.netSettlement !== undefined ? data.netSettlement : grossValue));
-  const paymentMode = data.paymentMode || 'Cash';
+  const paymentMode = data.paymentMode === 'Partial' && data.partialMethod ? `Partial (${data.partialMethod})` : (data.paymentMode || 'Cash');
   const notes = data.notes || '';
 
   // Settlement itemized rows (Strict: only populated if settlements are enabled and not hidden)
@@ -517,7 +517,7 @@ export default function FishInwardInvoice({ data, onClose }) {
   const modalContent = (
     <div
       id="inward-invoice-modal-root"
-      className="fixed inset-0 z-50 bg-white sm:bg-slate-100 flex flex-col overflow-y-auto"
+      className="fixed inset-0 z-[80] bg-white sm:bg-slate-100 flex flex-col overflow-y-auto"
     >
       {/* SRM Print Notification Toast */}
       {printToast && (
@@ -828,15 +828,17 @@ export default function FishInwardInvoice({ data, onClose }) {
                 let rowKg = 0;
                 const b = Number(row.boxes || 0);
                 const kpb = Number(row.kgPerBox || 0);
-                if (Number(row.kg || 0) > 0 || Number(row.grams || 0) > 0) {
+                if (Number(row.weightKg || 0) > 0) {
+                  rowKg = Number(row.weightKg);
+                } else if (Number(row.kg || 0) > 0 || Number(row.grams || 0) > 0) {
                   rowKg = Number((Number(row.kg || 0) + Number(row.grams || 0) / 1000).toFixed(2));
                 } else if (b > 0 && kpb > 0) {
                   rowKg = Number((b * kpb).toFixed(2));
                 } else if (Number(row.quantity || 0) > 0) {
                   rowKg = Number(row.quantity);
                 }
-                const rate = Number(row.rate || row.price || row.ratePerKg || row.unitRate || 0);
-                const rowTotal = Number((rowKg * rate).toFixed(2));
+                const rate = Number(row.rate || row.rateKg || row.price || row.ratePerKg || row.unitRate || 0);
+                const rowTotal = Number(row.totalAmount || (rowKg * rate).toFixed(2));
                 const { itemTitle } = formatReceiptItemName(row.itemName || row.variety || row.name, langPref);
 
                 return (
@@ -891,7 +893,7 @@ export default function FishInwardInvoice({ data, onClose }) {
                 ₹{Math.abs(netPayable).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
               </span>
               <span className="font-bold uppercase text-slate-700 block" style={{ fontSize: fontMetrics.detailSize }}>
-                Status: PAID • Mode: {paymentMode}
+                Status: {data.status || 'PAID'}{Number(data.dueAmount || 0) > 0 ? ` (Due: ₹${Number(data.dueAmount).toLocaleString('en-IN')})` : ''} • Mode: {paymentMode}
               </span>
             </div>
 
@@ -1004,15 +1006,17 @@ export default function FishInwardInvoice({ data, onClose }) {
                 let rowKg = 0;
                 const b = Number(row.boxes || 0);
                 const kpb = Number(row.kgPerBox || 0);
-                if (Number(row.kg || 0) > 0 || Number(row.grams || 0) > 0) {
+                if (Number(row.weightKg || 0) > 0) {
+                  rowKg = Number(row.weightKg);
+                } else if (Number(row.kg || 0) > 0 || Number(row.grams || 0) > 0) {
                   rowKg = Number((Number(row.kg || 0) + Number(row.grams || 0) / 1000).toFixed(2));
                 } else if (b > 0 && kpb > 0) {
                   rowKg = Number((b * kpb).toFixed(2));
                 } else if (Number(row.quantity || 0) > 0) {
                   rowKg = Number(row.quantity);
                 }
-                const rate = Number(row.rate || row.price || row.ratePerKg || row.unitRate || 0);
-                const rowTotal = Number((rowKg * rate).toFixed(2));
+                const rate = Number(row.rate || row.rateKg || row.price || row.ratePerKg || row.unitRate || 0);
+                const rowTotal = Number(row.totalAmount || (rowKg * rate).toFixed(2));
                 const gradeVal = getGradeLabel(row);
                 const { itemTitle } = formatReceiptItemName(row.itemName || row.variety || row.name, langPref);
 
@@ -1078,7 +1082,7 @@ export default function FishInwardInvoice({ data, onClose }) {
                 ₹{Math.abs(netPayable).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </span>
               <div className="font-bold text-slate-700 border-t border-dashed border-slate-300 pt-1 flex justify-between" style={{ fontSize: fontMetrics.detailSize }}>
-                <span>STATUS: PAID</span>
+                <span>STATUS: {data.status || 'PAID'}{Number(data.dueAmount || 0) > 0 ? ` (Due: ₹${Number(data.dueAmount).toLocaleString('en-IN')})` : ''}</span>
                 <span>MODE: {paymentMode}</span>
               </div>
             </div>
@@ -1258,7 +1262,9 @@ export default function FishInwardInvoice({ data, onClose }) {
                       let rowKg = 0;
                       const b = Number(row.boxes || 0);
                       const kpb = Number(row.kgPerBox || 0);
-                      if (Number(row.kg || 0) > 0 || Number(row.grams || 0) > 0) {
+                      if (Number(row.weightKg || 0) > 0) {
+                        rowKg = Number(row.weightKg);
+                      } else if (Number(row.kg || 0) > 0 || Number(row.grams || 0) > 0) {
                         rowKg = Number((Number(row.kg || 0) + Number(row.grams || 0) / 1000).toFixed(3));
                       } else if (b > 0 && kpb > 0) {
                         rowKg = Number((b * kpb).toFixed(3));
@@ -1266,8 +1272,8 @@ export default function FishInwardInvoice({ data, onClose }) {
                         rowKg = Number(row.quantity);
                       }
 
-                      const rate = Number(row.rate || row.price || row.ratePerKg || row.unitRate || 0);
-                      const rowTotal = Number((rowKg * rate).toFixed(2));
+                      const rate = Number(row.rate || row.rateKg || row.price || row.ratePerKg || row.unitRate || 0);
+                      const rowTotal = Number(row.totalAmount || (rowKg * rate).toFixed(2));
                       const gradeVal = getGradeLabel(row);
 
                       const { itemTitle } = formatReceiptItemName(row.itemName || row.variety || row.name, langPref);
@@ -1413,7 +1419,10 @@ export default function FishInwardInvoice({ data, onClose }) {
                     ₹{Math.abs(netPayable).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </div>
                   <div className="flex items-center justify-center gap-3 text-[10px] font-bold text-slate-800 border-t border-dashed border-slate-300 pt-1 uppercase font-mono">
-                    <span className="text-emerald-700 font-black">Status: <strong>Paid</strong></span>
+                    <span className={data.status === 'Unpaid' ? 'text-rose-700 font-black' : data.status === 'Partially Paid' ? 'text-amber-700 font-black' : 'text-emerald-700 font-black'}>
+                      Status: <strong>{data.status || 'Paid'}</strong>
+                      {Number(data.dueAmount || 0) > 0 && ` (Due: ₹${Number(data.dueAmount).toLocaleString('en-IN')})`}
+                    </span>
                     <span className="text-slate-300">|</span>
                     <span>PAY MODE: <strong className="text-slate-950">{paymentMode}</strong></span>
                   </div>

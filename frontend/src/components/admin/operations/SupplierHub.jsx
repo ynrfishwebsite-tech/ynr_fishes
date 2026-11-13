@@ -106,6 +106,19 @@ export default function SupplierHub({
     paymentMode: 'Cash',
     refNo: '',
     notes: '',
+    partialMethod: 'Cash',
+    mixedBreakdown: {
+      cash: '',
+      upi: '',
+      card: '',
+      bank: '',
+      cheque: ''
+    },
+    chequeDetails: {
+      chequeNo: '',
+      bankName: '',
+      chequeDate: new Date().toISOString().slice(0, 10)
+    },
     loading: false
   });
 
@@ -208,8 +221,14 @@ export default function SupplierHub({
           totalBoxes: 0,
           grossValue: 0,
           netPayable: 0,
-          paymentMode: intakeMode === 'dam' ? 'Consignment Settlement' : 'Cash',
+          paidAmount: 0,
+          dueAmount: 0,
+          paymentMode: log.paymentMode || (intakeMode === 'dam' ? 'Consignment Settlement' : 'Cash'),
+          paymentStatus: log.paymentStatus || 'Settled',
           status: 'Settled',
+          paymentBreakdown: log.paymentBreakdown || {},
+          chequeDetails: log.chequeDetails || {},
+          bankDetails: log.bankDetails || {},
           notes: log.notes || ''
         };
       }
@@ -233,6 +252,24 @@ export default function SupplierHub({
       v.totalBoxes += bx;
       v.grossValue += rowVal;
       v.netPayable = Number(log.netPayable || v.grossValue);
+
+      // Payment details from log
+      const rawPayMode = log.paymentMode || v.paymentMode;
+      const isUnpaid = rawPayMode === 'Unpaid' || rawPayMode === 'Credit' || log.paymentStatus === 'Unpaid';
+      const isPartial = rawPayMode === 'Partial' || log.paymentStatus === 'Partially Paid';
+      const net = v.netPayable;
+      const pAmt = log.paidAmount !== undefined ? Number(log.paidAmount) : (isUnpaid ? 0 : net);
+      const dAmt = log.dueAmount !== undefined ? Number(log.dueAmount) : (isUnpaid ? net : (isPartial ? Math.max(0, net - pAmt) : 0));
+      const pStatus = log.paymentStatus || (dAmt > 0 ? (pAmt > 0 ? 'Partially Paid' : 'Unpaid') : 'Settled');
+
+      v.paymentMode = rawPayMode;
+      v.paymentStatus = pStatus;
+      v.status = pStatus === 'Unpaid' ? 'Pending Khata' : (pStatus === 'Partially Paid' ? 'Partially Paid' : 'Settled');
+      v.paidAmount = pAmt;
+      v.dueAmount = dAmt;
+      if (log.paymentBreakdown) v.paymentBreakdown = log.paymentBreakdown;
+      if (log.chequeDetails) v.chequeDetails = log.chequeDetails;
+      if (log.bankDetails) v.bankDetails = log.bankDetails;
     });
 
     Object.values(groupedCatch).forEach(v => list.push(v));
@@ -275,7 +312,7 @@ export default function SupplierHub({
     return list.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
   }, [inwardLogs, supplyLogs]);
 
-  // Aggregate stats per supplier from vouchers
+  // Aggregate stats per supplier from vouchers — FIFO balance allocation
   const supplierMetricsMap = useMemo(() => {
     const map = {};
     vouchers.forEach(v => {
@@ -295,15 +332,62 @@ export default function SupplierHub({
       map[suppKey].totalPurchases += (v.netPayable || v.grossValue || 0);
       map[suppKey].vouchers.push(v);
     });
+
+    // FIFO balance distribution: oldest vouchers paid first, newest hold remaining dues
+    // We use the supplier's live `balance` (from DB) to stamp each voucher correctly
+    suppliers.forEach(s => {
+      const suppKey = (s.name || '').trim().toLowerCase();
+      if (!map[suppKey]) return;
+
+      const supplierBalance = Number(s.balance || 0);
+      const suppVouchers = map[suppKey].vouchers;
+
+      // Sort oldest first (ascending date) — oldest get paid first
+      const sorted = [...suppVouchers].sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+
+      // Total purchased across all vouchers
+      const totalPurchased = sorted.reduce((sum, v) => sum + Number(v.netPayable || v.grossValue || 0), 0);
+      // Total paid = total purchased minus current outstanding balance
+      let remainingPaid = Math.max(0, totalPurchased - supplierBalance);
+
+      sorted.forEach(v => {
+        const gross = Number(v.netPayable || v.grossValue || 0);
+        if (remainingPaid >= gross) {
+          // This voucher is fully paid
+          v.paidAmount = gross;
+          v.dueAmount = 0;
+          v.status = 'Settled';
+          v.paymentStatus = 'Settled';
+          remainingPaid -= gross;
+        } else if (remainingPaid > 0) {
+          // This voucher is partially paid
+          v.paidAmount = remainingPaid;
+          v.dueAmount = gross - remainingPaid;
+          v.status = 'Partially Paid';
+          v.paymentStatus = 'Partially Paid';
+          remainingPaid = 0;
+        } else {
+          // This voucher is fully unpaid
+          v.paidAmount = 0;
+          v.dueAmount = gross;
+          v.status = 'Pending Khata';
+          v.paymentStatus = 'Unpaid';
+        }
+      });
+
+      // Put back in newest-first order for display
+      map[suppKey].vouchers = sorted.reverse();
+    });
+
     return map;
-  }, [vouchers]);
+  }, [vouchers, suppliers]);
 
   // Filtered Suppliers for Current View
   const filteredSuppliers = useMemo(() => {
     return suppliers.filter(s => {
       // 1. Channel Filter
       const targetType = typeFilter === 'All' ? null : typeFilter;
-      const matchesType = !targetType || s.supplierType === targetType;
+      const matchesType = !targetType || (s.supplierType || 'Local') === targetType;
 
       // 2. Search Filter
       const q = searchQuery.toLowerCase().trim();
@@ -344,7 +428,7 @@ export default function SupplierHub({
   const khataSuppliers = useMemo(() => {
     return suppliers.filter(s => {
       const targetType = typeFilter === 'All' ? null : typeFilter;
-      const matchesType = !targetType || s.supplierType === targetType;
+      const matchesType = !targetType || (s.supplierType || 'Local') === targetType;
       const hasDues = (Number(s.balance) || 0) > 0;
       const q = searchQuery.toLowerCase().trim();
       const matchesSearch = !q || (
@@ -379,18 +463,41 @@ export default function SupplierHub({
   const stats = useMemo(() => {
     let totalPurchases = 0;
     let totalPaid = 0;
+    let totalUnpaidDues = 0;
     let cashPayouts = 0;
     let upiPayouts = 0;
     let bankPayouts = 0;
+    let chequePayouts = 0;
 
     channelVouchers.forEach(v => {
       const val = Number(v.netPayable || v.grossValue || 0);
+      const paid = Number(v.paidAmount !== undefined ? v.paidAmount : (v.paymentStatus === 'Unpaid' ? 0 : val));
+      const due = Number(v.dueAmount !== undefined ? v.dueAmount : (v.paymentStatus === 'Unpaid' ? val : 0));
+
       totalPurchases += val;
+      totalPaid += paid;
+      totalUnpaidDues += due;
 
       const pMode = String(v.paymentMode || 'Cash').toLowerCase();
-      if (pMode.includes('upi')) upiPayouts += val;
-      else if (pMode.includes('bank') || pMode.includes('transfer')) bankPayouts += val;
-      else cashPayouts += val;
+
+      if (pMode === 'unpaid' || pMode === 'credit' || v.paymentStatus === 'Unpaid') {
+        // Nothing paid out yet
+      } else if (pMode === 'mixed' && v.paymentBreakdown) {
+        const pb = v.paymentBreakdown;
+        cashPayouts += Number(pb.cash || 0);
+        upiPayouts += Number(pb.upi || 0);
+        bankPayouts += Number(pb.bank || 0);
+        chequePayouts += Number(pb.cheque || 0);
+      } else if (pMode.includes('upi')) {
+        upiPayouts += paid;
+      } else if (pMode.includes('bank') || pMode.includes('transfer') || pMode.includes('neft') || pMode.includes('rtgs')) {
+        bankPayouts += paid;
+      } else if (pMode.includes('cheque') || pMode.includes('check')) {
+        chequePayouts += paid;
+      } else {
+        // Cash or default
+        cashPayouts += paid;
+      }
     });
 
     const relevantSuppliers = suppliers.filter(s => {
@@ -404,12 +511,15 @@ export default function SupplierHub({
 
     return {
       totalPurchases,
+      totalPaid,
+      totalUnpaidDues,
       totalVouchers: channelVouchers.length,
       activeSuppliersCount: relevantSuppliers.length,
       totalPayables,
       cashPayouts,
       upiPayouts,
-      bankPayouts
+      bankPayouts,
+      chequePayouts
     };
   }, [channelVouchers, suppliers, typeFilter]);
 
@@ -525,21 +635,48 @@ export default function SupplierHub({
 
   // Settle Payment / Payout Modal Action
   const handleOpenSettlement = (supplier) => {
+    // supplier.balance may be overridden to a single voucher's due when called per-row
+    const displayBalance = supplier.balance || 0;
     setSettlementModal({
       isOpen: true,
       supplier,
-      amount: String(supplier.balance || ''),
+      amount: String(displayBalance || ''),
       paymentMode: 'Cash',
       refNo: '',
       notes: '',
+      partialMethod: 'Cash',
+      mixedBreakdown: {
+        cash: String(displayBalance || ''),
+        upi: '',
+        card: '',
+        bank: '',
+        cheque: ''
+      },
+      chequeDetails: {
+        chequeNo: '',
+        bankName: supplier.bankDetails?.bankName || '',
+        chequeDate: new Date().toISOString().slice(0, 10)
+      },
       loading: false
     });
   };
 
   const handleConfirmSettlement = async (e) => {
     e.preventDefault();
-    const { supplier, amount, paymentMode, refNo, notes } = settlementModal;
-    const payAmt = Number(amount);
+    const { supplier, amount, paymentMode, refNo, notes, partialMethod, mixedBreakdown, chequeDetails } = settlementModal;
+    
+    let payAmt = Number(amount);
+    if (paymentMode === 'Mixed') {
+      const mixedSum = Number(mixedBreakdown.cash || 0) +
+        Number(mixedBreakdown.upi || 0) +
+        Number(mixedBreakdown.card || 0) +
+        Number(mixedBreakdown.bank || 0) +
+        Number(mixedBreakdown.cheque || 0);
+      if (mixedSum > 0) {
+        payAmt = mixedSum;
+      }
+    }
+
     if (!payAmt || payAmt <= 0) {
       setToast({ message: 'Please enter a valid payout amount', type: 'error' });
       return;
@@ -550,13 +687,60 @@ export default function SupplierHub({
       const currentBal = Number(supplier.balance || 0);
       const newBal = Math.max(0, currentBal - payAmt);
 
+      let methodDetail = paymentMode;
+      if (paymentMode === 'Partial Paid') {
+        methodDetail = `Partial Paid via ${partialMethod}`;
+      } else if (paymentMode === 'Mixed') {
+        const parts = [];
+        if (Number(mixedBreakdown.cash) > 0) parts.push(`Cash: ₹${mixedBreakdown.cash}`);
+        if (Number(mixedBreakdown.upi) > 0) parts.push(`UPI: ₹${mixedBreakdown.upi}`);
+        if (Number(mixedBreakdown.card) > 0) parts.push(`Card: ₹${mixedBreakdown.card}`);
+        if (Number(mixedBreakdown.bank) > 0) parts.push(`Bank: ₹${mixedBreakdown.bank}`);
+        if (Number(mixedBreakdown.cheque) > 0) parts.push(`Cheque: ₹${mixedBreakdown.cheque}`);
+        methodDetail = `Mixed Payment (${parts.join(', ')})`;
+      } else if (paymentMode === 'Cheque' && chequeDetails.chequeNo) {
+        methodDetail = `Cheque #${chequeDetails.chequeNo} (${chequeDetails.bankName || 'Bank'})`;
+      }
+
+      const payoutRecord = {
+        amount: payAmt,
+        paymentMode,
+        refNo: refNo || chequeDetails.chequeNo || '',
+        notes: notes || '',
+        paymentBreakdown: {
+          cash: Number(mixedBreakdown.cash || 0),
+          upi: Number(mixedBreakdown.upi || 0),
+          card: Number(mixedBreakdown.card || 0),
+          bank: Number(mixedBreakdown.bank || 0),
+          cheque: Number(mixedBreakdown.cheque || 0)
+        },
+        chequeDetails: paymentMode === 'Cheque' || Number(mixedBreakdown.cheque) > 0 ? chequeDetails : {},
+        date: new Date()
+      };
+
       await updateSupplier(supplier._id, {
         balance: newBal,
-        notes: `${supplier.notes || ''}\n[Payout: ₹${payAmt} via ${paymentMode} on ${new Date().toLocaleDateString('en-IN')}${refNo ? ` Ref: ${refNo}` : ''}]`.trim()
+        notes: `${supplier.notes || ''}\n[Payout: ₹${payAmt} via ${methodDetail} on ${new Date().toLocaleDateString('en-IN')}${refNo ? ` Ref: ${refNo}` : ''}]`.trim(),
+        payoutRecord
       });
 
       setToast({ message: `Recorded payout of ₹${payAmt.toLocaleString()} to ${supplier.name}! New Khata: ₹${newBal.toLocaleString()}`, type: 'success' });
-      setSettlementModal({ isOpen: false, supplier: null, amount: '', paymentMode: 'Cash', refNo: '', notes: '', loading: false });
+
+      setSettlementModal({
+        isOpen: false,
+        supplier: null,
+        amount: '',
+        paymentMode: 'Cash',
+        refNo: '',
+        notes: '',
+        partialMethod: 'Cash',
+        mixedBreakdown: { cash: '', upi: '', card: '', bank: '', cheque: '' },
+        chequeDetails: { chequeNo: '', bankName: '', chequeDate: new Date().toISOString().slice(0, 10) },
+        loading: false
+      });
+
+      // Keep Statement modal open — update supplier balance in real-time
+      setStatementSupplier(prev => prev && prev._id === supplier._id ? { ...prev, balance: newBal } : prev);
       loadAllData();
     } catch (err) {
       console.error('Payout settlement error:', err);
@@ -947,25 +1131,15 @@ export default function SupplierHub({
                           </div>
                         </div>
 
-                        {/* Card Footer: Statement + Settle/Pay + Quick Call/WA + Edit/Delete */}
+                        {/* Card Footer: Statement (Opens Ledger & Settlement) + Quick Call/WA + Edit/Delete */}
                         <div className="pt-2 border-t border-border/60 flex items-center justify-between gap-1.5">
                           <button
                             type="button"
                             onClick={() => setStatementSupplier(s)}
-                            className="flex-1 py-1.5 px-2 bg-surface hover:bg-surface-hover text-text-main border border-border rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-2xs"
+                            className="flex-1 py-1.5 px-3 bg-surface hover:bg-orange-50 hover:text-[#ea580c] hover:border-orange-300 text-text-main border border-border rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-2xs active:scale-95"
                           >
-                            <FileText size={12} className="text-[#ea580c]" />
+                            <FileText size={13} className="text-[#ea580c]" />
                             <span>{t('Statement')}</span>
-                          </button>
-
-                          <button
-                            type="button"
-                            onClick={() => handleOpenSettlement(s)}
-                            className="py-1.5 px-2.5 bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-700 hover:to-teal-800 text-white rounded-xl text-xs font-black shadow-xs cursor-pointer active:scale-95 transition-all flex items-center justify-center gap-1 shrink-0"
-                            title={t('Record payment / settle Khata')}
-                          >
-                            <CreditCard size={12} />
-                            <span>{t('Settle')}</span>
                           </button>
 
                           {s.phone && (
@@ -1174,6 +1348,7 @@ export default function SupplierHub({
                         <th className="py-2.5 px-3">{t('Items / Catch')}</th>
                         <th className="py-2.5 px-3 text-right">{t('Weight / Boxes')}</th>
                         <th className="py-2.5 px-3 text-right">{t('Total (₹)')}</th>
+                        <th className="py-2.5 px-3 text-center">{t('Payment')}</th>
                         <th className="py-2.5 px-3 text-center">{t('Action')}</th>
                       </tr>
                     </thead>
@@ -1218,6 +1393,27 @@ export default function SupplierHub({
                           </td>
                           <td className="py-2.5 px-3 text-right font-mono font-black text-emerald-700 whitespace-nowrap">
                             ₹{Math.round(v.netPayable || v.grossValue || 0).toLocaleString()}
+                          </td>
+                          <td className="py-2.5 px-3 text-center whitespace-nowrap">
+                            <div className="inline-flex flex-col items-center gap-0.5">
+                              <span className={`px-2 py-0.5 rounded-md text-[9px] font-black uppercase tracking-wide border ${
+                                v.status === 'Pending Khata' || v.paymentStatus === 'Unpaid'
+                                  ? 'bg-rose-50 text-rose-700 border-rose-300'
+                                  : v.status === 'Partially Paid' || v.paymentStatus === 'Partially Paid'
+                                  ? 'bg-amber-50 text-amber-800 border-amber-300'
+                                  : 'bg-emerald-50 text-emerald-800 border-emerald-300'
+                              }`}>
+                                {v.status || v.paymentStatus || 'Settled'}
+                              </span>
+                              <span className="text-[9.5px] font-bold text-slate-500">
+                                {v.paymentMode || 'Cash'}
+                                {Number(v.dueAmount || 0) > 0 && (
+                                  <span className="text-rose-600 font-extrabold ml-1">
+                                    • Due: ₹{Math.round(v.dueAmount).toLocaleString()}
+                                  </span>
+                                )}
+                              </span>
+                            </div>
                           </td>
                           <td className="py-2.5 px-3 text-center whitespace-nowrap">
                             <button
@@ -1592,7 +1788,7 @@ export default function SupplierHub({
 
       {/* ── MODAL 2: SETTLEMENT / PAYOUT MODAL ── */}
       {settlementModal.isOpen && settlementModal.supplier && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 z-50 animate-fade-in">
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 z-[70] animate-fade-in overflow-y-auto">
           <div className="bg-surface border border-border rounded-2xl w-full max-w-md shadow-2xl overflow-hidden">
             <div className="px-4 py-3 bg-gradient-to-r from-emerald-600 to-teal-700 text-white flex items-center justify-between">
               <div className="flex items-center gap-2">
@@ -1625,7 +1821,20 @@ export default function SupplierHub({
 
               {/* Amount Input */}
               <div>
-                <label className="font-bold text-text-main block mb-1">{t('Payout Amount (₹)')} *</label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="font-bold text-text-main text-xs">
+                    {settlementModal.paymentMode === 'Partial Paid'
+                      ? 'Enter Partial Amount to Pay Now (₹) *'
+                      : settlementModal.paymentMode === 'Mixed'
+                      ? 'Total Payout Amount (₹) *'
+                      : t('Payout Amount (₹)') + ' *'}
+                  </label>
+                  {settlementModal.paymentMode === 'Partial Paid' && (
+                    <span className="text-[10px] text-amber-800 font-bold bg-amber-100 px-1.5 py-0.2 rounded border border-amber-300">
+                      Partial portion of ₹{Number(settlementModal.supplier.balance || 0).toLocaleString()}
+                    </span>
+                  )}
+                </div>
                 <input
                   type="number"
                   required
@@ -1633,7 +1842,11 @@ export default function SupplierHub({
                   max={settlementModal.supplier.balance || 9999999}
                   value={settlementModal.amount}
                   onChange={(e) => setSettlementModal({ ...settlementModal, amount: e.target.value })}
-                  placeholder="Enter amount paid"
+                  placeholder={
+                    settlementModal.paymentMode === 'Partial Paid'
+                      ? 'e.g. Enter partial amount (e.g. 20000)'
+                      : 'Enter amount paid'
+                  }
                   className="w-full bg-background border border-border rounded-xl px-3 py-2 font-mono font-black text-base text-emerald-700 focus:border-emerald-500 focus:outline-none"
                 />
               </div>
@@ -1641,33 +1854,295 @@ export default function SupplierHub({
               {/* Payment Mode Selector */}
               <div>
                 <label className="font-bold text-text-main block mb-1">{t('Payment Method')}</label>
-                <div className="grid grid-cols-4 gap-1.5">
-                  {['Cash', 'UPI', 'Bank Transfer', 'Cheque'].map(m => (
+                <div className="grid grid-cols-4 sm:grid-cols-7 gap-1">
+                  {['Cash', 'UPI', 'Card', 'Bank Transfer', 'Cheque', 'Partial Paid', 'Mixed'].map(m => (
                     <button
                       key={m}
                       type="button"
-                      onClick={() => setSettlementModal({ ...settlementModal, paymentMode: m })}
-                      className={`py-1.5 px-2 rounded-xl text-center font-bold text-[11px] border transition-all cursor-pointer ${
+                      onClick={() => setSettlementModal(prev => {
+                        const isMixed = m === 'Mixed';
+                        const isPartial = m === 'Partial Paid';
+                        const bal = Number(prev.supplier?.balance || 0);
+                        const curAmt = Number(prev.amount || 0);
+                        let nextAmt = prev.amount;
+                        if (isPartial && (curAmt === bal || !curAmt)) {
+                          nextAmt = ''; // Ask explicitly for how much to pay now
+                        } else if (!isPartial && !isMixed && (!curAmt || curAmt === 0)) {
+                          nextAmt = String(bal || '');
+                        }
+                        return {
+                          ...prev,
+                          paymentMode: m,
+                          amount: nextAmt,
+                          mixedBreakdown: isMixed && (!prev.mixedBreakdown.cash && !prev.mixedBreakdown.upi)
+                            ? { cash: String(curAmt || bal || ''), upi: '', card: '', bank: '', cheque: '' }
+                            : prev.mixedBreakdown
+                        };
+                      })}
+                      className={`py-1.5 px-1 rounded-xl text-center font-bold text-[10px] sm:text-[10.5px] border transition-all cursor-pointer truncate ${
                         settlementModal.paymentMode === m
                           ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
                           : 'bg-background border-border text-text-muted hover:text-text-main'
                       }`}
                     >
-                      {m}
+                      {m === 'Bank Transfer' ? 'Bank' : m}
                     </button>
                   ))}
                 </div>
               </div>
 
-              {/* Ref / UTR number */}
-              {settlementModal.paymentMode !== 'Cash' && (
+              {/* Partial Paid Sub-Panel */}
+              {settlementModal.paymentMode === 'Partial Paid' && (() => {
+                const bal = Number(settlementModal.supplier?.balance || 0);
+                const payNow = Number(settlementModal.amount || 0);
+                const remaining = Math.max(0, bal - payNow);
+
+                return (
+                  <div className="p-3 bg-gradient-to-r from-amber-50 to-orange-50/50 border-2 border-amber-400 rounded-2xl space-y-2.5 shadow-xs">
+                    <div className="flex items-center justify-between border-b border-amber-200 pb-2">
+                      <span className="text-xs font-black text-amber-950 uppercase tracking-wide flex items-center gap-1.5">
+                        <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
+                        Partial Settlement Breakdown
+                      </span>
+                      <span className="text-[11px] font-mono font-bold text-slate-600">
+                        Total Due: <strong className="text-slate-800">₹{bal.toLocaleString()}</strong>
+                      </span>
+                    </div>
+
+                    {/* Paying Now vs Remaining Grid */}
+                    <div className="grid grid-cols-2 gap-2 bg-white/90 p-2 rounded-xl border border-amber-200 text-center">
+                      <div className="bg-emerald-50/70 p-1.5 rounded-lg border border-emerald-200">
+                        <span className="text-[9.5px] font-bold text-emerald-800 uppercase block">Paying Now</span>
+                        <span className="text-sm sm:text-base font-mono font-black text-emerald-700">
+                          ₹{payNow > 0 ? payNow.toLocaleString() : '0'}
+                        </span>
+                      </div>
+                      <div className="bg-rose-50/70 p-1.5 rounded-lg border border-rose-200">
+                        <span className="text-[9.5px] font-bold text-rose-700 uppercase block">Remaining Due</span>
+                        <span className="text-sm sm:text-base font-mono font-black text-rose-600">
+                          ₹{remaining.toLocaleString()}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Quick percentage buttons */}
+                    <div className="flex items-center justify-between gap-1 text-[10px] flex-wrap">
+                      <span className="text-slate-500 font-bold">Quick Partial Amount:</span>
+                      <div className="flex items-center gap-1">
+                        {[0.25, 0.5, 0.75].map(pct => (
+                          <button
+                            key={pct}
+                            type="button"
+                            onClick={() => setSettlementModal({
+                              ...settlementModal,
+                              amount: String(Math.round(bal * pct))
+                            })}
+                            className="px-2 py-0.5 rounded-md bg-white hover:bg-amber-100 border border-amber-300 font-mono font-bold text-amber-900 cursor-pointer shadow-2xs"
+                          >
+                            {pct * 100}% (₹{Math.round(bal * pct).toLocaleString()})
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Partial Method Selector */}
+                    <div>
+                      <label className="text-[10.5px] font-bold text-slate-700 block mb-1">
+                        Pay Partial Amount (₹{payNow > 0 ? payNow.toLocaleString() : '0'}) Via:
+                      </label>
+                      <div className="grid grid-cols-5 gap-1">
+                        {['Cash', 'UPI', 'Card', 'Bank Transfer', 'Cheque'].map(subM => (
+                          <button
+                            key={subM}
+                            type="button"
+                            onClick={() => setSettlementModal({ ...settlementModal, partialMethod: subM })}
+                            className={`py-1.5 px-1 rounded-xl text-center font-bold text-[10px] border cursor-pointer transition-all ${
+                              settlementModal.partialMethod === subM
+                                ? 'bg-amber-600 text-white border-amber-600 shadow-xs'
+                                : 'bg-white border-amber-200 text-slate-700 hover:bg-amber-50'
+                            }`}
+                          >
+                            {subM === 'Bank Transfer' ? 'Bank' : subM}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {/* Mixed Payment Breakdown Sub-Panel */}
+              {settlementModal.paymentMode === 'Mixed' && (() => {
+                const b = settlementModal.mixedBreakdown || {};
+                const mixedSum = Number(b.cash || 0) + Number(b.upi || 0) + Number(b.card || 0) + Number(b.bank || 0) + Number(b.cheque || 0);
+                const targetAmt = Number(settlementModal.amount || 0);
+                const diff = targetAmt - mixedSum;
+
+                return (
+                  <div className="p-2.5 bg-emerald-50/80 border border-emerald-300 rounded-xl space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10.5px] font-black text-emerald-900 uppercase tracking-wide">
+                        Mixed Payment Breakdown
+                      </span>
+                      <span className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded-full border ${
+                        diff === 0
+                          ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                          : 'bg-amber-100 text-amber-900 border-amber-300'
+                      }`}>
+                        Allocated: ₹{mixedSum.toLocaleString()} / ₹{targetAmt.toLocaleString()}
+                        {diff !== 0 && ` (Diff: ₹${diff.toLocaleString()})`}
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-2 sm:grid-cols-5 gap-1.5">
+                      <div>
+                        <label className="text-[9.5px] font-bold text-slate-600 block mb-0.5">Cash (₹)</label>
+                        <input
+                          type="number"
+                          min="0"
+                          value={b.cash}
+                          onChange={(e) => setSettlementModal({
+                            ...settlementModal,
+                            mixedBreakdown: { ...b, cash: e.target.value }
+                          })}
+                          placeholder="0"
+                          className="w-full bg-white border border-emerald-300 rounded-lg px-2 py-1 font-mono font-bold text-xs"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[9.5px] font-bold text-slate-600 block mb-0.5">UPI (₹)</label>
+                        <input
+                          type="number"
+                          min="0"
+                          value={b.upi}
+                          onChange={(e) => setSettlementModal({
+                            ...settlementModal,
+                            mixedBreakdown: { ...b, upi: e.target.value }
+                          })}
+                          placeholder="0"
+                          className="w-full bg-white border border-emerald-300 rounded-lg px-2 py-1 font-mono font-bold text-xs"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[9.5px] font-bold text-slate-600 block mb-0.5">Card (₹)</label>
+                        <input
+                          type="number"
+                          min="0"
+                          value={b.card}
+                          onChange={(e) => setSettlementModal({
+                            ...settlementModal,
+                            mixedBreakdown: { ...b, card: e.target.value }
+                          })}
+                          placeholder="0"
+                          className="w-full bg-white border border-emerald-300 rounded-lg px-2 py-1 font-mono font-bold text-xs"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[9.5px] font-bold text-slate-600 block mb-0.5">Bank (₹)</label>
+                        <input
+                          type="number"
+                          min="0"
+                          value={b.bank}
+                          onChange={(e) => setSettlementModal({
+                            ...settlementModal,
+                            mixedBreakdown: { ...b, bank: e.target.value }
+                          })}
+                          placeholder="0"
+                          className="w-full bg-white border border-emerald-300 rounded-lg px-2 py-1 font-mono font-bold text-xs"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[9.5px] font-bold text-slate-600 block mb-0.5">Cheque (₹)</label>
+                        <input
+                          type="number"
+                          min="0"
+                          value={b.cheque}
+                          onChange={(e) => setSettlementModal({
+                            ...settlementModal,
+                            mixedBreakdown: { ...b, cheque: e.target.value }
+                          })}
+                          placeholder="0"
+                          className="w-full bg-white border border-emerald-300 rounded-lg px-2 py-1 font-mono font-bold text-xs"
+                        />
+                      </div>
+                    </div>
+
+                    {diff !== 0 && (
+                      <div className="flex justify-end">
+                        <button
+                          type="button"
+                          onClick={() => setSettlementModal({ ...settlementModal, amount: String(mixedSum) })}
+                          className="text-[10px] text-emerald-800 hover:text-emerald-950 font-bold underline cursor-pointer"
+                        >
+                          Sync Payout to ₹{mixedSum.toLocaleString()}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+
+              {/* Cheque Details Sub-Panel */}
+              {(settlementModal.paymentMode === 'Cheque' ||
+                (settlementModal.paymentMode === 'Partial Paid' && settlementModal.partialMethod === 'Cheque') ||
+                (settlementModal.paymentMode === 'Mixed' && Number(settlementModal.mixedBreakdown?.cheque || 0) > 0)) && (
+                <div className="p-2.5 bg-amber-50/70 border border-amber-300 rounded-xl space-y-2">
+                  <span className="text-[10px] font-black uppercase text-amber-900 block">Cheque Details</span>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                    <div>
+                      <label className="text-[9.5px] font-bold text-slate-600 block mb-0.5">Cheque No</label>
+                      <input
+                        type="text"
+                        value={settlementModal.chequeDetails?.chequeNo || ''}
+                        onChange={(e) => setSettlementModal({
+                          ...settlementModal,
+                          chequeDetails: { ...settlementModal.chequeDetails, chequeNo: e.target.value }
+                        })}
+                        placeholder="e.g. 408921"
+                        className="w-full bg-white border border-amber-300 rounded-lg px-2 py-1 font-mono font-bold text-xs"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[9.5px] font-bold text-slate-600 block mb-0.5">Bank Name</label>
+                      <input
+                        type="text"
+                        value={settlementModal.chequeDetails?.bankName || ''}
+                        onChange={(e) => setSettlementModal({
+                          ...settlementModal,
+                          chequeDetails: { ...settlementModal.chequeDetails, bankName: e.target.value }
+                        })}
+                        placeholder="e.g. SBI, HDFC"
+                        className="w-full bg-white border border-amber-300 rounded-lg px-2 py-1 text-xs"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[9.5px] font-bold text-slate-600 block mb-0.5">Cheque Date</label>
+                      <input
+                        type="date"
+                        value={settlementModal.chequeDetails?.chequeDate || ''}
+                        onChange={(e) => setSettlementModal({
+                          ...settlementModal,
+                          chequeDetails: { ...settlementModal.chequeDetails, chequeDate: e.target.value }
+                        })}
+                        className="w-full bg-white border border-amber-300 rounded-lg px-2 py-1 font-mono text-xs"
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Ref / UTR number for online modes */}
+              {(settlementModal.paymentMode === 'UPI' ||
+                settlementModal.paymentMode === 'Bank Transfer' ||
+                settlementModal.paymentMode === 'Card' ||
+                (settlementModal.paymentMode === 'Partial Paid' && ['UPI', 'Bank Transfer', 'Card'].includes(settlementModal.partialMethod))) && (
                 <div>
-                  <label className="font-bold text-text-main block mb-1">{t('Reference / UTR Number')}</label>
+                  <label className="font-bold text-text-main block mb-1">{t('Reference / UTR / Card Trans No')}</label>
                   <input
                     type="text"
                     value={settlementModal.refNo}
                     onChange={(e) => setSettlementModal({ ...settlementModal, refNo: e.target.value })}
-                    placeholder="e.g. UPI Ref / Cheque No / Bank UTR"
+                    placeholder="e.g. UPI Ref / Bank UTR / Card Auth Code"
                     className="w-full bg-background border border-border rounded-xl px-3 py-1.5 font-bold font-mono focus:border-emerald-500 focus:outline-none"
                   />
                 </div>
@@ -1739,25 +2214,68 @@ export default function SupplierHub({
 
             {/* Content */}
             <div className="p-4 space-y-4 overflow-y-auto text-xs flex-1">
-              {/* Supplier Header Box */}
-              <div className="p-3 bg-background rounded-2xl border border-border flex items-start justify-between gap-3">
-                <div>
-                  <h2 className="text-base font-black text-text-main m-0">{statementSupplier.name}</h2>
-                  <p className="text-[11px] text-text-muted mt-0.5">
-                    {statementSupplier.companyName || statementSupplier.harbor || 'Supplier'} • Ph: {statementSupplier.phone}
-                  </p>
-                  {statementSupplier.vehicleNumber && (
-                    <span className="inline-block mt-1 text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-slate-100 text-slate-800 border border-slate-200">
-                      Vehicle: {statementSupplier.vehicleNumber}
-                    </span>
-                  )}
+              {/* Supplier Header Box & Card Summary with Settle Action */}
+              <div className="p-3.5 bg-background rounded-2xl border border-border space-y-3">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <h2 className="text-base font-black text-text-main m-0">{statementSupplier.name}</h2>
+                    <p className="text-[11px] text-text-muted mt-0.5">
+                      {statementSupplier.companyName || statementSupplier.harbor || 'Supplier'} • Ph: {statementSupplier.phone}
+                    </p>
+                    {statementSupplier.vehicleNumber && (
+                      <span className="inline-block mt-1 text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-slate-100 text-slate-800 border border-slate-200">
+                        Vehicle: {statementSupplier.vehicleNumber}
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <div className="text-right">
+                      <span className="text-[10px] uppercase font-bold text-rose-600 block">{t('Current Khata Due')}</span>
+                      <span className="text-lg font-mono font-black text-rose-600">
+                        ₹{Number(statementSupplier.balance || 0).toLocaleString()}
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleOpenSettlement(statementSupplier)}
+                      className="py-2 px-3.5 bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-700 hover:to-teal-800 text-white rounded-xl text-xs font-black shadow-md cursor-pointer active:scale-95 transition-all flex items-center justify-center gap-1.5 shrink-0"
+                      title={t('Record payment / settle Khata')}
+                    >
+                      <CreditCard size={14} />
+                      <span>{t('Settle Khata')}</span>
+                    </button>
+                  </div>
                 </div>
-                <div className="text-right">
-                  <span className="text-[10px] uppercase font-bold text-rose-600 block">{t('Current Khata Due')}</span>
-                  <span className="text-lg font-mono font-black text-rose-600">
-                    ₹{Number(statementSupplier.balance || 0).toLocaleString()}
-                  </span>
-                </div>
+
+                {/* Direct Card Metrics inside Modal */}
+                {(() => {
+                  const suppKey = (statementSupplier.name || '').trim().toLowerCase();
+                  const metric = supplierMetricsMap[suppKey] || { deliveries: 0, totalKg: 0, totalPurchases: 0 };
+                  const due = Number(statementSupplier.balance || 0);
+
+                  return (
+                    <div className="grid grid-cols-4 gap-2 pt-2.5 border-t border-border/70 text-center">
+                      <div className="bg-surface/80 p-1.5 rounded-xl border border-border/50">
+                        <span className="text-[9px] font-bold text-text-muted uppercase block">{t('Deliveries')}</span>
+                        <span className="text-xs font-mono font-black text-text-main">{metric.deliveries}</span>
+                      </div>
+                      <div className="bg-surface/80 p-1.5 rounded-xl border border-border/50">
+                        <span className="text-[9px] font-bold text-text-muted uppercase block">{t('Weight')}</span>
+                        <span className="text-xs font-mono font-black text-amber-700">{metric.totalKg.toFixed(1)} Kg</span>
+                      </div>
+                      <div className="bg-surface/80 p-1.5 rounded-xl border border-border/50">
+                        <span className="text-[9px] font-bold text-text-muted uppercase block">{t('Purchases')}</span>
+                        <span className="text-xs font-mono font-black text-emerald-700">₹{Math.round(metric.totalPurchases).toLocaleString()}</span>
+                      </div>
+                      <div className="bg-surface/80 p-1.5 rounded-xl border border-border/50">
+                        <span className="text-[9px] font-bold text-text-muted uppercase block">{t('Payable')}</span>
+                        <span className={`text-xs font-mono font-black ${due > 0 ? 'text-rose-600' : 'text-slate-400'}`}>
+                          {due > 0 ? `₹${due.toLocaleString()}` : t('Clear')}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })()}
               </div>
 
               {/* Inward Deliveries for this supplier */}
@@ -1787,6 +2305,9 @@ export default function SupplierHub({
                               <th className="p-2">Catch Items</th>
                               <th className="p-2 text-right">Kg</th>
                               <th className="p-2 text-right">Gross (₹)</th>
+                              <th className="p-2 text-right">Paid (₹)</th>
+                              <th className="p-2 text-right">Due (₹)</th>
+                              <th className="p-2 text-center">Payment</th>
                               <th className="p-2 text-center">Action</th>
                             </tr>
                           </thead>
@@ -1800,15 +2321,49 @@ export default function SupplierHub({
                                 </td>
                                 <td className="p-2 text-right text-amber-800">{v.totalKg.toFixed(1)}</td>
                                 <td className="p-2 text-right font-black text-emerald-700">₹{Math.round(v.netPayable || v.grossValue || 0).toLocaleString()}</td>
+                                <td className="p-2 text-right text-emerald-700 font-mono">
+                                  {v.paidAmount > 0 ? `₹${Math.round(v.paidAmount).toLocaleString()}` : '—'}
+                                </td>
+                                <td className="p-2 text-right text-rose-600 font-mono font-bold">
+                                  {v.dueAmount > 0 ? `₹${Math.round(v.dueAmount).toLocaleString()}` : '—'}
+                                </td>
                                 <td className="p-2 text-center">
-                                  <button
-                                    type="button"
-                                    onClick={() => setViewInvoice(v)}
-                                    className="p-1 text-[#ea580c] hover:bg-orange-50 rounded"
-                                    title="View Inward Slip"
-                                  >
-                                    <Eye size={12} />
-                                  </button>
+                                  <span className={`px-1.5 py-0.5 rounded text-[8.5px] font-black uppercase font-sans ${
+                                    v.status === 'Pending Khata' || v.paymentStatus === 'Unpaid'
+                                      ? 'bg-rose-50 text-rose-700 border border-rose-200'
+                                      : v.status === 'Partially Paid' || v.paymentStatus === 'Partially Paid'
+                                      ? 'bg-amber-50 text-amber-800 border border-amber-300'
+                                      : 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                                  }`}>
+                                    {v.status || v.paymentStatus || 'Settled'}
+                                  </span>
+                                </td>
+                                <td className="p-2 text-center">
+                                  <div className="flex items-center justify-center gap-1">
+                                    {v.dueAmount > 0 && (
+                                      <button
+                                        type="button"
+                                        onClick={() => handleOpenSettlement({
+                                          ...statementSupplier,
+                                          balance: v.dueAmount,
+                                          _voucherRef: v.invoiceNo
+                                        })}
+                                        className="px-1.5 py-0.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-[9px] font-black cursor-pointer flex items-center gap-0.5 whitespace-nowrap"
+                                        title={`Pay ₹${Math.round(v.dueAmount).toLocaleString()} for this voucher`}
+                                      >
+                                        <CreditCard size={9} />
+                                        <span>Pay</span>
+                                      </button>
+                                    )}
+                                    <button
+                                      type="button"
+                                      onClick={() => setViewInvoice(v)}
+                                      className="p-1 text-[#ea580c] hover:bg-orange-50 rounded"
+                                      title="View Inward Slip"
+                                    >
+                                      <Eye size={12} />
+                                    </button>
+                                  </div>
                                 </td>
                               </tr>
                             ))}
@@ -1826,7 +2381,7 @@ export default function SupplierHub({
 
       {/* ── MODAL 4: DELETE CONFIRMATION MODAL ── */}
       {deleteConfirmModal.isOpen && deleteConfirmModal.supplier && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 z-50 animate-fade-in">
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 z-[80] animate-fade-in">
           <div className="bg-surface border border-border rounded-2xl w-full max-w-sm shadow-2xl p-4 space-y-3 text-xs">
             <div className="w-10 h-10 rounded-2xl bg-rose-50 text-rose-600 border border-rose-200 flex items-center justify-center mx-auto">
               <AlertTriangle size={20} />
