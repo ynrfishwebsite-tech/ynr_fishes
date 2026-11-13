@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { Printer, ArrowLeft, X, Check } from 'lucide-react';
 import ynrLogo from '../../../assets/ynr_logo.png';
 import api from '../../../api/system/axios';
+import { renderElementToPNGBase64 } from '../../../utils/formatters/escposRaster';
 
 /**
  * Converts any positive number into Indian words without "Indian Rupees" prefix.
@@ -282,21 +283,97 @@ export default function FishInwardInvoice({ data, onClose }) {
       .catch(() => {});
   }, []);
 
-  // Find active printer specifically mapped for SRM Bills or Both
+  // Find active printer specifically mapped for SRM Bills or Both (no fallback to CRM printers)
   const activeSRMPrinter = useMemo(() => {
     const list = Array.isArray(printerConfigs) ? printerConfigs : [];
-    let p = list.find(c => c.isActive && (c.type === 'srm' || c.type === 'both') && (
+    const p = list.find(c => c.isActive && (c.type === 'srm' || c.type === 'both') && (
       (c.connectionType === 'usb' && (c.usbPort || c.deviceName || c.name)) ||
       (c.connectionType === 'network' && c.ipAddress) ||
       (c.connectionType === 'bluetooth' && (c.bluetoothAddress || c.deviceName || c.name))
     ));
-    if (!p) p = list.find(c => c.isActive && c.type !== 'crm');
-    if (!p) p = list.find(c => c.isActive);
     return p || null;
   }, [printerConfigs]);
 
-  const handlePrint = () => {
-    window.print();
+  const [printToast, setPrintToast] = useState(null);
+  const [isPrinting, setIsPrinting] = useState(false);
+
+  const handlePrint = async (forceBrowserPrint = false) => {
+    // Standard browser print (Save as PDF) requested explicitly via PDF button
+    if (forceBrowserPrint === true) {
+      window.print();
+      return;
+    }
+
+    // Guard: Check if printer is only assigned to CRM
+    if (!activeSRMPrinter) {
+      const crmOnly = (printerConfigs || []).filter(c => c.isActive && (c.type === 'crm' || c.type === 'receipt'));
+      if (crmOnly.length > 0) {
+        setPrintToast({
+          message: `The printer "${crmOnly[0].name}" is not assigned for this bill! It is configured for CRM Bills only. Please assign a printer for SRM Bills in Printer Stations.`,
+          type: 'warning'
+        });
+        setTimeout(() => setPrintToast(null), 5000);
+        return;
+      }
+      setPrintToast({
+        message: 'No printer assigned for SRM Bills. Please configure an SRM printer in Printer Stations or click PDF to download.',
+        type: 'warning'
+      });
+      setTimeout(() => setPrintToast(null), 5000);
+      return;
+    }
+
+    // Direct thermal print to the configured SRM printer
+    setIsPrinting(true);
+    try {
+      if (activeSRMPrinter.connectionType === 'bluetooth' && window.AndroidBluetooth?.printImage) {
+        const receiptNode = document.querySelector('.receipt-thermal-58mm') || document.querySelector('.receipt-thermal-80mm') || document.querySelector('.a4-print-sheet');
+        const dots = printFormat === '58mm' ? 384 : 576;
+        const pngBase64 = await renderElementToPNGBase64(receiptNode, dots);
+        const resStr = window.AndroidBluetooth.printImage(activeSRMPrinter.bluetoothAddress, pngBase64, dots);
+        const res = JSON.parse(resStr || '{}');
+        if (res.success) {
+          setPrintToast({ message: `Inward Catch Voucher printed to ${activeSRMPrinter.name}!`, type: 'success' });
+          setTimeout(() => setPrintToast(null), 3500);
+          return;
+        }
+      }
+
+      const voucherPayload = {
+        ...data,
+        invoiceNo,
+        voucherNo: invoiceNo,
+        isSRM: true,
+        isInward: true,
+        restaurantDetails: storeProfile,
+        items: items.map(r => ({
+          name: r.itemName || r.variety || r.name,
+          quantity: r.boxes || 1,
+          weightKg: r.kg || 0,
+          rate: r.rate || 0,
+          total: Number((r.kg * r.rate).toFixed(2))
+        }))
+      };
+
+      const res = await api.post('/printer-configs/print-bill', {
+        bill: voucherPayload,
+        printerId: activeSRMPrinter._id
+      });
+
+      if (res.data?.success) {
+        setPrintToast({ message: `Inward Catch Voucher printed to ${activeSRMPrinter.name}!`, type: 'success' });
+        setTimeout(() => setPrintToast(null), 3500);
+      } else {
+        throw new Error(res.data?.message || 'Print failed');
+      }
+    } catch (err) {
+      console.warn('Direct print error:', err);
+      setPrintToast({ message: `Direct print failed: ${err.message || 'Error'}. Opening system print dialog.`, type: 'warning' });
+      setTimeout(() => setPrintToast(null), 4000);
+      window.print();
+    } finally {
+      setIsPrinting(false);
+    }
   };
 
   const modalContent = (
@@ -304,6 +381,14 @@ export default function FishInwardInvoice({ data, onClose }) {
       id="inward-invoice-modal-root"
       className="fixed inset-0 z-50 bg-white sm:bg-slate-100 flex flex-col overflow-y-auto"
     >
+      {/* SRM Print Notification Toast */}
+      {printToast && (
+        <div className="fixed top-14 left-1/2 -translate-x-1/2 z-[99999] px-4 py-2.5 rounded-xl text-xs font-bold shadow-xl animate-in fade-in slide-in-from-top-2 flex items-center gap-2 bg-amber-600 text-white border border-amber-400 select-none">
+          <span className="text-base">⚠️</span>
+          <span>{printToast.message}</span>
+        </div>
+      )}
+
       {/* ── 1. SCREEN TOP CONTROLS (COMPLETELY HIDDEN IN PRINT) ── */}
       <div id="inward-invoice-controls" className="no-print print-hidden print:hidden sticky top-0 z-20 bg-white border-b border-slate-200 px-2.5 sm:px-6 py-2 sm:py-2.5 flex items-center justify-between gap-2 sm:gap-3 shadow-2xs shrink-0">
         <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
