@@ -571,21 +571,28 @@ const LocalStockInTab = ({
                         </div>
                       </td>
                       <td className="py-2 px-2 align-middle text-center">
-                        {localStockInForm.items.length > 1 && (
-                          <button
-                            type="button"
-                            onClick={() => {
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (localStockInForm.items.length > 1) {
                               setLocalStockInForm({
                                 ...localStockInForm,
                                 items: localStockInForm.items.filter((_, i) => i !== idx)
                               });
-                            }}
-                            className="h-9 w-9 flex items-center justify-center text-slate-400 hover:text-rose-600 rounded-lg cursor-pointer transition-colors mx-auto"
-                            title="Remove row"
-                          >
-                            <Trash2 size={14} />
-                          </button>
-                        )}
+                            } else {
+                              // Last row: clear it instead of removing
+                              const now = new Date().toISOString().slice(0, 16);
+                              setLocalStockInForm({
+                                ...localStockInForm,
+                                items: [{ id: Date.now(), menuItemId: '', itemName: '', sizeGrade: 'medium', sizeBracket: 'Medium', weightOption: '1 - 4 Kg', boxes: '', kgPerBox: 60, kg: '', grams: '', ratePerKg: '', date: now, weighMode: localWeighMode }]
+                              });
+                            }
+                          }}
+                          className="h-9 w-9 flex items-center justify-center text-slate-300 hover:text-rose-600 rounded-lg cursor-pointer transition-colors mx-auto"
+                          title={localStockInForm.items.length > 1 ? 'Remove row' : 'Clear row'}
+                        >
+                          <Trash2 size={14} />
+                        </button>
                       </td>
                     </tr>
                   );
