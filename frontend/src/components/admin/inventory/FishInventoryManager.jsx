@@ -2083,42 +2083,46 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack, initi
       l.type?.includes('Dam') ||
       l.notes?.toLowerCase()?.includes('dam') ||
       l.notes?.toLowerCase()?.includes('contractor') ||
-      (typeof l.invoiceNo === 'string' && l.invoiceNo.startsWith('DAM-')) ||
+      (typeof l.invoiceNo === 'string' && (l.invoiceNo.startsWith('DAM-') || l.invoiceNo.startsWith('GIN-DAM-'))) ||
       l.supplierName?.toLowerCase()?.includes('prasad');
 
-    // 1. Determine Dam Consignment logs & varieties first
     const damLogs = stockLogs.filter(isDamLog);
     const damVarietyNames = new Set(
       damLogs.map(l => (l.itemName || '').trim().toLowerCase()).filter(Boolean)
     );
-    const damFish = fishList.filter(f => {
-      const name = (f.name || '').trim().toLowerCase();
-      return damVarietyNames.has(name) || f.waterType === 'freshwater' || f.source === 'dam' || f.supplierType?.includes('dam');
-    });
 
-    let damStockKg = damFish.reduce((acc, f) => acc + (Number(f.stock) || 0), 0);
-    if (damStockKg <= 0 && damLogs.length > 0) {
-      damStockKg = damLogs.reduce((acc, l) => acc + Math.max(0, Number(l.quantityChange || 0)), 0);
-    }
-    const damVarietiesCount = damFish.length > 0 ? damFish.length : (damVarietyNames.size || 0);
+    const localLogs = stockLogs.filter(l =>
+      !isDamLog(l) && (
+        l.intakeMode === 'local' ||
+        l.type?.includes('Procurement') ||
+        l.type?.includes('Stock-In') ||
+        (typeof l.invoiceNo === 'string' && (l.invoiceNo.startsWith('LOC-') || l.invoiceNo.startsWith('GIN-LOC-'))) ||
+        l.harbor ||
+        l.supplierName?.toLowerCase()?.includes('mangalore')
+      )
+    );
+    const localVarietyNames = new Set(
+      localLogs.map(l => (l.itemName || '').trim().toLowerCase()).filter(Boolean)
+    );
 
     if (currentDedicatedMode === 'local') {
-      // 2. Strict Local Isolation: Exclude all Dam varieties from Local
+      // Local varieties: All fish items belonging to local landings
       const localFish = fishList.filter(f => {
+        if (f.source === 'dam') return false;
+        if (f.supplierType?.toLowerCase()?.includes('dam')) return false;
         const name = (f.name || '').trim().toLowerCase();
-        return !damVarietyNames.has(name) && f.source !== 'dam' && f.waterType !== 'freshwater';
+        if (damVarietyNames.has(name) && !localVarietyNames.has(name) && f.source !== 'local') {
+          return false;
+        }
+        return true;
       });
 
-      const totalWarehouseKg = fishList.reduce((acc, f) => acc + (Number(f.stock) || 0), 0);
-      let stockKg = localFish.reduce((acc, f) => acc + (Number(f.stock) || 0), 0);
-      if (damStockKg > 0 && (stockKg === 0 || Math.abs(stockKg - totalWarehouseKg) < 0.1)) {
-        stockKg = Math.max(0, totalWarehouseKg - damStockKg);
+      // Compute total stock directly from local items in inventory
+      let stockKg = localFish.reduce((acc, f) => acc + Math.max(0, Number(f.stock) || 0), 0);
+      if (stockKg <= 0 && localLogs.length > 0) {
+        stockKg = localLogs.reduce((acc, l) => acc + Math.max(0, Number(l.quantityChange || 0)), 0);
       }
-
-      const localLogs = stockLogs.filter(l =>
-        !isDamLog(l) && (l.type?.includes('Procurement') || l.type?.includes('Stock-In') || l.intakeMode === 'local' || (typeof l.invoiceNo === 'string' && l.invoiceNo.startsWith('LOC-')))
-      );
-      const varietiesCount = Math.max(1, fishList.length - damVarietiesCount);
+      const varietiesCount = localFish.length > 0 ? localFish.length : Math.max(1, localVarietyNames.size || 1);
       const lowCount = localFish.filter(f => (Number(f.stock) || 0) <= (Number(f.minStockAlertKg) || 5)).length;
 
       const loggedBoxes = localLogs.reduce((acc, l) => {
@@ -2146,16 +2150,13 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack, initi
         stat4Color: 'text-orange-800'
       };
     } else if (currentDedicatedMode === 'dam') {
-      const damLogs = stockLogs.filter(isDamLog);
-      const damVarietyNames = new Set(
-        damLogs.map(l => (l.itemName || '').trim().toLowerCase()).filter(Boolean)
-      );
       const damFish = fishList.filter(f => {
+        if (f.source === 'local') return false;
         const name = (f.name || '').trim().toLowerCase();
-        return damVarietyNames.has(name) || f.waterType === 'freshwater' || f.source === 'dam' || f.supplierType?.includes('dam');
+        return damVarietyNames.has(name) || f.source === 'dam' || f.supplierType?.toLowerCase()?.includes('dam');
       });
 
-      let stockKg = damFish.reduce((acc, f) => acc + (Number(f.stock) || 0), 0);
+      let stockKg = damFish.reduce((acc, f) => acc + Math.max(0, Number(f.stock) || 0), 0);
       if (stockKg <= 0 && damLogs.length > 0) {
         stockKg = damLogs.reduce((acc, l) => acc + Math.max(0, Number(l.quantityChange || 0)), 0);
       }
