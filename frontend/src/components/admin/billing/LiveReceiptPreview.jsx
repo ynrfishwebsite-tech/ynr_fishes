@@ -85,7 +85,7 @@ const LiveReceiptPreview = ({ settings, previewTab, t, user, menuPreviewItems, o
         {(previewTab === 'srm' || previewTab === 'local' || previewTab === 'dam' || previewTab === 'supplies') ? (
           /* SRM Goods Inward & Catch Weighment Slip (Matching Real UI Inward Slip Exactly) */
           <div
-            className="p-3 transition-all duration-150 text-black font-mono"
+            className="p-3 transition-all duration-150 text-black"
             style={{
               fontFamily: previewFont.value,
               ...(previewFont.previewStyle || {}),
@@ -182,13 +182,13 @@ const LiveReceiptPreview = ({ settings, previewTab, t, user, menuPreviewItems, o
                   {party.phone && (
                     <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '2px' }}>
                       <span style={{ color: '#475569', fontWeight: 'bold' }}>Phone:</span>
-                      <span style={{ fontWeight: 'bold', fontFamily: 'monospace' }}>{party.phone}</span>
+                      <span style={{ fontWeight: 'bold' }}>{party.phone}</span>
                     </div>
                   )}
                   {party.vehicle && (
                     <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '2px' }}>
                       <span style={{ color: '#475569', fontWeight: 'bold' }}>Vehicle:</span>
-                      <span style={{ fontFamily: 'monospace', fontWeight: '900', backgroundColor: '#e2e8f0', padding: '0 4px', borderRadius: '2px' }}>{party.vehicle}</span>
+                      <span style={{ fontWeight: '900', backgroundColor: '#e2e8f0', padding: '0 4px', borderRadius: '2px' }}>{party.vehicle}</span>
                     </div>
                   )}
                   {party.origin && (

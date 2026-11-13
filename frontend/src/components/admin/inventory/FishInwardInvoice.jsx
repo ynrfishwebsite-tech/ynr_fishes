@@ -5,6 +5,8 @@ import ynrLogo from '../../../assets/ynr_logo.png';
 import api from '../../../api/system/axios';
 import { renderElementToPNGBase64, renderElementToESCPOSRaster } from '../../../utils/formatters/escposRaster';
 import { sendWhatsAppBill } from '../../../api/communication/whatsapp';
+import { getReceiptFontMetrics, findReceiptFont } from '../../../utils/formatters/receiptFonts';
+import { formatReceiptItemName } from '../../../utils/formatters/billItemFormatters';
 import html2canvas from 'html2canvas-pro';
 
 /**
@@ -146,6 +148,35 @@ export default function FishInwardInvoice({ data, onClose }) {
     return initial;
   });
 
+  const [activeSettings, setActiveSettings] = useState(() => {
+    try {
+      const saved = localStorage.getItem('restaurantSettings');
+      return saved ? JSON.parse(saved) : {};
+    } catch (e) {
+      return {};
+    }
+  });
+
+  // Realtime settings listener for font, font size, language
+  useEffect(() => {
+    const handleSettingsUpdated = (e) => {
+      if (e?.detail) {
+        setActiveSettings(e.detail);
+      } else {
+        try {
+          const saved = localStorage.getItem('restaurantSettings');
+          if (saved) setActiveSettings(JSON.parse(saved));
+        } catch (_) {}
+      }
+    };
+    window.addEventListener('settingsUpdated', handleSettingsUpdated);
+    window.addEventListener('storage', handleSettingsUpdated);
+    return () => {
+      window.removeEventListener('settingsUpdated', handleSettingsUpdated);
+      window.removeEventListener('storage', handleSettingsUpdated);
+    };
+  }, []);
+
   // Always fetch real settings directly from backend database
   useEffect(() => {
     let isMounted = true;
@@ -155,6 +186,7 @@ export default function FishInwardInvoice({ data, onClose }) {
         const respData = res.data;
         const incoming = respData?.restaurantSettings || respData;
         if (incoming && typeof incoming === 'object') {
+          setActiveSettings(incoming);
           setStoreProfile(prev => ({
             name: incoming.restaurantName?.trim() ? incoming.restaurantName.trim().toUpperCase() : prev.name,
             tagline: incoming.restaurantType?.trim() ? incoming.restaurantType.trim() : (incoming.tagline?.trim() ? incoming.tagline.trim() : ''),
@@ -175,6 +207,14 @@ export default function FishInwardInvoice({ data, onClose }) {
       });
     return () => { isMounted = false; };
   }, []);
+
+  // Calibrated Font Metrics matching user's selected receipt font & size
+  const activeFontFamilyVal = activeSettings.receiptFontFamily || 'Arial, Helvetica, sans-serif';
+  const matchedFontObj = findReceiptFont(activeFontFamilyVal);
+  const receiptFont = matchedFontObj.value;
+  const activeFontSize = activeSettings.receiptFontSize || 'medium';
+  const fontMetrics = getReceiptFontMetrics(activeFontSize, printFormat);
+  const langPref = activeSettings.receiptItemLanguage || localStorage.getItem('receiptItemLanguage') || 'telugu';
 
   // Title & Reference
   const isLocal = mode === 'local';
@@ -703,33 +743,41 @@ export default function FishInwardInvoice({ data, onClose }) {
         {printFormat === '58mm' && (
           <div
             ref={invoiceRef}
-            className="receipt-thermal-58mm bg-white text-black p-2.5 w-[210px] max-w-[210px] mx-auto border border-dashed border-slate-300 sm:shadow-lg font-mono text-[10px] leading-tight space-y-1.5"
+            className="receipt-thermal-58mm bg-white text-black p-2.5 w-[210px] max-w-[210px] mx-auto border border-dashed border-slate-300 sm:shadow-lg space-y-1.5"
+            style={{
+              fontFamily: receiptFont,
+              ...(matchedFontObj.previewStyle || {}),
+              fontSize: fontMetrics.bodySize,
+              lineHeight: fontMetrics.lineHeight,
+              color: '#000000',
+              backgroundColor: '#ffffff'
+            }}
           >
             {/* Store Header */}
             <div className="text-center space-y-0.5">
-              <h1 className="text-xs font-black uppercase tracking-tight m-0 text-black font-sans">
+              <h1 className="font-black uppercase tracking-tight m-0 text-black" style={{ fontSize: fontMetrics.headingSize }}>
                 {storeProfile.name || 'YNR FISHES'}
               </h1>
-              {storeProfile.tagline && <p className="text-[9px] m-0 text-slate-700">{storeProfile.tagline}</p>}
-              {storeProfile.address && <p className="text-[8.5px] m-0 text-slate-600 line-clamp-2">{storeProfile.address}</p>}
-              {storeProfile.phone && <p className="text-[9px] font-bold m-0">Tel: {storeProfile.phone}</p>}
-              {storeProfile.gstin && <p className="text-[8.5px] m-0">GSTIN: {storeProfile.gstin}</p>}
+              {storeProfile.tagline && <p className="m-0 text-slate-700" style={{ fontSize: fontMetrics.detailSize }}>{storeProfile.tagline}</p>}
+              {storeProfile.address && <p className="m-0 text-slate-600 line-clamp-2" style={{ fontSize: fontMetrics.detailSize }}>{storeProfile.address}</p>}
+              {storeProfile.phone && <p className="font-bold m-0" style={{ fontSize: fontMetrics.detailSize }}>Tel: {storeProfile.phone}</p>}
+              {storeProfile.gstin && <p className="m-0" style={{ fontSize: fontMetrics.detailSize }}>GSTIN: {storeProfile.gstin}</p>}
             </div>
 
             <div className="border-t border-dashed border-black my-1" />
 
             {/* Document & Voucher Info */}
             <div className="text-center space-y-0.5">
-              <div className="font-black text-[10.5px] uppercase tracking-wider">{shortDocTitle}</div>
-              <div className="font-bold text-[9px]">{invoiceNo}</div>
-              <div className="text-[8.5px] text-slate-600">{invoiceDate} • {invoiceTime}</div>
+              <div className="font-black uppercase tracking-wider" style={{ fontSize: fontMetrics.subHeadingSize }}>{shortDocTitle}</div>
+              <div className="font-bold" style={{ fontSize: fontMetrics.detailSize }}>{invoiceNo}</div>
+              <div className="text-slate-600" style={{ fontSize: fontMetrics.detailSize }}>{invoiceDate} • {invoiceTime}</div>
             </div>
 
             <div className="border-t border-black my-1" />
 
             {/* Supplier & Logistics (Strict: Only show existing non-empty rows) */}
             {hasPartyInfo && (
-              <div className="text-[9px] space-y-0.5">
+              <div className="space-y-0.5" style={{ fontSize: fontMetrics.detailSize }}>
                 {partyName && (
                   <div className="flex justify-between">
                     <span className="font-bold">Supp:</span>
@@ -745,13 +793,13 @@ export default function FishInwardInvoice({ data, onClose }) {
                 {partyPhone && (
                   <div className="flex justify-between">
                     <span className="font-bold">Phone:</span>
-                    <span className="font-mono">{partyPhone}</span>
+                    <span>{partyPhone}</span>
                   </div>
                 )}
                 {vehicleNumber && (
                   <div className="flex justify-between">
                     <span className="font-bold">Veh:</span>
-                    <span className="font-black font-mono">{vehicleNumber}</span>
+                    <span className="font-black">{vehicleNumber}</span>
                   </div>
                 )}
                 {originLocation && (
@@ -767,7 +815,7 @@ export default function FishInwardInvoice({ data, onClose }) {
 
             {/* Catch Items */}
             <div className="space-y-1">
-              <div className="flex justify-between text-[9px] font-black uppercase border-b border-dashed border-black pb-0.5">
+              <div className="flex justify-between font-black uppercase border-b border-dashed border-black pb-0.5" style={{ fontSize: fontMetrics.detailSize }}>
                 <span>ITEM / VARIETY</span>
                 <span>QTY/AMT</span>
               </div>
@@ -785,14 +833,14 @@ export default function FishInwardInvoice({ data, onClose }) {
                 }
                 const rate = Number(row.rate || row.price || row.ratePerKg || row.unitRate || 0);
                 const rowTotal = Number((rowKg * rate).toFixed(2));
-                const gradeVal = getGradeLabel(row);
+                const { itemTitle } = formatReceiptItemName(row.itemName || row.variety || row.name, langPref);
 
                 return (
-                  <div key={idx} className="text-[9px] space-y-0.2 py-0.5 border-b border-slate-100">
-                    <div className="font-bold text-black truncate">
-                      {idx + 1}. {row.itemName || row.variety || row.name || 'Catch Item'}
+                  <div key={idx} className="space-y-0.2 py-0.5 border-b border-slate-100" style={{ fontSize: fontMetrics.detailSize }}>
+                    <div className="font-bold text-black truncate" style={{ fontSize: fontMetrics.itemSize }}>
+                      {idx + 1}. {itemTitle || 'Catch Item'}
                     </div>
-                    <div className="flex justify-between text-slate-700 text-[8.5px]">
+                    <div className="flex justify-between text-slate-700" style={{ fontSize: fontMetrics.detailSize }}>
                       <span>
                         {row.boxes ? `${row.boxes}Bx • ` : ''}{rowKg.toFixed(1)}kg @ ₹{rate}
                       </span>
@@ -806,7 +854,7 @@ export default function FishInwardInvoice({ data, onClose }) {
             <div className="border-t border-dashed border-black my-1" />
 
             {/* Totals & Deductions */}
-            <div className="space-y-0.5 text-[9px]">
+            <div className="space-y-0.5" style={{ fontSize: fontMetrics.detailSize }}>
               <div className="flex justify-between">
                 <span>Total Weight:</span>
                 <span className="font-bold">{totalWeightKg.toFixed(1)} Kg {totalBoxes > 0 ? `(${totalBoxes} Bx)` : ''}</span>
@@ -819,7 +867,7 @@ export default function FishInwardInvoice({ data, onClose }) {
               {settlementList.length > 0 && (
                 <div className="pt-0.5 space-y-0.2">
                   {settlementList.map((st, i) => (
-                    <div key={i} className="flex justify-between text-[8.5px] text-slate-700">
+                    <div key={i} className="flex justify-between text-slate-700" style={{ fontSize: fontMetrics.detailSize }}>
                       <span>- {st.label}:</span>
                       <span>-₹{st.amount.toLocaleString()}</span>
                     </div>
@@ -832,13 +880,13 @@ export default function FishInwardInvoice({ data, onClose }) {
 
             {/* Net Amount Due */}
             <div className="text-center py-1 bg-slate-50 border border-black rounded space-y-0.5">
-              <span className="text-[8.5px] font-black uppercase tracking-wider block">
+              <span className="font-black uppercase tracking-wider block" style={{ fontSize: fontMetrics.detailSize }}>
                 {isLocal ? 'NET DUE TO FISHERMAN' : 'NET SETTLEMENT'}
               </span>
-              <span className="text-sm font-black text-black block">
+              <span className="font-black text-black block" style={{ fontSize: fontMetrics.grandTotalSize }}>
                 ₹{Math.abs(netPayable).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
               </span>
-              <span className="text-[8px] font-bold uppercase text-slate-700 block">
+              <span className="font-bold uppercase text-slate-700 block" style={{ fontSize: fontMetrics.detailSize }}>
                 Status: PAID • Mode: {paymentMode}
               </span>
             </div>
@@ -846,7 +894,7 @@ export default function FishInwardInvoice({ data, onClose }) {
             <div className="border-t border-dashed border-black my-1" />
 
             {/* Thermal Footer */}
-            <div className="text-center text-[8px] text-slate-600 space-y-0.5 pt-0.5">
+            <div className="text-center text-slate-600 space-y-0.5 pt-0.5" style={{ fontSize: fontMetrics.detailSize }}>
               <p className="font-bold uppercase m-0">*** WEIGHMENT VERIFIED ***</p>
               <p className="m-0">Kadapa Seafood Depot</p>
             </div>
@@ -859,7 +907,15 @@ export default function FishInwardInvoice({ data, onClose }) {
         {printFormat === '80mm' && (
           <div
             ref={invoiceRef}
-            className="receipt-thermal-80mm bg-white text-black p-3.5 w-[285px] max-w-[285px] mx-auto border border-dashed border-slate-300 sm:shadow-lg font-mono text-[11px] leading-snug space-y-2"
+            className="receipt-thermal-80mm bg-white text-black p-3.5 w-[285px] max-w-[285px] mx-auto border border-dashed border-slate-300 sm:shadow-lg space-y-2"
+            style={{
+              fontFamily: receiptFont,
+              ...(matchedFontObj.previewStyle || {}),
+              fontSize: fontMetrics.bodySize,
+              lineHeight: fontMetrics.lineHeight,
+              color: '#000000',
+              backgroundColor: '#ffffff'
+            }}
           >
             {/* Header with Logo */}
             <div className="text-center space-y-1">
@@ -869,12 +925,12 @@ export default function FishInwardInvoice({ data, onClose }) {
                 className="h-10 w-10 mx-auto object-contain rounded border border-slate-300 p-0.5"
                 onError={(e) => { e.currentTarget.style.display = 'none'; }}
               />
-              <h1 className="text-sm font-black uppercase tracking-tight m-0 text-black font-sans">
+              <h1 className="font-black uppercase tracking-tight m-0 text-black" style={{ fontSize: fontMetrics.headingSize }}>
                 {storeProfile.name || 'YNR FISHES'}
               </h1>
-              {storeProfile.tagline && <p className="text-[10px] m-0 text-slate-700 font-semibold">{storeProfile.tagline}</p>}
-              {storeProfile.address && <p className="text-[9.5px] m-0 text-slate-600 line-clamp-2">{storeProfile.address}</p>}
-              <div className="text-[9.5px] text-slate-800 font-bold space-x-1">
+              {storeProfile.tagline && <p className="m-0 text-slate-700 font-semibold" style={{ fontSize: fontMetrics.detailSize }}>{storeProfile.tagline}</p>}
+              {storeProfile.address && <p className="m-0 text-slate-600 line-clamp-2" style={{ fontSize: fontMetrics.detailSize }}>{storeProfile.address}</p>}
+              <div className="text-slate-800 font-bold space-x-1" style={{ fontSize: fontMetrics.detailSize }}>
                 {storeProfile.phone && <span>Ph: {storeProfile.phone}</span>}
                 {storeProfile.gstin && <span>• GST: {storeProfile.gstin}</span>}
               </div>
@@ -884,19 +940,19 @@ export default function FishInwardInvoice({ data, onClose }) {
 
             {/* Document Title */}
             <div className="text-center space-y-0.5">
-              <div className="font-black text-xs uppercase tracking-wider text-black">
+              <div className="font-black uppercase tracking-wider text-black" style={{ fontSize: fontMetrics.subHeadingSize }}>
                 {shortDocTitle.toUpperCase()}
               </div>
-              <div className="text-[9px] text-slate-500 font-sans">GOODS INWARD & WEIGHMENT SLIP</div>
-              <div className="font-bold text-[10.5px] text-black">#{invoiceNo}</div>
-              <div className="text-[9.5px] text-slate-600">{invoiceDate} • {invoiceTime}</div>
+              <div className="text-slate-500" style={{ fontSize: fontMetrics.detailSize }}>GOODS INWARD & WEIGHMENT SLIP</div>
+              <div className="font-bold text-black" style={{ fontSize: fontMetrics.detailSize }}>#{invoiceNo}</div>
+              <div className="text-slate-600" style={{ fontSize: fontMetrics.detailSize }}>{invoiceDate} • {invoiceTime}</div>
             </div>
 
             <div className="border-t border-black my-1" />
 
             {/* Party & Logistics Grid (Strict: Only show existing non-empty rows) */}
             {hasPartyInfo && (
-              <div className="text-[10px] space-y-1 bg-slate-50 p-2 rounded border border-slate-200">
+              <div className="space-y-1 bg-slate-50 p-2 rounded border border-slate-200" style={{ fontSize: fontMetrics.detailSize }}>
                 {partyName && (
                   <div className="flex justify-between">
                     <span className="font-bold text-slate-600">Supplier:</span>
@@ -912,13 +968,13 @@ export default function FishInwardInvoice({ data, onClose }) {
                 {partyPhone && (
                   <div className="flex justify-between">
                     <span className="font-bold text-slate-600">Phone:</span>
-                    <span className="font-bold text-right font-mono">{partyPhone}</span>
+                    <span className="font-bold text-right">{partyPhone}</span>
                   </div>
                 )}
                 {vehicleNumber && (
                   <div className="flex justify-between">
                     <span className="font-bold text-slate-600">Vehicle:</span>
-                    <span className="font-black font-mono text-right bg-slate-200 px-1 rounded">{vehicleNumber}</span>
+                    <span className="font-black text-right bg-slate-200 px-1 rounded">{vehicleNumber}</span>
                   </div>
                 )}
                 {originLocation && (
@@ -934,7 +990,7 @@ export default function FishInwardInvoice({ data, onClose }) {
 
             {/* Items Table */}
             <div className="space-y-1">
-              <div className="grid grid-cols-12 text-[9.5px] font-black uppercase border-b border-black pb-1">
+              <div className="grid grid-cols-12 font-black uppercase border-b border-black pb-1" style={{ fontSize: fontMetrics.detailSize }}>
                 <span className="col-span-6">VARIETY / GRADE</span>
                 <span className="col-span-3 text-right">WT / BOX</span>
                 <span className="col-span-3 text-right">AMOUNT</span>
@@ -954,18 +1010,19 @@ export default function FishInwardInvoice({ data, onClose }) {
                 const rate = Number(row.rate || row.price || row.ratePerKg || row.unitRate || 0);
                 const rowTotal = Number((rowKg * rate).toFixed(2));
                 const gradeVal = getGradeLabel(row);
+                const { itemTitle } = formatReceiptItemName(row.itemName || row.variety || row.name, langPref);
 
                 return (
-                  <div key={idx} className="py-1 border-b border-slate-100 text-[10px]">
-                    <div className="font-black text-black">
-                      {idx + 1}. {row.itemName || row.variety || row.name || 'Catch Variety'}
+                  <div key={idx} className="py-1 border-b border-slate-100" style={{ fontSize: fontMetrics.detailSize }}>
+                    <div className="font-black text-black" style={{ fontSize: fontMetrics.itemSize }}>
+                      {idx + 1}. {itemTitle || 'Catch Variety'}
                     </div>
                     {gradeVal && gradeVal !== '—' && (
-                      <div className="text-[9px] text-slate-600 pl-3">Grade: {gradeVal}</div>
+                      <div className="text-slate-600 pl-3" style={{ fontSize: fontMetrics.detailSize }}>Grade: {gradeVal}</div>
                     )}
-                    <div className="flex justify-between items-center pl-3 text-[9.5px] text-slate-700">
+                    <div className="flex justify-between items-center pl-3 text-slate-700" style={{ fontSize: fontMetrics.detailSize }}>
                       <span>{row.boxes ? `${row.boxes} Bx • ` : ''}{rowKg.toFixed(1)} Kg @ ₹{rate}/kg</span>
-                      <span className="font-black text-black font-mono">
+                      <span className="font-black text-black">
                         ₹{rowTotal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                       </span>
                     </div>
@@ -977,7 +1034,7 @@ export default function FishInwardInvoice({ data, onClose }) {
             <div className="border-t border-dashed border-black my-1" />
 
             {/* Totals & Deductions */}
-            <div className="space-y-1 text-[10px]">
+            <div className="space-y-1" style={{ fontSize: fontMetrics.detailSize }}>
               <div className="flex justify-between">
                 <span>Total Net Weight:</span>
                 <span className="font-bold">{totalWeightKg.toFixed(1)} Kg</span>
@@ -995,9 +1052,9 @@ export default function FishInwardInvoice({ data, onClose }) {
 
               {settlementList.length > 0 && (
                 <div className="pt-1 space-y-0.5 border-t border-slate-200">
-                  <div className="text-[9px] font-bold text-slate-600 uppercase">Settlement Deductions:</div>
+                  <div className="font-bold text-slate-600 uppercase" style={{ fontSize: fontMetrics.detailSize }}>Settlement Deductions:</div>
                   {settlementList.map((st, i) => (
-                    <div key={i} className="flex justify-between text-[9px] text-rose-700">
+                    <div key={i} className="flex justify-between text-rose-700" style={{ fontSize: fontMetrics.detailSize }}>
                       <span>- {st.label}</span>
                       <span>-₹{st.amount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
                     </div>
@@ -1010,25 +1067,25 @@ export default function FishInwardInvoice({ data, onClose }) {
 
             {/* Net Amount Box */}
             <div className="p-2 bg-slate-50 border-2 border-black rounded text-center space-y-1">
-              <span className="text-[9.5px] font-black uppercase tracking-wider block text-slate-700">
+              <span className="font-black uppercase tracking-wider block text-slate-700" style={{ fontSize: fontMetrics.detailSize }}>
                 {isLocal ? 'NET PAYABLE TO FISHERMAN' : 'NET SETTLEMENT AMOUNT'}
               </span>
-              <span className="text-base font-black text-black font-mono block">
+              <span className="font-black text-black block" style={{ fontSize: fontMetrics.grandTotalSize }}>
                 ₹{Math.abs(netPayable).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </span>
-              <div className="text-[9px] font-bold text-slate-700 border-t border-dashed border-slate-300 pt-1 flex justify-between">
+              <div className="font-bold text-slate-700 border-t border-dashed border-slate-300 pt-1 flex justify-between" style={{ fontSize: fontMetrics.detailSize }}>
                 <span>STATUS: PAID</span>
                 <span>MODE: {paymentMode}</span>
               </div>
             </div>
 
             {/* Amount in words */}
-            <div className="text-[8.5px] text-slate-700 italic border-b border-dashed border-slate-300 pb-1">
+            <div className="text-slate-700 italic border-b border-dashed border-slate-300 pb-1" style={{ fontSize: fontMetrics.detailSize }}>
               <strong>In Words:</strong> {numberToIndianWords(Math.abs(netPayable))}
             </div>
 
             {/* Signatures */}
-            <div className="grid grid-cols-2 gap-2 pt-2 text-center text-[9px]">
+            <div className="grid grid-cols-2 gap-2 pt-2 text-center" style={{ fontSize: fontMetrics.detailSize }}>
               <div className="border-t border-dashed border-black pt-1">
                 <span>Supplier Signature</span>
               </div>
@@ -1038,7 +1095,7 @@ export default function FishInwardInvoice({ data, onClose }) {
             </div>
 
             {/* Receipt Footer */}
-            <div className="text-center text-[8.5px] text-slate-600 pt-1 space-y-0.5">
+            <div className="text-center text-slate-600 pt-1 space-y-0.5" style={{ fontSize: fontMetrics.detailSize }}>
               <p className="font-bold uppercase m-0">*** GOODS RECEIVED & WEIGHED ***</p>
               <p className="m-0">Kadapa Central Seafood Depot</p>
             </div>
@@ -1209,11 +1266,13 @@ export default function FishInwardInvoice({ data, onClose }) {
                       const rowTotal = Number((rowKg * rate).toFixed(2));
                       const gradeVal = getGradeLabel(row);
 
+                      const { itemTitle } = formatReceiptItemName(row.itemName || row.variety || row.name, langPref);
+
                       return (
                         <tr key={idx} className="hover:bg-slate-50">
                           <td className="border border-slate-900 p-1.5 text-center font-mono text-slate-600">{idx + 1}</td>
                           <td className="border border-slate-900 p-1.5 font-bold text-slate-950">
-                            {row.itemName || row.variety || row.name || 'Fish Variety'}
+                            {itemTitle || 'Fish Variety'}
                           </td>
                           <td className="border border-slate-900 p-1.5 text-center font-semibold text-slate-800">
                             {gradeVal}
