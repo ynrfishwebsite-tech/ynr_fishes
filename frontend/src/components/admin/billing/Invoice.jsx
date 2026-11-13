@@ -77,7 +77,7 @@ const Invoice = ({ bill: incomingBill, billData, onClose, onSave, onSettle, what
 
   const formatReceiptItem = useCallback((item) => {
     const rawName = item?.name || 'Item';
-    const lang = activeSettings?.receiptItemLanguage || localStorage.getItem('receiptItemLanguage') || 'both';
+    const lang = settings?.receiptItemLanguage || (typeof window !== 'undefined' ? localStorage.getItem('receiptItemLanguage') : null) || 'both';
     const res = formatReceiptItemName(rawName, lang);
     let cut = item?.cutType || item?.cuttingStyle || res.cut;
     let subDetail = res.subDetail;
@@ -89,7 +89,7 @@ const Invoice = ({ bill: incomingBill, billData, onClose, onSave, onSettle, what
       cut,
       subDetail
     };
-  }, [activeSettings?.receiptItemLanguage]);
+  }, [settings?.receiptItemLanguage]);
 
   const getItemCuttingDetails = useCallback((item) => {
     let cut = item?.cutType || item?.cuttingStyle || '';
