@@ -5,7 +5,9 @@ import { getApiUrl } from '../../../config.js';
 
 export default function ImageCropperModal({ imageSrc, onCropComplete, onClose, title, initialShape = 'circle' }) {
   const { t } = useLanguage();
-  const [cleanImageSrc, setCleanImageSrc] = useState(imageSrc);
+  const [cleanImageSrc, setCleanImageSrc] = useState(() =>
+    imageSrc && (imageSrc.startsWith('data:') || imageSrc.startsWith('blob:')) ? imageSrc : ''
+  );
   const [isLoadingSource, setIsLoadingSource] = useState(false);
   const [zoom, setZoom] = useState(1);
   const [rotation, setRotation] = useState(0);
@@ -72,6 +74,7 @@ export default function ImageCropperModal({ imageSrc, onCropComplete, onClose, t
 
     // 1. Data URLs and Blob URLs are already local and never taint the canvas
     if (imageSrc.startsWith('data:') || imageSrc.startsWith('blob:')) {
+      setIsLoadingSource(false);
       setCleanImageSrc(imageSrc);
       return;
     }
@@ -79,6 +82,7 @@ export default function ImageCropperModal({ imageSrc, onCropComplete, onClose, t
     // 2. Remote URLs: convert to local Blob URL via CORS or backend proxy to prevent canvas tainting
     let isCancelled = false;
     let localCreatedUrl = null;
+    setCleanImageSrc('');
     setIsLoadingSource(true);
 
     const convertToUntaintedBlob = async () => {
@@ -397,22 +401,24 @@ export default function ImageCropperModal({ imageSrc, onCropComplete, onClose, t
           )}
 
           {/* Movable & Zoomable Image underneath */}
-          <img
-            ref={imageRef}
-            src={cleanImageSrc}
-            crossOrigin="anonymous"
-            alt="Crop source"
-            onLoad={handleImageLoaded}
-            draggable={false}
-            style={{
-              width: `${baseDimensions.width}px`,
-              height: `${baseDimensions.height}px`,
-              transform: `translate(${offset.x}px, ${offset.y}px) scale(${zoom}) rotate(${rotation}deg)`,
-              transformOrigin: 'center center',
-              transition: isDragging ? 'none' : 'transform 0.1s ease-out'
-            }}
-            className="pointer-events-none select-none max-w-none max-h-none object-contain"
-          />
+          {cleanImageSrc && (
+            <img
+              ref={imageRef}
+              src={cleanImageSrc}
+              crossOrigin="anonymous"
+              alt="Crop source"
+              onLoad={handleImageLoaded}
+              draggable={false}
+              style={{
+                width: `${baseDimensions.width}px`,
+                height: `${baseDimensions.height}px`,
+                transform: `translate(${offset.x}px, ${offset.y}px) scale(${zoom}) rotate(${rotation}deg)`,
+                transformOrigin: 'center center',
+                transition: isDragging ? 'none' : 'transform 0.1s ease-out'
+              }}
+              className="pointer-events-none select-none max-w-none max-h-none object-contain"
+            />
+          )}
 
           {/* Draggable & Resizable Crop Box */}
           <div

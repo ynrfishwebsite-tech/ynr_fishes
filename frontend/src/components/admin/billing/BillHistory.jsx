@@ -482,7 +482,7 @@ const BillHistory = ({
   ].reduce((a, b) => a + b, 0);
 
   return (
-    <div className="h-full flex flex-col bg-background p-1.5 sm:p-2.5 md:p-3 overflow-hidden w-full">
+    <div className={`${hideHeader ? 'h-auto lg:h-full' : 'h-full'} flex flex-col bg-background p-1.5 sm:p-2.5 md:p-3 overflow-hidden w-full`}>
       {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
 
       <div className="flex flex-col xl:flex-row items-stretch xl:items-center justify-between mb-2 sm:mb-2.5 gap-2 shrink-0 bg-surface p-2 sm:p-2.5 border border-border rounded-2xl shadow-xs">

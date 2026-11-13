@@ -33,7 +33,8 @@ import {
   Check,
   RotateCcw,
   Route,
-  ClipboardList
+  ClipboardList,
+  Anchor
 } from 'lucide-react';
 import { useLanguage } from '../../../context/LanguageContext';
 
@@ -170,7 +171,7 @@ export default function MainEntranceDashboard({
   const isPermitted = (id) => {
     if (isFullAdmin) return true;
     if (id === 'dashboard' || id === 'second-dashboard') return true;
-    if (id === 'billing-retail' || id === 'billing-wholesale' || id === 'billing-export' || id === 'inventory-import') {
+    if (id === 'billing-retail' || id === 'billing-wholesale' || id === 'billing-export' || id === 'inventory-import' || id === 'inventory-local-stockin' || id === 'inventory-dam-stockin' || id === 'inventory-supplies-stockin') {
       return userPermitted.includes('billing') || userPermitted.includes('inventory');
     }
     if (['retail-active-orders', 'wholesale-active-orders', 'export-active-orders'].includes(id)) {
@@ -231,19 +232,47 @@ export default function MainEntranceDashboard({
       navOptions: { mode: 'export', table: 'NEW_ORDER', action: 'new' },
       keywords: ['export', 'dam', 'local export', 'consignment', 'export mode', 'bulk export', 'export billing']
     },
-    // 4. Import (Catch Intake & Stock - Navigates to Fish Inventory & Catch Ledger #inventory)
+    // 4. Local Stock-In (Local Harbor & Fisherman Catch Intake)
     {
-      id: 'inventory-import',
-      title: 'Import',
-      subtitle: '(Catch & Intake)',
+      id: 'inventory-local-stockin',
+      title: 'Local Stock-In',
+      subtitle: '(Harbor & Fishermen)',
       category: 'Inventory',
       icon: ArrowDownLeft,
-      iconColor: '#0891b2',
-      iconBg: '#ecfeff',
-      borderColor: '#a5f3fc',
-      navView: 'inventory',
-      navOptions: {},
-      keywords: ['import', 'catch', 'intake', 'weighment', 'inventory', 'stock', 'landing', 'harbor', 'dam']
+      iconColor: '#ea580c',
+      iconBg: '#fff7ed',
+      borderColor: '#fed7aa',
+      navView: 'local-stockin',
+      navOptions: { tab: 'procurement', subTab: 'local', dedicatedMode: 'local' },
+      keywords: ['local stock-in', 'local stock in', 'local catch', 'harbor', 'fisherman', 'boat', 'intake', 'weighment', 'inventory', 'stock', 'landing', 'import']
+    },
+    // 5. Dam Stock-In (Dam Syndicate & Reservoir Consignment Intake)
+    {
+      id: 'inventory-dam-stockin',
+      title: 'Dam Stock-In',
+      subtitle: '(Syndicate & Reservoirs)',
+      category: 'Inventory',
+      icon: Anchor,
+      iconColor: '#2563eb',
+      iconBg: '#eff6ff',
+      borderColor: '#bfdbfe',
+      navView: 'dam-stockin',
+      navOptions: { tab: 'procurement', subTab: 'dam', dedicatedMode: 'dam' },
+      keywords: ['dam stock-in', 'dam stock in', 'dam catch', 'reservoir', 'contractor', 'syndicate', 'consignment', 'intake', 'weighment', 'inventory', 'stock', 'import']
+    },
+    // 6. Supplies Stock-In (Packaging, Ice, Boxes & Consumables Intake)
+    {
+      id: 'inventory-supplies-stockin',
+      title: 'Supplies Stock-In',
+      subtitle: '(Boxes, Ice & Packs)',
+      category: 'Inventory',
+      icon: Boxes,
+      iconColor: '#059669',
+      iconBg: '#ecfdf5',
+      borderColor: '#a7f3d0',
+      navView: 'supplies-stockin',
+      navOptions: { tab: 'procurement', subTab: 'supplies', dedicatedMode: 'supplies' },
+      keywords: ['supplies stock-in', 'supplies stock in', 'packaging', 'ice', 'thermocol', 'boxes', 'crates', 'salt', 'consumables', 'intake', 'inventory', 'stock', 'import']
     },
 
     // ═══ SECONDARY (prescribed order) ═══
@@ -708,7 +737,7 @@ export default function MainEntranceDashboard({
   ];
 
   // --- PINNED PRIMARY CARDS (always shown, highlighted, never filtered out) ---
-  const PRIMARY_IDS = ['billing-retail', 'billing-wholesale', 'billing-export', 'inventory-import'];
+  const PRIMARY_IDS = ['billing-retail', 'billing-wholesale', 'billing-export', 'inventory-local-stockin', 'inventory-dam-stockin', 'inventory-supplies-stockin'];
 
   const primaryCards = useMemo(() =>
     PRIMARY_IDS.map(id => RAW_CARDS.find(c => c.id === id)).filter(Boolean),

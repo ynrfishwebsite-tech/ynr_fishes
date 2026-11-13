@@ -505,32 +505,36 @@ const AdminPanel = ({ onGoBack }) => {
   };
 
   return (
-    <div className="w-full min-h-full shrink-0 flex flex-col px-3 sm:px-6 md:px-8 py-4 sm:py-6 pb-24 touch-pan-y">
-      {/* Header bar */}
-      <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between mb-5 sm:mb-6 gap-3.5 sm:gap-4">
-        <div className="flex items-start sm:items-center gap-3">
-          {onGoBack && <BackButton onClick={onGoBack} label="Back" />}
-          <div>
-            <h1 className="text-lg sm:text-2xl font-black text-slate-900 flex items-center gap-2">
-              <Shield className="text-amber-600 shrink-0" size={22} />
-              <span>Admin Control Panel</span>
+    <div className="w-full min-h-full shrink-0 flex flex-col px-2.5 sm:px-5 md:px-6 py-2.5 sm:py-4 pb-16 touch-pan-y">
+      {/* Compact Mobile-Friendly Header bar */}
+      <div className="flex items-center justify-between gap-2 mb-3 sm:mb-4 px-2.5 sm:px-3.5 py-2 bg-[#FDFBF7] border border-[#E8DCCB] rounded-2xl shadow-2xs">
+        <div className="flex items-center gap-1.5 sm:gap-2.5 min-w-0 flex-1">
+          {onGoBack && <BackButton onClick={onGoBack} label="Back" className="shrink-0" />}
+          <div className="min-w-0 flex-1">
+            <h1 className="text-[13px] sm:text-lg font-black text-slate-900 flex items-center gap-1.5 min-w-0 leading-tight">
+              <span className="hidden xs:flex p-1 sm:p-1.5 rounded-lg bg-amber-100 text-amber-800 border border-amber-300 shrink-0 items-center justify-center">
+                <Shield size={13} className="sm:w-4 sm:h-4" />
+              </span>
+              <span className="leading-tight">Admin Control Panel</span>
             </h1>
-            <p className="text-[11px] sm:text-sm text-slate-600 mt-0.5 leading-tight">
+            <p className="text-[10px] sm:text-xs text-slate-600 mt-0.5 truncate hidden sm:block">
               Configure staff user logins, assign dynamic roles, and toggle operating page access
             </p>
           </div>
         </div>
         <button
+          type="button"
           onClick={openAddModal}
-          className="flex items-center justify-center gap-2 bg-gradient-to-r from-[#ea580c] to-[#c2410c] hover:from-[#f97316] hover:to-[#ea580c] text-white px-4 sm:px-5 py-2.5 rounded-xl font-bold transition-all shadow-md active:scale-95 text-xs sm:text-sm w-full sm:w-auto shrink-0 cursor-pointer"
+          className="flex items-center justify-center gap-1 sm:gap-1.5 bg-gradient-to-r from-[#ea580c] to-[#c2410c] hover:from-[#f97316] hover:to-[#ea580c] text-white px-2.5 sm:px-4 py-1.5 sm:py-2 rounded-xl font-black transition-all shadow-xs active:scale-95 text-[11px] sm:text-xs shrink-0 cursor-pointer whitespace-nowrap"
         >
-          <Plus size={18} />
-          <span>Create User Login</span>
+          <Plus size={14} strokeWidth={2.5} className="shrink-0" />
+          <span className="sm:hidden">Add User</span>
+          <span className="hidden sm:inline">Create User Login</span>
         </button>
       </div>
 
       {/* Main Container */}
-      <div className="bg-[#FDFBF7] rounded-2xl shadow-sm border border-[#E8DCCB] overflow-hidden w-full">
+      <div className="md:bg-[#FDFBF7] md:rounded-2xl md:shadow-sm md:border md:border-[#E8DCCB] md:overflow-hidden w-full">
         {loading ? (
           <div className="flex justify-center py-20">
             <div className="animate-spin w-8 h-8 border-4 border-amber-400 border-t-transparent rounded-full"></div>
@@ -646,7 +650,7 @@ const AdminPanel = ({ onGoBack }) => {
             </div>
 
             {/* Mobile Card List View (visible on < md screens) */}
-            <div className="block md:hidden divide-y divide-sky-500/15">
+            <div className="flex flex-col gap-3 md:hidden">
               {users.map((u) => {
                 const roleStr = (u.role || '').toLowerCase();
                 const pages = Array.isArray(u.permittedPages) && u.permittedPages.length > 0 
@@ -1032,14 +1036,14 @@ const AdminPanel = ({ onGoBack }) => {
                       </label>
                     </div>
                   ) : (
-                    <div className="flex items-center justify-between p-2 bg-[#FAF0E4] border border-[#E8DCCB] rounded-xl gap-2">
-                      <div className="flex items-center gap-2.5 min-w-0">
+                    <div className="flex items-center justify-between p-2 bg-[#FAF0E4] border border-[#E8DCCB] rounded-xl gap-1.5">
+                      <div className="flex items-center gap-2 min-w-0 flex-1">
                         <img
                           src={formData.profileImage}
                           alt="Staff Preview"
-                          className="w-10 h-10 rounded-full object-cover border border-orange-300 shrink-0 shadow-2xs"
+                          className="w-9 h-9 sm:w-10 sm:h-10 rounded-full object-cover border border-orange-300 shrink-0 shadow-2xs"
                         />
-                        <div className="min-w-0">
+                        <div className="min-w-0 flex-1">
                           <span className="text-xs font-bold text-slate-800 truncate block">
                             {uploadFileInfo?.name || (formData.username ? `${formData.username}'s Photo` : 'User Photo')}
                           </span>
@@ -1049,7 +1053,24 @@ const AdminPanel = ({ onGoBack }) => {
                         </div>
                       </div>
                       <div className="flex items-center gap-1 shrink-0">
-                        <label className="px-2 py-1 bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 rounded-lg text-[10.5px] font-bold cursor-pointer transition-colors">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setCropperRawSrc(formData.profileImage);
+                            setCropperPendingInfo(uploadFileInfo || {
+                              name: formData.username ? `${formData.username} Profile Photo` : 'User Photo',
+                              extension: 'jpg',
+                              size: 'Cropped'
+                            });
+                            setIsCropperOpen(true);
+                          }}
+                          className="px-1.5 sm:px-2 py-1 bg-orange-50 hover:bg-orange-100 text-[#ea580c] border border-orange-200 rounded-lg text-[10px] sm:text-[10.5px] font-bold cursor-pointer transition-colors flex items-center gap-1"
+                          title="Crop photo"
+                        >
+                          <Crop size={11} />
+                          <span>Crop</span>
+                        </button>
+                        <label className="px-1.5 sm:px-2 py-1 bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 rounded-lg text-[10px] sm:text-[10.5px] font-bold cursor-pointer transition-colors">
                           <span>Change</span>
                           <input
                             type="file"
@@ -1068,7 +1089,7 @@ const AdminPanel = ({ onGoBack }) => {
                             setUploadFileInfo(null);
                             setFormData({ ...formData, profileImage: '' });
                           }}
-                          className="px-2 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-lg text-[10.5px] font-bold cursor-pointer transition-colors"
+                          className="px-1.5 sm:px-2 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-lg text-[10px] sm:text-[10.5px] font-bold cursor-pointer transition-colors"
                         >
                           Remove
                         </button>

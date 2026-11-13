@@ -18,6 +18,7 @@ import {
   Unlock,
   Fish
 } from 'lucide-react';
+import { getItemWaterType, getItemSpeciesType } from '../catalog/MenuGrid';
 
 // Robust seafood photo URL resolver
 export const formatImageUrl = (url) => {
@@ -59,19 +60,57 @@ export default function FishIntakeOrbitalDial({
   items = [],
   onAddFishLot,
   mode = 'local', // 'local' | 'dam'
-  initialSelectedIndex = 0
+  initialSelectedIndex = 0,
+  speciesTypeFilter: propSpeciesFilter,
+  onSpeciesTypeFilterChange
 }) {
+  // Water Filter State (All, Sea, Fresh placed around the dial circle corners)
+  const [waterTypeFilter, setWaterTypeFilter] = useState('all'); // 'all' | 'sea_water' | 'fresh_water'
+  
+  // Species Filter (Controlled externally from section header or fallback to internal)
+  const [internalSpeciesFilter, setInternalSpeciesFilter] = useState('all');
+  const speciesTypeFilter = propSpeciesFilter !== undefined ? propSpeciesFilter : internalSpeciesFilter;
+  const setSpeciesTypeFilter = onSpeciesTypeFilterChange || setInternalSpeciesFilter;
+
+  // Live item counts for Water Environment pills (All, Sea, Fresh)
+  const waterTypeCounts = useMemo(() => {
+    let all = 0;
+    let sea_water = 0;
+    let fresh_water = 0;
+    (items || []).forEach((item) => {
+      all++;
+      const wt = getItemWaterType(item);
+      if (wt === 'sea_water') sea_water++;
+      else if (wt === 'fresh_water') fresh_water++;
+    });
+    return { all, sea_water, fresh_water };
+  }, [items]);
+
+  // Filtered items based on Water Environment & Species
+  const filteredItems = useMemo(() => {
+    return (items || []).filter((item) => {
+      const matchesWater = waterTypeFilter === 'all' || getItemWaterType(item) === waterTypeFilter;
+      const matchesSpecies = speciesTypeFilter === 'all' || getItemSpeciesType(item) === speciesTypeFilter;
+      return matchesWater && matchesSpecies;
+    });
+  }, [items, waterTypeFilter, speciesTypeFilter]);
+
   const [activeIndex, setActiveIndex] = useState(() => {
     return items && items.length > 0
       ? Math.max(0, Math.min(initialSelectedIndex, items.length - 1))
       : 0;
   });
 
-  const safeActiveIndex = items && items.length > 0
-    ? Math.max(0, Math.min(activeIndex, items.length - 1))
+  // Auto-reset active index to 0 whenever filter changes
+  useEffect(() => {
+    setActiveIndex(0);
+  }, [waterTypeFilter, speciesTypeFilter]);
+
+  const safeActiveIndex = filteredItems && filteredItems.length > 0
+    ? Math.max(0, Math.min(activeIndex, filteredItems.length - 1))
     : 0;
 
-  const currentFish = items && items.length > 0 ? items[safeActiveIndex] : null;
+  const currentFish = filteredItems && filteredItems.length > 0 ? filteredItems[safeActiveIndex] : null;
 
   // Dial Lock State
   const [isDialLocked, setIsDialLocked] = useState(false);
@@ -237,7 +276,7 @@ export default function FishIntakeOrbitalDial({
   }, [netWeightKg, ratePerKg]);
 
   // Touch & Dial Rotation Gestures (Digital Crown)
-  const ROTATION_STEP_DEG = items && items.length > 0 ? Math.max(12, Math.min(30, Math.round(360 / items.length))) : 20;
+  const ROTATION_STEP_DEG = filteredItems && filteredItems.length > 0 ? Math.max(12, Math.min(30, Math.round(360 / filteredItems.length))) : 20;
   const [dialRingRotation, setDialRingRotation] = useState(0);
   const dialRef = useRef(null);
   const isDraggingDialRef = useRef(false);
@@ -285,13 +324,13 @@ export default function FishIntakeOrbitalDial({
     accumulatedAngleRef.current += delta;
 
     if (accumulatedAngleRef.current >= ROTATION_STEP_DEG) {
-      if (items && items.length > 0) {
-        setActiveIndex(prev => (prev < items.length - 1 ? prev + 1 : 0));
+      if (filteredItems && filteredItems.length > 0) {
+        setActiveIndex(prev => (prev < filteredItems.length - 1 ? prev + 1 : 0));
       }
       accumulatedAngleRef.current -= ROTATION_STEP_DEG;
     } else if (accumulatedAngleRef.current <= -ROTATION_STEP_DEG) {
-      if (items && items.length > 0) {
-        setActiveIndex(prev => (prev > 0 ? prev - 1 : items.length - 1));
+      if (filteredItems && filteredItems.length > 0) {
+        setActiveIndex(prev => (prev > 0 ? prev - 1 : filteredItems.length - 1));
       }
       accumulatedAngleRef.current += ROTATION_STEP_DEG;
     }
@@ -444,7 +483,7 @@ export default function FishIntakeOrbitalDial({
   }
 
   return (
-    <div className="flex flex-col items-center justify-center w-full max-w-xl mx-auto select-none space-y-3">
+    <div className="flex flex-col items-center justify-center w-full max-w-xl mx-auto select-none space-y-2">
       {/* Top Header Pill: Active Species Variety Name & Rate */}
       <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/95 border border-[#fed7aa] shadow-2xs text-xs font-black text-slate-800">
         <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
@@ -483,14 +522,14 @@ export default function FishIntakeOrbitalDial({
           boxShadow: '0 16px 42px -10px rgba(245, 158, 11, 0.3), inset 0 2px 10px rgba(255, 255, 255, 0.95), inset 0 -6px 14px rgba(217, 119, 6, 0.12)'
         }}
       >
-        {/* ── LOCK / UNLOCK TOGGLE BUTTON (Top-Left of Dial) ── */}
+        {/* ── 1. LOCK / UNLOCK TOGGLE BUTTON (Top-Left Corner of Dial) ── */}
         <button
           type="button"
           onClick={(e) => {
             e.stopPropagation();
             setIsDialLocked(!isDialLocked);
           }}
-          className={`no-dial-drag absolute top-2 left-2 sm:top-3 sm:left-3 z-40 w-8 h-8 sm:w-9 sm:h-9 rounded-full flex items-center justify-center transition-all shadow-md border cursor-pointer pointer-events-auto ${
+          className={`no-dial-drag absolute top-2 left-2 sm:top-3 sm:left-3 z-40 w-8 h-8 sm:w-9 sm:h-9 rounded-full flex items-center justify-center transition-all shadow-md border cursor-pointer pointer-events-auto active:scale-95 ${
             isDialLocked
               ? 'bg-orange-500 text-white border-orange-600 ring-2 ring-orange-300 scale-105'
               : 'bg-white/95 text-slate-700 border-amber-300 hover:bg-amber-50'
@@ -502,6 +541,72 @@ export default function FishIntakeOrbitalDial({
           ) : (
             <Unlock size={15} className="stroke-[2.2]" />
           )}
+        </button>
+
+        {/* ── 2. FRESH WATER FILTER BUTTON (Top-Right Corner of Dial) ── */}
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            setWaterTypeFilter(prev => prev === 'fresh_water' ? 'all' : 'fresh_water');
+          }}
+          className={`no-dial-drag absolute top-2 right-2 sm:top-3 sm:right-3 z-40 px-2 sm:px-2.5 py-1 rounded-full flex items-center gap-1 transition-all shadow-md border cursor-pointer pointer-events-auto active:scale-95 ${
+            waterTypeFilter === 'fresh_water'
+              ? 'bg-[#ea580c] text-white border-orange-600 ring-2 ring-orange-300 font-black shadow-xs'
+              : 'bg-white/95 text-slate-700 border-amber-300 hover:bg-amber-50'
+          }`}
+          title="Fresh Water Catch"
+        >
+          <span className="text-[10px] sm:text-xs font-bold">Fresh</span>
+          <span className={`px-1 rounded-full text-[9px] sm:text-[10px] font-mono font-black ${
+            waterTypeFilter === 'fresh_water' ? 'bg-white/25 text-white' : 'bg-slate-100 text-slate-600'
+          }`}>
+            {waterTypeCounts.fresh_water}
+          </span>
+        </button>
+
+        {/* ── 3. SEA WATER FILTER BUTTON (Bottom-Right Corner of Dial) ── */}
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            setWaterTypeFilter(prev => prev === 'sea_water' ? 'all' : 'sea_water');
+          }}
+          className={`no-dial-drag absolute bottom-2 right-2 sm:bottom-3 sm:right-3 z-40 px-2 sm:px-2.5 py-1 rounded-full flex items-center gap-1 transition-all shadow-md border cursor-pointer pointer-events-auto active:scale-95 ${
+            waterTypeFilter === 'sea_water'
+              ? 'bg-[#ea580c] text-white border-orange-600 ring-2 ring-orange-300 font-black shadow-xs'
+              : 'bg-white/95 text-slate-700 border-amber-300 hover:bg-amber-50'
+          }`}
+          title="Sea Water Catch"
+        >
+          <span className="text-[10px] sm:text-xs font-bold">Sea</span>
+          <span className={`px-1 rounded-full text-[9px] sm:text-[10px] font-mono font-black ${
+            waterTypeFilter === 'sea_water' ? 'bg-white/25 text-white' : 'bg-slate-100 text-slate-600'
+          }`}>
+            {waterTypeCounts.sea_water}
+          </span>
+        </button>
+
+        {/* ── 4. ALL WATERS FILTER BUTTON (Bottom-Left Corner of Dial) ── */}
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            setWaterTypeFilter('all');
+          }}
+          className={`no-dial-drag absolute bottom-2 left-2 sm:bottom-3 sm:left-3 z-40 px-2 sm:px-2.5 py-1 rounded-full flex items-center gap-1 transition-all shadow-md border cursor-pointer pointer-events-auto active:scale-95 ${
+            waterTypeFilter === 'all'
+              ? 'bg-[#ea580c] text-white border-orange-600 ring-2 ring-orange-300 font-black shadow-xs'
+              : 'bg-white/95 text-slate-700 border-amber-300 hover:bg-amber-50'
+          }`}
+          title="Show All Waters"
+        >
+          <span className="text-[10px] sm:text-xs font-bold">All</span>
+          <span className={`px-1 rounded-full text-[9px] sm:text-[10px] font-mono font-black ${
+            waterTypeFilter === 'all' ? 'bg-white/25 text-white' : 'bg-slate-100 text-slate-600'
+          }`}>
+            {waterTypeCounts.all}
+          </span>
         </button>
         {/* SVG Canvas for Track, Halo Bezel and Exactly 6 Petals */}
         <svg viewBox="0 0 440 440" className="absolute inset-0 w-full h-full pointer-events-none">
@@ -732,8 +837,8 @@ export default function FishIntakeOrbitalDial({
             transition: isDraggingDialRef.current ? 'none' : 'transform 0.25s cubic-bezier(0.2, 0.8, 0.2, 1)'
           }}
         >
-          {items.map((item, idx) => {
-            const N = items.length;
+          {filteredItems.map((item, idx) => {
+            const N = filteredItems.length;
             const baseAngle = idx * (360 / Math.max(1, N));
             const rad = ((baseAngle - 90) * Math.PI) / 180;
             const r = 186; // Centered inside orbit ring
@@ -767,7 +872,7 @@ export default function FishIntakeOrbitalDial({
                     ? 'w-12 h-12 sm:w-14 sm:h-14 bg-white rounded-full ring-2 ring-amber-500 border-2 border-amber-600 shadow-xl scale-110 z-40'
                     : 'w-9 h-9 sm:w-11 sm:h-11 bg-white/95 rounded-full border border-amber-300 shadow-2xs hover:scale-115 hover:border-amber-500 z-30'
                 }`}
-                title={isDialLocked ? `${item.name} (Dial Locked)` : item.name}
+                aria-label={item.name}
               >
                 {imgUrl ? (
                   <img
@@ -814,11 +919,11 @@ export default function FishIntakeOrbitalDial({
 
         <button
           type="button"
-          disabled={safeActiveIndex >= items.length - 1 || isDialLocked}
+          disabled={safeActiveIndex >= filteredItems.length - 1 || isDialLocked}
           onClick={(e) => {
             e.stopPropagation();
             if (isDialLocked || isDialLockedRef.current) return;
-            setActiveIndex(Math.min(items.length - 1, safeActiveIndex + 1));
+            setActiveIndex(Math.min(filteredItems.length - 1, safeActiveIndex + 1));
             setDialRingRotation(prev => prev + ROTATION_STEP_DEG);
           }}
           style={{ position: 'absolute', left: '79%', top: '50%', transform: 'translate(-50%, -50%)', zIndex: 35 }}

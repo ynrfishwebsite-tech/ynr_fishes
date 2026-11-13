@@ -72,7 +72,7 @@ export default function AdminDashboard() {
     'dashboard', 'second-dashboard', 'billing', 'active-orders', 'bill-history', 'edited-bills',
     'retail-active-orders', 'wholesale-active-orders', 'export-active-orders',
     'retail-bill-history', 'wholesale-bill-history', 'export-bill-history',
-    'menu', 'inventory', 'day-book', 'khata', 'expenses', 'vehicles', 'analytics',
+    'menu', 'inventory', 'local-stockin', 'dam-stockin', 'supplies-stockin', 'day-book', 'khata', 'expenses', 'vehicles', 'analytics',
     'crm', 'staff', 'printer', 'operations', 'discount', 'security', 'settings',
     'notifications', 'suppliers'
   ];
@@ -102,6 +102,9 @@ export default function AdminDashboard() {
     }
     if (['retail-bill-history', 'wholesale-bill-history', 'export-bill-history'].includes(pageId)) {
       return userPermitted.includes('bill-history');
+    }
+    if (['inventory', 'local-stockin', 'dam-stockin', 'supplies-stockin'].includes(pageId)) {
+      return userPermitted.includes('inventory');
     }
     return userPermitted.includes(pageId);
   };
@@ -134,6 +137,7 @@ export default function AdminDashboard() {
   const [activeOrdersCount, setActiveOrdersCount] = useState(0);
   const [activeOrdersBreakdown, setActiveOrdersBreakdown] = useState({ total: 0, retail: 0, wholesale: 0, export: 0 });
   const [billingKey, setBillingKey] = useState(1);
+  const [inventoryNavOptions, setInventoryNavOptions] = useState({});
   const [selectedOrderMode, setSelectedOrderMode] = useState(() => {
     try {
       const saved = localStorage.getItem('billing_fish_order_mode');
@@ -146,10 +150,17 @@ export default function AdminDashboard() {
 
   // Navigate with step-by-step history tracking
   const navigateTo = (view, options = {}) => {
-    if (!view || !VALID_VIEWS.includes(view)) return;
-    if (!isPagePermitted(view)) return;
+    let targetView = view;
+    if (targetView === 'inventory') {
+      if (options.dedicatedMode === 'local' || options.subTab === 'local') targetView = 'local-stockin';
+      else if (options.dedicatedMode === 'dam' || options.subTab === 'dam') targetView = 'dam-stockin';
+      else if (options.dedicatedMode === 'supplies' || options.subTab === 'supplies') targetView = 'supplies-stockin';
+    }
 
-    if (view === 'billing') {
+    if (!targetView || !VALID_VIEWS.includes(targetView)) return;
+    if (!isPagePermitted(targetView)) return;
+
+    if (targetView === 'billing') {
       let resolvedMode = options.mode;
       if (!resolvedMode && options.table) {
         if (options.table.startsWith('RET-')) resolvedMode = 'individual';
@@ -212,18 +223,40 @@ export default function AdminDashboard() {
       } catch (e) {}
     }
 
-    if (view === currentView) return;
+    if (['inventory', 'local-stockin', 'dam-stockin', 'supplies-stockin'].includes(targetView)) {
+      const resolvedDedicatedMode = targetView === 'local-stockin' ? 'local' : (targetView === 'dam-stockin' ? 'dam' : (targetView === 'supplies-stockin' ? 'supplies' : (options.dedicatedMode || 'ledger')));
+      const resolvedTab = options.tab || (targetView === 'inventory' ? 'overview' : 'procurement');
+      const resolvedSubTab = options.subTab || (targetView === 'local-stockin' ? 'local' : (targetView === 'dam-stockin' ? 'dam' : (targetView === 'supplies-stockin' ? 'supplies' : undefined)));
+
+      try {
+        localStorage.setItem('inventory_active_tab', resolvedTab);
+        if (resolvedSubTab) localStorage.setItem('inventory_stockin_subtab', resolvedSubTab);
+        localStorage.setItem('inventory_dedicated_mode', resolvedDedicatedMode);
+      } catch (e) {}
+
+      setInventoryNavOptions({
+        ...options,
+        tab: resolvedTab,
+        subTab: resolvedSubTab,
+        dedicatedMode: resolvedDedicatedMode,
+        _ts: Date.now()
+      });
+    }
+
+    if (targetView === currentView) {
+      return;
+    }
 
     if (options.replace) {
       setViewHistory(prev => {
         const copy = [...prev];
-        copy[copy.length - 1] = view;
+        copy[copy.length - 1] = targetView;
         return copy;
       });
     } else {
-      setViewHistory(prev => [...prev, view]);
+      setViewHistory(prev => [...prev, targetView]);
     }
-    setCurrentView(view);
+    setCurrentView(targetView);
   };
 
   // Back button returns to the exact previous page
@@ -910,12 +943,25 @@ export default function AdminDashboard() {
             />
           )}
 
-          {/* Stock / Seafood Catch Ledger */}
-          {currentView === 'inventory' && (
+          {/* Stock / Seafood Catch Ledger & Dedicated Stock-In Views */}
+          {['inventory', 'local-stockin', 'dam-stockin', 'supplies-stockin'].includes(currentView) && (
             <FishInventoryManager
+              key={`inv-${currentView}-${inventoryNavOptions.dedicatedMode || 'default'}-${inventoryNavOptions._ts || 1}`}
               user={user}
               onNavigate={navigateTo}
               onGoBack={goBack}
+              initialTab={
+                inventoryNavOptions.tab || (currentView === 'inventory' ? 'overview' : 'procurement')
+              }
+              initialSubTab={
+                inventoryNavOptions.subTab || (currentView === 'local-stockin' ? 'local' : (currentView === 'dam-stockin' ? 'dam' : (currentView === 'supplies-stockin' ? 'supplies' : 'local')))
+              }
+              dedicatedMode={
+                currentView === 'local-stockin' ? 'local' :
+                currentView === 'dam-stockin' ? 'dam' :
+                currentView === 'supplies-stockin' ? 'supplies' :
+                (inventoryNavOptions.dedicatedMode || 'ledger')
+              }
             />
           )}
 

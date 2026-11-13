@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import Toast from '../system/Toast';
 import axios from 'axios';
 import { getApiUrl } from '../../../config.js';
@@ -39,16 +40,23 @@ import {
   RotateCcw,
   Boxes,
   Eye,
-  EyeOff
+  EyeOff,
+  Phone,
+  Check,
+  ChevronUp
 } from 'lucide-react';
 import BackButton from '../common/BackButton';
 import SearchableDropdown from '../../common/SearchableDropdown';
 import FishInwardInvoice from './FishInwardInvoice';
 import FishIntakeOrbitalDial from './FishIntakeOrbitalDial';
 import { getMenuItems } from '../../../api/catalog/menu';
+import { formatImageUrl } from '../catalog/MenuGrid';
 
-export default function FishInventoryManager({ user, onNavigate, onGoBack }) {
+export default function FishInventoryManager({ user, onNavigate, onGoBack, initialTab, initialSubTab, dedicatedMode }) {
   const [activeTab, setActiveTab] = useState(() => {
+    if (initialTab && ['overview', 'procurement', 'logs'].includes(initialTab)) {
+      return initialTab;
+    }
     try {
       const saved = localStorage.getItem('inventory_active_tab');
       if (saved && ['overview', 'procurement', 'logs'].includes(saved)) {
@@ -59,6 +67,9 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack }) {
   });
 
   const [stockInSubTab, setStockInSubTab] = useState(() => {
+    if (initialSubTab && ['local', 'dam', 'supplies'].includes(initialSubTab)) {
+      return initialSubTab;
+    }
     try {
       const saved = localStorage.getItem('inventory_stockin_subtab');
       if (saved && ['local', 'dam', 'supplies'].includes(saved)) {
@@ -67,6 +78,50 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack }) {
     } catch (e) {}
     return 'local';
   });
+
+  const [currentDedicatedMode, setCurrentDedicatedMode] = useState(() => {
+    if (dedicatedMode && ['local', 'dam', 'supplies', 'ledger'].includes(dedicatedMode)) {
+      return dedicatedMode;
+    }
+    if (initialSubTab === 'local') return 'local';
+    if (initialSubTab === 'dam') return 'dam';
+    if (initialSubTab === 'supplies') return 'supplies';
+    try {
+      const saved = localStorage.getItem('inventory_dedicated_mode');
+      if (saved && ['local', 'dam', 'supplies', 'ledger'].includes(saved)) {
+        return saved;
+      }
+    } catch (e) {}
+    return null;
+  });
+
+  // Watch for external navigation prop updates:
+  useEffect(() => {
+    if (initialTab && ['overview', 'procurement', 'logs'].includes(initialTab)) {
+      setActiveTab(initialTab);
+    }
+  }, [initialTab]);
+
+  useEffect(() => {
+    if (initialSubTab && ['local', 'dam', 'supplies'].includes(initialSubTab)) {
+      setStockInSubTab(initialSubTab);
+    }
+  }, [initialSubTab]);
+
+  useEffect(() => {
+    if (dedicatedMode) {
+      setCurrentDedicatedMode(dedicatedMode);
+      if (dedicatedMode === 'ledger' && !initialTab) {
+        setActiveTab('overview');
+      }
+    } else if (initialSubTab === 'local') {
+      setCurrentDedicatedMode('local');
+    } else if (initialSubTab === 'dam') {
+      setCurrentDedicatedMode('dam');
+    } else if (initialSubTab === 'supplies') {
+      setCurrentDedicatedMode('supplies');
+    }
+  }, [dedicatedMode, initialSubTab, initialTab]);
 
   // Persist current active tab & sub-tab across page refreshes
   useEffect(() => {
@@ -141,6 +196,58 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack }) {
   // 3D Orbital Dial vs Fast Table selector mode for catch intake ('ring' | 'table')
   const [localSelectorMode, setLocalSelectorMode] = useState('ring');
   const [damSelectorMode, setDamSelectorMode] = useState('ring');
+
+  // Species Variety Filter States & Menu Refs for Local and Dam Catch Intake
+  const [localSpeciesFilter, setLocalSpeciesFilter] = useState('all'); // 'all' | 'fish' | 'prawn' | 'crab'
+  const [showLocalSpeciesMenu, setShowLocalSpeciesMenu] = useState(false);
+  const [localSpeciesMenuCoords, setLocalSpeciesMenuCoords] = useState({ top: 0, left: 0 });
+  const localSpeciesBtnRef = useRef(null);
+  const localSpeciesMenuRef = useRef(null);
+
+  const [damSpeciesFilter, setDamSpeciesFilter] = useState('all'); // 'all' | 'fish' | 'prawn' | 'crab'
+  const [showDamSpeciesMenu, setShowDamSpeciesMenu] = useState(false);
+  const [damSpeciesMenuCoords, setDamSpeciesMenuCoords] = useState({ top: 0, left: 0 });
+  const damSpeciesBtnRef = useRef(null);
+  const damSpeciesMenuRef = useRef(null);
+
+  useEffect(() => {
+    const handleClickOutsideSpecies = (e) => {
+      if (showLocalSpeciesMenu && localSpeciesMenuRef.current && !localSpeciesMenuRef.current.contains(e.target) && localSpeciesBtnRef.current && !localSpeciesBtnRef.current.contains(e.target)) {
+        setShowLocalSpeciesMenu(false);
+      }
+      if (showDamSpeciesMenu && damSpeciesMenuRef.current && !damSpeciesMenuRef.current.contains(e.target) && damSpeciesBtnRef.current && !damSpeciesBtnRef.current.contains(e.target)) {
+        setShowDamSpeciesMenu(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutsideSpecies);
+    document.addEventListener('touchstart', handleClickOutsideSpecies);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutsideSpecies);
+      document.removeEventListener('touchstart', handleClickOutsideSpecies);
+    };
+  }, [showLocalSpeciesMenu, showDamSpeciesMenu]);
+
+  const handleToggleLocalSpeciesMenu = () => {
+    if (localSpeciesBtnRef.current) {
+      const rect = localSpeciesBtnRef.current.getBoundingClientRect();
+      setLocalSpeciesMenuCoords({
+        top: rect.bottom + window.scrollY + 6,
+        left: Math.max(8, rect.right + window.scrollX - 145)
+      });
+    }
+    setShowLocalSpeciesMenu(prev => !prev);
+  };
+
+  const handleToggleDamSpeciesMenu = () => {
+    if (damSpeciesBtnRef.current) {
+      const rect = damSpeciesBtnRef.current.getBoundingClientRect();
+      setDamSpeciesMenuCoords({
+        top: rect.bottom + window.scrollY + 6,
+        left: Math.max(8, rect.right + window.scrollX - 145)
+      });
+    }
+    setShowDamSpeciesMenu(prev => !prev);
+  };
 
   // Split decimal kgPerBox into separate Kg and Grams fields for dual table inputs
   const splitKgPerBoxParts = (row) => {
@@ -290,15 +397,30 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack }) {
   const todayStr = useMemo(() => new Date().toISOString().split('T')[0], []);
 
   // Stock Ledger (Overview) Database Filters & Validations
-  const [overviewSourceFilter, setOverviewSourceFilter] = useState('all'); // 'all' | 'local' | 'dam'
+  const [overviewSourceFilter, setOverviewSourceFilter] = useState(() => {
+    if (dedicatedMode === 'local' || initialSubTab === 'local') return 'local';
+    if (dedicatedMode === 'dam' || initialSubTab === 'dam') return 'dam';
+    return 'all';
+  });
   const [overviewStartDate, setOverviewStartDate] = useState('');
   const [overviewEndDate, setOverviewEndDate] = useState('');
   const [overviewDateError, setOverviewDateError] = useState('');
   const [isFilterModalOpen, setIsFilterModalOpen] = useState(false);
 
+  useEffect(() => {
+    if (currentDedicatedMode === 'local') {
+      setOverviewSourceFilter('local');
+    } else if (currentDedicatedMode === 'dam') {
+      setOverviewSourceFilter('dam');
+    }
+  }, [currentDedicatedMode]);
+
   const fetchFilteredFishInventory = useCallback(async (custom = {}) => {
     try {
-      const src = custom.source !== undefined ? custom.source : overviewSourceFilter;
+      let src = custom.source !== undefined ? custom.source : overviewSourceFilter;
+      if (currentDedicatedMode === 'local') src = 'local';
+      else if (currentDedicatedMode === 'dam') src = 'dam';
+
       const sDate = custom.startDate !== undefined ? custom.startDate : overviewStartDate;
       const eDate = custom.endDate !== undefined ? custom.endDate : overviewEndDate;
       const q = custom.search !== undefined ? custom.search : searchTerm;
@@ -904,25 +1026,196 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack }) {
     return list;
   }, [fleetVehicles, registeredSuppliers]);
 
+  // Local Stock-In Supplier Card Selection States & Handlers
+  const [localSupplierSearch, setLocalSupplierSearch] = useState('');
+  const [isLocalManualDetailsOpen, setIsLocalManualDetailsOpen] = useState(false);
+
+  const filteredLocalSuppliers = useMemo(() => {
+    const query = localSupplierSearch.trim().toLowerCase();
+    const localOnly = (registeredSuppliers || []).filter(s => {
+      const type = (s.supplierType || '').toLowerCase();
+      return !type || type === 'local' || type === 'all';
+    });
+    const pool = localOnly.length > 0 ? localOnly : (registeredSuppliers || []);
+    if (!query) return pool;
+    return pool.filter(s =>
+      (s.name || '').toLowerCase().includes(query) ||
+      (s.companyName || '').toLowerCase().includes(query) ||
+      (s.phone || '').toLowerCase().includes(query) ||
+      (s.vehicleNumber || '').toLowerCase().includes(query) ||
+      (s.harbor || s.city || '').toLowerCase().includes(query)
+    );
+  }, [registeredSuppliers, localSupplierSearch]);
+
+  const handleSelectLocalSupplierCard = (supp) => {
+    const assignedVeh = (fleetVehicles || []).find(v =>
+      (v.assignedSupplierId && String(v.assignedSupplierId) === String(supp._id)) ||
+      (v.assignedSupplierName && v.assignedSupplierName.toLowerCase() === supp.name?.toLowerCase()) ||
+      (supp.vehicleNumber && v.vehicleNumber?.toUpperCase() === supp.vehicleNumber.toUpperCase())
+    );
+    setLocalStockInForm(prev => ({
+      ...prev,
+      supplierId: supp._id,
+      supplierName: supp.name || '',
+      supplierPhone: supp.phone || assignedVeh?.driverPhone || prev.supplierPhone,
+      companyName: supp.companyName || prev.companyName,
+      vehicleNumber: supp.vehicleNumber || assignedVeh?.vehicleNumber || prev.vehicleNumber,
+      harbor: supp.harbor || supp.city || prev.harbor
+    }));
+  };
+
+  const handleClearLocalSupplier = () => {
+    setLocalStockInForm(prev => ({
+      ...prev,
+      supplierId: '',
+      supplierName: '',
+      supplierPhone: '',
+      companyName: '',
+      vehicleNumber: '',
+      harbor: ''
+    }));
+  };
+
+  // DAM Stock-In Contractor Card Selection States & Handlers
+  const [damSupplierSearch, setDamSupplierSearch] = useState('');
+  const [isDamManualDetailsOpen, setIsDamManualDetailsOpen] = useState(false);
+
+  const filteredDamContractors = useMemo(() => {
+    const query = damSupplierSearch.trim().toLowerCase();
+    const damOnly = (registeredSuppliers || []).filter(s => {
+      const type = (s.supplierType || '').toUpperCase();
+      return type === 'DAM' || type === 'ALL';
+    });
+    const pool = damOnly.length > 0 ? damOnly : (registeredSuppliers || []);
+    if (!query) return pool;
+    return pool.filter(s =>
+      (s.name || '').toLowerCase().includes(query) ||
+      (s.companyName || '').toLowerCase().includes(query) ||
+      (s.phone || '').toLowerCase().includes(query) ||
+      (s.vehicleNumber || '').toLowerCase().includes(query) ||
+      (s.harbor || s.city || '').toLowerCase().includes(query)
+    );
+  }, [registeredSuppliers, damSupplierSearch]);
+
+  const handleSelectDamContractorCard = (supp) => {
+    const assignedVeh = (fleetVehicles || []).find(v =>
+      (v.assignedSupplierId && String(v.assignedSupplierId) === String(supp._id)) ||
+      (v.assignedSupplierName && v.assignedSupplierName.toLowerCase() === supp.name?.toLowerCase()) ||
+      (supp.vehicleNumber && v.vehicleNumber?.toUpperCase() === supp.vehicleNumber.toUpperCase())
+    );
+    setDamStockInForm(prev => ({
+      ...prev,
+      contractorId: supp._id,
+      contractorName: supp.name || '',
+      contractorPhone: supp.phone || assignedVeh?.driverPhone || prev.contractorPhone,
+      companyName: supp.companyName || prev.companyName,
+      vehicleNumber: supp.vehicleNumber || assignedVeh?.vehicleNumber || prev.vehicleNumber,
+      harbor: supp.harbor || supp.city || prev.harbor,
+      contractorCity: supp.city || prev.contractorCity
+    }));
+  };
+
+  const handleClearDamContractor = () => {
+    setDamStockInForm(prev => ({
+      ...prev,
+      contractorId: '',
+      contractorName: '',
+      contractorPhone: '',
+      companyName: '',
+      vehicleNumber: '',
+      harbor: '',
+      contractorCity: ''
+    }));
+  };
+
+  // Supplies & Packaging Vendor Card Selection States & Handlers
+  const [suppliesVendorSearch, setSuppliesVendorSearch] = useState('');
+  const [isSuppliesManualDetailsOpen, setIsSuppliesManualDetailsOpen] = useState(false);
+
+  const filteredSuppliesVendors = useMemo(() => {
+    const query = suppliesVendorSearch.trim().toLowerCase();
+    const suppliesOnly = (registeredSuppliers || []).filter(s => {
+      const type = (s.supplierType || '').toLowerCase();
+      return type === 'consumables' || type === 'supplies' || type === 'all' || !type;
+    });
+    const pool = suppliesOnly.length > 0 ? suppliesOnly : (registeredSuppliers || []);
+    if (!query) return pool;
+    return pool.filter(s =>
+      (s.name || '').toLowerCase().includes(query) ||
+      (s.companyName || '').toLowerCase().includes(query) ||
+      (s.phone || '').toLowerCase().includes(query) ||
+      (s.vehicleNumber || '').toLowerCase().includes(query) ||
+      (s.harbor || s.city || '').toLowerCase().includes(query)
+    );
+  }, [registeredSuppliers, suppliesVendorSearch]);
+
+  const handleSelectSuppliesVendorCard = (supp) => {
+    const assignedVeh = (fleetVehicles || []).find(v =>
+      (v.assignedSupplierId && String(v.assignedSupplierId) === String(supp._id)) ||
+      (v.assignedSupplierName && v.assignedSupplierName.toLowerCase() === supp.name?.toLowerCase()) ||
+      (supp.vehicleNumber && v.vehicleNumber?.toUpperCase() === supp.vehicleNumber.toUpperCase())
+    );
+    setSuppliesForm(prev => ({
+      ...prev,
+      supplierId: supp._id,
+      supplierName: supp.name || '',
+      supplierPhone: supp.phone || assignedVeh?.driverPhone || prev.supplierPhone,
+      companyName: supp.companyName || prev.companyName,
+      vehicleNumber: supp.vehicleNumber || assignedVeh?.vehicleNumber || prev.vehicleNumber,
+      harbor: supp.harbor || supp.city || prev.harbor
+    }));
+  };
+
+  const handleClearSuppliesVendor = () => {
+    setSuppliesForm(prev => ({
+      ...prev,
+      supplierId: '',
+      supplierName: '',
+      supplierPhone: '',
+      companyName: '',
+      vehicleNumber: '',
+      harbor: ''
+    }));
+  };
+
   // Filter & Pagination for Audit Trail Logs
   const filteredStockLogs = useMemo(() => {
     return stockLogs.filter(log => {
-      // 1. Transaction Type Filter
-      let matchesType = true;
-      if (logTypeFilter !== 'All') {
-        if (logTypeFilter === 'Stock-In') {
-          matchesType = log.type?.includes('Procurement') || log.type?.includes('Stock-In');
-        } else if (logTypeFilter === 'POS Sale') {
-          matchesType = log.type === 'POS Sale';
-        } else if (logTypeFilter === 'Online Sale') {
-          matchesType = log.type === 'Online Sale';
-        } else if (logTypeFilter === 'Refund') {
-          matchesType = log.type?.includes('Refund') || log.type?.includes('Reversal');
-        } else {
-          matchesType = log.type === logTypeFilter;
+      // 0. Strict Dedicated Mode Isolation (Never combine Local vs Dam)
+      const isDamLog = log.intakeMode === 'dam' || log.type?.includes('Dam') || log.notes?.toLowerCase()?.includes('dam') || log.notes?.toLowerCase()?.includes('contractor') || (typeof log.invoiceNo === 'string' && log.invoiceNo.startsWith('DAM-'));
+      const isLocalLog = (!isDamLog) && (log.type?.includes('Procurement') || log.type?.includes('Stock-In') || log.intakeMode === 'local' || (typeof log.invoiceNo === 'string' && log.invoiceNo.startsWith('LOC-')));
+
+      if (currentDedicatedMode === 'local') {
+        if (!isLocalLog) return false;
+        // Strictly Stock-In only for Local Harbor Catch module (no POS sale, online sale, or refunds)
+        const isStockIn = log.type?.includes('Procurement') || log.type?.includes('Stock-In');
+        if (!isStockIn) return false;
+      } else if (currentDedicatedMode === 'dam') {
+        if (!isDamLog) return false;
+        // Strictly Stock-In only for Dam Consignment module (no POS sale, online sale, or refunds)
+        const isStockIn = log.type?.includes('Procurement') || log.type?.includes('Stock-In') || log.type?.includes('Dam');
+        if (!isStockIn) return false;
+      } else if (currentDedicatedMode === 'supplies') {
+        const isSupplyLog = log.type?.includes('Supply') || log.intakeMode === 'supplies';
+        if (!isSupplyLog) return false;
+      } else {
+        // 1. Transaction Type Filter (Applies strictly to Master Ledger only)
+        let matchesType = true;
+        if (logTypeFilter !== 'All') {
+          if (logTypeFilter === 'Stock-In') {
+            matchesType = log.type?.includes('Procurement') || log.type?.includes('Stock-In');
+          } else if (logTypeFilter === 'POS Sale') {
+            matchesType = log.type === 'POS Sale';
+          } else if (logTypeFilter === 'Online Sale') {
+            matchesType = log.type === 'Online Sale';
+          } else if (logTypeFilter === 'Refund') {
+            matchesType = log.type?.includes('Refund') || log.type?.includes('Reversal');
+          } else {
+            matchesType = log.type === logTypeFilter;
+          }
         }
+        if (!matchesType) return false;
       }
-      if (!matchesType) return false;
 
       // 2. Date Range Filter with robust timestamp resolution
       if (startDate || endDate) {
@@ -1196,6 +1489,11 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack }) {
       return;
     }
 
+    if (!localStockInForm.supplierName?.trim()) {
+      setMessage({ text: 'Supplier / Boat Name is mandatory. Please select a supplier card or enter a name.', type: 'error' });
+      return;
+    }
+
     if (localStockInForm.supplierPhone && localStockInForm.supplierPhone.trim().length !== 10) {
       setMessage({ text: 'Please enter a valid 10-digit mobile number or leave it blank.', type: 'error' });
       return;
@@ -1290,6 +1588,11 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack }) {
 
     if (validRows.length === 0) {
       setMessage({ text: 'Please add at least one fish variety with boxes or weight (Kg).', type: 'error' });
+      return;
+    }
+
+    if (!damStockInForm.contractorName?.trim()) {
+      setMessage({ text: 'Contractor / Syndicate Name is mandatory. Please select a contractor card or enter a name.', type: 'error' });
       return;
     }
 
@@ -1771,56 +2074,240 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack }) {
     }
   };
 
-  const totalStockKg = fishList.reduce((acc, f) => acc + (Number(f.stock) || 0), 0);
-  const lowStockCount = fishList.filter(f => (Number(f.stock) || 0) <= (Number(f.minStockAlertKg) || 5)).length;
-  const totalCratesEqv = (totalStockKg / 50).toFixed(1);
+  // ── Dynamic Live Stats Computed by Dedicated Page Mode ──
+  const dynamicStats = useMemo(() => {
+    const isDamLog = l =>
+      l.intakeMode === 'dam' ||
+      l.type?.includes('Dam') ||
+      l.notes?.toLowerCase()?.includes('dam') ||
+      l.notes?.toLowerCase()?.includes('contractor') ||
+      (typeof l.invoiceNo === 'string' && l.invoiceNo.startsWith('DAM-')) ||
+      l.supplierName?.toLowerCase()?.includes('prasad');
+
+    // 1. Determine Dam Consignment logs & varieties first
+    const damLogs = stockLogs.filter(isDamLog);
+    const damVarietyNames = new Set(
+      damLogs.map(l => (l.itemName || '').trim().toLowerCase()).filter(Boolean)
+    );
+    const damFish = fishList.filter(f => {
+      const name = (f.name || '').trim().toLowerCase();
+      return damVarietyNames.has(name) || f.waterType === 'freshwater' || f.source === 'dam' || f.supplierType?.includes('dam');
+    });
+
+    let damStockKg = damFish.reduce((acc, f) => acc + (Number(f.stock) || 0), 0);
+    if (damStockKg <= 0 && damLogs.length > 0) {
+      damStockKg = damLogs.reduce((acc, l) => acc + Math.max(0, Number(l.quantityChange || 0)), 0);
+    }
+    const damVarietiesCount = damFish.length > 0 ? damFish.length : (damVarietyNames.size || 0);
+
+    if (currentDedicatedMode === 'local') {
+      // 2. Strict Local Isolation: Exclude all Dam varieties from Local
+      const localFish = fishList.filter(f => {
+        const name = (f.name || '').trim().toLowerCase();
+        return !damVarietyNames.has(name) && f.source !== 'dam' && f.waterType !== 'freshwater';
+      });
+
+      const totalWarehouseKg = fishList.reduce((acc, f) => acc + (Number(f.stock) || 0), 0);
+      let stockKg = localFish.reduce((acc, f) => acc + (Number(f.stock) || 0), 0);
+      if (damStockKg > 0 && (stockKg === 0 || Math.abs(stockKg - totalWarehouseKg) < 0.1)) {
+        stockKg = Math.max(0, totalWarehouseKg - damStockKg);
+      }
+
+      const localLogs = stockLogs.filter(l =>
+        !isDamLog(l) && (l.type?.includes('Procurement') || l.type?.includes('Stock-In') || l.intakeMode === 'local' || (typeof l.invoiceNo === 'string' && l.invoiceNo.startsWith('LOC-')))
+      );
+      const varietiesCount = Math.max(1, fishList.length - damVarietiesCount);
+      const lowCount = localFish.filter(f => (Number(f.stock) || 0) <= (Number(f.minStockAlertKg) || 5)).length;
+
+      const loggedBoxes = localLogs.reduce((acc, l) => {
+        const b = Number(l.boxes || 0);
+        if (b > 0) return acc + b;
+        const m = l.notes?.match(/(\d+)\s*boxes/i);
+        return acc + (m ? Number(m[1]) : 0);
+      }, 0);
+      const crates = loggedBoxes > 0 ? loggedBoxes : (stockKg > 0 ? (stockKg / 50).toFixed(1) : '0.0');
+
+      return {
+        title: 'Local Harbor Catch Metrics',
+        subtitle: 'Live cold storage inventory from coastal harbor landings',
+        stat1Label: 'Local Fish Stock',
+        stat1Val: `${stockKg.toFixed(1)} Kg`,
+        stat1Color: 'text-sky-800',
+        stat2Label: 'Local Varieties',
+        stat2Val: `${varietiesCount} Items`,
+        stat2Color: 'text-emerald-800',
+        stat3Label: 'Low Stock Alert',
+        stat3Val: `${lowCount} Varieties`,
+        stat3Color: 'text-amber-800',
+        stat4Label: 'Storage Crates',
+        stat4Val: `~${crates} Boxes`,
+        stat4Color: 'text-orange-800'
+      };
+    } else if (currentDedicatedMode === 'dam') {
+      const damLogs = stockLogs.filter(isDamLog);
+      const damVarietyNames = new Set(
+        damLogs.map(l => (l.itemName || '').trim().toLowerCase()).filter(Boolean)
+      );
+      const damFish = fishList.filter(f => {
+        const name = (f.name || '').trim().toLowerCase();
+        return damVarietyNames.has(name) || f.waterType === 'freshwater' || f.source === 'dam' || f.supplierType?.includes('dam');
+      });
+
+      let stockKg = damFish.reduce((acc, f) => acc + (Number(f.stock) || 0), 0);
+      if (stockKg <= 0 && damLogs.length > 0) {
+        stockKg = damLogs.reduce((acc, l) => acc + Math.max(0, Number(l.quantityChange || 0)), 0);
+      }
+      const varietiesCount = damFish.length > 0 ? damFish.length : (damVarietyNames.size || 0);
+      const lowCount = damFish.filter(f => (Number(f.stock) || 0) <= (Number(f.minStockAlertKg) || 5)).length;
+      const loggedBoxes = damLogs.reduce((acc, l) => {
+        const b = Number(l.boxes || 0);
+        if (b > 0) return acc + b;
+        const m = l.notes?.match(/(\d+)\s*boxes/i);
+        return acc + (m ? Number(m[1]) : 0);
+      }, 0);
+      const crates = loggedBoxes > 0 ? loggedBoxes : (stockKg > 0 ? (stockKg / 60).toFixed(1) : '0.0');
+
+      return {
+        title: 'Dam Consignment Stock Metrics',
+        subtitle: 'Live cold storage inventory from reservoir consignments',
+        stat1Label: 'Dam Fish Stock',
+        stat1Val: `${stockKg.toFixed(1)} Kg`,
+        stat1Color: 'text-blue-800',
+        stat2Label: 'Dam Varieties',
+        stat2Val: `${varietiesCount} Items`,
+        stat2Color: 'text-emerald-800',
+        stat3Label: 'Low Stock Alert',
+        stat3Val: `${lowCount} Varieties`,
+        stat3Color: 'text-amber-800',
+        stat4Label: 'Consignment Crates',
+        stat4Val: `~${crates} Boxes`,
+        stat4Color: 'text-indigo-800'
+      };
+    } else if (currentDedicatedMode === 'supplies') {
+      const totalUnits = supplyLogs.reduce((acc, l) => acc + (Number(l.quantity) || 0), 0);
+      const totalCategories = supplyCategories.length;
+      const totalIntakes = supplyLogs.length;
+      const totalVal = supplyLogs.reduce((acc, l) => acc + (Number(l.totalCost) || 0), 0);
+      return {
+        title: 'Packaging & Supplies Metrics',
+        subtitle: 'Live depot inventory of thermocol boxes, ice, crates & consumables',
+        stat1Label: 'Supplies Received',
+        stat1Val: `${totalUnits.toLocaleString('en-IN')} Units`,
+        stat1Color: 'text-emerald-800',
+        stat2Label: 'Supply Categories',
+        stat2Val: `${totalCategories} Categories`,
+        stat2Color: 'text-teal-800',
+        stat3Label: 'Intake Records',
+        stat3Val: `${totalIntakes} Vouchers`,
+        stat3Color: 'text-sky-800',
+        stat4Label: 'Procurement Value',
+        stat4Val: `₹${totalVal.toLocaleString('en-IN')}`,
+        stat4Color: 'text-amber-800'
+      };
+    } else {
+      const stockKg = fishList.reduce((acc, f) => acc + (Number(f.stock) || 0), 0);
+      const lowCount = fishList.filter(f => (Number(f.stock) || 0) <= (Number(f.minStockAlertKg) || 5)).length;
+      const crates = (stockKg / 50).toFixed(1);
+      return {
+        title: 'Cold Storage Stock Metrics',
+        subtitle: 'Live overview of current warehouse inventory & capacity',
+        stat1Label: 'Total Fish Stock',
+        stat1Val: `${stockKg.toFixed(1)} Kg`,
+        stat1Color: 'text-sky-800',
+        stat2Label: 'Active Varieties',
+        stat2Val: `${fishList.length} Items`,
+        stat2Color: 'text-emerald-800',
+        stat3Label: 'Low Stock Alert',
+        stat3Val: `${lowCount} Varieties`,
+        stat3Color: 'text-amber-800',
+        stat4Label: 'Storage Crates',
+        stat4Val: `~${crates} Boxes`,
+        stat4Color: 'text-orange-800'
+      };
+    }
+  }, [currentDedicatedMode, fishList, supplyLogs, supplyCategories]);
 
   return (
     <div className="px-1 py-1.5 sm:p-3 md:p-4 space-y-2.5 sm:space-y-3 w-full text-slate-800">
       {/* Top Header Card (Ultra-Compact & Mobile-Responsive Header) */}
       <div className="bg-[#FDFBF7] border border-[#E8DCCB] rounded-xl px-2.5 py-1.5 sm:px-3 sm:py-2 shadow-2xs w-full">
-        <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center justify-between gap-1.5 sm:gap-2">
           {/* Left Title & Branding */}
-          <div className="flex items-center gap-2 sm:gap-2.5 min-w-0">
+          <div className="flex items-center gap-1.5 sm:gap-2.5 min-w-0">
             {onGoBack && <BackButton onClick={onGoBack} label="Back" />}
-            <div className="w-6 h-6 sm:w-7 sm:h-7 rounded-lg bg-orange-100 text-[#ea580c] border border-orange-200 flex items-center justify-center shrink-0 shadow-xs">
-              <Package size={14} />
-            </div>
             <div className="min-w-0">
-              <div className="flex items-center gap-1.5 flex-wrap">
-                <h1 className="text-xs sm:text-sm font-black text-slate-900 tracking-tight leading-tight m-0 truncate">
-                  Fish Inventory
+              <div className="flex items-center gap-1.5 flex-nowrap">
+                <h1 className="text-xs sm:text-sm font-black text-slate-900 tracking-tight leading-tight m-0 whitespace-nowrap">
+                  {currentDedicatedMode === 'local'
+                    ? (activeTab === 'procurement' ? 'Local Stock-In' : (activeTab === 'overview' ? 'Local Stock Ledger' : 'Local Audit Trail'))
+                    : (currentDedicatedMode === 'dam'
+                        ? (activeTab === 'procurement' ? 'Dam Stock-In' : (activeTab === 'overview' ? 'Dam Stock Ledger' : 'Dam Audit Trail'))
+                        : (currentDedicatedMode === 'supplies'
+                            ? (activeTab === 'procurement' ? 'Supplies Stock-In' : (activeTab === 'logs' ? 'Supplies Audit Trail' : 'Supplies Stock Ledger'))
+                            : (activeTab === 'logs' ? 'Audit Trail' : (activeTab === 'supplies' ? 'Supplies & Boxes' : 'Stock Catch Ledger'))))}
                 </h1>
-                <span className="text-[8.5px] sm:text-[9.5px] font-black px-1.5 py-0.2 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200 shrink-0">
-                  Live Cold Storage
+                <span className={`text-[8.5px] sm:text-[9.5px] font-black px-1.5 py-0.2 rounded-full border shrink-0 ${
+                  currentDedicatedMode === 'local'
+                    ? 'bg-orange-100 text-orange-800 border-orange-200'
+                    : (currentDedicatedMode === 'dam'
+                        ? 'bg-blue-100 text-blue-800 border-blue-200'
+                        : (currentDedicatedMode === 'supplies'
+                            ? 'bg-emerald-100 text-emerald-800 border-emerald-200'
+                            : 'bg-teal-100 text-teal-800 border-teal-200'))
+                }`}>
+                  {currentDedicatedMode === 'local'
+                    ? 'Harbor'
+                    : (currentDedicatedMode === 'dam'
+                        ? 'DAM'
+                        : (currentDedicatedMode === 'supplies'
+                            ? 'Supplies'
+                            : 'Live Storage'))}
                 </span>
               </div>
               <p className="text-[10px] text-slate-500 font-medium m-0 mt-0.5 truncate hidden sm:block">
-                Current storage inventory, catch unloading, and stock movements
+                {currentDedicatedMode === 'local'
+                  ? (activeTab === 'procurement'
+                      ? 'Local harbor landings & fishermen catch weighment'
+                      : (activeTab === 'overview'
+                          ? 'Live cold storage inventory from local harbor landings'
+                          : 'Recorded local harbor catch intake vouchers & movements'))
+                  : (currentDedicatedMode === 'dam'
+                      ? (activeTab === 'procurement'
+                          ? 'Dam syndicate & reservoir multi-variety consignment intake'
+                          : (activeTab === 'overview'
+                              ? 'Live cold storage inventory from dam syndicate consignments'
+                              : 'Recorded dam consignment vouchers & settlements'))
+                      : (currentDedicatedMode === 'supplies'
+                          ? (activeTab === 'procurement'
+                              ? 'Packaging, thermocol boxes, ice & consumables intake'
+                              : (activeTab === 'logs'
+                                  ? 'Recorded supplies intake vouchers & movements'
+                                  : 'Live inventory of depot packaging, ice & consumables'))
+                          : 'Current cold storage inventory, catch unloading, and movements'))}
               </p>
             </div>
           </div>
 
           {/* Right Header Controls: Stock Stats Modal Button & Refresh */}
-          <div className="flex items-center gap-1.5 shrink-0">
+          <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
             <button
               type="button"
               onClick={() => setIsStatsModalOpen(true)}
-              className="flex items-center gap-1 sm:gap-1.5 px-2 sm:px-2.5 py-1 rounded-lg bg-orange-50 hover:bg-orange-100 text-[#ea580c] border border-orange-200 text-[11px] sm:text-xs font-bold transition-all cursor-pointer shadow-2xs shrink-0"
+              className="flex items-center gap-1 px-2 py-1 rounded-lg bg-orange-50 hover:bg-orange-100 text-[#ea580c] border border-orange-200 text-[10.5px] sm:text-xs font-bold transition-all cursor-pointer shadow-2xs shrink-0"
               title="Open Cold Storage Metrics Modal"
             >
-              <Scale size={12} className="text-[#ea580c]" />
-              <span>Stock Stats</span>
+              <Scale size={11} className="text-[#ea580c]" />
+              <span className="hidden xs:inline">Stock Stats</span>
             </button>
 
             <button
               onClick={fetchInventoryData}
               disabled={loading}
-              className="flex items-center gap-1 px-2 py-1 rounded-lg bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 text-[11px] sm:text-xs font-bold transition-all cursor-pointer shadow-2xs shrink-0"
+              className="flex items-center gap-1 px-1.5 sm:px-2 py-1 rounded-lg bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 text-[10.5px] sm:text-xs font-bold transition-all cursor-pointer shadow-2xs shrink-0"
               title="Refresh Inventory"
             >
               <RefreshCw size={11} className={loading ? 'animate-spin' : ''} />
-              <span className="hidden xs:inline">Refresh</span>
+              <span className="hidden md:inline">Refresh</span>
             </button>
           </div>
         </div>
@@ -1838,10 +2325,10 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack }) {
                 </div>
                 <div>
                   <h3 className="text-sm sm:text-base font-black text-slate-900 m-0 leading-tight">
-                    Cold Storage Stock Metrics
+                    {dynamicStats.title}
                   </h3>
                   <p className="text-[11px] text-slate-500 font-medium m-0">
-                    Live overview of current warehouse inventory & capacity
+                    {dynamicStats.subtitle}
                   </p>
                 </div>
               </div>
@@ -1858,63 +2345,63 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack }) {
             {/* Modal Body: 4 Full Metric Cards */}
             <div className="p-4 space-y-3 overflow-y-auto">
               <div className="grid grid-cols-2 gap-2.5 sm:gap-3">
-                {/* Total Stock */}
+                {/* Metric 1 */}
                 <div className="bg-white border border-[#E8DCCB] rounded-xl p-3 shadow-2xs flex flex-col justify-between">
                   <div className="flex items-center justify-between">
                     <span className="text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-wide">
-                      Total Fish Stock
+                      {dynamicStats.stat1Label}
                     </span>
                     <div className="p-1.5 bg-sky-100 text-sky-700 rounded-lg">
                       <Scale size={14} />
                     </div>
                   </div>
-                  <div className="text-lg sm:text-xl font-black text-sky-800 font-mono mt-2">
-                    {totalStockKg.toFixed(1)} <span className="text-xs font-semibold text-slate-500">Kg</span>
+                  <div className={`text-base sm:text-lg md:text-xl font-black ${dynamicStats.stat1Color} font-mono mt-2`}>
+                    {dynamicStats.stat1Val}
                   </div>
                 </div>
 
-                {/* Active Varieties */}
+                {/* Metric 2 */}
                 <div className="bg-white border border-[#E8DCCB] rounded-xl p-3 shadow-2xs flex flex-col justify-between">
                   <div className="flex items-center justify-between">
                     <span className="text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-wide">
-                      Active Varieties
+                      {dynamicStats.stat2Label}
                     </span>
                     <div className="p-1.5 bg-emerald-100 text-emerald-700 rounded-lg">
                       <ShieldCheck size={14} />
                     </div>
                   </div>
-                  <div className="text-lg sm:text-xl font-black text-emerald-800 font-mono mt-2">
-                    {fishList.length} <span className="text-xs font-semibold text-slate-500">Items</span>
+                  <div className={`text-base sm:text-lg md:text-xl font-black ${dynamicStats.stat2Color} font-mono mt-2`}>
+                    {dynamicStats.stat2Val}
                   </div>
                 </div>
 
-                {/* Low Stock Alert */}
+                {/* Metric 3 */}
                 <div className="bg-white border border-[#E8DCCB] rounded-xl p-3 shadow-2xs flex flex-col justify-between">
                   <div className="flex items-center justify-between">
                     <span className="text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-wide">
-                      Low Stock Alert
+                      {dynamicStats.stat3Label}
                     </span>
                     <div className="p-1.5 bg-amber-100 text-amber-700 rounded-lg">
                       <AlertTriangle size={14} />
                     </div>
                   </div>
-                  <div className="text-lg sm:text-xl font-black text-amber-800 font-mono mt-2">
-                    {lowStockCount} <span className="text-xs font-semibold text-slate-500">Varieties</span>
+                  <div className={`text-base sm:text-lg md:text-xl font-black ${dynamicStats.stat3Color} font-mono mt-2`}>
+                    {dynamicStats.stat3Val}
                   </div>
                 </div>
 
-                {/* Cold Storage Crates */}
+                {/* Metric 4 */}
                 <div className="bg-white border border-[#E8DCCB] rounded-xl p-3 shadow-2xs flex flex-col justify-between">
                   <div className="flex items-center justify-between">
                     <span className="text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-wide">
-                      Storage Crates
+                      {dynamicStats.stat4Label}
                     </span>
                     <div className="p-1.5 bg-orange-100 text-[#ea580c] rounded-lg">
                       <Package size={14} />
                     </div>
                   </div>
-                  <div className="text-lg sm:text-xl font-black text-orange-800 font-mono mt-2">
-                    ~{totalCratesEqv} <span className="text-xs font-semibold text-slate-500">Boxes</span>
+                  <div className={`text-base sm:text-lg md:text-xl font-black ${dynamicStats.stat4Color} font-mono mt-2`}>
+                    {dynamicStats.stat4Val}
                   </div>
                 </div>
               </div>
@@ -1934,64 +2421,203 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack }) {
         </div>
       )}
 
-      {/* ── ROW 1: Dedicated Module Navigation Bar (Direct 1-Click Access across all screen sizes) ── */}
-      <div className="bg-[#FDFBF7] p-1.5 sm:p-2 rounded-2xl border border-[#E8DCCB] shadow-2xs flex items-center justify-between gap-2 w-full">
-        <div className="flex items-center gap-1 sm:gap-1.5 overflow-x-auto scrollbar-none py-0.5 w-full">
-          {[
-            { id: 'overview', label: 'Stock Ledger', icon: Package },
-            { id: 'local', label: 'Local Stock-In', icon: ArrowDownLeft, badge: 'Harbor' },
-            { id: 'dam', label: 'Dam Stock-In', icon: Anchor, badge: 'DAM' },
-            { id: 'supplies', label: 'Supplies & Boxes', icon: Boxes },
-            { id: 'logs', label: 'Audit Trail', icon: History }
-          ].map((tab) => {
-            const Icon = tab.icon;
-            const isTabActive = activeTab === 'overview'
-              ? tab.id === 'overview'
-              : (activeTab === 'logs'
-                  ? tab.id === 'logs'
-                  : (stockInSubTab === tab.id));
-
-            return (
+      {/* ── ROW 1: Dedicated Module Navigation Bar (Completely Separated Dedicated Pages) ── */}
+      <div className="bg-[#FDFBF7] p-1.5 sm:p-2 rounded-2xl border border-[#E8DCCB] shadow-2xs flex items-center justify-between gap-1.5 sm:gap-2 w-full flex-wrap">
+        {/* Navigation Tabs */}
+        <div className="flex items-center gap-1 sm:gap-1.5 overflow-x-auto scrollbar-none py-0.5">
+          {currentDedicatedMode === 'local' ? (
+            /* Dedicated Local Mode Tabs: Strictly Local Intake, Local Ledger, Local Audit */
+            <>
               <button
-                key={tab.id}
-                onClick={() => {
-                  setMessage({ text: '', type: '' });
-                  if (tab.id === 'overview') {
-                    setActiveTab('overview');
-                  } else if (tab.id === 'logs') {
-                    setActiveTab('logs');
-                  } else {
-                    setActiveTab('procurement');
-                    setStockInSubTab(tab.id);
-                  }
-                }}
-                className={`flex items-center gap-1 sm:gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl font-bold text-xs sm:text-sm transition-all cursor-pointer whitespace-nowrap shrink-0 ${
-                  isTabActive
-                    ? tab.id === 'dam'
-                      ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-xs font-black'
-                      : tab.id === 'local'
-                        ? 'bg-gradient-to-r from-orange-500 to-[#ea580c] text-white shadow-xs font-black'
-                        : 'bg-[#ea580c] text-white shadow-xs font-black'
-                    : 'bg-white text-slate-700 hover:text-slate-900 hover:bg-[#F5E8D8] border border-[#E8DCCB]'
+                type="button"
+                onClick={() => { setActiveTab('procurement'); setStockInSubTab('local'); }}
+                className={`flex items-center gap-1 px-2.5 sm:px-3 py-1 rounded-xl font-bold text-xs transition-all cursor-pointer shrink-0 ${
+                  activeTab === 'procurement'
+                    ? 'bg-gradient-to-r from-orange-500 to-[#ea580c] text-white shadow-xs font-black'
+                    : 'bg-white text-slate-700 hover:bg-[#F5E8D8] border border-[#E8DCCB]'
                 }`}
               >
-                <Icon size={13} />
-                <span>{tab.label}</span>
-                {tab.badge && (
-                  <span className={`text-[8.5px] px-1.5 py-0.2 rounded-full font-black ${
-                    isTabActive ? 'bg-white/25 text-white' : 'bg-slate-100 text-slate-600 border border-slate-200'
-                  }`}>
-                    {tab.badge}
-                  </span>
-                )}
+                <ArrowDownLeft size={12} />
+                <span>Local Intake</span>
+                <span className={`text-[8.5px] px-1 py-0.1 rounded-full font-black ${
+                  activeTab === 'procurement' ? 'bg-white/25 text-white' : 'bg-orange-100 text-[#c2410c]'
+                }`}>
+                  Harbor
+                </span>
               </button>
-            );
-          })}
+
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveTab('overview');
+                  setOverviewSourceFilter('local');
+                  fetchFilteredFishInventory({ source: 'local' });
+                }}
+                className={`flex items-center gap-1 px-2.5 sm:px-3 py-1 rounded-xl font-bold text-xs transition-all cursor-pointer shrink-0 ${
+                  activeTab === 'overview'
+                    ? 'bg-gradient-to-r from-orange-500 to-[#ea580c] text-white shadow-xs font-black'
+                    : 'bg-white text-slate-700 hover:bg-[#F5E8D8] border border-[#E8DCCB]'
+                }`}
+              >
+                <Package size={12} />
+                <span className="sm:hidden">Local Ledger</span>
+                <span className="hidden sm:inline">Local Stock Ledger</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setActiveTab('logs')}
+                className={`flex items-center gap-1 px-2.5 sm:px-3 py-1 rounded-xl font-bold text-xs transition-all cursor-pointer shrink-0 ${
+                  activeTab === 'logs'
+                    ? 'bg-gradient-to-r from-orange-500 to-[#ea580c] text-white shadow-xs font-black'
+                    : 'bg-white text-slate-700 hover:bg-[#F5E8D8] border border-[#E8DCCB]'
+                }`}
+              >
+                <History size={12} />
+                <span className="sm:hidden">Local Audit</span>
+                <span className="hidden sm:inline">Local Audit Trail</span>
+              </button>
+            </>
+          ) : currentDedicatedMode === 'dam' ? (
+            /* Dedicated Dam Mode Tabs: Strictly Dam Intake, Dam Ledger, Dam Audit */
+            <>
+              <button
+                type="button"
+                onClick={() => { setActiveTab('procurement'); setStockInSubTab('dam'); }}
+                className={`flex items-center gap-1 px-2.5 sm:px-3 py-1 rounded-xl font-bold text-xs transition-all cursor-pointer shrink-0 ${
+                  activeTab === 'procurement'
+                    ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-xs font-black'
+                    : 'bg-white text-slate-700 hover:bg-[#F5E8D8] border border-[#E8DCCB]'
+                }`}
+              >
+                <Anchor size={12} />
+                <span>Dam Intake</span>
+                <span className={`text-[8.5px] px-1 py-0.1 rounded-full font-black ${
+                  activeTab === 'procurement' ? 'bg-white/25 text-white' : 'bg-blue-100 text-blue-700'
+                }`}>
+                  DAM
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveTab('overview');
+                  setOverviewSourceFilter('dam');
+                  fetchFilteredFishInventory({ source: 'dam' });
+                }}
+                className={`flex items-center gap-1 px-2.5 sm:px-3 py-1 rounded-xl font-bold text-xs transition-all cursor-pointer shrink-0 ${
+                  activeTab === 'overview'
+                    ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-xs font-black'
+                    : 'bg-white text-slate-700 hover:bg-[#F5E8D8] border border-[#E8DCCB]'
+                }`}
+              >
+                <Package size={12} />
+                <span className="sm:hidden">Dam Ledger</span>
+                <span className="hidden sm:inline">Dam Stock Ledger</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setActiveTab('logs')}
+                className={`flex items-center gap-1 px-2.5 sm:px-3 py-1 rounded-xl font-bold text-xs transition-all cursor-pointer shrink-0 ${
+                  activeTab === 'logs'
+                    ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-xs font-black'
+                    : 'bg-white text-slate-700 hover:bg-[#F5E8D8] border border-[#E8DCCB]'
+                }`}
+              >
+                <History size={12} />
+                <span className="sm:hidden">Dam Audit</span>
+                <span className="hidden sm:inline">Dam Audit Trail</span>
+              </button>
+            </>
+          ) : currentDedicatedMode === 'supplies' ? (
+            /* Dedicated Supplies Mode Tabs: Strictly Supplies Intake, Supplies Stock, Supplies Audit */
+            <>
+              <button
+                type="button"
+                onClick={() => { setActiveTab('procurement'); setStockInSubTab('supplies'); }}
+                className={`flex items-center gap-1 px-2.5 sm:px-3 py-1 rounded-xl font-bold text-xs transition-all cursor-pointer shrink-0 ${
+                  activeTab === 'procurement'
+                    ? 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-xs font-black'
+                    : 'bg-white text-slate-700 hover:bg-[#F5E8D8] border border-[#E8DCCB]'
+                }`}
+              >
+                <Boxes size={12} />
+                <span className="sm:hidden">Intake</span>
+                <span className="hidden sm:inline">Supplies Intake</span>
+                <span className={`text-[8.5px] px-1 py-0.1 rounded-full font-black ${
+                  activeTab === 'procurement' ? 'bg-white/25 text-white' : 'bg-emerald-100 text-emerald-700'
+                }`}>
+                  Supplies
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveTab('supplies');
+                }}
+                className={`flex items-center gap-1 px-2.5 sm:px-3 py-1 rounded-xl font-bold text-xs transition-all cursor-pointer shrink-0 ${
+                  activeTab === 'supplies'
+                    ? 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-xs font-black'
+                    : 'bg-white text-slate-700 hover:bg-[#F5E8D8] border border-[#E8DCCB]'
+                }`}
+              >
+                <Package size={12} />
+                <span className="sm:hidden">Stock</span>
+                <span className="hidden sm:inline">Supplies Inventory</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setActiveTab('logs')}
+                className={`flex items-center gap-1 px-2.5 sm:px-3 py-1 rounded-xl font-bold text-xs transition-all cursor-pointer shrink-0 ${
+                  activeTab === 'logs'
+                    ? 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-xs font-black'
+                    : 'bg-white text-slate-700 hover:bg-[#F5E8D8] border border-[#E8DCCB]'
+                }`}
+              >
+                <History size={12} />
+                <span className="sm:hidden">Audit</span>
+                <span className="hidden sm:inline">Supplies Audit Trail</span>
+              </button>
+            </>
+          ) : (
+            /* Master Ledger Mode Navigation Tabs */
+            [
+              { id: 'overview', label: 'Stock Ledger', short: 'Ledger', icon: Package },
+              { id: 'supplies', label: 'Supplies & Boxes', short: 'Supplies', icon: Boxes },
+              { id: 'logs', label: 'Audit Trail', short: 'Audit', icon: History }
+            ].map((tab) => {
+              const Icon = tab.icon;
+              const isTabActive = activeTab === tab.id;
+
+              return (
+                <button
+                  key={tab.id}
+                  onClick={() => {
+                    setMessage({ text: '', type: '' });
+                    setActiveTab(tab.id);
+                  }}
+                  className={`flex items-center gap-1 px-2 sm:px-2.5 py-1 rounded-xl font-bold text-[10.5px] sm:text-xs transition-all cursor-pointer whitespace-nowrap shrink-0 ${
+                    isTabActive
+                      ? 'bg-slate-800 text-white shadow-xs font-black'
+                      : 'bg-white text-slate-700 hover:text-slate-900 hover:bg-[#F5E8D8] border border-[#E8DCCB]'
+                  }`}
+                >
+                  <Icon size={12} />
+                  <span className="sm:hidden">{tab.short}</span>
+                  <span className="hidden sm:inline">{tab.label}</span>
+                </button>
+              );
+            })
+          )}
         </div>
 
         {activeTab === 'logs' && (
-          <div className="hidden sm:flex items-center gap-2 shrink-0 pr-1">
-            <span className="text-[10.5px] sm:text-xs font-bold text-slate-600 whitespace-nowrap">
+          <div className="flex items-center gap-2 shrink-0 pr-1 ml-auto">
+            <span className="text-[10px] sm:text-xs font-bold text-slate-600 whitespace-nowrap">
               {filteredStockLogs.length} logs • P.{logsPage}/{totalLogsPages}
             </span>
             <div className="flex items-center gap-1">
@@ -2024,41 +2650,51 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack }) {
           {/* Left: Source Filter Pills & Date Range (Desktop/Tablet) */}
           <div className="hidden md:flex items-center gap-2 flex-wrap min-w-0">
             {/* Catch Source Filter Pills */}
-            <div className="inline-flex items-center p-0.5 bg-white rounded-xl border border-[#E8DCCB] shadow-2xs shrink-0">
-              <button
-                type="button"
-                onClick={() => handleSelectSource('all')}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
-                  overviewSourceFilter === 'all'
-                    ? 'bg-slate-800 text-white shadow-2xs font-black'
-                    : 'text-slate-600 hover:text-slate-900 hover:bg-[#FAF3E8]'
-                }`}
-              >
-                All Sources
-              </button>
-              <button
-                type="button"
-                onClick={() => handleSelectSource('local')}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
-                  overviewSourceFilter === 'local'
-                    ? 'bg-gradient-to-r from-orange-500 to-[#ea580c] text-white shadow-2xs font-black'
-                    : 'text-slate-600 hover:text-slate-900 hover:bg-[#FAF3E8]'
-                }`}
-              >
-                Local Catch
-              </button>
-              <button
-                type="button"
-                onClick={() => handleSelectSource('dam')}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
-                  overviewSourceFilter === 'dam'
-                    ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-2xs font-black'
-                    : 'text-slate-600 hover:text-slate-900 hover:bg-[#FAF3E8]'
-                }`}
-              >
-                DAM Catch
-              </button>
-            </div>
+            {currentDedicatedMode === 'local' ? (
+              <span className="px-2.5 py-1 rounded-xl text-xs font-black bg-orange-100 text-[#c2410c] border border-orange-200 shadow-2xs shrink-0">
+                Local Harbor Catch
+              </span>
+            ) : currentDedicatedMode === 'dam' ? (
+              <span className="px-2.5 py-1 rounded-xl text-xs font-black bg-blue-100 text-blue-800 border border-blue-200 shadow-2xs shrink-0">
+                Dam Reservoir Catch
+              </span>
+            ) : (
+              <div className="inline-flex items-center p-0.5 bg-white rounded-xl border border-[#E8DCCB] shadow-2xs shrink-0">
+                <button
+                  type="button"
+                  onClick={() => handleSelectSource('all')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
+                    overviewSourceFilter === 'all'
+                      ? 'bg-slate-800 text-white shadow-2xs font-black'
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-[#FAF3E8]'
+                  }`}
+                >
+                  All Sources
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSelectSource('local')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
+                    overviewSourceFilter === 'local'
+                      ? 'bg-gradient-to-r from-orange-500 to-[#ea580c] text-white shadow-2xs font-black'
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-[#FAF3E8]'
+                  }`}
+                >
+                  Local Catch
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSelectSource('dam')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
+                    overviewSourceFilter === 'dam'
+                      ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-2xs font-black'
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-[#FAF3E8]'
+                  }`}
+                >
+                  DAM Catch
+                </button>
+              </div>
+            )}
 
             {/* Date Range Inputs with Visual Validation */}
             <div className="flex items-center gap-1.5 bg-white border border-[#E8DCCB] rounded-xl px-2.5 py-1 shadow-2xs shrink-0">
@@ -2232,46 +2868,56 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack }) {
             {/* Modal Body */}
             <div className="p-4 space-y-3.5 overflow-y-auto">
               {/* Catch Source Selection */}
-              <div className="space-y-1.5">
-                <label className="text-[11px] font-black text-slate-600 uppercase tracking-wide block">
-                  Catch Origin Source
-                </label>
-                <div className="grid grid-cols-3 gap-1.5 bg-white p-1 rounded-xl border border-[#E8DCCB]">
-                  <button
-                    type="button"
-                    onClick={() => handleSelectSource('all')}
-                    className={`py-2 text-xs font-bold rounded-lg text-center transition-all cursor-pointer ${
-                      overviewSourceFilter === 'all'
-                        ? 'bg-slate-800 text-white shadow-2xs font-black'
-                        : 'text-slate-600 hover:bg-slate-50'
-                    }`}
-                  >
-                    All Sources
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleSelectSource('local')}
-                    className={`py-2 text-xs font-bold rounded-lg text-center transition-all cursor-pointer ${
-                      overviewSourceFilter === 'local'
-                        ? 'bg-gradient-to-r from-orange-500 to-[#ea580c] text-white shadow-2xs font-black'
-                        : 'text-slate-600 hover:bg-slate-50'
-                    }`}
-                  >
-                    Local Catch
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleSelectSource('dam')}
-                    className={`py-2 text-xs font-bold rounded-lg text-center transition-all cursor-pointer ${
-                      overviewSourceFilter === 'dam'
-                        ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-2xs font-black'
-                        : 'text-slate-600 hover:bg-slate-50'
-                    }`}
-                  >
-                    DAM Catch
-                  </button>
+              {currentDedicatedMode === 'local' ? (
+                <div className="p-2.5 bg-orange-50 border border-orange-200 rounded-xl text-xs font-black text-[#c2410c] text-center">
+                  Local Harbor Catch Inventory
                 </div>
-              </div>
+              ) : currentDedicatedMode === 'dam' ? (
+                <div className="p-2.5 bg-blue-50 border border-blue-200 rounded-xl text-xs font-black text-blue-800 text-center">
+                  Dam Reservoir Catch Inventory
+                </div>
+              ) : (
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-black text-slate-600 uppercase tracking-wide block">
+                    Catch Origin Source
+                  </label>
+                  <div className="grid grid-cols-3 gap-1.5 bg-white p-1 rounded-xl border border-[#E8DCCB]">
+                    <button
+                      type="button"
+                      onClick={() => handleSelectSource('all')}
+                      className={`py-2 text-xs font-bold rounded-lg text-center transition-all cursor-pointer ${
+                        overviewSourceFilter === 'all'
+                          ? 'bg-slate-800 text-white shadow-2xs font-black'
+                          : 'text-slate-600 hover:bg-slate-50'
+                      }`}
+                    >
+                      All Sources
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleSelectSource('local')}
+                      className={`py-2 text-xs font-bold rounded-lg text-center transition-all cursor-pointer ${
+                        overviewSourceFilter === 'local'
+                          ? 'bg-gradient-to-r from-orange-500 to-[#ea580c] text-white shadow-2xs font-black'
+                          : 'text-slate-600 hover:bg-slate-50'
+                      }`}
+                    >
+                      Local Catch
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleSelectSource('dam')}
+                      className={`py-2 text-xs font-bold rounded-lg text-center transition-all cursor-pointer ${
+                        overviewSourceFilter === 'dam'
+                          ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-2xs font-black'
+                          : 'text-slate-600 hover:bg-slate-50'
+                      }`}
+                    >
+                      DAM Catch
+                    </button>
+                  </div>
+                </div>
+              )}
 
               {/* Quick Date Presets */}
               <div className="space-y-1.5">
@@ -2523,186 +3169,33 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack }) {
           {/* ════════════════════════════════════════════════════════ */}
           {stockInSubTab === 'local' && (
             <div className="bg-[#FDFBF7] border border-[#E8DCCB] rounded-2xl px-2 py-2.5 sm:p-5 md:p-6 shadow-2xs space-y-3 sm:space-y-4 w-full">
-              <div className="flex items-center justify-between border-b border-[#fed7aa]/60 pb-2 sm:pb-3 px-1 sm:px-0">
+              <div className="flex items-center justify-between border-b border-[#fed7aa]/60 pb-2 sm:pb-2.5 px-1 sm:px-0">
                 <div>
-                  <h2 className="text-sm sm:text-base font-extrabold text-[#1e293b] flex items-center gap-2 m-0">
-                    <span className="p-1 sm:p-1.5 bg-orange-100 text-[#ea580c] rounded-lg text-xs sm:text-sm flex items-center justify-center">
-                      <MapPin size={16} />
-                    </span>
-                    <span>Local Fish Intake / Weighment</span>
+                  <h2 className="text-xs sm:text-sm font-black text-slate-900 uppercase tracking-wide m-0">
+                    Local Fish Intake / Weighment
                   </h2>
-                  <p className="text-[11px] sm:text-xs text-slate-500 mt-0.5 font-medium m-0 hidden sm:block">
-                    Record multiple fish varieties, boxes, and scale weights received from local harbor landings or fishermen.
+                  <p className="text-[10px] sm:text-[11px] text-slate-500 mt-0.5 font-medium m-0 hidden sm:block">
+                    Record varieties, boxes, and scale weights received from local harbor landings or fishermen.
                   </p>
                 </div>
               </div>
 
-              <form onSubmit={handleLocalStockInSubmit} className="space-y-4">
-                {/* 1. Supplier Details (5 Fields with Autocomplete) */}
-                <div className="bg-[#FAF0E4]/60 p-4 rounded-xl border border-[#fed7aa]/80 space-y-3">
-                  <div className="text-xs font-black text-[#c2410c] uppercase tracking-wide flex items-center gap-1.5">
-                    <User size={14} />
-                    <span>Local Fisherman / Landing Supplier Details</span>
-                  </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
-                    <div>
-                      <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                        Supplier / Boat Name *
-                      </label>
-                      <SearchableDropdown
-                        mode="combobox"
-                        placeholder="e.g. Anand Fishermen"
-                        value={localStockInForm.supplierName}
-                        onChange={(val) => {
-                          const regFound = registeredSuppliers.find(s =>
-                            s.name?.toLowerCase() === val.toLowerCase() ||
-                            s.companyName?.toLowerCase() === val.toLowerCase()
-                          );
-                          const crmFound = crmCustomers.find(c => c.name?.toLowerCase() === val.toLowerCase());
-                          const assignedVeh = fleetVehicles.find(v =>
-                            (v.assignedSupplierId && String(v.assignedSupplierId) === String(regFound?._id)) ||
-                            (v.assignedSupplierName && v.assignedSupplierName.toLowerCase() === val.toLowerCase())
-                          );
-                          setLocalStockInForm(prev => ({
-                            ...prev,
-                            supplierName: val,
-                            supplierPhone: regFound?.phone || crmFound?.phone || assignedVeh?.driverPhone || prev.supplierPhone,
-                            companyName: regFound?.companyName || prev.companyName,
-                            vehicleNumber: regFound?.vehicleNumber || assignedVeh?.vehicleNumber || prev.vehicleNumber,
-                            harbor: regFound?.harbor || regFound?.city || prev.harbor
-                          }));
-                        }}
-                        onSelect={(raw) => {
-                          if (!raw) return;
-                          const assignedVeh = fleetVehicles.find(v =>
-                            (v.assignedSupplierId && String(v.assignedSupplierId) === String(raw._id)) ||
-                            (v.assignedSupplierName && v.assignedSupplierName.toLowerCase() === raw.name?.toLowerCase())
-                          );
-                          setLocalStockInForm(prev => ({
-                            ...prev,
-                            supplierName: raw.name || prev.supplierName,
-                            supplierPhone: raw.phone || assignedVeh?.driverPhone || prev.supplierPhone,
-                            companyName: raw.companyName || prev.companyName,
-                            vehicleNumber: raw.vehicleNumber || assignedVeh?.vehicleNumber || prev.vehicleNumber,
-                            harbor: raw.harbor || raw.city || prev.harbor
-                          }));
-                        }}
-                        options={localSupplierOptions}
-                        accentColor="orange"
-                        required
-                      />
-                    </div>
-
-                    <div>
-                      <div className="flex items-center justify-between mb-1">
-                        <label className="block text-[11px] font-bold text-slate-700">
-                          Phone Number
-                        </label>
-                        {localStockInForm.supplierPhone && (
-                          <span className={`text-[10px] font-mono font-bold ${
-                            localStockInForm.supplierPhone.length === 10 ? 'text-emerald-600' : 'text-amber-600'
-                          }`}>
-                            {localStockInForm.supplierPhone.length}/10 digits
-                          </span>
-                        )}
-                      </div>
-                      <input
-                        type="tel"
-                        maxLength={10}
-                        placeholder="10-digit mobile"
-                        value={localStockInForm.supplierPhone}
-                        onChange={(e) => setLocalStockInForm({ ...localStockInForm, supplierPhone: e.target.value.replace(/\D/g, '').slice(0, 10) })}
-                        className="w-full bg-white border border-[#E8DCCB] rounded-xl px-3 py-2 text-xs font-mono font-medium text-slate-800 focus:outline-none focus:border-[#ea580c]"
-                      />
-                      {localStockInForm.supplierPhone && localStockInForm.supplierPhone.length > 0 && localStockInForm.supplierPhone.length < 10 && (
-                        <p className="text-[10px] text-amber-600 mt-1 font-semibold">Enter 10-digit mobile number</p>
-                      )}
-                    </div>
-
-                    <div>
-                      <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                        Company / Boat Name
-                      </label>
-                      <input
-                        type="text"
-                        placeholder="e.g. Boat #4 Sea Hunter"
-                        value={localStockInForm.companyName}
-                        onChange={(e) => setLocalStockInForm({ ...localStockInForm, companyName: e.target.value })}
-                        className="w-full bg-white border border-[#E8DCCB] rounded-xl px-3 py-2 text-xs font-medium text-slate-800 focus:outline-none focus:border-[#ea580c]"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                        Vehicle Number
-                      </label>
-                      <SearchableDropdown
-                        mode="combobox"
-                        placeholder="e.g. AP 04 TX 4821"
-                        value={localStockInForm.vehicleNumber}
-                        onChange={(val) => {
-                          const upper = (val || '').toUpperCase();
-                          const matchOpt = localVehicleOptions.find(v => v.value.toUpperCase() === upper);
-                          if (matchOpt?.raw) {
-                            const r = matchOpt.raw;
-                            setLocalStockInForm(prev => ({
-                              ...prev,
-                              vehicleNumber: upper,
-                              supplierName: r.supplierName || prev.supplierName,
-                              supplierPhone: r.driverPhone || r.supplierPhone || prev.supplierPhone,
-                              companyName: r.companyName || r.vehicleName || prev.companyName,
-                              harbor: r.harbor || prev.harbor
-                            }));
-                          } else {
-                            setLocalStockInForm(prev => ({ ...prev, vehicleNumber: upper }));
-                          }
-                        }}
-                        onSelect={(raw) => {
-                          if (!raw) return;
-                          setLocalStockInForm(prev => ({
-                            ...prev,
-                            vehicleNumber: raw.vehicleNumber || prev.vehicleNumber,
-                            supplierName: raw.supplierName || prev.supplierName,
-                            supplierPhone: raw.driverPhone || raw.supplierPhone || prev.supplierPhone,
-                            companyName: raw.companyName || raw.vehicleName || prev.companyName,
-                            harbor: raw.harbor || prev.harbor
-                          }));
-                        }}
-                        options={localVehicleOptions}
-                        accentColor="orange"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                        Harbor / Origin Port
-                      </label>
-                      <input
-                        type="text"
-                        placeholder="e.g. Mangalore Port"
-                        value={localStockInForm.harbor}
-                        onChange={(e) => setLocalStockInForm({ ...localStockInForm, harbor: e.target.value })}
-                        className="w-full bg-white border border-[#E8DCCB] rounded-xl px-3 py-2 text-xs font-medium text-slate-800 focus:outline-none focus:border-[#ea580c]"
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                {/* 2. Multi-Fish Intake Section (3D Ring Selector + Consignment Lots Table) */}
+              <form onSubmit={handleLocalStockInSubmit} className="space-y-3 sm:space-y-4">
+                {/* 1. Multi-Fish Intake Section (3D Ring Selector + Consignment Lots Table) - DISPLAYED FIRST */}
                 <div className="border border-[#fed7aa] rounded-xl overflow-hidden bg-white shadow-2xs">
-                  <div className="p-2.5 sm:p-3 bg-[#FAF0E4] border-b border-[#fed7aa] flex items-center justify-between flex-wrap gap-2">
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs font-black text-slate-800 uppercase tracking-wide flex items-center gap-1.5">
-                        <Scale size={14} className="text-[#ea580c]" />
-                        <span>Fish Items Unloaded ({localStockInForm.items.filter(it => it.itemName).length})</span>
+                  <div className="p-2 sm:p-2.5 bg-[#FAF0E4] border-b border-[#fed7aa] flex items-center justify-between gap-1.5 sm:gap-2 flex-nowrap">
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      <span className="text-[11px] sm:text-xs font-bold text-slate-800 uppercase tracking-wide truncate">
+                        <span className="sm:hidden">Fish Unloaded ({localStockInForm.items.filter(it => it.itemName).length})</span>
+                        <span className="hidden sm:inline">Fish Items Unloaded ({localStockInForm.items.filter(it => it.itemName).length})</span>
                       </span>
 
                       {/* View Mode Toggle: 3D vs Table */}
-                      <div className="inline-flex items-center p-0.5 bg-white rounded-lg border border-[#fed7aa] shadow-2xs ml-1">
+                      <div className="inline-flex items-center p-0.5 bg-white rounded-md border border-[#fed7aa] shadow-2xs shrink-0">
                         <button
                           type="button"
                           onClick={() => setLocalSelectorMode('ring')}
-                          className={`px-2.5 py-1 rounded-md text-[11px] font-bold transition-all cursor-pointer ${
+                          className={`px-2 py-0.5 rounded text-[10px] sm:text-[11px] font-bold transition-all cursor-pointer ${
                             localSelectorMode === 'ring'
                               ? 'bg-[#ea580c] text-white shadow-2xs font-black'
                               : 'text-slate-600 hover:text-slate-900'
@@ -2713,7 +3206,7 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack }) {
                         <button
                           type="button"
                           onClick={() => setLocalSelectorMode('table')}
-                          className={`px-2.5 py-1 rounded-md text-[11px] font-bold transition-all cursor-pointer ${
+                          className={`px-2 py-0.5 rounded text-[10px] sm:text-[11px] font-bold transition-all cursor-pointer ${
                             localSelectorMode === 'table'
                               ? 'bg-slate-800 text-white shadow-2xs font-black'
                               : 'text-slate-600 hover:text-slate-900'
@@ -2724,22 +3217,70 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack }) {
                       </div>
                     </div>
 
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setLocalStockInForm(prev => ({
-                          ...prev,
-                          items: [
-                            ...prev.items,
-                            { id: Date.now(), menuItemId: '', itemName: '', boxes: '', kgPerBox: 60, kg: '', grams: '', ratePerKg: '', sizeBracket: 'Medium', weightOption: '1+' }
-                          ]
-                        }));
-                      }}
-                      className="px-3 py-1 bg-[#ea580c] hover:bg-[#c2410c] text-white rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1 shadow-2xs"
-                    >
-                      <Plus size={13} />
-                      <span>Add Fish Row</span>
-                    </button>
+                    {/* Right: Species Filter Pill (Replaces + Add Row button completely) */}
+                    <div className="relative flex items-center shrink-0">
+                      <button
+                        ref={localSpeciesBtnRef}
+                        type="button"
+                        onClick={handleToggleLocalSpeciesMenu}
+                        className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[10.5px] sm:text-xs font-bold transition-all cursor-pointer whitespace-nowrap shadow-2xs ${
+                          localSpeciesFilter !== 'all'
+                            ? 'bg-amber-100 text-[#ea580c] border border-[#ea580c] ring-1 ring-orange-200 font-black'
+                            : 'bg-white text-slate-700 border border-slate-200/90 hover:bg-amber-50'
+                        }`}
+                        title="Filter by Species"
+                      >
+                        <span className="uppercase text-[9.5px] sm:text-[10px] font-black tracking-wider">
+                          {localSpeciesFilter === 'all' ? 'Species' : localSpeciesFilter}
+                        </span>
+                        <Filter size={11} className="text-[#ea580c] stroke-[2.5]" />
+                      </button>
+
+                      {/* Species Popover Menu rendered via Portal */}
+                      {showLocalSpeciesMenu && typeof document !== 'undefined' && createPortal(
+                        <div
+                          ref={localSpeciesMenuRef}
+                          style={{
+                            position: 'fixed',
+                            top: `${localSpeciesMenuCoords.top}px`,
+                            left: `${localSpeciesMenuCoords.left}px`,
+                            zIndex: 99999
+                          }}
+                          className="bg-white/98 backdrop-blur-md border border-amber-300 rounded-2xl shadow-2xl p-1.5 min-w-[145px] animate-in fade-in zoom-in-95 duration-150"
+                        >
+                          <div className="text-[9.5px] font-black uppercase text-slate-400 px-2 py-1 tracking-wider border-b border-amber-100 mb-1">
+                            Select Species
+                          </div>
+                          {[
+                            { key: 'all', label: 'All Species' },
+                            { key: 'fish', label: 'Fish' },
+                            { key: 'prawn', label: 'Prawns' },
+                            { key: 'crab', label: 'Crabs' }
+                          ].map((sp) => {
+                            const isSelected = localSpeciesFilter === sp.key;
+                            return (
+                              <button
+                                key={sp.key}
+                                type="button"
+                                onClick={() => {
+                                  setLocalSpeciesFilter(sp.key);
+                                  setShowLocalSpeciesMenu(false);
+                                }}
+                                className={`w-full text-left px-2.5 py-1.5 rounded-xl text-xs font-bold flex items-center justify-between cursor-pointer transition-colors ${
+                                  isSelected
+                                    ? 'bg-[#ea580c] text-white font-black shadow-xs'
+                                    : 'text-slate-700 hover:bg-amber-50'
+                                }`}
+                              >
+                                <span>{sp.label}</span>
+                                {isSelected && <Check size={12} className="stroke-[3]" />}
+                              </button>
+                            );
+                          })}
+                        </div>,
+                        document.body
+                      )}
+                    </div>
                   </div>
 
                   {/* 3D Ring Dial Mode for Local Catch */}
@@ -2749,6 +3290,8 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack }) {
                         items={masterFishList.length > 0 ? masterFishList : fishList}
                         onAddFishLot={handleAddLocalLotFromDial}
                         mode="local"
+                        speciesTypeFilter={localSpeciesFilter}
+                        onSpeciesTypeFilterChange={setLocalSpeciesFilter}
                       />
                     </div>
                   )}
@@ -3043,18 +3586,356 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack }) {
                   </div>
                 </div>
 
-                {/* 3. Deductions & Account Settlements */}
+                {/* 2. Local Fisherman / Landing Supplier Selection (Wholesale 3-Step Style Cards + Clear Button) - DISPLAYED AFTER FISH ITEMS */}
+                <div className="bg-[#FAF0E4]/60 p-2.5 sm:p-4 rounded-xl border border-[#fed7aa]/80 space-y-2.5 sm:space-y-3">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2 border-b border-[#fed7aa]/60">
+                    <div>
+                      <h3 className="text-xs sm:text-sm font-bold text-slate-800 uppercase tracking-wide m-0">
+                        Local Fisherman / Landing Supplier Selection
+                      </h3>
+                      <p className="text-[10px] sm:text-[11px] text-slate-500 font-medium m-0 mt-0.5">
+                        Choose landing supplier card or search below ({filteredLocalSuppliers.length} Available)
+                      </p>
+                    </div>
+
+                    {/* Search Bar */}
+                    <div className="relative flex items-center w-full sm:w-64">
+                      <Search size={13} className="absolute left-2.5 text-slate-400 pointer-events-none" />
+                      <input
+                        type="text"
+                        placeholder="Search supplier, boat, phone..."
+                        value={localSupplierSearch}
+                        onChange={(e) => setLocalSupplierSearch(e.target.value)}
+                        className="w-full pl-7 pr-7 py-1.5 bg-white border border-[#E8DCCB] rounded-xl text-xs font-medium text-slate-800 placeholder-slate-400 focus:outline-none focus:border-[#ea580c] shadow-2xs"
+                      />
+                      {localSupplierSearch && (
+                        <button
+                          type="button"
+                          onClick={() => setLocalSupplierSearch('')}
+                          className="absolute right-2 text-slate-400 hover:text-slate-600 cursor-pointer"
+                        >
+                          <X size={12} />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Selected Supplier Badge Row (with Prominent Clear Button) */}
+                  {localStockInForm.supplierName && (
+                    <div className="flex items-center justify-between flex-wrap gap-2 p-2 sm:p-2.5 bg-emerald-50 border border-emerald-300 rounded-xl animate-fadeIn">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <CheckCircle size={15} className="text-emerald-600 shrink-0" />
+                        <span className="text-xs font-bold text-emerald-950 truncate">
+                          Selected: <span className="font-black text-emerald-900">{localStockInForm.supplierName}</span>
+                          {localStockInForm.companyName && <span className="text-slate-600 font-semibold"> ({localStockInForm.companyName})</span>}
+                          {localStockInForm.supplierPhone && <span className="font-mono text-slate-700 font-bold"> • {localStockInForm.supplierPhone}</span>}
+                          {localStockInForm.vehicleNumber && <span className="font-mono text-slate-700 font-bold"> • {localStockInForm.vehicleNumber}</span>}
+                          {localStockInForm.harbor && <span className="text-slate-600"> • {localStockInForm.harbor}</span>}
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handleClearLocalSupplier}
+                        className="px-2.5 py-1 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-300 text-xs font-black flex items-center gap-1 shadow-2xs cursor-pointer active:scale-95 transition-all shrink-0 ml-auto"
+                        title="Clear selected supplier"
+                      >
+                        <Trash2 size={12} />
+                        <span>Clear Selection</span>
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Grid of Supplier Cards */}
+                  {filteredLocalSuppliers.length === 0 ? (
+                    <div className="p-4 rounded-xl bg-white border border-[#fed7aa] text-center text-xs text-slate-500">
+                      No matching local suppliers found. You can clear your search or enter custom landing details below.
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2.5 sm:gap-3 max-h-[420px] overflow-y-auto pr-1">
+                      {filteredLocalSuppliers.map((supp) => {
+                        const isSelected = Boolean(
+                          (supp._id && localStockInForm.supplierId === supp._id) ||
+                          (supp.name && localStockInForm.supplierName && supp.name.toLowerCase() === localStockInForm.supplierName.toLowerCase())
+                        );
+
+                        const linkedVeh = (fleetVehicles || []).find(v =>
+                          (v.assignedSupplierId && String(v.assignedSupplierId) === String(supp._id)) ||
+                          (v.assignedSupplierName && v.assignedSupplierName.toLowerCase() === supp.name?.toLowerCase()) ||
+                          (supp.vehicleNumber && v.vehicleNumber?.toUpperCase() === supp.vehicleNumber.toUpperCase())
+                        );
+                        const effectiveVeh = supp.vehicleNumber || linkedVeh?.vehicleNumber;
+                        const vehDesc = linkedVeh?.modelName || linkedVeh?.vehicleName || linkedVeh?.vehicleType;
+                        const driverName = linkedVeh?.driverName;
+                        const driverPhone = linkedVeh?.driverPhone;
+
+                        return (
+                          <div
+                            key={supp._id || supp.name}
+                            onClick={() => handleSelectLocalSupplierCard(supp)}
+                            className={`rounded-2xl p-3 sm:p-3.5 border-2 transition-all cursor-pointer relative flex flex-col justify-between group shadow-2xs hover:shadow-md active:scale-[0.99] ${
+                              isSelected
+                                ? 'border-[#ea580c] bg-orange-50/90 ring-4 ring-orange-300 shadow-md'
+                                : 'border-[#E8DCCB] bg-white hover:border-[#ea580c] hover:bg-[#FAF0E4]/60'
+                            }`}
+                          >
+                            {/* Top Row: Big Photo + Name + Type Badge */}
+                            <div>
+                              <div className="flex items-start gap-2.5 sm:gap-3">
+                                <div className="w-16 h-16 sm:w-18 sm:h-18 rounded-2xl overflow-hidden bg-slate-50 border-2 border-[#E8DCCB] group-hover:border-[#ea580c] shrink-0 shadow-2xs flex items-center justify-center p-0.5">
+                                  {supp.profileImage ? (
+                                    <img
+                                      src={formatImageUrl(supp.profileImage)}
+                                      alt={supp.name}
+                                      className="w-full h-full object-cover rounded-xl group-hover:scale-105 transition-transform"
+                                    />
+                                  ) : (
+                                    <div className="w-full h-full bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center text-white font-black text-xl rounded-xl">
+                                      {supp.name ? supp.name.charAt(0).toUpperCase() : <User size={22} />}
+                                    </div>
+                                  )}
+                                </div>
+
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-start justify-between gap-1">
+                                    <h4 className="font-black text-xs sm:text-sm text-slate-900 truncate leading-snug m-0">
+                                      {supp.name}
+                                    </h4>
+                                    <span className="text-[8px] sm:text-[8.5px] font-black px-1.5 py-0.5 rounded-full border bg-emerald-100 text-emerald-900 border-emerald-200 uppercase tracking-wider shrink-0">
+                                      {supp.supplierType || 'Local'}
+                                    </span>
+                                  </div>
+                                  {supp.companyName ? (
+                                    <p className="text-[10px] sm:text-[11px] text-slate-500 font-semibold truncate m-0 mt-0.5">
+                                      {supp.companyName}
+                                    </p>
+                                  ) : (
+                                    <p className="text-[10px] sm:text-[11px] text-slate-400 italic m-0 mt-0.5">Landing Fisherman</p>
+                                  )}
+                                </div>
+                              </div>
+
+                              {/* Details Box: Phone, Vehicle, Port */}
+                              <div className="mt-2.5 space-y-1 bg-[#FAF0E4]/60 p-2 rounded-xl border border-[#fed7aa]/50 text-[10.5px] font-semibold text-slate-700">
+                                <div className="flex items-center gap-1.5 truncate">
+                                  <Phone size={11} className="text-[#ea580c] shrink-0" />
+                                  <span className="text-slate-400 font-normal">Phone:</span>
+                                  <span className="font-mono font-bold text-slate-800 truncate">{supp.phone || 'No phone'}</span>
+                                </div>
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  <Truck size={11} className="text-blue-600 shrink-0" />
+                                  <span className="text-slate-400 font-normal">Vehicle:</span>
+                                  <span className="font-mono font-bold text-slate-800">{effectiveVeh || 'No vehicle'}</span>
+                                  {vehDesc && <span className="text-[9.5px] text-slate-500 font-medium">({vehDesc})</span>}
+                                  {linkedVeh && (
+                                    <span className="text-[8px] bg-blue-50 text-blue-700 font-bold px-1 py-0.2 rounded border border-blue-200">
+                                      Fleet Linked
+                                    </span>
+                                  )}
+                                </div>
+                                {(driverName || driverPhone) && (
+                                  <div className="flex items-center gap-1.5 text-slate-700 flex-wrap text-[10px]">
+                                    <User size={11} className="text-emerald-600 shrink-0" />
+                                    <span className="text-slate-400 font-normal">Driver:</span>
+                                    <span className="font-bold text-slate-800">{driverName || 'Assigned Driver'}</span>
+                                    {driverPhone && <span className="font-mono text-emerald-700 font-bold">({driverPhone})</span>}
+                                  </div>
+                                )}
+                                {(supp.harbor || supp.city) && (
+                                  <div className="flex items-center gap-1.5 truncate">
+                                    <MapPin size={11} className="text-[#ea580c] shrink-0" />
+                                    <span className="text-slate-400 font-normal">Port/City:</span>
+                                    <span className="text-slate-800 truncate">{supp.harbor || supp.city}</span>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+
+                            {/* Card Footer: Selected vs Select + Card Clear Button */}
+                            <div className="mt-2.5 pt-2 border-t border-slate-200/60 flex items-center justify-between">
+                              {isSelected ? (
+                                <>
+                                  <span className="inline-flex items-center gap-1 text-[10.5px] font-black text-emerald-800 bg-emerald-100 border border-emerald-300 px-2 py-0.5 rounded-full">
+                                    <CheckCircle size={11} /> Selected
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={(e) => { e.stopPropagation(); handleClearLocalSupplier(); }}
+                                    className="px-2 py-0.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-300 text-[10.5px] font-black flex items-center gap-1 shadow-2xs cursor-pointer active:scale-95 transition-all"
+                                    title="Clear this supplier"
+                                  >
+                                    <Trash2 size={11} className="text-rose-600" />
+                                    <span>Clear</span>
+                                  </button>
+                                </>
+                              ) : (
+                                <span className="text-[10.5px] font-bold text-orange-700 group-hover:text-orange-900 flex items-center gap-1 ml-auto">
+                                  Select Supplier →
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {/* Collapsible toggle for custom / manual fisherman details inputs */}
+                  <div className="pt-1">
+                    <button
+                      type="button"
+                      onClick={() => setIsLocalManualDetailsOpen(!isLocalManualDetailsOpen)}
+                      className="text-xs font-bold text-orange-700 hover:text-orange-900 flex items-center gap-1 cursor-pointer select-none"
+                    >
+                      <span>{isLocalManualDetailsOpen ? 'Hide Manual Details' : 'Edit / Enter Custom Fisherman Details'}</span>
+                      {isLocalManualDetailsOpen ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                    </button>
+
+                    {isLocalManualDetailsOpen && (
+                      <div className="mt-2.5 pt-2.5 border-t border-[#fed7aa]/60 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 animate-fadeIn">
+                        <div>
+                          <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                            Supplier / Boat Name *
+                          </label>
+                          <SearchableDropdown
+                            mode="combobox"
+                            placeholder="e.g. Anand Fishermen"
+                            value={localStockInForm.supplierName}
+                            onChange={(val) => {
+                              const regFound = registeredSuppliers.find(s =>
+                                s.name?.toLowerCase() === val.toLowerCase() ||
+                                s.companyName?.toLowerCase() === val.toLowerCase()
+                              );
+                              const crmFound = crmCustomers.find(c => c.name?.toLowerCase() === val.toLowerCase());
+                              const assignedVeh = fleetVehicles.find(v =>
+                                (v.assignedSupplierId && String(v.assignedSupplierId) === String(regFound?._id)) ||
+                                (v.assignedSupplierName && v.assignedSupplierName.toLowerCase() === val.toLowerCase())
+                              );
+                              setLocalStockInForm(prev => ({
+                                ...prev,
+                                supplierName: val,
+                                supplierPhone: regFound?.phone || crmFound?.phone || assignedVeh?.driverPhone || prev.supplierPhone,
+                                companyName: regFound?.companyName || prev.companyName,
+                                vehicleNumber: regFound?.vehicleNumber || assignedVeh?.vehicleNumber || prev.vehicleNumber,
+                                harbor: regFound?.harbor || regFound?.city || prev.harbor
+                              }));
+                            }}
+                            onSelect={(raw) => {
+                              if (!raw) return;
+                              const assignedVeh = fleetVehicles.find(v =>
+                                (v.assignedSupplierId && String(v.assignedSupplierId) === String(raw._id)) ||
+                                (v.assignedSupplierName && v.assignedSupplierName.toLowerCase() === raw.name?.toLowerCase())
+                              );
+                              setLocalStockInForm(prev => ({
+                                ...prev,
+                                supplierName: raw.name || prev.supplierName,
+                                supplierPhone: raw.phone || assignedVeh?.driverPhone || prev.supplierPhone,
+                                companyName: raw.companyName || prev.companyName,
+                                vehicleNumber: raw.vehicleNumber || assignedVeh?.vehicleNumber || prev.vehicleNumber,
+                                harbor: raw.harbor || raw.city || prev.harbor
+                              }));
+                            }}
+                            options={localSupplierOptions}
+                            accentColor="orange"
+                            required
+                          />
+                        </div>
+
+                        <div>
+                          <div className="flex items-center justify-between mb-1">
+                            <label className="block text-[11px] font-bold text-slate-700">Phone Number</label>
+                            {localStockInForm.supplierPhone && (
+                              <span className={`text-[10px] font-mono font-bold ${
+                                localStockInForm.supplierPhone.length === 10 ? 'text-emerald-600' : 'text-amber-600'
+                              }`}>
+                                {localStockInForm.supplierPhone.length}/10 digits
+                              </span>
+                            )}
+                          </div>
+                          <input
+                            type="tel"
+                            maxLength={10}
+                            placeholder="10-digit mobile"
+                            value={localStockInForm.supplierPhone}
+                            onChange={(e) => setLocalStockInForm({ ...localStockInForm, supplierPhone: e.target.value.replace(/\D/g, '').slice(0, 10) })}
+                            className="w-full bg-white border border-[#E8DCCB] rounded-xl px-3 py-2 text-xs font-mono font-medium text-slate-800 focus:outline-none focus:border-[#ea580c]"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-[11px] font-bold text-slate-700 mb-1">Company / Boat Name</label>
+                          <input
+                            type="text"
+                            placeholder="e.g. Boat #4 Sea Hunter"
+                            value={localStockInForm.companyName}
+                            onChange={(e) => setLocalStockInForm({ ...localStockInForm, companyName: e.target.value })}
+                            className="w-full bg-white border border-[#E8DCCB] rounded-xl px-3 py-2 text-xs font-medium text-slate-800 focus:outline-none focus:border-[#ea580c]"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-[11px] font-bold text-slate-700 mb-1">Vehicle Number</label>
+                          <SearchableDropdown
+                            mode="combobox"
+                            placeholder="e.g. AP 04 TX 4821"
+                            value={localStockInForm.vehicleNumber}
+                            onChange={(val) => {
+                              const upper = (val || '').toUpperCase();
+                              const matchOpt = localVehicleOptions.find(v => v.value.toUpperCase() === upper);
+                              if (matchOpt?.raw) {
+                                const r = matchOpt.raw;
+                                setLocalStockInForm(prev => ({
+                                  ...prev,
+                                  vehicleNumber: upper,
+                                  supplierName: r.supplierName || prev.supplierName,
+                                  supplierPhone: r.driverPhone || r.supplierPhone || prev.supplierPhone,
+                                  companyName: r.companyName || r.vehicleName || prev.companyName,
+                                  harbor: r.harbor || prev.harbor
+                                }));
+                              } else {
+                                setLocalStockInForm(prev => ({ ...prev, vehicleNumber: upper }));
+                              }
+                            }}
+                            onSelect={(raw) => {
+                              if (!raw) return;
+                              setLocalStockInForm(prev => ({
+                                ...prev,
+                                vehicleNumber: raw.vehicleNumber || prev.vehicleNumber,
+                                supplierName: raw.supplierName || prev.supplierName,
+                                supplierPhone: raw.driverPhone || raw.supplierPhone || prev.supplierPhone,
+                                companyName: raw.companyName || raw.vehicleName || prev.companyName,
+                                harbor: raw.harbor || prev.harbor
+                              }));
+                            }}
+                            options={localVehicleOptions}
+                            accentColor="orange"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-[11px] font-bold text-slate-700 mb-1">Harbor / Origin Port</label>
+                          <input
+                            type="text"
+                            placeholder="e.g. Mangalore Port"
+                            value={localStockInForm.harbor}
+                            onChange={(e) => setLocalStockInForm({ ...localStockInForm, harbor: e.target.value })}
+                            className="w-full bg-white border border-[#E8DCCB] rounded-xl px-3 py-2 text-xs font-medium text-slate-800 focus:outline-none focus:border-[#ea580c]"
+                          />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
                 <div className="bg-[#FAF0E4]/60 p-4 rounded-xl border border-[#fed7aa]/80 space-y-3">
                   <div className="flex items-center justify-between flex-wrap gap-2">
-                    <div className="text-xs font-black text-slate-800 uppercase tracking-wide">
+                    <div className="text-[11px] sm:text-xs font-bold text-slate-800 uppercase tracking-wide">
                       Settlement & Advance Deductions
                     </div>
                     <button
                       type="button"
                       onClick={handleAddLocalCustomCategory}
-                      className="px-2.5 py-1 bg-white hover:bg-slate-50 border border-slate-300 rounded-lg text-xs font-bold text-slate-700 flex items-center gap-1 shadow-2xs cursor-pointer transition-all hover:border-orange-400"
+                      className="px-2 py-0.8 sm:px-2.5 sm:py-1 bg-white hover:bg-slate-50 border border-slate-300 rounded-lg text-[10.5px] sm:text-xs font-bold text-slate-700 flex items-center gap-1 shadow-2xs cursor-pointer transition-all hover:border-orange-400"
                     >
-                      <Plus size={13} className="text-[#ea580c]" />
+                      <Plus size={11} className="text-[#ea580c]" />
                       <span>Add Category</span>
                     </button>
                   </div>
@@ -3241,34 +4122,35 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack }) {
                     <span className="text-rose-700">Dr: <strong className="font-mono font-bold">-₹{localTotals.totalDr.toLocaleString('en-IN')}</strong></span>
                   </div>
 
-                  <div className="flex items-center justify-between md:justify-end gap-3 shrink-0 pt-1.5 md:pt-0 border-t md:border-t-0 border-orange-200/60">
-                    <div className="text-right">
-                      <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                  <div className="flex items-center justify-between sm:justify-end gap-1.5 sm:gap-2.5 shrink-0 pt-1.5 sm:pt-0 border-t sm:border-t-0 border-orange-200/60 w-full sm:w-auto">
+                    <div className="text-left sm:text-right shrink-0">
+                      <div className="text-[9.5px] sm:text-[10px] font-bold text-slate-500 uppercase tracking-wider leading-none">
                         {localTotals.netPayable >= 0 ? 'Net Payable' : 'Balance Due'}
                       </div>
-                      <div className={`text-base sm:text-lg font-black font-mono leading-none ${localTotals.netPayable >= 0 ? 'text-[#c2410c]' : 'text-rose-700'}`}>
+                      <div className={`text-sm sm:text-base font-black font-mono leading-tight mt-0.5 ${localTotals.netPayable >= 0 ? 'text-[#c2410c]' : 'text-rose-700'}`}>
                         ₹{Math.abs(localTotals.netPayable).toLocaleString('en-IN')}
                       </div>
                     </div>
 
-                    <button
-                      type="button"
-                      onClick={handlePrintLocalInvoice}
-                      className="h-9 px-3 rounded-xl bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 font-bold text-xs shadow-2xs transition-all cursor-pointer flex items-center gap-1.5 shrink-0"
-                      title="Print A4 Inward Invoice"
-                    >
-                      <Printer size={13} />
-                      <span>Print A4 Invoice</span>
-                    </button>
+                    <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
+                      <button
+                        type="button"
+                        onClick={handlePrintLocalInvoice}
+                        className="h-8 sm:h-9 w-8 sm:w-9 rounded-lg bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 shadow-2xs transition-all cursor-pointer flex items-center justify-center shrink-0"
+                        title="Print A4 Inward Invoice"
+                      >
+                        <Printer size={14} />
+                      </button>
 
-                    <button
-                      type="submit"
-                      disabled={submitting}
-                      className="h-9 px-4 rounded-xl bg-gradient-to-r from-orange-500 to-[#ea580c] hover:from-orange-600 hover:to-[#c2410c] text-white font-bold text-xs sm:text-sm shadow-xs hover:shadow-md transition-all cursor-pointer flex items-center gap-1.5 shrink-0 disabled:opacity-50"
-                    >
-                      <CheckCircle size={14} />
-                      <span>{submitting ? 'Recording...' : 'Confirm Stock-In'}</span>
-                    </button>
+                      <button
+                        type="submit"
+                        disabled={submitting}
+                        className="h-8 sm:h-9 px-2.5 sm:px-3.5 rounded-lg bg-gradient-to-r from-orange-500 to-[#ea580c] hover:from-orange-600 hover:to-[#c2410c] text-white font-bold text-[11px] sm:text-xs shadow-xs hover:shadow-md transition-all cursor-pointer flex items-center gap-1.5 shrink-0 disabled:opacity-50 whitespace-nowrap"
+                      >
+                        <CheckCircle size={13} />
+                        <span>{submitting ? 'Recording...' : 'Confirm Stock-In'}</span>
+                      </button>
+                    </div>
                   </div>
                 </div>
               </form>
@@ -3280,180 +4162,33 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack }) {
           {/* ════════════════════════════════════════════════════════ */}
           {stockInSubTab === 'dam' && (
             <div className="bg-[#FDFBF7] border border-[#E8DCCB] rounded-2xl px-2 py-2.5 sm:p-5 md:p-6 shadow-2xs space-y-3 sm:space-y-4 w-full">
-              <div className="flex items-center justify-between border-b border-[#fed7aa]/60 pb-2 sm:pb-3 flex-wrap gap-2 px-1 sm:px-0">
+              <div className="flex items-center justify-between border-b border-[#fed7aa]/60 pb-2 sm:pb-2.5 px-1 sm:px-0">
                 <div>
-                  <h2 className="text-sm sm:text-base font-extrabold text-[#1e293b] flex items-center gap-2 m-0">
-                    <span className="p-1 sm:p-1.5 bg-blue-100 text-blue-700 rounded-lg text-xs sm:text-sm flex items-center justify-center">
-                      <Anchor size={16} />
-                    </span>
-                    <span>Dam Catch Unloading</span>
+                  <h2 className="text-xs sm:text-sm font-black text-slate-900 uppercase tracking-wide m-0">
+                    Dam Catch Unloading
                   </h2>
-                  <p className="text-[11px] sm:text-xs text-slate-500 mt-0.5 font-medium m-0 hidden sm:block">
+                  <p className="text-[10px] sm:text-[11px] text-slate-500 mt-0.5 font-medium m-0 hidden sm:block">
                     Record multi-variety fish shipments received from dam syndicates and reservoir contractors.
                   </p>
                 </div>
               </div>
 
-              <form onSubmit={handleDamStockInSubmit} className="space-y-4">
-                {/* 1. Contractor Details (5 Fields with Autocomplete) */}
-                <div className="bg-[#FAF0E4]/60 p-4 rounded-xl border border-[#fed7aa]/80 space-y-3">
-                  <div className="text-xs font-black text-blue-900 uppercase tracking-wide flex items-center gap-1.5">
-                    <User size={14} />
-                    <span>Dam Contractor / Syndicate Details</span>
-                  </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
-                    <div>
-                      <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                        Contractor Name *
-                      </label>
-                      <SearchableDropdown
-                        mode="combobox"
-                        placeholder="e.g. Srisailam Fishery Syndicate"
-                        value={damStockInForm.contractorName}
-                        onChange={(val) => {
-                          const regFound = registeredSuppliers.find(s =>
-                            s.name?.toLowerCase() === val.toLowerCase() ||
-                            s.companyName?.toLowerCase() === val.toLowerCase()
-                          );
-                          const crmFound = crmCustomers.find(c => c.name?.toLowerCase() === val.toLowerCase());
-                          const assignedVeh = fleetVehicles.find(v =>
-                            (v.assignedSupplierId && String(v.assignedSupplierId) === String(regFound?._id)) ||
-                            (v.assignedSupplierName && v.assignedSupplierName.toLowerCase() === val.toLowerCase())
-                          );
-                          setDamStockInForm(prev => ({
-                            ...prev,
-                            contractorName: val,
-                            contractorId: regFound?._id || crmFound?._id || prev.contractorId,
-                            contractorPhone: regFound?.phone || crmFound?.phone || assignedVeh?.driverPhone || prev.contractorPhone,
-                            companyName: regFound?.companyName || prev.companyName,
-                            vehicleNumber: regFound?.vehicleNumber || assignedVeh?.vehicleNumber || prev.vehicleNumber,
-                            harbor: regFound?.harbor || regFound?.city || crmFound?.address?.city || prev.harbor
-                          }));
-                        }}
-                        onSelect={(raw) => {
-                          if (!raw) return;
-                          const assignedVeh = fleetVehicles.find(v =>
-                            (v.assignedSupplierId && String(v.assignedSupplierId) === String(raw._id)) ||
-                            (v.assignedSupplierName && v.assignedSupplierName.toLowerCase() === raw.name?.toLowerCase())
-                          );
-                          setDamStockInForm(prev => ({
-                            ...prev,
-                            contractorName: raw.name || prev.contractorName,
-                            contractorId: raw._id || prev.contractorId,
-                            contractorPhone: raw.phone || assignedVeh?.driverPhone || prev.contractorPhone,
-                            companyName: raw.companyName || prev.companyName,
-                            vehicleNumber: raw.vehicleNumber || assignedVeh?.vehicleNumber || prev.vehicleNumber,
-                            harbor: raw.harbor || raw.city || raw.address?.city || prev.harbor
-                          }));
-                        }}
-                        options={damContractorOptions}
-                        accentColor="blue"
-                        required
-                      />
-                    </div>
-
-                    <div>
-                      <div className="flex items-center justify-between mb-1">
-                        <label className="block text-[11px] font-bold text-slate-700">Contact Phone</label>
-                        {damStockInForm.contractorPhone && (
-                          <span className={`text-[10px] font-mono font-bold ${
-                            damStockInForm.contractorPhone.length === 10 ? 'text-emerald-600' : 'text-blue-600'
-                          }`}>
-                            {damStockInForm.contractorPhone.length}/10 digits
-                          </span>
-                        )}
-                      </div>
-                      <input
-                        type="tel"
-                        maxLength={10}
-                        placeholder="10-digit mobile"
-                        value={damStockInForm.contractorPhone}
-                        onChange={(e) => setDamStockInForm({ ...damStockInForm, contractorPhone: e.target.value.replace(/\D/g, '').slice(0, 10) })}
-                        className="w-full bg-white border border-[#E8DCCB] rounded-xl px-3 py-2 text-xs font-mono font-medium text-slate-800 focus:outline-none focus:border-blue-500"
-                      />
-                      {damStockInForm.contractorPhone && damStockInForm.contractorPhone.length > 0 && damStockInForm.contractorPhone.length < 10 && (
-                        <p className="text-[10px] text-amber-600 mt-1 font-semibold">Enter 10-digit mobile number</p>
-                      )}
-                    </div>
-
-                    <div>
-                      <label className="block text-[11px] font-bold text-slate-700 mb-1">Syndicate / Firm Name</label>
-                      <input
-                        type="text"
-                        placeholder="e.g. Reservoir Syndicate"
-                        value={damStockInForm.companyName}
-                        onChange={(e) => setDamStockInForm({ ...damStockInForm, companyName: e.target.value })}
-                        className="w-full bg-white border border-[#E8DCCB] rounded-xl px-3 py-2 text-xs font-medium text-slate-800 focus:outline-none focus:border-blue-500"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-[11px] font-bold text-slate-700 mb-1">Vehicle Number</label>
-                      <SearchableDropdown
-                        mode="combobox"
-                        placeholder="e.g. AP 04 TX 4821"
-                        value={damStockInForm.vehicleNumber}
-                        onChange={(val) => {
-                          const upper = (val || '').toUpperCase();
-                          const matchOpt = damVehicleOptions.find(v => v.value.toUpperCase() === upper);
-                          if (matchOpt?.raw) {
-                            const r = matchOpt.raw;
-                            setDamStockInForm(prev => ({
-                              ...prev,
-                              vehicleNumber: upper,
-                              contractorName: r.contractorName || r.supplierName || prev.contractorName,
-                              contractorPhone: r.driverPhone || r.supplierPhone || prev.contractorPhone,
-                              companyName: r.companyName || r.vehicleName || prev.companyName,
-                              harbor: r.harbor || prev.harbor
-                            }));
-                          } else {
-                            setDamStockInForm(prev => ({ ...prev, vehicleNumber: upper }));
-                          }
-                        }}
-                        onSelect={(raw) => {
-                          if (!raw) return;
-                          setDamStockInForm(prev => ({
-                            ...prev,
-                            vehicleNumber: raw.vehicleNumber || prev.vehicleNumber,
-                            contractorName: raw.contractorName || raw.supplierName || prev.contractorName,
-                            contractorPhone: raw.driverPhone || raw.supplierPhone || prev.contractorPhone,
-                            companyName: raw.companyName || raw.vehicleName || prev.companyName,
-                            harbor: raw.harbor || prev.harbor
-                          }));
-                        }}
-                        options={damVehicleOptions}
-                        accentColor="blue"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-[11px] font-bold text-slate-700 mb-1">Dam / Reservoir Location</label>
-                      <input
-                        type="text"
-                        placeholder="e.g. Srisailam, Nagarjuna Sagar"
-                        value={damStockInForm.harbor}
-                        onChange={(e) => setDamStockInForm({ ...damStockInForm, harbor: e.target.value })}
-                        className="w-full bg-white border border-[#E8DCCB] rounded-xl px-3 py-2 text-xs font-medium text-slate-800 focus:outline-none focus:border-blue-500"
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                {/* 2. Multi-Fish Tally Section (3D Ring Selector + Consignment Lots Table) */}
+              <form onSubmit={handleDamStockInSubmit} className="space-y-3 sm:space-y-4">
+                {/* 1. Consignment Fish Varieties Section (3D Ring Selector + Lots Table) - DISPLAYED FIRST */}
                 <div className="border border-[#fed7aa] rounded-xl overflow-hidden bg-white shadow-2xs">
-                  <div className="p-2.5 sm:p-3 bg-[#FAF0E4] border-b border-[#fed7aa] flex items-center justify-between flex-wrap gap-2">
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs font-black text-slate-800 uppercase tracking-wide flex items-center gap-1.5">
-                        <Scale size={14} className="text-blue-700" />
-                        <span>Consignment Fish Varieties ({damStockInForm.tallyItems.filter(it => it.itemName).length})</span>
+                  <div className="p-2 sm:p-2.5 bg-[#FAF0E4] border-b border-[#fed7aa] flex items-center justify-between gap-1.5 sm:gap-2 flex-nowrap">
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      <span className="text-[11px] sm:text-xs font-bold text-slate-800 uppercase tracking-wide truncate">
+                        <span className="sm:hidden">Fish Lots ({damStockInForm.tallyItems.filter(it => it.itemName).length})</span>
+                        <span className="hidden sm:inline">Consignment Fish Varieties ({damStockInForm.tallyItems.filter(it => it.itemName).length})</span>
                       </span>
 
                       {/* View Mode Toggle: 3D vs Table */}
-                      <div className="inline-flex items-center p-0.5 bg-white rounded-lg border border-[#fed7aa] shadow-2xs ml-1">
+                      <div className="inline-flex items-center p-0.5 bg-white rounded-md border border-[#fed7aa] shadow-2xs shrink-0">
                         <button
                           type="button"
                           onClick={() => setDamSelectorMode('ring')}
-                          className={`px-2.5 py-1 rounded-md text-[11px] font-bold transition-all cursor-pointer ${
+                          className={`px-2 py-0.5 rounded text-[10px] sm:text-[11px] font-bold transition-all cursor-pointer ${
                             damSelectorMode === 'ring'
                               ? 'bg-blue-600 text-white shadow-2xs font-black'
                               : 'text-slate-600 hover:text-slate-900'
@@ -3464,7 +4199,7 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack }) {
                         <button
                           type="button"
                           onClick={() => setDamSelectorMode('table')}
-                          className={`px-2.5 py-1 rounded-md text-[11px] font-bold transition-all cursor-pointer ${
+                          className={`px-2 py-0.5 rounded text-[10px] sm:text-[11px] font-bold transition-all cursor-pointer ${
                             damSelectorMode === 'table'
                               ? 'bg-slate-800 text-white shadow-2xs font-black'
                               : 'text-slate-600 hover:text-slate-900'
@@ -3475,22 +4210,70 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack }) {
                       </div>
                     </div>
 
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setDamStockInForm(prev => ({
-                          ...prev,
-                          tallyItems: [
-                            ...prev.tallyItems,
-                            { id: Date.now(), menuItemId: '', itemName: '', sizeGrade: 'medium', sizeBracket: 'Medium', weightOption: '1 - 4 Kg', boxes: '', kgPerBox: 60, kg: '', grams: '', price: '' }
-                          ]
-                        }));
-                      }}
-                      className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1 shadow-2xs"
-                    >
-                      <Plus size={13} />
-                      <span>Add Fish Lot Row</span>
-                    </button>
+                    {/* Right: Species Filter Pill (Replaces + Add Lot button completely) */}
+                    <div className="relative flex items-center shrink-0">
+                      <button
+                        ref={damSpeciesBtnRef}
+                        type="button"
+                        onClick={handleToggleDamSpeciesMenu}
+                        className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[10.5px] sm:text-xs font-bold transition-all cursor-pointer whitespace-nowrap shadow-2xs ${
+                          damSpeciesFilter !== 'all'
+                            ? 'bg-blue-100 text-blue-700 border border-blue-500 ring-1 ring-blue-200 font-black'
+                            : 'bg-white text-slate-700 border border-slate-200/90 hover:bg-blue-50'
+                        }`}
+                        title="Filter by Species"
+                      >
+                        <span className="uppercase text-[9.5px] sm:text-[10px] font-black tracking-wider">
+                          {damSpeciesFilter === 'all' ? 'Species' : damSpeciesFilter}
+                        </span>
+                        <Filter size={11} className="text-blue-600 stroke-[2.5]" />
+                      </button>
+
+                      {/* Species Popover Menu rendered via Portal */}
+                      {showDamSpeciesMenu && typeof document !== 'undefined' && createPortal(
+                        <div
+                          ref={damSpeciesMenuRef}
+                          style={{
+                            position: 'fixed',
+                            top: `${damSpeciesMenuCoords.top}px`,
+                            left: `${damSpeciesMenuCoords.left}px`,
+                            zIndex: 99999
+                          }}
+                          className="bg-white/98 backdrop-blur-md border border-blue-300 rounded-2xl shadow-2xl p-1.5 min-w-[145px] animate-in fade-in zoom-in-95 duration-150"
+                        >
+                          <div className="text-[9.5px] font-black uppercase text-slate-400 px-2 py-1 tracking-wider border-b border-blue-100 mb-1">
+                            Select Species
+                          </div>
+                          {[
+                            { key: 'all', label: 'All Species' },
+                            { key: 'fish', label: 'Fish' },
+                            { key: 'prawn', label: 'Prawns' },
+                            { key: 'crab', label: 'Crabs' }
+                          ].map((sp) => {
+                            const isSelected = damSpeciesFilter === sp.key;
+                            return (
+                              <button
+                                key={sp.key}
+                                type="button"
+                                onClick={() => {
+                                  setDamSpeciesFilter(sp.key);
+                                  setShowDamSpeciesMenu(false);
+                                }}
+                                className={`w-full text-left px-2.5 py-1.5 rounded-xl text-xs font-bold flex items-center justify-between cursor-pointer transition-colors ${
+                                  isSelected
+                                    ? 'bg-blue-600 text-white font-black shadow-xs'
+                                    : 'text-slate-700 hover:bg-blue-50'
+                                }`}
+                              >
+                                <span>{sp.label}</span>
+                                {isSelected && <Check size={12} className="stroke-[3]" />}
+                              </button>
+                            );
+                          })}
+                        </div>,
+                        document.body
+                      )}
+                    </div>
                   </div>
 
                   {/* 3D Ring Dial Mode for Dam Catch */}
@@ -3500,6 +4283,8 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack }) {
                         items={masterFishList.length > 0 ? masterFishList : fishList}
                         onAddFishLot={handleAddDamLotFromDial}
                         mode="dam"
+                        speciesTypeFilter={damSpeciesFilter}
+                        onSpeciesTypeFilterChange={setDamSpeciesFilter}
                       />
                     </div>
                   )}
@@ -3794,18 +4579,358 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack }) {
                   </div>
                 </div>
 
-                {/* 3. Deductions & Account Settlements */}
-                <div className="bg-[#FAF0E4]/60 p-4 rounded-xl border border-[#fed7aa]/80 space-y-3">
+                {/* 2. Dam Contractor / Syndicate Selection (Wholesale 3-Step Style Cards + Clear Button) - DISPLAYED AFTER FISH ITEMS */}
+                <div className="bg-[#FAF0E4]/60 p-2.5 sm:p-4 rounded-xl border border-[#fed7aa]/80 space-y-2.5 sm:space-y-3">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2 border-b border-[#fed7aa]/60">
+                    <div>
+                      <h3 className="text-xs sm:text-sm font-bold text-slate-800 uppercase tracking-wide m-0">
+                        Dam Contractor / Syndicate Selection
+                      </h3>
+                      <p className="text-[10px] sm:text-[11px] text-slate-500 font-medium m-0 mt-0.5">
+                        Choose dam contractor card or search below ({filteredDamContractors.length} Available)
+                      </p>
+                    </div>
+
+                    {/* Search Bar */}
+                    <div className="relative flex items-center w-full sm:w-64">
+                      <Search size={13} className="absolute left-2.5 text-slate-400 pointer-events-none" />
+                      <input
+                        type="text"
+                        placeholder="Search contractor, syndicate, phone..."
+                        value={damSupplierSearch}
+                        onChange={(e) => setDamSupplierSearch(e.target.value)}
+                        className="w-full pl-7 pr-7 py-1.5 bg-white border border-[#E8DCCB] rounded-xl text-xs font-medium text-slate-800 placeholder-slate-400 focus:outline-none focus:border-blue-500 shadow-2xs"
+                      />
+                      {damSupplierSearch && (
+                        <button
+                          type="button"
+                          onClick={() => setDamSupplierSearch('')}
+                          className="absolute right-2 text-slate-400 hover:text-slate-600 cursor-pointer"
+                        >
+                          <X size={12} />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Selected Contractor Badge Row (with Prominent Clear Button) */}
+                  {damStockInForm.contractorName && (
+                    <div className="flex items-center justify-between flex-wrap gap-2 p-2 sm:p-2.5 bg-blue-50 border border-blue-300 rounded-xl animate-fadeIn">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <CheckCircle size={15} className="text-blue-600 shrink-0" />
+                        <span className="text-xs font-bold text-blue-950 truncate">
+                          Selected: <span className="font-black text-blue-900">{damStockInForm.contractorName}</span>
+                          {damStockInForm.companyName && <span className="text-slate-600 font-semibold"> ({damStockInForm.companyName})</span>}
+                          {damStockInForm.contractorPhone && <span className="font-mono text-slate-700 font-bold"> • {damStockInForm.contractorPhone}</span>}
+                          {damStockInForm.vehicleNumber && <span className="font-mono text-slate-700 font-bold"> • {damStockInForm.vehicleNumber}</span>}
+                          {damStockInForm.harbor && <span className="text-slate-600"> • {damStockInForm.harbor}</span>}
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handleClearDamContractor}
+                        className="px-2.5 py-1 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-300 text-xs font-black flex items-center gap-1 shadow-2xs cursor-pointer active:scale-95 transition-all shrink-0 ml-auto"
+                        title="Clear selected contractor"
+                      >
+                        <Trash2 size={12} />
+                        <span>Clear Selection</span>
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Grid of Contractor Cards */}
+                  {filteredDamContractors.length === 0 ? (
+                    <div className="p-4 rounded-xl bg-white border border-[#fed7aa] text-center text-xs text-slate-500">
+                      No matching dam contractors found. You can clear your search or enter custom consignment details below.
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2.5 sm:gap-3 max-h-[420px] overflow-y-auto pr-1">
+                      {filteredDamContractors.map((supp) => {
+                        const isSelected = Boolean(
+                          (supp._id && damStockInForm.contractorId === supp._id) ||
+                          (supp.name && damStockInForm.contractorName && supp.name.toLowerCase() === damStockInForm.contractorName.toLowerCase())
+                        );
+
+                        const linkedVeh = (fleetVehicles || []).find(v =>
+                          (v.assignedSupplierId && String(v.assignedSupplierId) === String(supp._id)) ||
+                          (v.assignedSupplierName && v.assignedSupplierName.toLowerCase() === supp.name?.toLowerCase()) ||
+                          (supp.vehicleNumber && v.vehicleNumber?.toUpperCase() === supp.vehicleNumber.toUpperCase())
+                        );
+                        const effectiveVeh = supp.vehicleNumber || linkedVeh?.vehicleNumber;
+                        const vehDesc = linkedVeh?.modelName || linkedVeh?.vehicleName || linkedVeh?.vehicleType;
+                        const driverName = linkedVeh?.driverName;
+                        const driverPhone = linkedVeh?.driverPhone;
+
+                        return (
+                          <div
+                            key={supp._id || supp.name}
+                            onClick={() => handleSelectDamContractorCard(supp)}
+                            className={`rounded-2xl p-3 sm:p-3.5 border-2 transition-all cursor-pointer relative flex flex-col justify-between group shadow-2xs hover:shadow-md active:scale-[0.99] ${
+                              isSelected
+                                ? 'border-blue-600 bg-blue-50/90 ring-4 ring-blue-300 shadow-md'
+                                : 'border-[#E8DCCB] bg-white hover:border-blue-500 hover:bg-blue-50/40'
+                            }`}
+                          >
+                            {/* Top Row: Big Photo + Name + Type Badge */}
+                            <div>
+                              <div className="flex items-start gap-2.5 sm:gap-3">
+                                <div className="w-16 h-16 sm:w-18 sm:h-18 rounded-2xl overflow-hidden bg-slate-50 border-2 border-[#E8DCCB] group-hover:border-blue-500 shrink-0 shadow-2xs flex items-center justify-center p-0.5">
+                                  {supp.profileImage ? (
+                                    <img
+                                      src={formatImageUrl(supp.profileImage)}
+                                      alt={supp.name}
+                                      className="w-full h-full object-cover rounded-xl group-hover:scale-105 transition-transform"
+                                    />
+                                  ) : (
+                                    <div className="w-full h-full bg-gradient-to-br from-sky-400 to-blue-600 flex items-center justify-center text-white font-black text-xl rounded-xl">
+                                      {supp.name ? supp.name.charAt(0).toUpperCase() : <Anchor size={22} />}
+                                    </div>
+                                  )}
+                                </div>
+
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-start justify-between gap-1">
+                                    <h4 className="font-black text-xs sm:text-sm text-slate-900 truncate leading-snug m-0">
+                                      {supp.name}
+                                    </h4>
+                                    <span className="text-[8px] sm:text-[8.5px] font-black px-1.5 py-0.5 rounded-full border bg-blue-100 text-blue-900 border-blue-200 uppercase tracking-wider shrink-0">
+                                      {supp.supplierType || 'DAM'}
+                                    </span>
+                                  </div>
+                                  {supp.companyName ? (
+                                    <p className="text-[10px] sm:text-[11px] text-slate-500 font-semibold truncate m-0 mt-0.5">
+                                      {supp.companyName}
+                                    </p>
+                                  ) : (
+                                    <p className="text-[10px] sm:text-[11px] text-slate-400 italic m-0 mt-0.5">Dam Syndicate</p>
+                                  )}
+                                </div>
+                              </div>
+
+                              {/* Details Box: Phone, Vehicle, Port */}
+                              <div className="mt-2.5 space-y-1 bg-[#FAF0E4]/60 p-2 rounded-xl border border-[#fed7aa]/50 text-[10.5px] font-semibold text-slate-700">
+                                <div className="flex items-center gap-1.5 truncate">
+                                  <Phone size={11} className="text-blue-600 shrink-0" />
+                                  <span className="text-slate-400 font-normal">Phone:</span>
+                                  <span className="font-mono font-bold text-slate-800 truncate">{supp.phone || 'No phone'}</span>
+                                </div>
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  <Truck size={11} className="text-blue-600 shrink-0" />
+                                  <span className="text-slate-400 font-normal">Vehicle:</span>
+                                  <span className="font-mono font-bold text-slate-800">{effectiveVeh || 'No vehicle'}</span>
+                                  {vehDesc && <span className="text-[9.5px] text-slate-500 font-medium">({vehDesc})</span>}
+                                  {linkedVeh && (
+                                    <span className="text-[8px] bg-blue-50 text-blue-700 font-bold px-1 py-0.2 rounded border border-blue-200">
+                                      Fleet Linked
+                                    </span>
+                                  )}
+                                </div>
+                                {(driverName || driverPhone) && (
+                                  <div className="flex items-center gap-1.5 text-slate-700 flex-wrap text-[10px]">
+                                    <User size={11} className="text-emerald-600 shrink-0" />
+                                    <span className="text-slate-400 font-normal">Driver:</span>
+                                    <span className="font-bold text-slate-800">{driverName || 'Assigned Driver'}</span>
+                                    {driverPhone && <span className="font-mono text-emerald-700 font-bold">({driverPhone})</span>}
+                                  </div>
+                                )}
+                                {(supp.harbor || supp.city) && (
+                                  <div className="flex items-center gap-1.5 truncate">
+                                    <Anchor size={11} className="text-blue-600 shrink-0" />
+                                    <span className="text-slate-400 font-normal">Location:</span>
+                                    <span className="text-slate-800 truncate">{supp.harbor || supp.city}</span>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+
+                            {/* Card Footer: Selected vs Select + Card Clear Button */}
+                            <div className="mt-2.5 pt-2 border-t border-slate-200/60 flex items-center justify-between">
+                              {isSelected ? (
+                                <>
+                                  <span className="inline-flex items-center gap-1 text-[10.5px] font-black text-blue-900 bg-blue-100 border border-blue-300 px-2 py-0.5 rounded-full">
+                                    <CheckCircle size={11} /> Selected
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={(e) => { e.stopPropagation(); handleClearDamContractor(); }}
+                                    className="px-2 py-0.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-300 text-[10.5px] font-black flex items-center gap-1 shadow-2xs cursor-pointer active:scale-95 transition-all"
+                                    title="Clear this contractor"
+                                  >
+                                    <Trash2 size={11} className="text-rose-600" />
+                                    <span>Clear</span>
+                                  </button>
+                                </>
+                              ) : (
+                                <span className="text-[10.5px] font-bold text-blue-700 group-hover:text-blue-900 flex items-center gap-1 ml-auto">
+                                  Select Contractor →
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {/* Collapsible toggle for custom / manual contractor details inputs */}
+                  <div className="pt-1">
+                    <button
+                      type="button"
+                      onClick={() => setIsDamManualDetailsOpen(!isDamManualDetailsOpen)}
+                      className="text-xs font-bold text-blue-700 hover:text-blue-900 flex items-center gap-1 cursor-pointer select-none"
+                    >
+                      <span>{isDamManualDetailsOpen ? 'Hide Manual Details' : 'Edit / Enter Custom Contractor Details'}</span>
+                      {isDamManualDetailsOpen ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                    </button>
+
+                    {isDamManualDetailsOpen && (
+                      <div className="mt-2.5 pt-2.5 border-t border-[#fed7aa]/60 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 animate-fadeIn">
+                        <div>
+                          <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                            Contractor Name *
+                          </label>
+                          <SearchableDropdown
+                            mode="combobox"
+                            placeholder="e.g. Srisailam Fishery Syndicate"
+                            value={damStockInForm.contractorName}
+                            onChange={(val) => {
+                              const regFound = registeredSuppliers.find(s =>
+                                s.name?.toLowerCase() === val.toLowerCase() ||
+                                s.companyName?.toLowerCase() === val.toLowerCase()
+                              );
+                              const crmFound = crmCustomers.find(c => c.name?.toLowerCase() === val.toLowerCase());
+                              const assignedVeh = fleetVehicles.find(v =>
+                                (v.assignedSupplierId && String(v.assignedSupplierId) === String(regFound?._id)) ||
+                                (v.assignedSupplierName && v.assignedSupplierName.toLowerCase() === val.toLowerCase())
+                              );
+                              setDamStockInForm(prev => ({
+                                ...prev,
+                                contractorName: val,
+                                contractorId: regFound?._id || crmFound?._id || prev.contractorId,
+                                contractorPhone: regFound?.phone || crmFound?.phone || assignedVeh?.driverPhone || prev.contractorPhone,
+                                companyName: regFound?.companyName || prev.companyName,
+                                vehicleNumber: regFound?.vehicleNumber || assignedVeh?.vehicleNumber || prev.vehicleNumber,
+                                harbor: regFound?.harbor || regFound?.city || crmFound?.address?.city || prev.harbor
+                              }));
+                            }}
+                            onSelect={(raw) => {
+                              if (!raw) return;
+                              const assignedVeh = fleetVehicles.find(v =>
+                                (v.assignedSupplierId && String(v.assignedSupplierId) === String(raw._id)) ||
+                                (v.assignedSupplierName && v.assignedSupplierName.toLowerCase() === raw.name?.toLowerCase())
+                              );
+                              setDamStockInForm(prev => ({
+                                ...prev,
+                                contractorName: raw.name || prev.contractorName,
+                                contractorId: raw._id || prev.contractorId,
+                                contractorPhone: raw.phone || assignedVeh?.driverPhone || prev.contractorPhone,
+                                companyName: raw.companyName || prev.companyName,
+                                vehicleNumber: raw.vehicleNumber || assignedVeh?.vehicleNumber || prev.vehicleNumber,
+                                harbor: raw.harbor || raw.city || raw.address?.city || prev.harbor
+                              }));
+                            }}
+                            options={damContractorOptions}
+                            accentColor="blue"
+                            required
+                          />
+                        </div>
+
+                        <div>
+                          <div className="flex items-center justify-between mb-1">
+                            <label className="block text-[11px] font-bold text-slate-700">Contact Phone</label>
+                            {damStockInForm.contractorPhone && (
+                              <span className={`text-[10px] font-mono font-bold ${
+                                damStockInForm.contractorPhone.length === 10 ? 'text-emerald-600' : 'text-blue-600'
+                              }`}>
+                                {damStockInForm.contractorPhone.length}/10 digits
+                              </span>
+                            )}
+                          </div>
+                          <input
+                            type="tel"
+                            maxLength={10}
+                            placeholder="10-digit mobile"
+                            value={damStockInForm.contractorPhone}
+                            onChange={(e) => setDamStockInForm({ ...damStockInForm, contractorPhone: e.target.value.replace(/\D/g, '').slice(0, 10) })}
+                            className="w-full bg-white border border-[#E8DCCB] rounded-xl px-3 py-2 text-xs font-mono font-medium text-slate-800 focus:outline-none focus:border-blue-500"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-[11px] font-bold text-slate-700 mb-1">Syndicate / Firm Name</label>
+                          <input
+                            type="text"
+                            placeholder="e.g. Reservoir Syndicate"
+                            value={damStockInForm.companyName}
+                            onChange={(e) => setDamStockInForm({ ...damStockInForm, companyName: e.target.value })}
+                            className="w-full bg-white border border-[#E8DCCB] rounded-xl px-3 py-2 text-xs font-medium text-slate-800 focus:outline-none focus:border-blue-500"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-[11px] font-bold text-slate-700 mb-1">Vehicle Number</label>
+                          <SearchableDropdown
+                            mode="combobox"
+                            placeholder="e.g. AP 04 TX 4821"
+                            value={damStockInForm.vehicleNumber}
+                            onChange={(val) => {
+                              const upper = (val || '').toUpperCase();
+                              const matchOpt = damVehicleOptions.find(v => v.value.toUpperCase() === upper);
+                              if (matchOpt?.raw) {
+                                const r = matchOpt.raw;
+                                setDamStockInForm(prev => ({
+                                  ...prev,
+                                  vehicleNumber: upper,
+                                  contractorName: r.contractorName || r.supplierName || prev.contractorName,
+                                  contractorPhone: r.driverPhone || r.supplierPhone || prev.contractorPhone,
+                                  companyName: r.companyName || r.vehicleName || prev.companyName,
+                                  harbor: r.harbor || prev.harbor
+                                }));
+                              } else {
+                                setDamStockInForm(prev => ({ ...prev, vehicleNumber: upper }));
+                              }
+                            }}
+                            onSelect={(raw) => {
+                              if (!raw) return;
+                              setDamStockInForm(prev => ({
+                                ...prev,
+                                vehicleNumber: raw.vehicleNumber || prev.vehicleNumber,
+                                contractorName: raw.contractorName || raw.supplierName || prev.contractorName,
+                                contractorPhone: raw.driverPhone || raw.supplierPhone || prev.contractorPhone,
+                                companyName: raw.companyName || raw.vehicleName || prev.companyName,
+                                harbor: raw.harbor || prev.harbor
+                              }));
+                            }}
+                            options={damVehicleOptions}
+                            accentColor="blue"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-[11px] font-bold text-slate-700 mb-1">Dam / Reservoir Location</label>
+                          <input
+                            type="text"
+                            placeholder="e.g. Srisailam, Nagarjuna Sagar"
+                            value={damStockInForm.harbor}
+                            onChange={(e) => setDamStockInForm({ ...damStockInForm, harbor: e.target.value })}
+                            className="w-full bg-white border border-[#E8DCCB] rounded-xl px-3 py-2 text-xs font-medium text-slate-800 focus:outline-none focus:border-blue-500"
+                          />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+                <div className="bg-[#FAF0E4]/60 p-3 sm:p-4 rounded-xl border border-[#fed7aa]/80 space-y-2.5 sm:space-y-3">
                   <div className="flex items-center justify-between flex-wrap gap-2">
-                    <div className="text-xs font-black text-slate-800 uppercase tracking-wide">
+                    <div className="text-[11px] sm:text-xs font-bold text-slate-800 uppercase tracking-wide">
                       Settlement & Advance Deductions
                     </div>
                     <button
                       type="button"
                       onClick={handleAddDamCustomCategory}
-                      className="px-2.5 py-1 bg-white hover:bg-slate-50 border border-slate-300 rounded-lg text-xs font-bold text-slate-700 flex items-center gap-1 shadow-2xs cursor-pointer transition-all hover:border-blue-400"
+                      className="px-2 py-0.8 sm:px-2.5 sm:py-1 bg-white hover:bg-slate-50 border border-slate-300 rounded-lg text-[10.5px] sm:text-xs font-bold text-slate-700 flex items-center gap-1 shadow-2xs cursor-pointer transition-all hover:border-blue-400"
                     >
-                      <Plus size={13} className="text-blue-600" />
+                      <Plus size={11} className="text-blue-600" />
                       <span>Add Category</span>
                     </button>
                   </div>
@@ -3974,34 +5099,36 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack }) {
                     <span className="text-rose-700">Dr: <strong className="font-mono font-bold">-₹{damTotals.totalDr.toLocaleString('en-IN')}</strong></span>
                   </div>
 
-                  <div className="flex items-center justify-between md:justify-end gap-2.5 shrink-0 pt-1.5 md:pt-0 border-t md:border-t-0 border-blue-200/60">
-                    <div className="text-right">
-                      <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                  <div className="flex items-center justify-between sm:justify-end gap-1.5 sm:gap-2.5 shrink-0 pt-1.5 sm:pt-0 border-t sm:border-t-0 border-blue-200/60 w-full sm:w-auto">
+                    <div className="text-left sm:text-right shrink-0">
+                      <div className="text-[9.5px] sm:text-[10px] font-bold text-slate-500 uppercase tracking-wider leading-none">
                         {damTotals.netSettlement >= 0 ? 'Payable' : 'Due'}
                       </div>
-                      <div className={`text-base sm:text-lg font-black font-mono leading-none ${damTotals.netSettlement >= 0 ? 'text-blue-700' : 'text-rose-700'}`}>
+                      <div className={`text-sm sm:text-base font-black font-mono leading-tight mt-0.5 ${damTotals.netSettlement >= 0 ? 'text-blue-700' : 'text-rose-700'}`}>
                         ₹{Math.abs(damTotals.netSettlement).toLocaleString('en-IN')}
                       </div>
                     </div>
 
-                    <button
-                      type="button"
-                      onClick={handlePrintDamInvoice}
-                      className="h-9 px-3 rounded-xl bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 font-bold text-xs shadow-2xs transition-all cursor-pointer flex items-center gap-1.5 shrink-0"
-                      title="Print A4 Consignment Voucher"
-                    >
-                      <Printer size={13} />
-                      <span>Print A4 Voucher</span>
-                    </button>
+                    <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
+                      <button
+                        type="button"
+                        onClick={handlePrintDamInvoice}
+                        className="h-8 sm:h-9 w-8 sm:w-9 rounded-lg bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 shadow-2xs transition-all cursor-pointer flex items-center justify-center shrink-0"
+                        title="Print A4 Consignment Voucher"
+                      >
+                        <Printer size={14} />
+                      </button>
 
-                    <button
-                      type="submit"
-                      disabled={submitting}
-                      className="h-9 px-4 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 disabled:opacity-50 text-white font-bold text-xs sm:text-sm shadow-xs hover:shadow-md transition-all cursor-pointer flex items-center gap-1.5 shrink-0"
-                    >
-                      <CheckCircle size={14} />
-                      <span>{submitting ? 'Recording...' : 'Confirm Consignment'}</span>
-                    </button>
+                      <button
+                        type="submit"
+                        disabled={submitting}
+                        className="h-8 sm:h-9 px-2.5 sm:px-3.5 rounded-lg bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 disabled:opacity-50 text-white font-bold text-[11px] sm:text-xs shadow-xs hover:shadow-md transition-all cursor-pointer flex items-center gap-1.5 shrink-0 whitespace-nowrap"
+                      >
+                        <CheckCircle size={13} />
+                        <span className="sm:hidden">{submitting ? 'Recording...' : 'Confirm'}</span>
+                        <span className="hidden sm:inline">{submitting ? 'Recording...' : 'Confirm Consignment'}</span>
+                      </button>
+                    </div>
                   </div>
                 </div>
               </form>
@@ -4078,7 +5205,7 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack }) {
                         }}
                         options={[
                           ...supplyCategories.map(cat => ({ value: cat.name, label: cat.name })),
-                          { value: 'ADD_NEW', label: '➕ + Add Custom Category...', isSpecial: true }
+                          { value: 'ADD_NEW', label: '+ Add Custom Category...', isSpecial: true }
                         ]}
                         placeholder="-- Choose Category --"
                         searchPlaceholder="Search category..."
@@ -4100,145 +5227,346 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack }) {
                   </div>
                 </div>
 
-                {/* 2. Supplier Details (5 Fields with Autocomplete) */}
+                {/* 2. Registered Vendor Selection Cards Grid & Search (with Clear button & Collapsible manual fields) */}
                 <div className="bg-[#FAF0E4]/60 p-4 rounded-xl border border-[#fed7aa]/80 space-y-3">
-                  <div className="text-xs font-black text-slate-800 uppercase tracking-wide flex items-center gap-1.5">
-                    <User size={14} />
-                    <span>Packaging / Consumables Supplier Details</span>
-                  </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+                  <div className="flex items-center justify-between flex-wrap gap-2">
                     <div>
-                      <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                        Supplier / Shop Name
-                      </label>
-                      <SearchableDropdown
-                        mode="combobox"
-                        placeholder="e.g. Sri Balaji Ice Factory"
-                        value={suppliesForm.supplierName}
-                        onChange={(val) => {
-                          const regFound = registeredSuppliers.find(s =>
-                            s.name?.toLowerCase() === val.toLowerCase() ||
-                            s.companyName?.toLowerCase() === val.toLowerCase()
-                          );
-                          const assignedVeh = fleetVehicles.find(v =>
-                            (v.assignedSupplierId && String(v.assignedSupplierId) === String(regFound?._id)) ||
-                            (v.assignedSupplierName && v.assignedSupplierName.toLowerCase() === val.toLowerCase())
-                          );
-                          setSuppliesForm(prev => ({
-                            ...prev,
-                            supplierName: val,
-                            supplierId: regFound?._id || '',
-                            supplierPhone: regFound?.phone || assignedVeh?.driverPhone || prev.supplierPhone,
-                            companyName: regFound?.companyName || prev.companyName,
-                            vehicleNumber: regFound?.vehicleNumber || assignedVeh?.vehicleNumber || prev.vehicleNumber,
-                            harbor: regFound?.harbor || regFound?.city || prev.harbor
-                          }));
-                        }}
-                        onSelect={(raw) => {
-                          if (!raw) return;
-                          const assignedVeh = fleetVehicles.find(v =>
-                            (v.assignedSupplierId && String(v.assignedSupplierId) === String(raw._id)) ||
-                            (v.assignedSupplierName && v.assignedSupplierName.toLowerCase() === raw.name?.toLowerCase())
-                          );
-                          setSuppliesForm(prev => ({
-                            ...prev,
-                            supplierName: raw.name || prev.supplierName,
-                            supplierId: raw._id || prev.supplierId,
-                            supplierPhone: raw.phone || assignedVeh?.driverPhone || prev.supplierPhone,
-                            companyName: raw.companyName || prev.companyName,
-                            vehicleNumber: raw.vehicleNumber || assignedVeh?.vehicleNumber || prev.vehicleNumber,
-                            harbor: raw.harbor || raw.city || prev.harbor
-                          }));
-                        }}
-                        options={suppliesSupplierOptions}
-                        accentColor="emerald"
-                      />
+                      <h3 className="text-xs sm:text-sm font-bold text-slate-800 uppercase tracking-wide m-0">
+                        Packaging & Supplies Vendor Selection
+                      </h3>
+                      <p className="text-[10px] sm:text-[11px] text-slate-500 font-medium m-0 mt-0.5">
+                        Choose packaging vendor card or search below ({filteredSuppliesVendors.length} Available)
+                      </p>
                     </div>
 
-                    <div>
-                      <div className="flex items-center justify-between mb-1">
-                        <label className="block text-[11px] font-bold text-slate-700">Phone Number</label>
-                        {suppliesForm.supplierPhone && (
-                          <span className={`text-[10px] font-mono font-bold ${
-                            suppliesForm.supplierPhone.length === 10 ? 'text-emerald-600' : 'text-amber-600'
-                          }`}>
-                            {suppliesForm.supplierPhone.length}/10 digits
-                          </span>
-                        )}
-                      </div>
+                    {/* Search Bar */}
+                    <div className="relative flex items-center w-full sm:w-64">
+                      <Search size={13} className="absolute left-2.5 text-slate-400 pointer-events-none" />
                       <input
-                        type="tel"
-                        maxLength={10}
-                        placeholder="10-digit mobile"
-                        value={suppliesForm.supplierPhone}
-                        onChange={(e) => setSuppliesForm({ ...suppliesForm, supplierPhone: e.target.value.replace(/\D/g, '').slice(0, 10) })}
-                        className="w-full bg-white border border-[#E8DCCB] rounded-xl px-3 py-2 text-xs font-mono font-medium text-slate-800 focus:outline-none focus:border-emerald-500"
+                        type="text"
+                        placeholder="Search vendor, shop name, phone..."
+                        value={suppliesVendorSearch}
+                        onChange={(e) => setSuppliesVendorSearch(e.target.value)}
+                        className="w-full pl-7 pr-7 py-1.5 bg-white border border-[#E8DCCB] rounded-xl text-xs font-medium text-slate-800 placeholder-slate-400 focus:outline-none focus:border-emerald-500 shadow-2xs"
                       />
-                      {suppliesForm.supplierPhone && suppliesForm.supplierPhone.length > 0 && suppliesForm.supplierPhone.length < 10 && (
-                        <p className="text-[10px] text-amber-600 mt-1 font-semibold">Enter 10-digit mobile number</p>
+                      {suppliesVendorSearch && (
+                        <button
+                          type="button"
+                          onClick={() => setSuppliesVendorSearch('')}
+                          className="absolute right-2 text-slate-400 hover:text-slate-600 cursor-pointer"
+                        >
+                          <X size={12} />
+                        </button>
                       )}
                     </div>
+                  </div>
 
-                    <div>
-                      <label className="block text-[11px] font-bold text-slate-700 mb-1">Company / Shop Name</label>
-                      <input
-                        type="text"
-                        placeholder="e.g. Kadapa Packaging"
-                        value={suppliesForm.companyName}
-                        onChange={(e) => setSuppliesForm({ ...suppliesForm, companyName: e.target.value })}
-                        className="w-full bg-white border border-[#E8DCCB] rounded-xl px-3 py-2 text-xs font-medium text-slate-800 focus:outline-none focus:border-emerald-500"
-                      />
+                  {/* Selected Vendor Badge Row (with Prominent Clear Button) */}
+                  {suppliesForm.supplierName && (
+                    <div className="flex items-center justify-between flex-wrap gap-2 p-2 sm:p-2.5 bg-emerald-50 border border-emerald-300 rounded-xl animate-fadeIn">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <CheckCircle size={15} className="text-emerald-600 shrink-0" />
+                        <span className="text-xs font-bold text-emerald-950 truncate">
+                          Selected: <span className="font-black text-emerald-900">{suppliesForm.supplierName}</span>
+                          {suppliesForm.companyName && <span className="text-slate-600 font-semibold"> ({suppliesForm.companyName})</span>}
+                          {suppliesForm.supplierPhone && <span className="font-mono text-slate-700 font-bold"> • {suppliesForm.supplierPhone}</span>}
+                          {suppliesForm.vehicleNumber && <span className="font-mono text-slate-700 font-bold"> • {suppliesForm.vehicleNumber}</span>}
+                          {suppliesForm.harbor && <span className="text-slate-600"> • {suppliesForm.harbor}</span>}
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handleClearSuppliesVendor}
+                        className="px-2.5 py-1 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-300 text-xs font-black flex items-center gap-1 shadow-2xs cursor-pointer active:scale-95 transition-all shrink-0 ml-auto"
+                        title="Clear selected vendor"
+                      >
+                        <Trash2 size={12} />
+                        <span>Clear Selection</span>
+                      </button>
                     </div>
+                  )}
 
-                    <div>
-                      <label className="block text-[11px] font-bold text-slate-700 mb-1">Vehicle Number</label>
-                      <SearchableDropdown
-                        mode="combobox"
-                        placeholder="e.g. AP 04 TX 4821"
-                        value={suppliesForm.vehicleNumber}
-                        onChange={(val) => {
-                          const upper = (val || '').toUpperCase();
-                          const matchOpt = suppliesVehicleOptions.find(v => v.value.toUpperCase() === upper);
-                          if (matchOpt?.raw) {
-                            const r = matchOpt.raw;
-                            setSuppliesForm(prev => ({
-                              ...prev,
-                              vehicleNumber: upper,
-                              supplierName: r.supplierName || prev.supplierName,
-                              supplierPhone: r.driverPhone || r.supplierPhone || prev.supplierPhone,
-                              companyName: r.companyName || r.vehicleName || prev.companyName,
-                              harbor: r.harbor || prev.harbor
-                            }));
-                          } else {
-                            setSuppliesForm(prev => ({ ...prev, vehicleNumber: upper }));
-                          }
-                        }}
-                        onSelect={(raw) => {
-                          if (!raw) return;
-                          setSuppliesForm(prev => ({
-                            ...prev,
-                            vehicleNumber: raw.vehicleNumber || prev.vehicleNumber,
-                            supplierName: raw.supplierName || prev.supplierName,
-                            supplierPhone: raw.driverPhone || raw.supplierPhone || prev.supplierPhone,
-                            companyName: raw.companyName || raw.vehicleName || prev.companyName,
-                            harbor: raw.harbor || prev.harbor
-                          }));
-                        }}
-                        options={suppliesVehicleOptions}
-                        accentColor="emerald"
-                      />
+                  {/* Grid of Supplies Vendor Cards */}
+                  {filteredSuppliesVendors.length === 0 ? (
+                    <div className="p-4 rounded-xl bg-white border border-[#fed7aa] text-center text-xs text-slate-500">
+                      No matching supplies vendors found. You can clear your search or enter custom vendor details below.
                     </div>
+                  ) : (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2.5 sm:gap-3 max-h-[420px] overflow-y-auto pr-1">
+                      {filteredSuppliesVendors.map((supp) => {
+                        const isSelected = Boolean(
+                          (supp._id && suppliesForm.supplierId === supp._id) ||
+                          (supp.name && suppliesForm.supplierName && supp.name.toLowerCase() === suppliesForm.supplierName.toLowerCase())
+                        );
 
-                    <div>
-                      <label className="block text-[11px] font-bold text-slate-700 mb-1">City / Origin Location</label>
-                      <input
-                        type="text"
-                        placeholder="e.g. Kadapa Depot"
-                        value={suppliesForm.harbor}
-                        onChange={(e) => setSuppliesForm({ ...suppliesForm, harbor: e.target.value })}
-                        className="w-full bg-white border border-[#E8DCCB] rounded-xl px-3 py-2 text-xs font-medium text-slate-800 focus:outline-none focus:border-emerald-500"
-                      />
+                        const linkedVeh = (fleetVehicles || []).find(v =>
+                          (v.assignedSupplierId && String(v.assignedSupplierId) === String(supp._id)) ||
+                          (v.assignedSupplierName && v.assignedSupplierName.toLowerCase() === supp.name?.toLowerCase()) ||
+                          (supp.vehicleNumber && v.vehicleNumber?.toUpperCase() === supp.vehicleNumber.toUpperCase())
+                        );
+                        const effectiveVeh = supp.vehicleNumber || linkedVeh?.vehicleNumber;
+                        const vehDesc = linkedVeh?.modelName || linkedVeh?.vehicleName || linkedVeh?.vehicleType;
+                        const driverName = linkedVeh?.driverName;
+                        const driverPhone = linkedVeh?.driverPhone;
+
+                        return (
+                          <div
+                            key={supp._id || supp.name}
+                            onClick={() => handleSelectSuppliesVendorCard(supp)}
+                            className={`rounded-2xl p-3 sm:p-3.5 border-2 transition-all cursor-pointer relative flex flex-col justify-between group shadow-2xs hover:shadow-md active:scale-[0.99] ${
+                              isSelected
+                                ? 'border-emerald-600 bg-emerald-50/90 ring-4 ring-emerald-300 shadow-md'
+                                : 'border-[#E8DCCB] bg-white hover:border-emerald-500 hover:bg-emerald-50/40'
+                            }`}
+                          >
+                            {/* Top Row: Big Photo + Name + Type Badge */}
+                            <div>
+                              <div className="flex items-start gap-2.5 sm:gap-3">
+                                <div className="w-16 h-16 sm:w-18 sm:h-18 rounded-2xl overflow-hidden bg-slate-50 border-2 border-[#E8DCCB] group-hover:border-emerald-500 shrink-0 shadow-2xs flex items-center justify-center p-0.5">
+                                  {supp.profileImage ? (
+                                    <img
+                                      src={formatImageUrl(supp.profileImage)}
+                                      alt={supp.name}
+                                      className="w-full h-full object-cover rounded-xl group-hover:scale-105 transition-transform"
+                                    />
+                                  ) : (
+                                    <div className="w-full h-full bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center text-white font-black text-xl rounded-xl">
+                                      {supp.name ? supp.name.charAt(0).toUpperCase() : <Boxes size={22} />}
+                                    </div>
+                                  )}
+                                </div>
+
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-start justify-between gap-1">
+                                    <h4 className="font-black text-xs sm:text-sm text-slate-900 truncate leading-snug m-0">
+                                      {supp.name}
+                                    </h4>
+                                    <span className="text-[8px] sm:text-[8.5px] font-black px-1.5 py-0.5 rounded-full border bg-emerald-100 text-emerald-900 border-emerald-200 uppercase tracking-wider shrink-0">
+                                      {supp.supplierType || 'Supplies'}
+                                    </span>
+                                  </div>
+                                  {supp.companyName ? (
+                                    <p className="text-[10px] sm:text-[11px] text-slate-500 font-semibold truncate m-0 mt-0.5">
+                                      {supp.companyName}
+                                    </p>
+                                  ) : (
+                                    <p className="text-[10px] sm:text-[11px] text-slate-400 italic m-0 mt-0.5">Packaging Vendor</p>
+                                  )}
+                                </div>
+                              </div>
+
+                              {/* Details Box: Phone, Vehicle, Port */}
+                              <div className="mt-2.5 space-y-1 bg-[#FAF0E4]/60 p-2 rounded-xl border border-[#fed7aa]/50 text-[10.5px] font-semibold text-slate-700">
+                                <div className="flex items-center gap-1.5 truncate">
+                                  <Phone size={11} className="text-emerald-600 shrink-0" />
+                                  <span className="text-slate-400 font-normal">Phone:</span>
+                                  <span className="font-mono font-bold text-slate-800 truncate">{supp.phone || 'No phone'}</span>
+                                </div>
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  <Truck size={11} className="text-blue-600 shrink-0" />
+                                  <span className="text-slate-400 font-normal">Vehicle:</span>
+                                  <span className="font-mono font-bold text-slate-800">{effectiveVeh || 'No vehicle'}</span>
+                                  {vehDesc && <span className="text-[9.5px] text-slate-500 font-medium">({vehDesc})</span>}
+                                  {linkedVeh && (
+                                    <span className="text-[8px] bg-blue-50 text-blue-700 font-bold px-1 py-0.2 rounded border border-blue-200">
+                                      Fleet Linked
+                                    </span>
+                                  )}
+                                </div>
+                                {(driverName || driverPhone) && (
+                                  <div className="flex items-center gap-1.5 text-slate-700 flex-wrap text-[10px]">
+                                    <User size={11} className="text-emerald-600 shrink-0" />
+                                    <span className="text-slate-400 font-normal">Driver:</span>
+                                    <span className="font-bold text-slate-800">{driverName || 'Assigned Driver'}</span>
+                                    {driverPhone && <span className="font-mono text-emerald-700 font-bold">({driverPhone})</span>}
+                                  </div>
+                                )}
+                                {(supp.harbor || supp.city) && (
+                                  <div className="flex items-center gap-1.5 truncate">
+                                    <MapPin size={11} className="text-[#ea580c] shrink-0" />
+                                    <span className="text-slate-400 font-normal">City/Location:</span>
+                                    <span className="text-slate-800 truncate">{supp.harbor || supp.city}</span>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+
+                            {/* Card Footer: Selected vs Select + Card Clear Button */}
+                            <div className="mt-2.5 pt-2 border-t border-slate-200/60 flex items-center justify-between">
+                              {isSelected ? (
+                                <>
+                                  <span className="inline-flex items-center gap-1 text-[10.5px] font-black text-emerald-800 bg-emerald-100 border border-emerald-300 px-2 py-0.5 rounded-full">
+                                    <CheckCircle size={11} /> Selected
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={(e) => { e.stopPropagation(); handleClearSuppliesVendor(); }}
+                                    className="px-2 py-0.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-300 text-[10.5px] font-black flex items-center gap-1 shadow-2xs cursor-pointer active:scale-95 transition-all"
+                                    title="Clear this vendor"
+                                  >
+                                    <Trash2 size={11} className="text-rose-600" />
+                                    <span>Clear</span>
+                                  </button>
+                                </>
+                              ) : (
+                                <span className="text-[10.5px] font-bold text-emerald-700 group-hover:text-emerald-900 flex items-center gap-1 ml-auto">
+                                  Select Vendor →
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
+                  )}
+
+                  {/* Collapsible toggle for custom / manual vendor details inputs */}
+                  <div className="pt-1">
+                    <button
+                      type="button"
+                      onClick={() => setIsSuppliesManualDetailsOpen(!isSuppliesManualDetailsOpen)}
+                      className="text-xs font-bold text-emerald-700 hover:text-emerald-900 flex items-center gap-1 cursor-pointer select-none"
+                    >
+                      <span>{isSuppliesManualDetailsOpen ? 'Hide Manual Details' : 'Edit / Enter Custom Vendor Details'}</span>
+                      {isSuppliesManualDetailsOpen ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                    </button>
+
+                    {isSuppliesManualDetailsOpen && (
+                      <div className="mt-2.5 pt-2.5 border-t border-[#fed7aa]/60 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 animate-fadeIn">
+                        <div>
+                          <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                            Supplier / Shop Name *
+                          </label>
+                          <SearchableDropdown
+                            mode="combobox"
+                            placeholder="e.g. Sri Balaji Ice Factory"
+                            value={suppliesForm.supplierName}
+                            onChange={(val) => {
+                              const regFound = registeredSuppliers.find(s =>
+                                s.name?.toLowerCase() === val.toLowerCase() ||
+                                s.companyName?.toLowerCase() === val.toLowerCase()
+                              );
+                              const assignedVeh = fleetVehicles.find(v =>
+                                (v.assignedSupplierId && String(v.assignedSupplierId) === String(regFound?._id)) ||
+                                (v.assignedSupplierName && v.assignedSupplierName.toLowerCase() === val.toLowerCase())
+                              );
+                              setSuppliesForm(prev => ({
+                                ...prev,
+                                supplierName: val,
+                                supplierId: regFound?._id || '',
+                                supplierPhone: regFound?.phone || assignedVeh?.driverPhone || prev.supplierPhone,
+                                companyName: regFound?.companyName || prev.companyName,
+                                vehicleNumber: regFound?.vehicleNumber || assignedVeh?.vehicleNumber || prev.vehicleNumber,
+                                harbor: regFound?.harbor || regFound?.city || prev.harbor
+                              }));
+                            }}
+                            onSelect={(raw) => {
+                              if (!raw) return;
+                              const assignedVeh = fleetVehicles.find(v =>
+                                (v.assignedSupplierId && String(v.assignedSupplierId) === String(raw._id)) ||
+                                (v.assignedSupplierName && v.assignedSupplierName.toLowerCase() === raw.name?.toLowerCase())
+                              );
+                              setSuppliesForm(prev => ({
+                                ...prev,
+                                supplierName: raw.name || prev.supplierName,
+                                supplierId: raw._id || prev.supplierId,
+                                supplierPhone: raw.phone || assignedVeh?.driverPhone || prev.supplierPhone,
+                                companyName: raw.companyName || prev.companyName,
+                                vehicleNumber: raw.vehicleNumber || assignedVeh?.vehicleNumber || prev.vehicleNumber,
+                                harbor: raw.harbor || raw.city || prev.harbor
+                              }));
+                            }}
+                            options={suppliesSupplierOptions}
+                            accentColor="emerald"
+                          />
+                        </div>
+
+                        <div>
+                          <div className="flex items-center justify-between mb-1">
+                            <label className="block text-[11px] font-bold text-slate-700">Phone Number</label>
+                            {suppliesForm.supplierPhone && (
+                              <span className={`text-[10px] font-mono font-bold ${
+                                suppliesForm.supplierPhone.length === 10 ? 'text-emerald-600' : 'text-amber-600'
+                              }`}>
+                                {suppliesForm.supplierPhone.length}/10 digits
+                              </span>
+                            )}
+                          </div>
+                          <input
+                            type="tel"
+                            maxLength={10}
+                            placeholder="10-digit mobile"
+                            value={suppliesForm.supplierPhone}
+                            onChange={(e) => setSuppliesForm({ ...suppliesForm, supplierPhone: e.target.value.replace(/\D/g, '').slice(0, 10) })}
+                            className="w-full bg-white border border-[#E8DCCB] rounded-xl px-3 py-2 text-xs font-mono font-medium text-slate-800 focus:outline-none focus:border-emerald-500"
+                          />
+                          {suppliesForm.supplierPhone && suppliesForm.supplierPhone.length > 0 && suppliesForm.supplierPhone.length < 10 && (
+                            <p className="text-[10px] text-amber-600 mt-1 font-semibold">Enter 10-digit mobile number</p>
+                          )}
+                        </div>
+
+                        <div>
+                          <label className="block text-[11px] font-bold text-slate-700 mb-1">Company / Shop Name</label>
+                          <input
+                            type="text"
+                            placeholder="e.g. Kadapa Packaging"
+                            value={suppliesForm.companyName}
+                            onChange={(e) => setSuppliesForm({ ...suppliesForm, companyName: e.target.value })}
+                            className="w-full bg-white border border-[#E8DCCB] rounded-xl px-3 py-2 text-xs font-medium text-slate-800 focus:outline-none focus:border-emerald-500"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-[11px] font-bold text-slate-700 mb-1">Vehicle Number</label>
+                          <SearchableDropdown
+                            mode="combobox"
+                            placeholder="e.g. AP 04 TX 4821"
+                            value={suppliesForm.vehicleNumber}
+                            onChange={(val) => {
+                              const upper = (val || '').toUpperCase();
+                              const matchOpt = suppliesVehicleOptions.find(v => v.value.toUpperCase() === upper);
+                              if (matchOpt?.raw) {
+                                const r = matchOpt.raw;
+                                setSuppliesForm(prev => ({
+                                  ...prev,
+                                  vehicleNumber: upper,
+                                  supplierName: r.supplierName || prev.supplierName,
+                                  supplierPhone: r.driverPhone || r.supplierPhone || prev.supplierPhone,
+                                  companyName: r.companyName || r.vehicleName || prev.companyName,
+                                  harbor: r.harbor || prev.harbor
+                                }));
+                              } else {
+                                setSuppliesForm(prev => ({ ...prev, vehicleNumber: upper }));
+                              }
+                            }}
+                            onSelect={(raw) => {
+                              if (!raw) return;
+                              setSuppliesForm(prev => ({
+                                ...prev,
+                                vehicleNumber: raw.vehicleNumber || prev.vehicleNumber,
+                                supplierName: raw.supplierName || prev.supplierName,
+                                supplierPhone: raw.driverPhone || raw.supplierPhone || prev.supplierPhone,
+                                companyName: raw.companyName || raw.vehicleName || prev.companyName,
+                                harbor: raw.harbor || prev.harbor
+                              }));
+                            }}
+                            options={suppliesVehicleOptions}
+                            accentColor="emerald"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-[11px] font-bold text-slate-700 mb-1">City / Origin Location</label>
+                          <input
+                            type="text"
+                            placeholder="e.g. Kadapa Depot"
+                            value={suppliesForm.harbor}
+                            onChange={(e) => setSuppliesForm({ ...suppliesForm, harbor: e.target.value })}
+                            className="w-full bg-white border border-[#E8DCCB] rounded-xl px-3 py-2 text-xs font-medium text-slate-800 focus:outline-none focus:border-emerald-500"
+                          />
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -4353,15 +5681,14 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack }) {
                   </div>
                 </div>
 
-                <div className="flex items-center justify-end gap-2.5 pt-1 flex-wrap">
+                <div className="flex items-center justify-end gap-2 pt-1 flex-wrap">
                   <button
                     type="button"
                     onClick={handlePrintSuppliesInvoice}
-                    className="h-9 px-3 rounded-xl bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 font-bold text-xs shadow-2xs transition-all cursor-pointer flex items-center gap-1.5 shrink-0"
+                    className="h-8 sm:h-9 w-8 sm:w-9 rounded-lg bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 shadow-2xs transition-all cursor-pointer flex items-center justify-center shrink-0"
                     title="Print A4 Supplies Inward Invoice"
                   >
-                    <Printer size={13} />
-                    <span>Print A4 Invoice</span>
+                    <Printer size={14} />
                   </button>
 
                   <button
@@ -4506,6 +5833,189 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack }) {
               </div>
             </div>
           )}
+        </div>
+      )}
+
+      {/* ── TAB 2B: Supplies & Packaging Stock Ledger (Active when activeTab === 'supplies') ── */}
+      {activeTab === 'supplies' && (
+        <div className="space-y-3.5 w-full">
+          {/* Summary Metric Cards for Supplies */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
+            <div className="bg-white border border-[#E8DCCB] rounded-xl p-3 shadow-2xs">
+              <span className="text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-wide block">
+                Total Supplies Units
+              </span>
+              <div className="text-base sm:text-lg md:text-xl font-black text-emerald-800 font-mono mt-1.5">
+                {supplyLogs.reduce((acc, l) => acc + (Number(l.quantity) || 0), 0).toLocaleString('en-IN')} <span className="text-xs text-slate-500 font-medium">Pcs/Boxes</span>
+              </div>
+            </div>
+
+            <div className="bg-white border border-[#E8DCCB] rounded-xl p-3 shadow-2xs">
+              <span className="text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-wide block">
+                Supply Categories
+              </span>
+              <div className="text-base sm:text-lg md:text-xl font-black text-teal-800 font-mono mt-1.5">
+                {supplyCategories.length} <span className="text-xs text-slate-500 font-medium">Categories</span>
+              </div>
+            </div>
+
+            <div className="bg-white border border-[#E8DCCB] rounded-xl p-3 shadow-2xs">
+              <span className="text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-wide block">
+                Recorded Inward Logs
+              </span>
+              <div className="text-base sm:text-lg md:text-xl font-black text-sky-800 font-mono mt-1.5">
+                {supplyLogs.length} <span className="text-xs text-slate-500 font-medium">Vouchers</span>
+              </div>
+            </div>
+
+            <div className="bg-white border border-[#E8DCCB] rounded-xl p-3 shadow-2xs">
+              <span className="text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-wide block">
+                Total Procurement
+              </span>
+              <div className="text-base sm:text-lg md:text-xl font-black text-amber-800 font-mono mt-1.5">
+                ₹{supplyLogs.reduce((acc, l) => acc + (Number(l.totalCost) || 0), 0).toLocaleString('en-IN')}
+              </div>
+            </div>
+          </div>
+
+          {/* Supplies Inventory & Inward Table */}
+          <div className="bg-[#FDFBF7] border border-[#E8DCCB] rounded-2xl p-3 sm:p-4 shadow-2xs space-y-3.5 w-full">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-[#fed7aa]/60 pb-3">
+              <div>
+                <h2 className="text-xs sm:text-sm md:text-base font-black text-slate-900 flex items-center gap-2 m-0">
+                  <Boxes size={16} className="text-emerald-700 shrink-0" />
+                  <span>Depot Supplies & Packaging Inventory Ledger</span>
+                </h2>
+                <p className="text-[10.5px] sm:text-xs text-slate-500 font-medium m-0 mt-0.5">
+                  Track physical stock of thermocol boxes, ice blocks, plastic crates, strapping tape & depot consumables
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => { setActiveTab('procurement'); setStockInSubTab('supplies'); }}
+                className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-xs shadow-2xs transition-all cursor-pointer flex items-center gap-1.5 self-start sm:self-auto shrink-0"
+              >
+                <Plus size={13} />
+                <span>Inward New Supplies</span>
+              </button>
+            </div>
+
+            {/* Active Categories Badges */}
+            <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
+              <span className="text-[11px] font-bold text-slate-500 shrink-0 mr-1">Categories:</span>
+              {supplyCategories.map(cat => (
+                <span key={cat._id || cat.name} className="px-2.5 py-1 rounded-lg text-xs font-bold bg-white border border-[#E8DCCB] text-slate-700 shadow-2xs shrink-0 flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                  {cat.name}
+                </span>
+              ))}
+            </div>
+
+            {/* Inward Records Table */}
+            <div className="bg-white border border-[#E8DCCB] rounded-xl overflow-hidden shadow-2xs w-full">
+              {supplyLogs.length === 0 ? (
+                <div className="p-10 text-center text-slate-400 space-y-2">
+                  <Boxes size={36} className="mx-auto text-slate-300" />
+                  <p className="text-xs sm:text-sm font-bold text-slate-700">No supplies intake recorded yet</p>
+                  <p className="text-xs text-slate-400">Record intake of thermocol boxes, ice, crates & consumables to start tracking inventory.</p>
+                  <button
+                    type="button"
+                    onClick={() => { setActiveTab('procurement'); setStockInSubTab('supplies'); }}
+                    className="mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-600 text-white text-xs font-bold hover:bg-emerald-700 cursor-pointer shadow-xs"
+                  >
+                    <Plus size={13} />
+                    <span>Record First Supplies Intake</span>
+                  </button>
+                </div>
+              ) : (
+                <div className="overflow-x-auto w-full">
+                  <table className="w-full text-left text-xs sm:text-sm border-collapse">
+                    <thead className="bg-[#FAF0E4] border-b border-[#fed7aa] text-[11px] sm:text-xs font-black text-slate-700 uppercase tracking-wider">
+                      <tr>
+                        <th className="py-2.5 px-3 sm:py-3 sm:px-3.5 w-[12%]">Date</th>
+                        <th className="py-2.5 px-3 sm:py-3 sm:px-3.5 w-[14%]">Category</th>
+                        <th className="py-2.5 px-3 sm:py-3 sm:px-3.5 w-[22%]">Item Name</th>
+                        <th className="py-2.5 px-3 sm:py-3 sm:px-3.5 w-[16%]">Supplier / Depot</th>
+                        <th className="py-2.5 px-3 sm:py-3 sm:px-3.5 text-right w-[12%]">Quantity</th>
+                        <th className="py-2.5 px-3 sm:py-3 sm:px-3.5 text-right w-[12%]">Unit Rate</th>
+                        <th className="py-2.5 px-3 sm:py-3 sm:px-3.5 text-right w-[12%]">Total (₹)</th>
+                        <th className="py-2.5 px-3 sm:py-3 sm:px-3.5 text-center w-[10%]">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-[#fed7aa]/40 font-medium">
+                      {paginatedSupplyLogs.map(log => (
+                        <tr key={log._id} className="hover:bg-amber-50/40 transition-colors">
+                          <td className="py-2.5 px-3 sm:py-3 sm:px-3.5 text-[11px] sm:text-xs text-slate-600 font-mono whitespace-nowrap">
+                            {new Date(log.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
+                          </td>
+                          <td className="py-2.5 px-3 sm:py-3 sm:px-3.5">
+                            <span className="px-2 py-0.5 rounded-full text-[10px] sm:text-xs font-bold bg-emerald-100 text-emerald-800 whitespace-nowrap">
+                              {log.category}
+                            </span>
+                          </td>
+                          <td className="py-2.5 px-3 sm:py-3 sm:px-3.5 font-bold text-slate-900 text-xs sm:text-sm">
+                            {log.itemName}
+                          </td>
+                          <td className="py-2.5 px-3 sm:py-3 sm:px-3.5 text-slate-700 text-xs sm:text-sm">
+                            {log.supplierName || 'Depot'}
+                          </td>
+                          <td className="py-2.5 px-3 sm:py-3 sm:px-3.5 text-right font-mono font-bold text-slate-800 whitespace-nowrap">
+                            {log.quantity} {log.unit}
+                          </td>
+                          <td className="py-2.5 px-3 sm:py-3 sm:px-3.5 text-right font-mono text-slate-600 whitespace-nowrap">
+                            ₹{Number(log.unitRate || 0).toFixed(2)}
+                          </td>
+                          <td className="py-2.5 px-3 sm:py-3 sm:px-3.5 text-right font-mono font-black text-emerald-800 whitespace-nowrap">
+                            ₹{Number(log.totalCost || 0).toLocaleString('en-IN')}
+                          </td>
+                          <td className="py-2.5 px-3 sm:py-3 sm:px-3.5 text-center whitespace-nowrap">
+                            <span className={`px-2 py-0.5 rounded-full text-[10px] sm:text-xs font-bold ${
+                              log.paymentStatus === 'Paid'
+                                ? 'bg-emerald-100 text-emerald-800'
+                                : log.paymentStatus === 'Partial'
+                                ? 'bg-amber-100 text-amber-800'
+                                : 'bg-rose-100 text-rose-800'
+                            }`}>
+                              {log.paymentStatus || 'Paid'}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              {/* Bottom Pagination for Supplies */}
+              {supplyLogs.length > 0 && (
+                <div className="p-3 border-t border-[#fed7aa]/60 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs text-slate-600">
+                  <span>Showing {(suppliesPage - 1) * SUPPLIES_PER_PAGE + 1} to {Math.min(supplyLogs.length, suppliesPage * SUPPLIES_PER_PAGE)} of {supplyLogs.length} intake logs</span>
+                  <div className="flex items-center gap-1.5 self-end sm:self-auto">
+                    <button
+                      type="button"
+                      disabled={suppliesPage <= 1}
+                      onClick={() => setSuppliesPage(p => Math.max(1, p - 1))}
+                      className="px-3 py-1 rounded-lg bg-white border border-[#E8DCCB] hover:bg-slate-50 disabled:opacity-30 disabled:cursor-not-allowed font-bold cursor-pointer"
+                    >
+                      Previous
+                    </button>
+                    <span className="px-2.5 py-0.5 bg-emerald-50 border border-emerald-200 rounded-lg text-xs font-black font-mono text-emerald-900">
+                      {suppliesPage} / {totalSuppliesPages}
+                    </span>
+                    <button
+                      type="button"
+                      disabled={suppliesPage >= totalSuppliesPages}
+                      onClick={() => setSuppliesPage(p => Math.min(totalSuppliesPages, p + 1))}
+                      className="px-3 py-1 rounded-lg bg-white border border-[#E8DCCB] hover:bg-slate-50 disabled:opacity-30 disabled:cursor-not-allowed font-bold cursor-pointer"
+                    >
+                      Next
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
         </div>
       )}
 
@@ -4670,29 +6180,49 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack }) {
               />
             </div>
 
-            {/* Transaction Type Filter Pills */}
-            <div className="flex items-center gap-1.5 overflow-x-auto pb-1 lg:pb-0 scrollbar-none">
-              {[
-                { id: 'All', label: 'All Transactions' },
-                { id: 'Stock-In', label: 'Stock-In' },
-                { id: 'POS Sale', label: 'POS Sale' },
-                { id: 'Online Sale', label: 'Online Sale' },
-                { id: 'Refund', label: 'Refunds' }
-              ].map(f => (
-                <button
-                  key={f.id}
-                  type="button"
-                  onClick={() => setLogTypeFilter(f.id)}
-                  className={`px-3 py-1.5 rounded-lg text-xs sm:text-sm font-bold whitespace-nowrap transition-all cursor-pointer ${
-                    logTypeFilter === f.id
-                      ? 'bg-sky-600 text-white shadow-2xs font-black'
-                      : 'bg-slate-50 border border-[#E8DCCB] text-slate-600 hover:bg-slate-100'
-                  }`}
-                >
-                  {f.label}
-                </button>
-              ))}
-            </div>
+            {/* Transaction Type Filter Pills (Only on Master Ledger; Hidden on Dedicated Stock-In Pages) */}
+            {currentDedicatedMode === 'local' ? (
+              <div className="flex items-center gap-1.5 shrink-0">
+                <span className="px-2.5 py-1.5 rounded-lg text-xs font-black bg-orange-100 text-[#ea580c] border border-orange-200 shadow-2xs whitespace-nowrap">
+                  Local Inward Stock-In Only
+                </span>
+              </div>
+            ) : currentDedicatedMode === 'dam' ? (
+              <div className="flex items-center gap-1.5 shrink-0">
+                <span className="px-2.5 py-1.5 rounded-lg text-xs font-black bg-blue-100 text-blue-800 border border-blue-200 shadow-2xs whitespace-nowrap">
+                  Dam Consignment Stock-In Only
+                </span>
+              </div>
+            ) : currentDedicatedMode === 'supplies' ? (
+              <div className="flex items-center gap-1.5 shrink-0">
+                <span className="px-2.5 py-1.5 rounded-lg text-xs font-black bg-emerald-100 text-emerald-800 border border-emerald-200 shadow-2xs whitespace-nowrap">
+                  Supplies & Packaging Intake Only
+                </span>
+              </div>
+            ) : (
+              <div className="flex items-center gap-1.5 overflow-x-auto pb-1 lg:pb-0 scrollbar-none">
+                {[
+                  { id: 'All', label: 'All Transactions' },
+                  { id: 'Stock-In', label: 'Stock-In' },
+                  { id: 'POS Sale', label: 'POS Sale' },
+                  { id: 'Online Sale', label: 'Online Sale' },
+                  { id: 'Refund', label: 'Refunds' }
+                ].map(f => (
+                  <button
+                    key={f.id}
+                    type="button"
+                    onClick={() => setLogTypeFilter(f.id)}
+                    className={`px-3 py-1.5 rounded-lg text-xs sm:text-sm font-bold whitespace-nowrap transition-all cursor-pointer ${
+                      logTypeFilter === f.id
+                        ? 'bg-sky-600 text-white shadow-2xs font-black'
+                        : 'bg-slate-50 border border-[#E8DCCB] text-slate-600 hover:bg-slate-100'
+                    }`}
+                  >
+                    {f.label}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* Audit Logs Table (Full Width with Scaled Fonts on Bigger Screens) */}
@@ -4790,11 +6320,10 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack }) {
                               <button
                                 type="button"
                                 onClick={() => handlePrintAuditLogInvoice(log)}
-                                className="px-2 py-1 rounded-lg text-white bg-orange-600 hover:bg-orange-700 transition-all cursor-pointer shrink-0 font-sans font-bold text-[10px] flex items-center gap-1 shadow-2xs"
+                                className="p-1 rounded-lg text-white bg-orange-600 hover:bg-orange-700 transition-all cursor-pointer shrink-0 shadow-2xs flex items-center justify-center"
                                 title="Print Full Consignment Voucher"
                               >
-                                <Printer size={12} />
-                                <span>Print</span>
+                                <Printer size={13} />
                               </button>
                             </div>
                           </td>

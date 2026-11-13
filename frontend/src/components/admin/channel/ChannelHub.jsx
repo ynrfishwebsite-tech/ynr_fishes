@@ -1168,14 +1168,14 @@ export default function ChannelHub({
       </div>
 
       {/* ── COMPACT 2-PANEL LAYOUT (Zero Empty Space) ── */}
-      <div className="flex-1 flex flex-col lg:flex-row gap-2.5 p-2 sm:p-2.5 overflow-visible lg:overflow-hidden min-h-0">
+      <div className="lg:flex-1 flex flex-col lg:flex-row gap-2.5 p-2 sm:p-2.5 overflow-visible lg:overflow-hidden lg:min-h-0">
 
-        {/* ── LEFT PANEL: PRIMARY WORKSPACE (68% Width on Desktop, Guaranteed Full Visibility on Mobile) ── */}
-        <div className="w-full lg:flex-1 min-h-[540px] sm:min-h-[620px] lg:h-full flex flex-col bg-surface rounded-2xl border border-border shadow-xs overflow-hidden shrink-0 lg:shrink">
+        {/* ── LEFT PANEL: PRIMARY WORKSPACE (68% Width on Desktop, Dynamic Height on Mobile) ── */}
+        <div className="w-full lg:flex-1 h-auto lg:h-full flex flex-col bg-surface rounded-2xl border border-border shadow-xs overflow-visible lg:overflow-hidden shrink-0 lg:shrink">
           
           {/* TAB 1: BILLS & TRANSACTIONS TABLE */}
           {activeTab === 'bills' && (
-            <div className="h-full flex flex-col flex-1 overflow-hidden">
+            <div className="flex flex-col lg:h-full lg:flex-1 overflow-hidden max-h-[72vh] lg:max-h-none rounded-2xl">
               <BillHistory
                 initialSalesType={channelKey}
                 lockSalesType={true}
@@ -1191,7 +1191,7 @@ export default function ChannelHub({
 
           {/* TAB 2: CUSTOMERS & DEALERS CRM DIRECTORY */}
           {activeTab === 'crm' && (
-            <div className="h-full flex flex-col overflow-hidden p-2.5">
+            <div className="flex flex-col lg:h-full overflow-visible lg:overflow-hidden p-2.5">
               
               {/* HYBRID SEARCH-SELECT COMBOBOX BAR */}
               <div className="shrink-0 mb-2 space-y-2">
@@ -1307,11 +1307,11 @@ export default function ChannelHub({
               </div>
 
               {/* Cards Grid */}
-              <div className="flex-1 overflow-y-auto pr-1">
+              <div className="lg:flex-1 overflow-y-auto max-h-[65vh] lg:max-h-none pr-0.5 lg:pr-1">
                 {crmLoading ? (
-                  <div className="py-16 flex justify-center"><Loader2 size={24} className="animate-spin text-amber-600" /></div>
+                  <div className="py-6 lg:py-16 flex justify-center"><Loader2 size={24} className="animate-spin text-amber-600" /></div>
                 ) : filteredCustomers.length === 0 ? (
-                  <div className="py-16 text-center text-slate-400 text-xs italic">
+                  <div className="py-6 lg:py-16 text-center text-slate-400 text-xs italic">
                     {t('No customers found matching this criteria')}
                   </div>
                 ) : (
@@ -1442,7 +1442,7 @@ export default function ChannelHub({
 
           {/* TAB 3: KHATA DUES & DEBTORS */}
           {activeTab === 'khata' && (
-            <div className="h-full flex flex-col overflow-hidden p-2.5">
+            <div className="flex flex-col lg:h-full overflow-visible lg:overflow-hidden p-2.5">
               
               {/* Channel Filter Pills: All | Wholesale | Retail | Export (only in standalone All-Channels Khata page) */}
               {isAllChannels && (
@@ -1558,11 +1558,11 @@ export default function ChannelHub({
               </div>
 
               {/* Debtors List */}
-              <div className="flex-1 overflow-y-auto pr-1">
+              <div className="lg:flex-1 overflow-y-auto max-h-[65vh] lg:max-h-none pr-0.5 lg:pr-1">
                 {khataLoading ? (
-                  <div className="py-16 flex justify-center"><Loader2 size={24} className="animate-spin text-amber-600" /></div>
+                  <div className="py-6 lg:py-16 flex justify-center"><Loader2 size={24} className="animate-spin text-amber-600" /></div>
                 ) : filteredKhataAccounts.length === 0 ? (
-                  <div className="py-16 text-center text-slate-400 text-xs italic">
+                  <div className="py-6 lg:py-16 text-center text-slate-400 text-xs italic">
                     {t('No debtors found matching this filter')}
                   </div>
                 ) : (
