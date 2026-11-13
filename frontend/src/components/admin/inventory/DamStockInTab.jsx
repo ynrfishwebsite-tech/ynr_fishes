@@ -505,59 +505,62 @@ const DamStockInTab = ({
                 return (
                   <div key={dateKey || gIdx} className="border border-blue-200 rounded-xl overflow-hidden bg-white shadow-2xs">
                     {/* ── Date Group Header Bar ── */}
-                    <div className="bg-gradient-to-r from-blue-50/80 via-indigo-50/50 to-blue-50/80 border-b border-blue-200 px-2 py-1 flex flex-col gap-0.5">
-                      {/* Single Row: Date Picker | Subtotal | +Add | Delete */}
-                      <div className="flex items-center gap-1.5 flex-nowrap">
-                        <div className="flex items-center gap-1 bg-white border border-blue-200 rounded-lg px-1.5 py-0.5 shadow-2xs shrink-0">
+                    <div className="bg-gradient-to-r from-blue-50/80 via-indigo-50/50 to-blue-50/80 border-b border-blue-200 px-2 py-1.5 flex flex-col gap-1.5">
+                      {/* Row 1: Date Picker (Left) + Prominent "+ Add Item" & Delete (Right) — NEVER OVERFLOWS */}
+                      <div className="flex items-center justify-between gap-1.5">
+                        <div className="flex items-center gap-1 bg-white border border-blue-200 rounded-lg px-2 py-0.5 shadow-2xs shrink-0 max-w-[170px]">
                           <Calendar size={12} className="text-blue-600 shrink-0" />
                           <input
                             type="datetime-local"
                             value={dateKey}
                             onChange={(e) => handleUpdateGroupDate(dateKey, e.target.value)}
-                            className="w-[148px] text-[11px] font-mono font-bold text-slate-800 bg-transparent focus:outline-none cursor-pointer tracking-tight shrink-0 [&::-webkit-calendar-picker-indicator]:cursor-pointer [&::-webkit-calendar-picker-indicator]:p-0 [&::-webkit-calendar-picker-indicator]:ml-0.5"
+                            className="w-[140px] text-[11px] font-mono font-bold text-slate-800 bg-transparent focus:outline-none cursor-pointer tracking-tight shrink-0 [&::-webkit-calendar-picker-indicator]:cursor-pointer [&::-webkit-calendar-picker-indicator]:p-0 [&::-webkit-calendar-picker-indicator]:ml-0.5"
                             title="Click to edit date and time"
                           />
                         </div>
 
-                        {/* Subtotal badge */}
-                        <div className="flex items-center gap-1 bg-blue-100/90 border border-blue-300 rounded-lg px-1.5 py-0.5 text-[11px] font-mono ml-auto shrink-0">
+                        {/* Right side: Add + Delete buttons */}
+                        <div className="flex items-center gap-1 shrink-0 ml-auto">
+                          <button
+                            type="button"
+                            onClick={() => handleAddRowToDate(dateKey)}
+                            className="h-7 px-2.5 bg-gradient-to-r from-blue-600 to-indigo-700 hover:from-blue-700 hover:to-indigo-800 text-white rounded-lg text-xs font-black flex items-center gap-1 transition-all cursor-pointer shadow-xs active:scale-95 shrink-0"
+                            title="Add another fish variety for this date"
+                          >
+                            <Plus size={13} className="shrink-0" />
+                            <span className="tracking-tight">Add Item</span>
+                          </button>
+
+                          {dateGroups.length > 1 && (
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteDateGroup(dateKey)}
+                              className="h-7 w-7 flex items-center justify-center text-slate-400 hover:text-rose-600 bg-white border border-blue-200 rounded-lg transition-colors cursor-pointer shrink-0"
+                              title="Delete this entire date group"
+                            >
+                              <Trash2 size={12} />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Row 2: Full Date Label (Left) + Subtotal Badge (Right) — Dedicated Full Width */}
+                      <div className="flex items-center justify-between gap-1.5 pt-0.5 border-t border-blue-200/50">
+                        <div className="flex items-center gap-1 truncate min-w-0">
+                          <span className="text-[10.5px] font-bold text-slate-700 truncate">
+                            {group.label.fullLabel}
+                          </span>
+                          <span className="text-[9.5px] font-mono font-bold text-blue-900 bg-blue-100/90 px-1 py-0.2 rounded shrink-0">
+                            {group.items.length} {group.items.length === 1 ? 'item' : 'items'}
+                          </span>
+                        </div>
+
+                        <div className="flex items-center gap-1 bg-blue-100 border border-blue-300 rounded-lg px-2 py-0.5 text-xs font-mono shrink-0 shadow-2xs">
                           <span className="font-black text-blue-950">
                             {group.subtotalKgInt} Kg{group.subtotalGmInt > 0 ? ` ${group.subtotalGmInt} Gm` : ''}
                           </span>
                           <span className="text-blue-400">•</span>
-                          <span className="font-bold text-emerald-800">₹{group.subtotalValue.toLocaleString('en-IN')}</span>
-                        </div>
-
-                        {/* + Add button */}
-                        <button
-                          type="button"
-                          onClick={() => handleAddRowToDate(dateKey)}
-                          className="h-6 w-6 bg-white hover:bg-blue-100 text-blue-700 border border-blue-300 rounded-lg text-[11px] font-bold flex items-center justify-center transition-all cursor-pointer shadow-2xs shrink-0"
-                          title="Add another fish variety for this date"
-                        >
-                          <Plus size={12} />
-                        </button>
-
-                        {dateGroups.length > 1 && (
-                          <button
-                            type="button"
-                            onClick={() => handleDeleteDateGroup(dateKey)}
-                            className="h-6 w-6 flex items-center justify-center text-slate-400 hover:text-rose-600 rounded-lg transition-colors cursor-pointer shrink-0"
-                            title="Delete this entire date group"
-                          >
-                            <Trash2 size={12} />
-                          </button>
-                        )}
-                      </div>
-
-                      {/* Second line: fullLabel + Items count — always visible */}
-                      <div className="flex items-center gap-1.5 flex-nowrap">
-                        <span className="text-[10px] font-bold text-slate-600 truncate flex-1">
-                          {group.label.fullLabel}
-                        </span>
-                        <div className="flex items-center gap-0.5 shrink-0">
-                          <span className="text-[10px] font-bold text-slate-500">Items:</span>
-                          <span className="font-mono font-black text-[10px] text-blue-900">{group.items.length}</span>
+                          <span className="font-black text-emerald-800">₹{group.subtotalValue.toLocaleString('en-IN')}</span>
                         </div>
                       </div>
                     </div>
@@ -655,9 +658,9 @@ const DamStockInTab = ({
                               </button>
                             </div>
 
-                            {/* Row 2: Grade Dropdown (Generous Width!) + Weights + Rate + Row Total */}
-                            <div className="flex items-center justify-between gap-1 pt-0.5 border-t border-dashed border-blue-100 text-xs">
-                              <div className="flex-1 min-w-[100px] max-w-[125px] shrink-0">
+                            {/* Row 2: Grade Dropdown (Left) + Prominent Total Badge (Right) — NEVER TRUNCATES */}
+                            <div className="flex items-center justify-between gap-2 pt-1 border-t border-dashed border-blue-100">
+                              <div className="flex-1 min-w-0">
                                 {!row.menuItemId ? (
                                   <div className="h-7.5 flex items-center px-2 border border-dashed border-blue-200 rounded-lg bg-slate-50 text-[10.5px] text-slate-400 italic">
                                     Grade
@@ -677,7 +680,7 @@ const DamStockInTab = ({
                                       };
                                       setDamStockInForm({ ...damStockInForm, tallyItems: updated });
                                     }}
-                                    className="w-full h-7.5 bg-blue-50/50 border border-blue-200 rounded-lg px-1.5 text-[10.5px] font-bold text-slate-800 focus:outline-none focus:border-blue-500 cursor-pointer truncate"
+                                    className="w-full h-7.5 bg-blue-50/50 border border-blue-200 rounded-lg px-2 text-[11px] font-bold text-slate-800 focus:outline-none focus:border-blue-500 cursor-pointer truncate"
                                   >
                                     {gradeOptions.map(g => (
                                       <option key={g.key} value={g.key}>
@@ -688,9 +691,46 @@ const DamStockInTab = ({
                                 )}
                               </div>
 
-                              {/* Scale Wt inputs */}
-                              <div className="flex items-center gap-0.5 bg-blue-50/40 p-0.5 rounded-lg border border-blue-200 shrink-0">
-                                <span className="text-[9.5px] font-black text-blue-900 px-0.5 shrink-0">WT:</span>
+                              {/* Prominent Row Total Badge — Full Width, never clipped */}
+                              <div className="flex items-center gap-1 px-2.5 py-1 bg-emerald-50 border border-emerald-300 rounded-lg shrink-0 shadow-2xs">
+                                <span className="text-[10px] font-bold text-emerald-700 uppercase tracking-tight">Total:</span>
+                                <span className="font-mono font-black text-xs sm:text-sm text-emerald-800 whitespace-nowrap">
+                                  ₹{rowTotal.toLocaleString('en-IN')}
+                                </span>
+                              </div>
+                            </div>
+
+                            {/* Row 3: Dedicated Roomy Inputs for Box, Scale Weight & Rate — ZERO OVERFLOW */}
+                            <div className="flex items-center justify-between gap-1.5 pt-1 text-xs flex-wrap sm:flex-nowrap">
+                              {/* Box input */}
+                              <div className="flex items-center gap-1 bg-slate-50 border border-blue-200 rounded-lg px-1.5 py-0.5 shrink-0">
+                                <span className="text-[10px] text-slate-500 font-bold">Bx:</span>
+                                <input
+                                  type="number"
+                                  min="0"
+                                  placeholder="0"
+                                  value={row.boxes}
+                                  onChange={(e) => {
+                                    const val = e.target.value;
+                                    const updated = [...damStockInForm.tallyItems];
+                                    const curKpb = Number(updated[idx].kgPerBox || 1);
+                                    updated[idx].boxes = val;
+                                    if (val !== '' && !isNaN(Number(val)) && Number(val) > 0) {
+                                      const totalWeight = Number(val) * curKpb;
+                                      const wholeKg = Math.floor(totalWeight);
+                                      const remainderGrams = Math.round((totalWeight - wholeKg) * 1000);
+                                      updated[idx].kg = String(wholeKg);
+                                      updated[idx].grams = remainderGrams > 0 ? String(remainderGrams) : '0';
+                                    }
+                                    setDamStockInForm({ ...damStockInForm, tallyItems: updated });
+                                  }}
+                                  className="w-11 h-7 bg-white border border-blue-200 rounded text-center font-mono font-bold text-xs px-0.5 text-slate-900 shadow-2xs"
+                                />
+                              </div>
+
+                              {/* Scale Wt inputs: Wt: [Kg] + [Gm] [Calc] */}
+                              <div className="flex items-center gap-1 bg-blue-50/70 border border-blue-200 rounded-lg px-1.5 py-0.5 shrink-0">
+                                <span className="text-[10px] text-blue-900 font-black">Wt:</span>
                                 <input
                                   type="number"
                                   min="0"
@@ -715,7 +755,7 @@ const DamStockInTab = ({
                                     }
                                     setDamStockInForm({ ...damStockInForm, tallyItems: updated });
                                   }}
-                                  className="w-10 sm:w-11 h-6.5 bg-white border border-blue-200 rounded text-xs text-center font-mono font-bold text-slate-800 focus:outline-none focus:border-blue-500"
+                                  className="w-14 h-7 bg-white border border-blue-300 rounded text-center font-mono font-bold text-xs px-1 text-slate-900 shadow-2xs"
                                 />
                                 <span className="text-[10px] font-bold text-slate-400">+</span>
                                 <input
@@ -732,7 +772,7 @@ const DamStockInTab = ({
                                     updated[idx].grams = val;
                                     setDamStockInForm({ ...damStockInForm, tallyItems: updated });
                                   }}
-                                  className="w-9 h-6.5 bg-white border border-blue-200 rounded text-xs text-center font-mono font-bold text-slate-800 focus:outline-none focus:border-blue-500"
+                                  className="w-11 h-7 bg-white border border-blue-300 rounded text-center font-mono font-bold text-xs px-0.5 text-slate-900 shadow-2xs"
                                 />
                                 <button
                                   type="button"
@@ -745,10 +785,10 @@ const DamStockInTab = ({
                                       setCalcExpression(row.kg ? (Number(row.grams || 0) > 0 ? `${row.kg}.${String(row.grams).padStart(3, '0')}` : row.kg) : '');
                                     }
                                   }}
-                                  className={`h-6.5 px-1.5 rounded border flex items-center justify-center transition-all cursor-pointer shrink-0 ${
+                                  className={`h-7 px-1.5 rounded flex items-center justify-center transition-all cursor-pointer shrink-0 shadow-2xs ${
                                     calcRowIdx === idx
-                                      ? 'bg-blue-600 text-white border-blue-600'
-                                      : 'bg-white text-blue-700 border-blue-300'
+                                      ? 'bg-blue-600 text-white border border-blue-600'
+                                      : 'bg-blue-600 hover:bg-blue-700 text-white'
                                   }`}
                                   title="Scale Weight Calculator"
                                 >
@@ -756,26 +796,23 @@ const DamStockInTab = ({
                                 </button>
                               </div>
 
-                              {/* Rate */}
-                              <div className="w-12 sm:w-14 shrink-0">
+                              {/* Rate input: Rate: ₹ [Rate] /kg */}
+                              <div className="flex items-center gap-1 bg-slate-50 border border-blue-200 rounded-lg px-1.5 py-0.5 shrink-0 ml-auto">
+                                <span className="text-[10px] text-slate-600 font-bold">Rate: ₹</span>
                                 <input
                                   type="number"
                                   min="0"
                                   step="any"
-                                  placeholder="₹/Kg"
+                                  placeholder="0"
                                   value={row.price}
                                   onChange={(e) => {
                                     const updated = [...damStockInForm.tallyItems];
                                     updated[idx].price = e.target.value;
                                     setDamStockInForm({ ...damStockInForm, tallyItems: updated });
                                   }}
-                                  className="w-full h-7 bg-white border border-blue-200 rounded-lg px-1 text-xs text-right font-mono font-bold text-slate-800 focus:outline-none focus:border-blue-500"
+                                  className="w-14 h-7 bg-white border border-blue-200 rounded text-right font-mono font-bold text-xs px-1 text-slate-900 shadow-2xs"
                                 />
-                              </div>
-
-                              {/* Total */}
-                              <div className="w-14 sm:w-18 shrink-0 text-right font-mono font-black text-xs text-emerald-800 whitespace-nowrap">
-                                ₹{rowTotal.toLocaleString('en-IN')}
+                                <span className="text-[9.5px] text-slate-400 font-semibold">/kg</span>
                               </div>
                             </div>
 
