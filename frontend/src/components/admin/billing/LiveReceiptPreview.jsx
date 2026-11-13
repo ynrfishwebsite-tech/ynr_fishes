@@ -77,13 +77,13 @@ const LiveReceiptPreview = ({ settings, previewTab, t, user, menuPreviewItems, o
         {/* Info bar at top of preview */}
         <div className="flex items-center justify-between px-3 py-1.5 bg-[#FAF0E4] border-b border-[#E8DCCB] text-[10px] text-slate-800 font-sans select-none">
           <span className="font-bold text-slate-900 truncate max-w-[55%]">
-            {previewTab === 'srm' ? 'SRM Inward Slip' : previewFont.shortName}
+            {previewTab === 'local' ? 'Local Catch Slip' : previewTab === 'dam' ? 'Dam Catch Slip' : previewTab === 'supplies' ? 'Supplies Inward' : (previewTab === 'srm' ? 'SRM Inward Slip' : previewFont.shortName)}
           </span>
           <span className="font-bold text-slate-800">{RECEIPT_FONT_SIZES.find(s => s.id === (settings.receiptFontSize || 'medium'))?.label || 'Medium'} ({previewMetrics.bodySize})</span>
         </div>
 
-        {previewTab === 'srm' ? (
-          /* SRM Goods Inward & Catch Weighment Slip */
+        {(previewTab === 'srm' || previewTab === 'local' || previewTab === 'dam' || previewTab === 'supplies') ? (
+          /* SRM Goods Inward & Catch Weighment Slip (Matching Real UI Inward Slip Exactly) */
           <div
             className="p-3 transition-all duration-150 text-black font-mono"
             style={{
@@ -112,113 +112,194 @@ const LiveReceiptPreview = ({ settings, previewTab, t, user, menuPreviewItems, o
                 {settings.restaurantName || 'YNR FISHES'}
               </div>
               <div style={{ fontSize: previewMetrics.detailSize, marginTop: '2px', lineHeight: '1.2' }}>
-                Kadapa Seafood Depot • Port & Dam Landings
+                {(settings.address || 'Chemmumiahpet, Ravindra Nagar, Utukuru, Andhra Pradesh 516004').split('\n')[0]}
               </div>
               <div style={{ fontSize: previewMetrics.detailSize, marginTop: '2px', lineHeight: '1.25' }}>
-                PH: {settings.phone || '8328470402'}
+                Ph: {settings.phone || '9849313889'}{settings.gstin ? ` • GST: ${settings.gstin}` : ' • GST: 37AAACI1681G2ZN'}
               </div>
             </div>
 
             <div style={{ height: '1.5px', backgroundColor: '#000000', margin: '4px 0', width: '100%' }}></div>
 
-            <div style={{ fontSize: previewMetrics.subHeadingSize, fontWeight: 'bold', textAlign: 'center', margin: '2px 0' }}>
-              GOODS INWARD CATCH SLIP
-            </div>
-            <div style={{ fontSize: previewMetrics.detailSize, textAlign: 'center', color: '#444' }}>
-              SRM Procurement & Weighment Voucher
+            {/* Document Titles */}
+            <div style={{ textAlign: 'center', margin: '2px 0' }}>
+              <div style={{ fontSize: previewMetrics.subHeadingSize, fontWeight: 'bold', textTransform: 'uppercase' }}>
+                {previewTab === 'dam' ? 'DAM CATCH SLIP' : previewTab === 'supplies' ? 'SUPPLIES STOCK-IN SLIP' : 'LOCAL CATCH SLIP'}
+              </div>
+              <div style={{ fontSize: '9px', color: '#64748b', textTransform: 'uppercase' }}>
+                {previewTab === 'supplies' ? 'GOODS INWARD & PROCUREMENT SLIP' : 'GOODS INWARD & WEIGHMENT SLIP'}
+              </div>
+              <div style={{ fontWeight: 'bold', fontSize: previewMetrics.detailSize, marginTop: '1px' }}>
+                {previewTab === 'dam' ? '#GIN-DAM-20261109-011857' : previewTab === 'supplies' ? '#GIN-SUP-20261109-011857' : '#GIN-LOC-20261109-011857'}
+              </div>
+              <div style={{ fontSize: '9.5px', color: '#475569' }}>
+                09 Nov 2026 • 01:18 am
+              </div>
             </div>
 
             <div style={{ height: '1.5px', backgroundColor: '#000000', margin: '4px 0', width: '100%' }}></div>
 
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: previewMetrics.detailSize }}>
-              <span>Date: {new Date().toLocaleDateString('en-GB')}</span>
-              <span style={{ fontWeight: 'bold' }}>{new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })}</span>
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: previewMetrics.detailSize }}>
-              <span>Voucher:</span>
-              <span style={{ fontWeight: 'bold' }}>#GIN-LOC-20261113-01</span>
-            </div>
+            {/* Party & Logistics Details (Strict: Only present fields are shown, no dummy fallbacks) */}
+            {(() => {
+              const party = previewTab === 'dam'
+                ? {
+                    supplier: 'SRI KRISHNA SYNDICATE',
+                    firm: 'Dam Landings Unit #3',
+                    phone: '9849313889',
+                    vehicle: 'AP 04 TT 5521',
+                    origin: 'Somasila Reservoir Landing'
+                  }
+                : previewTab === 'supplies'
+                ? {
+                    supplier: 'BALAJI ICE & PACKAGING',
+                    firm: 'Depot Bulk Crates',
+                    phone: '9440123456',
+                    vehicle: 'AP 04 X 8812',
+                    origin: 'Industrial Area, Kadapa'
+                  }
+                : {
+                    supplier: 'MANGALORE SUPPLIER',
+                    firm: 'Sea King Syndicate',
+                    phone: '8489484844',
+                    vehicle: 'AP 04 BB 3821',
+                    origin: 'Mangalore Old Port / Bunder H...'
+                  };
 
-            <div style={{ backgroundColor: '#f8fafc', padding: '4px 6px', margin: '4px 0', borderRadius: '4px', fontSize: previewMetrics.detailSize, border: '1px solid #e2e8f0' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span style={{ fontWeight: 'bold' }}>Supplier:</span>
-                <span style={{ fontWeight: 'bold' }}>Mangalore Supplier</span>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span>Vehicle:</span>
-                <span style={{ fontFamily: 'monospace', fontWeight: 'bold' }}>AP 04 BB 3821</span>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span>Origin:</span>
-                <span>Mangalore Old Port / Bunder</span>
-              </div>
-            </div>
+              return (
+                <div style={{ backgroundColor: '#f8fafc', padding: '5px 7px', margin: '4px 0', borderRadius: '4px', fontSize: previewMetrics.detailSize, border: '1px solid #cbd5e1' }}>
+                  {party.supplier && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '2px' }}>
+                      <span style={{ color: '#475569', fontWeight: 'bold' }}>Supplier:</span>
+                      <span style={{ fontWeight: '900', textTransform: 'uppercase' }}>{party.supplier}</span>
+                    </div>
+                  )}
+                  {party.firm && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '2px' }}>
+                      <span style={{ color: '#475569', fontWeight: 'bold' }}>Firm/Boat:</span>
+                      <span style={{ fontWeight: 600 }}>{party.firm}</span>
+                    </div>
+                  )}
+                  {party.phone && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '2px' }}>
+                      <span style={{ color: '#475569', fontWeight: 'bold' }}>Phone:</span>
+                      <span style={{ fontWeight: 'bold', fontFamily: 'monospace' }}>{party.phone}</span>
+                    </div>
+                  )}
+                  {party.vehicle && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '2px' }}>
+                      <span style={{ color: '#475569', fontWeight: 'bold' }}>Vehicle:</span>
+                      <span style={{ fontFamily: 'monospace', fontWeight: '900', backgroundColor: '#e2e8f0', padding: '0 4px', borderRadius: '2px' }}>{party.vehicle}</span>
+                    </div>
+                  )}
+                  {party.origin && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span style={{ color: '#475569', fontWeight: 'bold' }}>Origin / Port:</span>
+                      <span style={{ fontWeight: 600, maxWidth: '65%', textAlign: 'right', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{party.origin}</span>
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
 
-            <div style={{ height: '1px', borderTop: '1px dashed #000000', margin: '4px 0' }}></div>
+            <div style={{ height: '1.5px', backgroundColor: '#000000', margin: '4px 0', width: '100%' }}></div>
 
-            {/* Inward Items */}
+            {/* Inward Items Table (Matching Reference Exactly) */}
             <div style={{ margin: '4px 0' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: previewMetrics.detailSize, fontWeight: 'bold', borderBottom: '1px solid #000', paddingBottom: '2px' }}>
-                <span>CATCH ITEM</span>
-                <span style={{ textAlign: 'right' }}>WT / RATE / TOTAL</span>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: previewMetrics.detailSize, fontWeight: '900', borderBottom: '1px solid #000', paddingBottom: '3px', textTransform: 'uppercase' }}>
+                <span style={{ flex: '1 1 0%' }}>VARIETY / GRADE</span>
+                <span style={{ width: '80px', textAlign: 'right', flexShrink: 0 }}>WT / BOX</span>
+                <span style={{ width: '85px', textAlign: 'right', flexShrink: 0 }}>AMOUNT</span>
               </div>
-              <div style={{ padding: '3px 0', borderBottom: '1px solid #eee', fontSize: previewMetrics.detailSize }}>
-                <div style={{ fontWeight: 'bold' }}>1. Wallago / వాలగ (Fresh)</div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', color: '#333' }}>
-                  <span>40 Bx • 2400.0 Kg @ ₹150</span>
-                  <span style={{ fontWeight: 'bold' }}>₹3,60,000</span>
-                </div>
-              </div>
-              <div style={{ padding: '3px 0', borderBottom: '1px solid #eee', fontSize: previewMetrics.detailSize }}>
-                <div style={{ fontWeight: 'bold' }}>2. Black Pomfret / చందువ</div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', color: '#333' }}>
-                  <span>14 Bx • 350.0 Kg @ ₹420</span>
-                  <span style={{ fontWeight: 'bold' }}>₹1,47,000</span>
-                </div>
-              </div>
+
+              {/* Sample Catch Items */}
+              {(() => {
+                const srmItems = previewTab === 'supplies'
+                  ? [
+                      { name: 'Crushed Ice (Block) / మంచు', grade: 'Grade: Industrial (Pure)', rate: 2.5, wt: '1200.0 Kg', boxes: '20 Blk', total: '3,000.00' },
+                      { name: 'Plastic Fish Crates (Red) / క్రేట్స్', grade: 'Grade: 60 Kg Capacity', rate: 450, wt: '50 Pcs', boxes: '50 Pcs', total: '22,500.00' }
+                    ]
+                  : [
+                      { name: 'Wallago / వాలగ (ఆల)', grade: 'Grade: Medium (1+)', rate: 150, wt: '2400.0 Kg', boxes: '40 Bx', total: '3,60,000.00' }
+                    ];
+
+                return srmItems.map((it, idx) => {
+                  const { itemTitle } = formatReceiptItemName(it.name, langPref);
+                  return (
+                    <div key={idx} style={{ padding: '3px 0', borderBottom: idx < srmItems.length - 1 ? '1px dashed #cbd5e1' : 'none', fontSize: previewMetrics.detailSize }}>
+                      <div style={{ fontWeight: 'bold', fontSize: previewMetrics.detailSize }}>
+                        {idx + 1}. {itemTitle}
+                      </div>
+                      <div style={{ fontSize: '9px', color: '#475569', marginLeft: '12px' }}>
+                        {it.grade}
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '1px' }}>
+                        <span style={{ color: '#1e293b', fontSize: '9.5px', marginLeft: '12px' }}>
+                          {it.boxes} • {it.wt} @ ₹{it.rate}/kg
+                        </span>
+                        <span style={{ fontWeight: 'bold', fontSize: previewMetrics.detailSize }}>
+                          ₹{it.total}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                });
+              })()}
             </div>
 
-            <div style={{ height: '1px', borderTop: '1px dashed #000000', margin: '4px 0' }}></div>
+            <div style={{ borderTop: '1px dashed #000000', margin: '4px 0' }}></div>
 
-            {/* Totals & Deductions */}
-            <div style={{ fontSize: previewMetrics.detailSize }}>
+            {/* Totals Section */}
+            <div style={{ fontSize: previewMetrics.detailSize, lineHeight: '1.4' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span>Total Catch Weight:</span>
-                <span style={{ fontWeight: 'bold' }}>2,750.0 Kg (54 Bx)</span>
+                <span>Total Net Weight:</span>
+                <span style={{ fontWeight: 'bold' }}>2400.0 Kg</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span>Total Boxes / Crates:</span>
+                <span style={{ fontWeight: 'bold' }}>40 Boxes</span>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                 <span>Gross Catch Value:</span>
-                <span style={{ fontWeight: 'bold' }}>₹5,07,000</span>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', color: '#b91c1c' }}>
-                <span>- Ice Charges (Dr):</span>
-                <span>-₹2,500</span>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', color: '#b91c1c' }}>
-                <span>- Advance Deducted:</span>
-                <span>-₹50,000</span>
+                <span style={{ fontWeight: 'bold' }}>₹3,60,000.00</span>
               </div>
             </div>
 
-            <div style={{ height: '1.5px', backgroundColor: '#000000', margin: '4px 0' }}></div>
+            <div style={{ height: '1.5px', backgroundColor: '#000000', margin: '4px 0', width: '100%' }}></div>
 
-            <div style={{ textAlign: 'center', padding: '4px', backgroundColor: '#f0fdf4', border: '1px solid #16a34a', borderRadius: '4px', margin: '4px 0' }}>
-              <div style={{ fontSize: '9px', fontWeight: 'bold', textTransform: 'uppercase', color: '#166534' }}>
-                NET DUE TO SUPPLIER
+            {/* NET PAYABLE BOX (Matching User Screenshot with Bold 2px border) */}
+            <div style={{ textAlign: 'center', padding: '6px 4px', border: '2px solid #000000', borderRadius: '4px', margin: '5px 0' }}>
+              <div style={{ fontSize: '9px', fontWeight: '900', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                {previewTab === 'dam' ? 'NET PAYABLE TO CONTRACTOR' : previewTab === 'supplies' ? 'NET PAYABLE TO SUPPLIER' : 'NET PAYABLE TO FISHERMAN'}
               </div>
-              <div style={{ fontSize: previewMetrics.grandTotalSize, fontWeight: 'bold', color: '#000' }}>
-                ₹4,54,500.00
+              <div style={{ fontSize: previewMetrics.grandTotalSize, fontWeight: '900', color: '#000000', margin: '2px 0' }}>
+                ₹3,60,000.00
               </div>
-              <div style={{ fontSize: '9px', fontWeight: 'bold', color: '#15803d' }}>
-                Status: PAID • Mode: Cash
+              <div style={{ borderTop: '1px dashed #000000', margin: '4px 0' }}></div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '9px', fontWeight: 'bold', padding: '0 4px' }}>
+                <span>STATUS: PAID</span>
+                <span>MODE: Cash</span>
               </div>
             </div>
 
-            <div style={{ textAlign: 'center', fontSize: '9px', fontWeight: 'bold', marginTop: '6px' }}>
-              *** WEIGHMENT VERIFIED & ACCEPTED ***
+            <div style={{ fontSize: '9.5px', fontStyle: 'italic', color: '#334155', margin: '4px 0' }}>
+              In Words: Three Lakh Sixty Thousand Only
             </div>
-            <div style={{ textAlign: 'center', fontSize: '8px', color: '#666' }}>
-              Weighbridge Operator & Party Acceptance
+
+            <div style={{ borderTop: '1px dashed #000000', margin: '6px 0 10px 0' }}></div>
+
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '9px', fontWeight: 'bold', textAlign: 'center', padding: '0 4px' }}>
+              <div>
+                <div style={{ borderTop: '1px dashed #666', width: '85px', marginBottom: '2px' }}></div>
+                <span>Supplier Signature</span>
+              </div>
+              <div>
+                <div style={{ borderTop: '1px dashed #666', width: '85px', marginBottom: '2px' }}></div>
+                <span>Weighbridge Officer</span>
+              </div>
+            </div>
+
+            <div style={{ textAlign: 'center', fontSize: '9px', fontWeight: '900', marginTop: '8px', letterSpacing: '0.5px' }}>
+              *** GOODS RECEIVED & WEIGHED ***
             </div>
           </div>
         ) : (

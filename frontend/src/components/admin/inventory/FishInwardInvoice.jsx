@@ -1,9 +1,11 @@
 import React, { useRef, useMemo, useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { Printer, ArrowLeft, X, Check } from 'lucide-react';
+import { Printer, ArrowLeft, X, Check, MessageCircle, Loader2 } from 'lucide-react';
 import ynrLogo from '../../../assets/ynr_logo.png';
 import api from '../../../api/system/axios';
-import { renderElementToPNGBase64 } from '../../../utils/formatters/escposRaster';
+import { renderElementToPNGBase64, renderElementToESCPOSRaster } from '../../../utils/formatters/escposRaster';
+import { sendWhatsAppBill } from '../../../api/communication/whatsapp';
+import html2canvas from 'html2canvas-pro';
 
 /**
  * Converts any positive number into Indian words without "Indian Rupees" prefix.
@@ -204,12 +206,14 @@ export default function FishInwardInvoice({ data, onClose }) {
   const invoiceDate = data.date || new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
   const invoiceTime = data.time || new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
 
-  // Party info
-  const partyName = data.supplierName || data.contractorName || 'Walk-in Supplier';
-  const partyPhone = data.phone || data.supplierPhone || data.contractorPhone || '—';
-  const firmOrBoat = data.companyName || data.boatName || data.syndicateName || '';
-  const vehicleNumber = data.vehicleNumber ? String(data.vehicleNumber).trim() : '';
-  const originLocation = data.harbor || data.damLocation || data.originPort || (isDam ? 'Inland Reservoir' : 'Harbor');
+  // Party info (Strict: NO dummy fallbacks, only real present values)
+  const partyName = (data.supplierName || data.contractorName || '').trim();
+  const rawPhone = (data.phone || data.supplierPhone || data.contractorPhone || '').trim();
+  const partyPhone = (rawPhone && rawPhone !== '—' && rawPhone !== '-' && rawPhone !== 'undefined' && rawPhone !== 'null') ? rawPhone : '';
+  const firmOrBoat = (data.companyName || data.boatName || data.syndicateName || '').trim();
+  const vehicleNumber = (data.vehicleNumber && String(data.vehicleNumber).trim() !== '—' && String(data.vehicleNumber).trim() !== '-') ? String(data.vehicleNumber).trim() : '';
+  const originLocation = (data.harbor || data.damLocation || data.originPort || '').trim();
+  const hasPartyInfo = Boolean(partyName || firmOrBoat || partyPhone || vehicleNumber || originLocation);
 
   // Items
   const items = data.items || [];
@@ -296,6 +300,7 @@ export default function FishInwardInvoice({ data, onClose }) {
 
   const [printToast, setPrintToast] = useState(null);
   const [isPrinting, setIsPrinting] = useState(false);
+  const [isSendingWhatsApp, setIsSendingWhatsApp] = useState(false);
 
   const handlePrint = async (forceBrowserPrint = false) => {
     // Standard browser print (Save as PDF) requested explicitly via PDF button
@@ -326,16 +331,36 @@ export default function FishInwardInvoice({ data, onClose }) {
     // Direct thermal print to the configured SRM printer
     setIsPrinting(true);
     try {
+      const receiptNode = printFormat === '58mm'
+        ? (document.querySelector('.receipt-thermal-58mm') || document.querySelector('.receipt-thermal-80mm') || document.querySelector('.a4-print-sheet'))
+        : (printFormat === 'A4'
+          ? (document.querySelector('.a4-print-sheet') || document.querySelector('.receipt-thermal-80mm'))
+          : (document.querySelector('.receipt-thermal-80mm') || document.querySelector('.receipt-thermal-58mm')));
+
+      const dots = printFormat === '58mm' ? 384 : 576;
+
+      // 1. Android Bluetooth direct printing (Raster Image)
       if (activeSRMPrinter.connectionType === 'bluetooth' && window.AndroidBluetooth?.printImage) {
-        const receiptNode = document.querySelector('.receipt-thermal-58mm') || document.querySelector('.receipt-thermal-80mm') || document.querySelector('.a4-print-sheet');
-        const dots = printFormat === '58mm' ? 384 : 576;
-        const pngBase64 = await renderElementToPNGBase64(receiptNode, dots);
-        const resStr = window.AndroidBluetooth.printImage(activeSRMPrinter.bluetoothAddress, pngBase64, dots);
-        const res = JSON.parse(resStr || '{}');
-        if (res.success) {
-          setPrintToast({ message: `Inward Catch Voucher printed to ${activeSRMPrinter.name}!`, type: 'success' });
-          setTimeout(() => setPrintToast(null), 3500);
-          return;
+        if (receiptNode) {
+          const pngBase64 = await renderElementToPNGBase64(receiptNode, dots);
+          const resStr = window.AndroidBluetooth.printImage(activeSRMPrinter.bluetoothAddress, pngBase64, dots);
+          const res = JSON.parse(resStr || '{}');
+          if (res.success) {
+            setPrintToast({ message: `Inward Catch Voucher printed to ${activeSRMPrinter.name}!`, type: 'success' });
+            setTimeout(() => setPrintToast(null), 3500);
+            return;
+          }
+        }
+      }
+
+      // 2. USB Thermal, LAN / Network or Desktop printing:
+      // Generate EXACT ESC/POS Raster from rendered DOM node matching UI format, fonts, Telugu script and sizes
+      let rasterData = null;
+      if (receiptNode) {
+        try {
+          rasterData = await renderElementToESCPOSRaster(receiptNode, dots);
+        } catch (rasterErr) {
+          console.warn('Failed to generate ESCPOS raster for inward voucher:', rasterErr);
         }
       }
 
@@ -357,10 +382,11 @@ export default function FishInwardInvoice({ data, onClose }) {
 
       const res = await api.post('/printer-configs/print-bill', {
         bill: voucherPayload,
-        printerId: activeSRMPrinter._id
+        printerId: activeSRMPrinter._id,
+        rasterBufferBase64: rasterData
       });
 
-      if (res.data?.success) {
+      if (res.data?.success || res.data?.relayed) {
         setPrintToast({ message: `Inward Catch Voucher printed to ${activeSRMPrinter.name}!`, type: 'success' });
         setTimeout(() => setPrintToast(null), 3500);
       } else {
@@ -373,6 +399,74 @@ export default function FishInwardInvoice({ data, onClose }) {
       window.print();
     } finally {
       setIsPrinting(false);
+    }
+  };
+
+  const handleSendWhatsApp = async () => {
+    let cleanPhone = (partyPhone || '').replace(/[^0-9]/g, '');
+    if (!cleanPhone || cleanPhone.length < 10) {
+      setPrintToast({ message: 'No valid phone number found for this supplier/contractor to send WhatsApp.', type: 'warning' });
+      setTimeout(() => setPrintToast(null), 3500);
+      return;
+    }
+    if (cleanPhone.length === 10) cleanPhone = '91' + cleanPhone;
+
+    setIsSendingWhatsApp(true);
+    try {
+      const receiptElement = document.querySelector('.receipt-thermal-80mm') || document.querySelector('.receipt-thermal-58mm') || document.querySelector('.a4-print-sheet');
+      let imageBase64 = null;
+      if (receiptElement) {
+        try {
+          const canvas = await html2canvas(receiptElement, {
+            scale: 1.5,
+            useCORS: true,
+            allowTaint: true,
+            backgroundColor: '#ffffff',
+            logging: false
+          });
+          imageBase64 = canvas.toDataURL('image/png');
+        } catch (imgErr) {
+          console.warn('html2canvas capture warning:', imgErr);
+        }
+      }
+
+      const slipType = isLocal ? 'LOCAL CATCH SLIP' : isDam ? 'DAM CATCH SLIP' : 'SUPPLIES STOCK-IN SLIP';
+      const msg = `📦 *${storeProfile?.name || 'YNR FISHES'} - ${slipType}*\n\n` +
+        `*Voucher No:* #${invoiceNo}\n` +
+        `*Date:* ${invoiceDate} • ${invoiceTime}\n` +
+        (partyName ? `*Supplier / Party:* ${partyName}\n` : '') +
+        (firmOrBoat ? `*Firm / Boat:* ${firmOrBoat}\n` : '') +
+        (vehicleNumber ? `*Vehicle:* ${vehicleNumber}\n` : '') +
+        (originLocation ? `*Origin / Port:* ${originLocation}\n` : '') +
+        `--------------------------\n` +
+        `*Total Net Weight:* ${totalWeightKg.toFixed(1).replace(/\.0$/, '')} Kg (${totalBoxes} Boxes)\n` +
+        `*Gross Catch Value:* ₹${grossValue.toLocaleString('en-IN', { minimumFractionDigits: 2 })}\n` +
+        `*Net Payable:* ₹${netPayable.toLocaleString('en-IN', { minimumFractionDigits: 2 })}\n` +
+        `*Status:* ${data.status || 'PAID'} • *Mode:* ${paymentMode}\n\n` +
+        `_Goods Received & Weighed at ${storeProfile?.name || 'YNR FISHES'}_`;
+
+      try {
+        const res = await sendWhatsAppBill(cleanPhone, { billNumber: invoiceNo, total: netPayable }, imageBase64, msg);
+        if (res?.success) {
+          setPrintToast({ message: `Voucher sent via WhatsApp to ${cleanPhone}!`, type: 'success' });
+          setTimeout(() => setPrintToast(null), 3500);
+          return;
+        }
+      } catch (apiErr) {
+        console.warn('Automated WhatsApp dispatch notice:', apiErr);
+      }
+
+      // Fallback: Direct chat URL
+      const encodedMsg = encodeURIComponent(msg);
+      window.open(`https://wa.me/${cleanPhone}?text=${encodedMsg}`, '_blank');
+      setPrintToast({ message: `Opening WhatsApp chat with ${cleanPhone}...`, type: 'success' });
+      setTimeout(() => setPrintToast(null), 3500);
+    } catch (err) {
+      console.error('WhatsApp send error:', err);
+      setPrintToast({ message: `Failed to send WhatsApp: ${err.message || 'Error'}`, type: 'error' });
+      setTimeout(() => setPrintToast(null), 4000);
+    } finally {
+      setIsSendingWhatsApp(false);
     }
   };
 
@@ -436,8 +530,21 @@ export default function FishInwardInvoice({ data, onClose }) {
           ))}
         </div>
 
-        {/* Right Print & Close Buttons with Printer Purpose Detection */}
+        {/* Right Print & WhatsApp & Close Buttons */}
         <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+          {partyPhone && (
+            <button
+              type="button"
+              onClick={handleSendWhatsApp}
+              disabled={isSendingWhatsApp}
+              className="px-2.5 sm:px-3.5 py-1.5 sm:py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 shadow-xs shrink-0 active:scale-95 disabled:opacity-50"
+              title={`Send Inward Catch Slip to ${partyPhone} via WhatsApp`}
+            >
+              {isSendingWhatsApp ? <Loader2 size={15} className="animate-spin" /> : <MessageCircle size={15} />}
+              <span className="hidden sm:inline">WhatsApp</span>
+            </button>
+          )}
+
           <div className="flex items-center bg-[#FDFBF7] border border-slate-300 shadow-xs rounded-xl overflow-hidden shrink-0">
             <button
               type="button"
@@ -620,29 +727,41 @@ export default function FishInwardInvoice({ data, onClose }) {
 
             <div className="border-t border-black my-1" />
 
-            {/* Supplier & Logistics */}
-            <div className="text-[9px] space-y-0.5">
-              <div className="flex justify-between">
-                <span className="font-bold">Supp:</span>
-                <span className="font-black truncate max-w-[140px] uppercase">{partyName}</span>
+            {/* Supplier & Logistics (Strict: Only show existing non-empty rows) */}
+            {hasPartyInfo && (
+              <div className="text-[9px] space-y-0.5">
+                {partyName && (
+                  <div className="flex justify-between">
+                    <span className="font-bold">Supp:</span>
+                    <span className="font-black truncate max-w-[140px] uppercase">{partyName}</span>
+                  </div>
+                )}
+                {firmOrBoat && (
+                  <div className="flex justify-between">
+                    <span className="text-slate-600">Firm:</span>
+                    <span className="font-semibold truncate max-w-[140px]">{firmOrBoat}</span>
+                  </div>
+                )}
+                {partyPhone && (
+                  <div className="flex justify-between">
+                    <span className="font-bold">Phone:</span>
+                    <span className="font-mono">{partyPhone}</span>
+                  </div>
+                )}
+                {vehicleNumber && (
+                  <div className="flex justify-between">
+                    <span className="font-bold">Veh:</span>
+                    <span className="font-black font-mono">{vehicleNumber}</span>
+                  </div>
+                )}
+                {originLocation && (
+                  <div className="flex justify-between">
+                    <span className="text-slate-600">Origin:</span>
+                    <span className="truncate max-w-[140px]">{originLocation}</span>
+                  </div>
+                )}
               </div>
-              {firmOrBoat && (
-                <div className="flex justify-between">
-                  <span className="text-slate-600">Firm:</span>
-                  <span className="font-semibold truncate max-w-[140px]">{firmOrBoat}</span>
-                </div>
-              )}
-              {vehicleNumber && (
-                <div className="flex justify-between">
-                  <span className="font-bold">Veh:</span>
-                  <span className="font-black font-mono">{vehicleNumber}</span>
-                </div>
-              )}
-              <div className="flex justify-between">
-                <span className="text-slate-600">Origin:</span>
-                <span className="truncate max-w-[140px]">{originLocation}</span>
-              </div>
-            </div>
+            )}
 
             <div className="border-t border-black my-1" />
 
@@ -775,35 +894,41 @@ export default function FishInwardInvoice({ data, onClose }) {
 
             <div className="border-t border-black my-1" />
 
-            {/* Party & Logistics Grid */}
-            <div className="text-[10px] space-y-1 bg-slate-50 p-2 rounded border border-slate-200">
-              <div className="flex justify-between">
-                <span className="font-bold text-slate-600">Supplier:</span>
-                <span className="font-black uppercase text-black text-right truncate max-w-[180px]">{partyName}</span>
+            {/* Party & Logistics Grid (Strict: Only show existing non-empty rows) */}
+            {hasPartyInfo && (
+              <div className="text-[10px] space-y-1 bg-slate-50 p-2 rounded border border-slate-200">
+                {partyName && (
+                  <div className="flex justify-between">
+                    <span className="font-bold text-slate-600">Supplier:</span>
+                    <span className="font-black uppercase text-black text-right truncate max-w-[180px]">{partyName}</span>
+                  </div>
+                )}
+                {firmOrBoat && (
+                  <div className="flex justify-between">
+                    <span className="font-bold text-slate-600">Firm/Boat:</span>
+                    <span className="font-semibold text-right truncate max-w-[180px]">{firmOrBoat}</span>
+                  </div>
+                )}
+                {partyPhone && (
+                  <div className="flex justify-between">
+                    <span className="font-bold text-slate-600">Phone:</span>
+                    <span className="font-bold text-right font-mono">{partyPhone}</span>
+                  </div>
+                )}
+                {vehicleNumber && (
+                  <div className="flex justify-between">
+                    <span className="font-bold text-slate-600">Vehicle:</span>
+                    <span className="font-black font-mono text-right bg-slate-200 px-1 rounded">{vehicleNumber}</span>
+                  </div>
+                )}
+                {originLocation && (
+                  <div className="flex justify-between">
+                    <span className="font-bold text-slate-600">Origin / Port:</span>
+                    <span className="font-semibold text-right truncate max-w-[180px]">{originLocation}</span>
+                  </div>
+                )}
               </div>
-              {firmOrBoat && (
-                <div className="flex justify-between">
-                  <span className="font-bold text-slate-600">Firm/Boat:</span>
-                  <span className="font-semibold text-right truncate max-w-[180px]">{firmOrBoat}</span>
-                </div>
-              )}
-              {partyPhone && partyPhone !== '—' && (
-                <div className="flex justify-between">
-                  <span className="font-bold text-slate-600">Phone:</span>
-                  <span className="font-bold text-right">{partyPhone}</span>
-                </div>
-              )}
-              {vehicleNumber && (
-                <div className="flex justify-between">
-                  <span className="font-bold text-slate-600">Vehicle:</span>
-                  <span className="font-black font-mono text-right bg-slate-200 px-1 rounded">{vehicleNumber}</span>
-                </div>
-              )}
-              <div className="flex justify-between">
-                <span className="font-bold text-slate-600">Origin / Port:</span>
-                <span className="font-semibold text-right truncate max-w-[180px]">{originLocation}</span>
-              </div>
-            </div>
+            )}
 
             <div className="border-t border-black my-1.5" />
 
@@ -988,40 +1113,62 @@ export default function FishInwardInvoice({ data, onClose }) {
               </div>
             </div>
 
-            {/* Party & Logistics Details */}
-            <div className="print-party-grid grid grid-cols-1 sm:grid-cols-2 border border-slate-900 divide-y sm:divide-y-0 sm:divide-x divide-slate-900 text-[11px]">
-              {/* Left: Supplier Details */}
-              <div className="p-2 space-y-0.5">
-                <div className="text-[10px] font-black uppercase tracking-wider text-slate-500 border-b border-slate-200 pb-0.5">
-                  {isLocal ? 'FISHERMAN / SUPPLIER DETAILS' : isDam ? 'CONTRACTOR / SYNDICATE DETAILS' : 'VENDOR / SUPPLIES PROVIDER'}
+            {/* Party & Logistics Details (Strict: Only show existing non-empty rows) */}
+            {hasPartyInfo && (
+              <div className="print-party-grid grid grid-cols-1 sm:grid-cols-2 border border-slate-900 divide-y sm:divide-y-0 sm:divide-x divide-slate-900 text-[11px]">
+                {/* Left: Supplier Details */}
+                <div className="p-2 space-y-0.5">
+                  <div className="text-[10px] font-black uppercase tracking-wider text-slate-500 border-b border-slate-200 pb-0.5">
+                    {isLocal ? 'FISHERMAN / SUPPLIER DETAILS' : isDam ? 'CONTRACTOR / SYNDICATE DETAILS' : 'VENDOR / SUPPLIES PROVIDER'}
+                  </div>
+                  <div className="grid grid-cols-3 gap-1 pt-0.5">
+                    {partyName && (
+                      <>
+                        <span className="text-slate-500 font-bold">Supplier Name:</span>
+                        <span className="col-span-2 font-black text-slate-950 uppercase">{partyName}</span>
+                      </>
+                    )}
+                    {partyPhone && (
+                      <>
+                        <span className="text-slate-500 font-bold">Phone:</span>
+                        <span className="col-span-2 font-mono font-bold text-slate-900">{partyPhone}</span>
+                      </>
+                    )}
+                    {firmOrBoat && (
+                      <>
+                        <span className="text-slate-500 font-bold">Company / Boat:</span>
+                        <span className="col-span-2 font-bold text-slate-900">{firmOrBoat}</span>
+                      </>
+                    )}
+                  </div>
                 </div>
-                <div className="grid grid-cols-3 gap-1 pt-0.5">
-                  <span className="text-slate-500 font-bold">Supplier Name:</span>
-                  <span className="col-span-2 font-black text-slate-950 uppercase">{partyName}</span>
-                  <span className="text-slate-500 font-bold">Phone:</span>
-                  <span className="col-span-2 font-mono font-bold text-slate-900">{partyPhone}</span>
-                  <span className="text-slate-500 font-bold">Company Name:</span>
-                  <span className="col-span-2 font-bold text-slate-900">{firmOrBoat || '—'}</span>
-                </div>
-              </div>
 
-              {/* Right: Logistics & Depot Weighbridge */}
-              <div className="p-2 space-y-0.5">
-                <div className="text-[10px] font-black uppercase tracking-wider text-slate-500 border-b border-slate-200 pb-0.5">
-                  LOGISTICS & WEIGHMENT DETAILS
-                </div>
-                <div className="grid grid-cols-3 gap-1 pt-0.5">
-                  <span className="text-slate-500 font-bold">Vehicle Number:</span>
-                  <span className="col-span-2 font-mono font-black text-slate-950 uppercase">{vehicleNumber || ''}</span>
-                  <span className="text-slate-500 font-bold">Origin / Port:</span>
-                  <span className="col-span-2 font-bold text-slate-900">{originLocation}</span>
-                  <span className="text-slate-500 font-bold">Channel:</span>
-                  <span className="col-span-2 font-bold text-slate-900">
-                    {isLocal ? 'Local Coastal Harbor Catch' : isDam ? 'Inland Reservoir Consignment' : 'Depot Supplies & Packaging'}
-                  </span>
+                {/* Right: Logistics & Depot Weighbridge */}
+                <div className="p-2 space-y-0.5">
+                  <div className="text-[10px] font-black uppercase tracking-wider text-slate-500 border-b border-slate-200 pb-0.5">
+                    LOGISTICS & WEIGHMENT DETAILS
+                  </div>
+                  <div className="grid grid-cols-3 gap-1 pt-0.5">
+                    {vehicleNumber && (
+                      <>
+                        <span className="text-slate-500 font-bold">Vehicle Number:</span>
+                        <span className="col-span-2 font-mono font-black text-slate-950 uppercase">{vehicleNumber}</span>
+                      </>
+                    )}
+                    {originLocation && (
+                      <>
+                        <span className="text-slate-500 font-bold">Origin / Port:</span>
+                        <span className="col-span-2 font-bold text-slate-900">{originLocation}</span>
+                      </>
+                    )}
+                    <span className="text-slate-500 font-bold">Channel:</span>
+                    <span className="col-span-2 font-bold text-slate-900">
+                      {isLocal ? 'Local Coastal Harbor Catch' : isDam ? 'Inland Reservoir Consignment' : 'Depot Supplies & Packaging'}
+                    </span>
+                  </div>
                 </div>
               </div>
-            </div>
+            )}
 
             {/* Itemized Commodity & Weighment Table */}
             <div className="print-table-wrapper w-full overflow-x-auto">

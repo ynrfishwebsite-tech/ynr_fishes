@@ -10,7 +10,7 @@ import BackButton from '../common/BackButton';
 import WhatsAppConnectModal from '../communication/WhatsAppConnectModal';
 import CustomTimePicker from '../common/CustomTimePicker';
 import { RECEIPT_FONT_STYLES, RECEIPT_FONT_SIZES, findReceiptFont, getReceiptFontMetrics } from '../../../utils/formatters/receiptFonts';
-import { Type, Check, UtensilsCrossed, ReceiptIndianRupee, LayoutGrid, CircleDot, Languages } from 'lucide-react';
+import { Type, Check, UtensilsCrossed, ReceiptIndianRupee, LayoutGrid, CircleDot, Languages, Ship, Waves, PackagePlus } from 'lucide-react';
 import { getMenuItems } from '../../../api/catalog/menu';
 import LiveReceiptPreview from '../billing/LiveReceiptPreview';
 
@@ -1911,9 +1911,31 @@ const Settings = ({ user, setUser, onNavigate, onGoBack }) => {
                 {showWhatsappSettingsModal ? t("WhatsApp Preview") : t("Live Print Preview")}
               </h2>
               {!showWhatsappSettingsModal && (
-                <div className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg bg-primary text-white shadow-sm">
-                  <ReceiptIndianRupee size={13} />
-                  <span>{t("Receipt")}</span>
+                <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl border border-slate-200 flex-wrap">
+                  {[
+                    { id: 'receipt', label: t('Sales Bill'), icon: ReceiptIndianRupee },
+                    { id: 'local', label: t('Local Catch'), icon: Ship },
+                    { id: 'dam', label: t('Dam Catch'), icon: Waves },
+                    { id: 'supplies', label: t('Supplies'), icon: PackagePlus }
+                  ].map(tab => {
+                    const isCur = previewTab === tab.id || (tab.id === 'receipt' && !previewTab);
+                    const TabIcon = tab.icon;
+                    return (
+                      <button
+                        key={tab.id}
+                        type="button"
+                        onClick={() => setPreviewTab(tab.id)}
+                        className={`px-2 py-1 text-xs font-bold rounded-lg transition-all cursor-pointer flex items-center gap-1 ${
+                          isCur
+                            ? 'bg-primary text-white shadow-sm'
+                            : 'text-slate-600 hover:text-slate-900 hover:bg-white/80'
+                        }`}
+                      >
+                        <TabIcon size={12} />
+                        <span>{tab.label}</span>
+                      </button>
+                    );
+                  })}
                 </div>
               )}
             </div>
