@@ -249,9 +249,14 @@ const Settings = ({ user, setUser, onNavigate, onGoBack }) => {
               cleanIncoming.autoSendTime = '14:30';
               cleanIncoming.autoSendTime2 = '22:30';
             }
-            const updated = { ...prev, ...cleanIncoming };
+            const updated = { 
+              ...prev, 
+              ...cleanIncoming,
+              receiptItemLanguage: cleanIncoming.receiptItemLanguage || prev.receiptItemLanguage || localStorage.getItem('receiptItemLanguage') || 'both'
+            };
             try {
               localStorage.setItem('restaurantSettings', JSON.stringify(updated));
+              if (updated.receiptItemLanguage) localStorage.setItem('receiptItemLanguage', updated.receiptItemLanguage);
               if (updated.vercelUrl) localStorage.setItem('resto_vercel_url', updated.vercelUrl);
               if (updated.serverIp) localStorage.setItem('resto_server_ip', updated.serverIp);
               if (updated.qrMenuMode) localStorage.setItem('resto_qr_mode', updated.qrMenuMode);
@@ -284,6 +289,9 @@ const Settings = ({ user, setUser, onNavigate, onGoBack }) => {
       cleanSettings.defaultBillingLayout = cleanSettings.defaultBillingLayout || 'grid';
       localStorage.setItem('restaurantSettings', JSON.stringify(cleanSettings));
       localStorage.setItem('menuGrid_displayMode', cleanSettings.defaultBillingLayout);
+      if (cleanSettings.receiptItemLanguage) {
+        localStorage.setItem('receiptItemLanguage', cleanSettings.receiptItemLanguage);
+      }
       if (cleanSettings.vercelUrl) localStorage.setItem('resto_vercel_url', cleanSettings.vercelUrl);
       if (cleanSettings.serverIp) localStorage.setItem('resto_server_ip', cleanSettings.serverIp);
       if (cleanSettings.qrMenuMode) localStorage.setItem('resto_qr_mode', cleanSettings.qrMenuMode);

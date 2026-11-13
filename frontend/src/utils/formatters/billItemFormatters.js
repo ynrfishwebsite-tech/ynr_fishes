@@ -110,9 +110,34 @@ export const formatReceiptItemName = (rawName = '', languagePreference = 'both')
 
   // Extract Telugu script (Unicode range \u0C00-\u0C7F)
   let telugu = '';
-  const teluguMatch = rawName.match(/[\(\[]?([\u0C00-\u0C7F\s]+)[\)\]]?/);
-  if (teluguMatch && teluguMatch[1].trim()) {
-    telugu = teluguMatch[1].trim();
+  if (/[\u0C00-\u0C7F]/.test(rawName)) {
+    if (rawName.includes('/')) {
+      const parts = rawName.split('/');
+      const telPart = parts.find(p => /[\u0C00-\u0C7F]/.test(p));
+      if (telPart) {
+        let cleaned = telPart
+          .replace(/\s*\((?:SMALL|MEDIUM|LARGE|BIG|EXTRA LARGE|XL|S|M|L)\)/gi, '')
+          .replace(/\s*\((?:Whole|Cleaned|Curry Cut|Fry Cut|Boneless|Curry|Fry)[^)]*\)/gi, '')
+          .replace(/[a-zA-Z]+/g, '')
+          .trim();
+        if (cleaned.startsWith('(') && cleaned.endsWith(')')) {
+          cleaned = cleaned.slice(1, -1).trim();
+        }
+        if (cleaned) {
+          telugu = cleaned;
+        }
+      }
+    }
+    if (!telugu) {
+      const parenMatch = rawName.match(/\(([^)]*[\u0C00-\u0C7F][^)]*)\)/);
+      if (parenMatch) {
+        telugu = parenMatch[1].trim();
+      }
+    }
+    if (!telugu) {
+      const words = rawName.match(/[\u0C00-\u0C7F]+/g);
+      if (words) telugu = words.join(' ');
+    }
   }
 
   // Extract Grade e.g. (SMALL), (MEDIUM), (LARGE), (XL)

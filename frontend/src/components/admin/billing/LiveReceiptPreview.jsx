@@ -12,22 +12,28 @@ const LiveReceiptPreview = ({ settings, previewTab, t, user, menuPreviewItems, o
   const paperWidth = fmt === '58mm' ? 210 : fmt === 'A4' ? 360 : 280;
   const previewLabel = fmt === '58mm' ? '58mm Thermal' : fmt === 'A4' ? 'A4 / Full Page' : '80mm Thermal';
 
-  const sampleItems = (menuPreviewItems && menuPreviewItems.length > 0)
-    ? menuPreviewItems.slice(0, 3).map((item, idx) => ({
+  const sampleItems = (() => {
+    if (menuPreviewItems && menuPreviewItems.length > 0) {
+      const teluguItems = menuPreviewItems.filter(i => /[\u0C00-\u0C7F]/.test(i?.name || ''));
+      const otherItems = menuPreviewItems.filter(i => !/[\u0C00-\u0C7F]/.test(i?.name || ''));
+      const chosen = [...teluguItems, ...otherItems].slice(0, 3);
+      return chosen.map((item, idx) => ({
         name: item.name,
-        price: Number(item.price || (idx === 0 ? 390 : 650)),
-        pricePerKg: Number(item.price || (idx === 0 ? 390 : 650)),
+        price: Number(item.price || (idx === 0 ? 390 : (idx === 1 ? 650 : 200))),
+        pricePerKg: Number(item.price || (idx === 0 ? 390 : (idx === 1 ? 650 : 200))),
         quantity: idx === 0 ? 2 : (idx === 1 ? 1 : 1.5),
         weightKg: idx === 0 ? 2 : (idx === 1 ? 1 : 1.5),
         enteredWeight: idx === 0 ? 2 : (idx === 1 ? 1 : 1.5),
         sellingUnit: 'Kg',
         total: idx === 0 ? 780 : (idx === 1 ? 650 : 300)
-      }))
-    : [
-        { name: 'Black Pomfret / నల్ల చందువ (Halva) (MEDIUM)', price: 390, pricePerKg: 390, quantity: 2, weightKg: 2, enteredWeight: 2, sellingUnit: 'Kg', total: 780 },
-        { name: 'Tiger Prawns / పెద్ద రొయ్యలు (LARGE)', price: 650, pricePerKg: 650, quantity: 1, weightKg: 1, enteredWeight: 1, sellingUnit: 'Kg', total: 650 },
-        { name: 'Wallago / వాలగ (ఆల) (SMALL)', price: 200, pricePerKg: 200, quantity: 1.5, weightKg: 1.5, enteredWeight: 1.5, sellingUnit: 'Kg', total: 300 }
-      ];
+      }));
+    }
+    return [
+      { name: 'Black Pomfret / నల్ల చందువ (Halva) (MEDIUM)', price: 390, pricePerKg: 390, quantity: 2, weightKg: 2, enteredWeight: 2, sellingUnit: 'Kg', total: 780 },
+      { name: 'Tiger Prawns / పెద్ద రొయ్యలు (LARGE)', price: 650, pricePerKg: 650, quantity: 1, weightKg: 1, enteredWeight: 1, sellingUnit: 'Kg', total: 650 },
+      { name: 'Wallago / వాలగ (ఆల) (SMALL)', price: 200, pricePerKg: 200, quantity: 1.5, weightKg: 1.5, enteredWeight: 1.5, sellingUnit: 'Kg', total: 300 }
+    ];
+  })();
 
   const totalWeightKg = sampleItems.reduce((sum, it) => sum + (it.weightKg || it.quantity || 1), 0);
   const totalQty = `${totalWeightKg.toFixed(1).replace(/\.0$/, '')} Kg`;
