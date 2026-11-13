@@ -305,7 +305,29 @@ const Invoice = ({ bill: incomingBill, billData, onClose, onSave, onSettle, what
   const receiptFont = matchedFontObj.value;
   const activeFontSize = settings.receiptFontSize || activeSettings.receiptFontSize || 'medium';
   const isSettingsPage = window.location.pathname.includes('/settings');
-  const displayFormat = isSettingsPage ? activeSettings.printFormat : '80mm';
+  const [selectedFormat, setSelectedFormat] = useState(() => {
+    try {
+      const saved = localStorage.getItem('invoice_print_format');
+      if (saved && ['58mm', '80mm', 'A4'].includes(saved)) return saved;
+      if (activeSettings.printFormat && ['58mm', '80mm', 'A4'].includes(activeSettings.printFormat)) {
+        return activeSettings.printFormat;
+      }
+      if (activeSettings.paperWidth && ['58mm', '80mm'].includes(activeSettings.paperWidth)) {
+        return activeSettings.paperWidth;
+      }
+    } catch (e) {}
+    return '80mm';
+  });
+
+  const displayFormat = isSettingsPage ? (activeSettings.printFormat || selectedFormat) : selectedFormat;
+
+  const handleFormatChange = (fmt) => {
+    setSelectedFormat(fmt);
+    try {
+      localStorage.setItem('invoice_print_format', fmt);
+    } catch (e) {}
+  };
+
   const fontMetrics = getReceiptFontMetrics(activeFontSize, displayFormat);
   const billDateTime = bill?.settledAt || bill?.billedAt || bill?.createdAt || Date.now();
   const [printerConfigs, setPrinterConfigs] = useState([]);
@@ -488,7 +510,7 @@ const Invoice = ({ bill: incomingBill, billData, onClose, onSave, onSettle, what
           try {
             const receiptNode = document.querySelector('#invoice-print-area .receipt-print') || document.getElementById('invoice-print-area');
             if (receiptNode) {
-              const paperWidthDots = ((isSettingsPage && displayFormat === '58mm') || activeSettings.paperWidth === '58mm') ? 384 : 576;
+              const paperWidthDots = (displayFormat === '58mm' || activeSettings.paperWidth === '58mm') ? 384 : 576;
               const escposBase64 = "dummy";
               if (!escposBase64) throw new Error("Failed to generate printer raster data");
               await new Promise(res => setTimeout(res, 20));
@@ -578,7 +600,7 @@ const Invoice = ({ bill: incomingBill, billData, onClose, onSave, onSettle, what
           let successNames = [];
 
           const receiptNode = document.querySelector('#invoice-print-area .receipt-print') || document.getElementById('invoice-print-area');
-          const paperWidthDots = ((isSettingsPage && displayFormat === '58mm') || activeSettings.paperWidth === '58mm') ? 384 : 576;
+          const paperWidthDots = (displayFormat === '58mm' || activeSettings.paperWidth === '58mm') ? 384 : 576;
           let rasterData = null;
 
           if (receiptNode) {
@@ -1149,7 +1171,7 @@ const Invoice = ({ bill: incomingBill, billData, onClose, onSave, onSettle, what
         {`
           @media print {
             @page {
-              size: auto;
+              size: ${displayFormat === '58mm' ? '58mm auto' : displayFormat === '80mm' ? '80mm auto' : 'auto'};
               margin: 0mm;
             }
             html, body {
@@ -1268,6 +1290,29 @@ const Invoice = ({ bill: incomingBill, billData, onClose, onSave, onSettle, what
             </button>
           </div>
         )}
+        {/* Format Switcher: 58mm | 80mm | A4 */}
+        <div className="flex items-center bg-slate-100 p-0.5 rounded-xl border border-[#E8DCCB] shrink-0">
+          {[
+            { id: '58mm', label: '58mm' },
+            { id: '80mm', label: '80mm' },
+            { id: 'A4', label: 'A4' }
+          ].map((fmt) => (
+            <button
+              key={fmt.id}
+              type="button"
+              onClick={() => handleFormatChange(fmt.id)}
+              className={`px-2 sm:px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                displayFormat === fmt.id
+                  ? 'bg-gradient-to-r from-orange-500 to-[#ea580c] text-white shadow-xs font-black'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-white/80'
+              }`}
+              title={`${fmt.label} Receipt Format`}
+            >
+              {fmt.label}
+            </button>
+          ))}
+        </div>
+
         <div className="flex items-center bg-[#FDFBF7] border border-[#E8DCCB] shadow-sm rounded-xl overflow-hidden shrink-0">
           <button
             onClick={() => handlePrint(false)}
