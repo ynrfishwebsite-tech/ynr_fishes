@@ -127,10 +127,10 @@ export default function FishIntakeOrbitalDial({
   const [sizeBracket, setSizeBracket] = useState('Medium');
   const [weightOption, setWeightOption] = useState('1 - 4 Kg');
   const [boxes, setBoxes] = useState('1');
-  const [kgPerBox, setKgPerBox] = useState(60);
-  const [scaleKg, setScaleKg] = useState('60');
+  const [kgPerBox, setKgPerBox] = useState(1);
+  const [scaleKg, setScaleKg] = useState('1');
   const [scaleGrams, setScaleGrams] = useState('0');
-  const [modalKgVal, setModalKgVal] = useState('60');
+  const [modalKgVal, setModalKgVal] = useState('1');
   const [modalGramsVal, setModalGramsVal] = useState('0');
   const [ratePerKg, setRatePerKg] = useState('150');
   const [editModalField, setEditModalField] = useState(null); // 'boxes' | 'kgPerBox' | 'scaleKg' | 'rate' | 'total'
@@ -185,7 +185,7 @@ export default function FishIntakeOrbitalDial({
   // When active fish changes, update default parameters
   useEffect(() => {
     if (!currentFish) return;
-    const defaultKpb = Number(currentFish.boxPackingKg || 60);
+    const defaultKpb = Number(currentFish.boxPackingKg || 1);
     setKgPerBox(defaultKpb);
 
     const defaultG = gradeOptions.find(g => g.key === 'medium') || gradeOptions[0];
@@ -210,7 +210,7 @@ export default function FishIntakeOrbitalDial({
   const handleBoxesChange = (newBoxes) => {
     const b = Math.max(0, Number(newBoxes));
     setBoxes(String(b));
-    const totKg = b * Number(kgPerBox || 60);
+    const totKg = b * Number(kgPerBox || 1);
     setScaleKg(String(Math.floor(totKg)));
     setScaleGrams(String(Math.round((totKg - Math.floor(totKg)) * 1000)));
   };
@@ -266,7 +266,7 @@ export default function FishIntakeOrbitalDial({
     const total = k + g;
     if (total > 0) return total;
     const b = Number(boxes || 0);
-    const kpb = Number(kgPerBox || 60);
+    const kpb = Number(kgPerBox || 1);
     return b * kpb;
   }, [scaleKg, scaleGrams, boxes, kgPerBox]);
 

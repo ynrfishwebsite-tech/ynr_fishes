@@ -164,7 +164,7 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack, initi
     vehicleNumber: '',
     harbor: '',
     items: [
-      { id: 1, menuItemId: '', itemName: '', sizeGrade: 'medium', sizeBracket: 'Medium', weightOption: '1 - 4 Kg', boxes: '', kgPerBox: 60, kg: '', grams: '', ratePerKg: '', date: new Date().toISOString().slice(0, 16), weighMode: 'box' }
+      { id: 1, menuItemId: '', itemName: '', sizeGrade: 'medium', sizeBracket: 'Medium', weightOption: '1 - 4 Kg', boxes: '', kgPerBox: 1, kg: '', grams: '', ratePerKg: '', date: new Date().toISOString().slice(0, 16), weighMode: 'kg' }
     ],
     showSettlements: false, // Default: Hidden & Excluded
     settlements: {
@@ -188,7 +188,7 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack, initi
     harbor: '',
     contractorCity: '',
     tallyItems: [
-      { id: 1, menuItemId: '', itemName: '', sizeGrade: 'medium', sizeBracket: 'Medium', weightOption: '1 - 4 Kg', boxes: '', kgPerBox: 60, kg: '', grams: '', price: '', date: new Date().toISOString().slice(0, 16), weighMode: 'box' }
+      { id: 1, menuItemId: '', itemName: '', sizeGrade: 'medium', sizeBracket: 'Medium', weightOption: '1 - 4 Kg', boxes: '', kgPerBox: 1, kg: '', grams: '', price: '', date: new Date().toISOString().slice(0, 16), weighMode: 'kg' }
     ],
     showSettlements: false, // Default: Hidden & Excluded
     settlements: {
@@ -321,12 +321,12 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack, initi
         sizeBracket: lotPayload.sizeBracket,
         weightOption: lotPayload.weightOption,
         boxes: String(lotPayload.boxes || 0),
-        kgPerBox: lotPayload.kgPerBox !== undefined ? Number(lotPayload.kgPerBox) : 60,
+        kgPerBox: lotPayload.kgPerBox !== undefined ? Number(lotPayload.kgPerBox) : 1,
         kg: String(lotPayload.kg || 0),
         grams: String(lotPayload.grams || 0),
         ratePerKg: String(lotPayload.ratePerKg || 0),
         date: lotPayload.date || new Date().toISOString().slice(0, 16),
-        weighMode: lotPayload.weighMode || 'box'
+        weighMode: lotPayload.weighMode || 'kg'
       };
       if (isFirstItemEmpty) {
         return { ...prev, items: [newLot] };
@@ -346,12 +346,12 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack, initi
         sizeBracket: lotPayload.sizeBracket,
         weightOption: lotPayload.weightOption,
         boxes: String(lotPayload.boxes || 0),
-        kgPerBox: lotPayload.kgPerBox !== undefined ? Number(lotPayload.kgPerBox) : 60,
+        kgPerBox: lotPayload.kgPerBox !== undefined ? Number(lotPayload.kgPerBox) : 1,
         kg: String(lotPayload.kg || 0),
         grams: String(lotPayload.grams || 0),
         price: String(lotPayload.ratePerKg || 0),
         date: lotPayload.date || new Date().toISOString().slice(0, 16),
-        weighMode: lotPayload.weighMode || 'box'
+        weighMode: lotPayload.weighMode || 'kg'
       };
       if (isFirstItemEmpty) {
         return { ...prev, tallyItems: [newLot] };
@@ -1588,7 +1588,7 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack, initi
         vehicleNumber: '',
         harbor: '',
         items: [
-          { id: 1, menuItemId: '', itemName: '', sizeGrade: 'medium', sizeBracket: 'Medium', weightOption: '1 - 4 Kg', boxes: '', kgPerBox: 60, kg: '', grams: '', ratePerKg: '', date: new Date().toISOString().slice(0, 16), weighMode: 'box' }
+          { id: 1, menuItemId: '', itemName: '', sizeGrade: 'medium', sizeBracket: 'Medium', weightOption: '1 - 4 Kg', boxes: '', kgPerBox: 1, kg: '', grams: '', ratePerKg: '', date: new Date().toISOString().slice(0, 16), weighMode: 'kg' }
         ],
         showSettlements: false,
         settlements: {
@@ -1702,7 +1702,7 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack, initi
         vehicleNumber: '',
         harbor: '',
         contractorCity: '',
-        tallyItems: [{ id: 1, menuItemId: '', itemName: '', sizeGrade: 'medium', sizeBracket: 'Medium', weightOption: '1 - 4 Kg', boxes: '', kgPerBox: 60, kg: '', grams: '', price: '', date: new Date().toISOString().slice(0, 16), weighMode: 'box' }],
+        tallyItems: [{ id: 1, menuItemId: '', itemName: '', sizeGrade: 'medium', sizeBracket: 'Medium', weightOption: '1 - 4 Kg', boxes: '', kgPerBox: 1, kg: '', grams: '', price: '', date: new Date().toISOString().slice(0, 16), weighMode: 'kg' }],
         showSettlements: false,
         settlements: {
           advance: { label: '1) Advance', type: 'Dr', amount: '', isLocked: true },
@@ -2279,7 +2279,7 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack, initi
   }, [currentDedicatedMode, fishList, supplyLogs, supplyCategories]);
 
   return (
-    <div className="px-1 py-1.5 sm:p-3 md:p-4 space-y-2.5 sm:space-y-3 w-full text-slate-800">
+    <div className="px-1 py-1 sm:px-2.5 sm:py-2 md:px-3 md:py-2.5 space-y-2 sm:space-y-2.5 w-full text-slate-800">
       {/* Top Header Card (Ultra-Compact & Mobile-Responsive Header) */}
       <div className="bg-[#FDFBF7] border border-[#E8DCCB] rounded-xl px-2.5 py-1.5 sm:px-3 sm:py-2 shadow-2xs w-full">
         <div className="flex items-center justify-between gap-1.5 sm:gap-2">
@@ -3196,7 +3196,7 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack, initi
                           onClick={() => {
                             setLocalStockInForm(prev => ({
                               ...prev,
-                              items: [{ id: 1, menuItemId: fish._id, itemName: fish.name, boxes: '', kgPerBox: 60, kg: '', grams: '', ratePerKg: fish.purchasePrice || '', sizeBracket: 'Medium', weightOption: '1+', date: new Date().toISOString().slice(0, 16), weighMode: 'box' }]
+                              items: [{ id: 1, menuItemId: fish._id, itemName: fish.name, boxes: '', kgPerBox: 1, kg: '', grams: '', ratePerKg: fish.purchasePrice || '', sizeBracket: 'Medium', weightOption: '1+', date: new Date().toISOString().slice(0, 16), weighMode: 'kg' }]
                             }));
                             setStockInSubTab('local');
                             setActiveTab('procurement');
