@@ -247,9 +247,16 @@ export const printBillToPrinters = async (req, bill, specificPrinterId = null, r
     } catch (e) {}
     const restaurantDetails = { ...dbSettings, ...(bill.restaurantDetails || {}) };
 
+    const isSRMBill = Boolean(bill.isSRM || bill.isInward || bill.voucherNo || bill.intakeMode || bill.supplierName || bill.mode === 'local' || bill.mode === 'dam' || bill.mode === 'supplies');
+
     let query = { isActive: true };
-    if (specificPrinterId) query._id = specificPrinterId;
-    else query.type = { $in: ['receipt', 'general', 'both', 'Bill & KOT'] };
+    if (specificPrinterId) {
+      query._id = specificPrinterId;
+    } else if (isSRMBill) {
+      query.type = { $in: ['srm', 'both', 'general'] };
+    } else {
+      query.type = { $in: ['crm', 'receipt', 'general', 'both', 'Bill & KOT'] };
+    }
 
     let receiptPrinters = await PrinterConfig.find(query);
     if (!receiptPrinters || receiptPrinters.length === 0) {

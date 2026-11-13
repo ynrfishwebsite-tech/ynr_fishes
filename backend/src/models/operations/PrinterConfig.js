@@ -8,7 +8,8 @@ const printerConfigSchema = new mongoose.Schema({
   },
   type: {
     type: String,
-    enum: ['receipt', 'kot', 'general', 'both'],
+    enum: ['crm', 'srm', 'both', 'receipt', 'kot', 'general'],
+    default: 'crm',
     required: true
   },
   assignTo: {

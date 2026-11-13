@@ -213,11 +213,12 @@ const PrinterConfig = ({ onNavigate, onGoBack, user }) => {
   // Search & Filter state inside modal
   const [assignmentSearch, setAssignmentSearch] = useState('');
   const [collapsedCategories, setCollapsedCategories] = useState({});
+  const [previewTabState, setPreviewTabState] = useState('crm');
 
   // Form state
   const [formData, setFormData] = useState({
     name: '',
-    type: 'kot',
+    type: 'crm',
     assignTo: '',
     location: '',
     assignmentMode: 'category', // 'category' | 'item' | 'itemType'
@@ -368,7 +369,7 @@ const PrinterConfig = ({ onNavigate, onGoBack, user }) => {
     scanUsbPorts();
     setFormData({
       name: '',
-      type: 'kot',
+      type: 'crm',
       assignTo: '',
       location: '',
       assignmentMode: 'category',
@@ -400,7 +401,7 @@ const PrinterConfig = ({ onNavigate, onGoBack, user }) => {
     scanUsbPorts();
     setFormData({
       name: config.name || '',
-      type: config.type || 'kot',
+      type: (config.type === 'srm' || config.type === 'both') ? config.type : 'crm',
       assignTo: config.name || config.assignTo || '',
       location: config.location || '',
       assignmentMode: config.assignmentMode || (config.assignedItems?.length > 0 ? 'item' : (config.assignedItemTypes?.length > 0 ? 'itemType' : 'category')),
@@ -702,13 +703,11 @@ const PrinterConfig = ({ onNavigate, onGoBack, user }) => {
                         <td className="px-5 py-3.5 whitespace-nowrap">
                           <span className={`inline-flex items-center px-2.5 py-1 text-xs font-bold rounded-lg border ${config.type === 'both'
                               ? 'bg-purple-50 text-purple-700 border-purple-200'
-                              : config.type === 'kot'
-                                ? 'bg-orange-50 text-orange-700 border-orange-200'
-                                : config.type === 'receipt'
-                                  ? 'bg-blue-50 text-blue-700 border-blue-200'
-                                  : 'bg-gray-100 text-text-muted border-border'
+                              : config.type === 'srm'
+                                ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                : 'bg-blue-50 text-blue-700 border-blue-200'
                             }`}>
-                            {config.type === 'both' ? 'Both (Bill & Butcher Slip)' : config.type === 'receipt' ? 'Receipt (Bill)' : config.type === 'kot' ? 'KOT (Kitchen)' : 'General'}
+                            {config.type === 'both' ? t('Both (CRM & SRM Bills)') : config.type === 'srm' ? t('SRM Bills (Procurement)') : t('CRM Bills (Sales)')}
                           </span>
                         </td>
                         <td className="px-5 py-3.5 whitespace-nowrap">
@@ -731,8 +730,10 @@ const PrinterConfig = ({ onNavigate, onGoBack, user }) => {
                           </div>
                         </td>
                         <td className="px-5 py-3.5 min-w-[240px]">
-                          {config.type === 'receipt' ? (
-                            <span className="text-xs text-gray-400 font-medium">All Bills & Receipts</span>
+                          {config.type === 'srm' ? (
+                            <span className="text-xs text-emerald-700 font-bold">Local Harbor, Dam & Supplies Inward Slips</span>
+                          ) : config.type === 'both' ? (
+                            <span className="text-xs text-purple-700 font-bold">All Sales Bills & Inward Slips</span>
                           ) : isItemMode && items.length > 0 ? (
                             <div className="flex flex-wrap items-center gap-1.5 max-w-md">
                               <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-indigo-50 text-indigo-700 text-xs font-bold rounded-md border border-sky-500/20 text-sky-200 shrink-0">
@@ -870,13 +871,11 @@ const PrinterConfig = ({ onNavigate, onGoBack, user }) => {
                             )}
                             <span className={`inline-flex items-center px-2 py-0.5 text-[10px] sm:text-[11px] font-bold rounded-md border ${config.type === 'both'
                                 ? 'bg-purple-50 text-purple-700 border-purple-200'
-                                : config.type === 'kot'
-                                  ? 'bg-orange-50 text-orange-700 border-orange-200'
-                                  : config.type === 'receipt'
-                                    ? 'bg-blue-50 text-blue-700 border-blue-200'
-                                    : 'bg-gray-100 text-text-muted border-border'
+                                : config.type === 'srm'
+                                  ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                  : 'bg-blue-50 text-blue-700 border-blue-200'
                               }`}>
-                              {config.type === 'both' ? 'Both (Bill & Butcher Slip)' : config.type === 'receipt' ? 'Receipt' : config.type === 'kot' ? 'KOT' : 'General'}
+                              {config.type === 'both' ? t('Both (CRM & SRM)') : config.type === 'srm' ? t('SRM Bills') : t('CRM Bills')}
                             </span>
                           </div>
                         </div>
@@ -914,8 +913,12 @@ const PrinterConfig = ({ onNavigate, onGoBack, user }) => {
                             )}
                           </div>
 
-                          {config.type === 'receipt' ? (
-                            <span className="text-xs text-gray-400 font-medium">{t("All Bills & Receipts")}</span>
+                          {config.type === 'srm' ? (
+                            <span className="text-xs text-emerald-700 font-bold">{t("SRM Inward Slips")}</span>
+                          ) : config.type === 'both' ? (
+                            <span className="text-xs text-purple-700 font-bold">{t("All Sales Bills & Inward Slips")}</span>
+                          ) : (!isItemMode && !isItemTypeMode && cats.length === 0) ? (
+                            <span className="text-xs text-blue-700 font-bold">{t("Wholesale, Retail & Export Bills")}</span>
                           ) : isItemMode && items.length > 0 ? (
                             <div className="space-y-1.5">
                               <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-indigo-50 text-indigo-700 text-[10px] font-bold rounded-md border border-sky-500/20 text-sky-200">
@@ -1060,10 +1063,15 @@ const PrinterConfig = ({ onNavigate, onGoBack, user }) => {
                       <select
                         name="type"
                         value={formData.type}
-                        onChange={handleInputChange}
+                        onChange={(e) => {
+                          handleInputChange(e);
+                          if (e.target.value === 'srm') setPreviewTabState('srm');
+                          else if (e.target.value === 'crm') setPreviewTabState('crm');
+                        }}
                         className="w-full px-3.5 py-2.5 text-sm border border-sky-500/30 rounded-xl focus:ring-2 focus:ring-sky-500/20 focus:border-sky-400 outline-none font-medium bg-[#FAF0E4] text-slate-900 font-bold border-[#E8DCCB] cursor-pointer">
-                        <option value="receipt">{t("Receipt (Cashier Bill & Token)")}</option>
-                        <option value="both">{t("Counter Slip & Summary")}</option>
+                        <option value="crm">{t("CRM Bills (Wholesale, Retail & Export)")}</option>
+                        <option value="srm">{t("SRM Bills (Local Catch, Dam & Supplies)")}</option>
+                        <option value="both">{t("Both (CRM & SRM Bills)")}</option>
                       </select>
                     </div>
                     <div>
@@ -1760,6 +1768,29 @@ const PrinterConfig = ({ onNavigate, onGoBack, user }) => {
                   <h3 className="text-sm font-bold text-text-main">{t("Live Receipt Preview")}</h3>
                   <p className="text-[11px] text-slate-600 font-medium">{t("Preview updates dynamically as you change settings")}</p>
                 </div>
+                {/* Sub-tab toggle if type is 'both' */}
+                {formData.type === 'both' && (
+                  <div className="flex items-center gap-1.5 mb-3 bg-[#FAF0E4] p-1 rounded-xl border border-[#E8DCCB] select-none">
+                    <button
+                      type="button"
+                      onClick={() => setPreviewTabState('crm')}
+                      className={`px-3 py-1 text-xs font-bold rounded-lg transition-all cursor-pointer ${
+                        previewTabState === 'crm' ? 'bg-blue-600 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                      }`}
+                    >
+                      CRM Sales Bill
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPreviewTabState('srm')}
+                      className={`px-3 py-1 text-xs font-bold rounded-lg transition-all cursor-pointer ${
+                        previewTabState === 'srm' ? 'bg-emerald-600 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                      }`}
+                    >
+                      SRM Inward Voucher
+                    </button>
+                  </div>
+                )}
                 <LiveReceiptPreview
                   settings={{
                     printFormat: formData.paperWidth,
@@ -1769,7 +1800,7 @@ const PrinterConfig = ({ onNavigate, onGoBack, user }) => {
                     logo: ynrLogo,
                     upiId: 'ynrfishes@upi'
                   }}
-                  previewTab="receipt"
+                  previewTab={formData.type === 'both' ? previewTabState : (formData.type === 'srm' ? 'srm' : 'crm')}
                   t={t}
                   user={{ username: 'admin' }}
                 />
