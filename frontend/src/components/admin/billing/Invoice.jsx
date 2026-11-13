@@ -74,40 +74,71 @@ const Invoice = ({ bill: incomingBill, billData, onClose, onSave, onSettle, what
   };
   const isCapturingForWhatsApp = useRef(false);
 
-  const getSingleRowReceiptName = useCallback((cleanName, cutType) => {
-    if (!cleanName) return 'Item';
-    let s = cleanName;
+  const formatReceiptItem = useCallback((item) => {
+    const rawName = item?.name || 'Item';
+    let cut = item?.cutType || item?.cuttingStyle || '';
 
-    // 1. Remove Telugu script inside parentheses e.g. (తిలాపియా), (బంగారుతీగ), (కరీమీన్), (కొర్రమీను)
-    s = s.replace(/\s*\([\u0C00-\u0C7F\s\.\,\/\-]+\)/g, '');
-    s = s.replace(/[\u0C00-\u0C7F]+/g, '').trim();
+    // Extract Cut if present in name
+    const parenCut = rawName.match(/\((Whole|Cleaned|Curry Cut|Fry Cut|Boneless|Curry|Fry)\s*-\s*[^)]+\)/i)
+      || rawName.match(/\b(Whole|Cleaned|Curry Cut|Fry Cut|Boneless|Curry|Fry)\b/i);
+    if (parenCut && !cut) {
+      cut = parenCut[1];
+    }
+    if (cut) {
+      const cLower = cut.toLowerCase();
+      if (cLower.includes('curry')) cut = 'Curry Cut';
+      else if (cLower.includes('fry')) cut = 'Fry Cut';
+      else if (cLower.includes('bone')) cut = 'Boneless';
+      else if (cLower.includes('clean')) cut = 'Cleaned';
+      else if (cLower.includes('whole')) cut = 'Whole';
+    }
 
-    // 2. Extract Grade e.g. (MEDIUM), (SMALL), (LARGE)
+    // Extract Telugu script inside parentheses or brackets, e.g. (తిలాపియా), (బంగారుతీగ), (కరీమీన్), (కొర్రమీను)
+    let telugu = '';
+    const teluguMatch = rawName.match(/[\(\[]?([\u0C00-\u0C7F\s]+)[\)\]]?/);
+    if (teluguMatch && teluguMatch[1].trim()) {
+      telugu = teluguMatch[1].trim();
+    }
+
+    // Extract Grade e.g. (MEDIUM), (SMALL), (LARGE)
     let grade = '';
-    const gradeMatch = s.match(/\((SMALL|MEDIUM|LARGE|BIG|EXTRA LARGE|XL|S|M|L)\)/i);
+    const gradeMatch = rawName.match(/\((SMALL|MEDIUM|LARGE|BIG|EXTRA LARGE|XL|S|M|L)\)/i);
     if (gradeMatch) {
       const g = gradeMatch[1].toUpperCase();
-      grade = g === 'MEDIUM' ? '(Med)' : g === 'SMALL' ? '(Sm)' : g === 'LARGE' ? '(Lg)' : `(${g})`;
-      s = s.replace(/\s*\((?:SMALL|MEDIUM|LARGE|BIG|EXTRA LARGE|XL|S|M|L)\)/i, '');
+      grade = g === 'MEDIUM' ? 'Medium' : g === 'SMALL' ? 'Small' : g === 'LARGE' ? 'Large' : g;
     }
 
-    // 3. Keep primary English name before slash
-    if (s.includes('/')) {
-      s = s.split('/')[0].trim();
+    // Clean English Name: take primary part before slash
+    let engName = rawName
+      .replace(/\s*\([\u0C00-\u0C7F\s]+\)/g, '')
+      .replace(/[\u0C00-\u0C7F]+/g, '')
+      .replace(/\s*\((?:Whole|Cleaned|Curry Cut|Fry Cut|Boneless|Curry|Fry)\s*-\s*[^)]+\)/i, '')
+      .replace(/\s*\((?:SMALL|MEDIUM|LARGE|BIG|EXTRA LARGE|XL|S|M|L)\)/i, '')
+      .trim();
+
+    if (engName.includes('/')) {
+      engName = engName.split('/')[0].trim();
+    }
+    engName = engName.replace(/\s+/g, ' ').trim() || 'Item';
+
+    // Main Title: English + Telugu
+    const itemTitle = telugu ? `${engName} (${telugu})` : engName;
+
+    // SubDetail: Grade at bottom section of each item + Cut if custom
+    let subDetail = '';
+    if (grade) subDetail = `Grade: ${grade}`;
+    if (cut && cut.toLowerCase() !== 'whole') {
+      subDetail = subDetail ? `${subDetail} • Cut: ${cut}` : `Cut: ${cut}`;
     }
 
-    // 4. Combine with grade
-    if (grade) {
-      s = `${s} ${grade}`;
-    }
-
-    // 5. If cut is specified and NOT "Whole", append short cut tag e.g. [Curry] or [Fry]
-    if (cutType && cutType.toLowerCase() !== 'whole') {
-      const shortCut = cutType.replace(/\s*Cut/i, '').trim();
-      s = `${s} [${shortCut}]`;
-    }
-
-    return s.replace(/\s+/g, ' ').trim();
+    return {
+      engName,
+      telugu,
+      grade,
+      cut,
+      itemTitle,
+      subDetail
+    };
   }, []);
 
   const getItemCuttingDetails = useCallback((item) => {
@@ -1795,17 +1826,27 @@ const Invoice = ({ bill: incomingBill, billData, onClose, onSave, onSettle, what
                       {box.items.map((item, idx) => {
                         const activeQty = (item.quantity || 0) - (item.cancelledQuantity || 0);
                         if (activeQty <= 0) return null;
-                        const { displayName, cutType } = getItemCuttingDetails(item);
-                        const singleRowName = getSingleRowReceiptName(displayName, cutType);
+                        const { itemTitle, subDetail } = formatReceiptItem(item);
                         const qData = resolveItemQtyAndRate(item);
+                        const rawWeightVal = item.weightKg !== undefined ? item.weightKg : (item.enteredWeight !== undefined ? item.enteredWeight : item.quantity);
+                        const numQtyDisplay = qData.isKg ? `${Number(rawWeightVal || 0).toFixed(1).replace(/\.0$/, '')}kg` : qData.qtyDisplay;
                         return (
-                          <div key={idx} style={{ display: 'flex', width: '100%', justifyContent: 'space-between', alignItems: 'center', fontSize: fontMetrics.detailSize, padding: '2px 0 2px 4px', borderBottom: idx < box.items.length - 1 ? '1px dotted #ccc' : 'none' }}>
-                            <div style={{ flex: '1 1 0%', textAlign: 'left', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: 650, paddingRight: '3px' }} title={displayName}>
-                              • {singleRowName}
-                            </div>
-                            <div style={{ flexShrink: 0, textAlign: 'right', whiteSpace: 'nowrap', fontSize: '10px' }}>
-                              <span style={{ color: '#444' }}>{qData.qtyDisplay}×{qData.rateDisplay}</span>
-                              <span style={{ fontWeight: 700, marginLeft: '6px' }}>{qData.amountDisplay}</span>
+                          <div key={idx} style={{ padding: '2px 0 2px 4px', borderBottom: idx < box.items.length - 1 ? '1px dotted #ccc' : 'none' }}>
+                            <div style={{ display: 'flex', width: '100%', justifyContent: 'space-between', alignItems: 'flex-start', fontSize: fontMetrics.detailSize, lineHeight: '1.2' }}>
+                              <div style={{ flex: '1 1 0%', textAlign: 'left', paddingRight: '4px' }}>
+                                <div style={{ fontWeight: 700, color: '#000000', fontSize: fontMetrics.detailSize }}>
+                                  • {itemTitle}
+                                </div>
+                                {subDetail && (
+                                  <div style={{ fontSize: '8.5px', fontWeight: 600, color: '#555555', marginTop: '1px' }}>
+                                    {subDetail}
+                                  </div>
+                                )}
+                              </div>
+                              <div style={{ flexShrink: 0, textAlign: 'right', whiteSpace: 'nowrap' }}>
+                                <span style={{ color: '#444', fontSize: '10px' }}>{numQtyDisplay} × {qData.rateDisplay}</span>
+                                <span style={{ fontWeight: 700, marginLeft: '6px', fontSize: fontMetrics.detailSize }}>{qData.amountDisplay}</span>
+                              </div>
                             </div>
                           </div>
                         );
@@ -1824,17 +1865,27 @@ const Invoice = ({ bill: incomingBill, billData, onClose, onSave, onSettle, what
                       {invoiceIndividualItems.map((item, idx) => {
                         const activeQty = (item.quantity || 0) - (item.cancelledQuantity || 0);
                         if (activeQty <= 0) return null;
-                        const { displayName, cutType, weightInfo } = getItemCuttingDetails(item);
-                        const singleRowName = getSingleRowReceiptName(displayName, cutType);
+                        const { itemTitle, subDetail } = formatReceiptItem(item);
                         const qData = resolveItemQtyAndRate(item);
+                        const rawWeightVal = item.weightKg !== undefined ? item.weightKg : (item.enteredWeight !== undefined ? item.enteredWeight : item.quantity);
+                        const numQtyDisplay = qData.isKg ? `${Number(rawWeightVal || 0).toFixed(1).replace(/\.0$/, '')}kg` : qData.qtyDisplay;
                         return (
-                          <div key={idx} style={{ display: 'flex', width: '100%', justifyContent: 'space-between', alignItems: 'center', fontSize: fontMetrics.detailSize, padding: '2px 0', borderBottom: '1px dashed #e0e0e0' }}>
-                            <div style={{ flex: '1 1 0%', textAlign: 'left', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: 750, paddingRight: '3px' }} title={displayName}>
-                              {singleRowName}
-                            </div>
-                            <div style={{ flexShrink: 0, textAlign: 'right', whiteSpace: 'nowrap', fontSize: '10px' }}>
-                              <span style={{ color: '#444' }}>{qData.qtyDisplay}×{qData.rateDisplay}</span>
-                              <span style={{ fontWeight: 750, marginLeft: '6px' }}>{qData.amountDisplay}</span>
+                          <div key={idx} style={{ padding: '2px 0 3px 0', borderBottom: '1px dashed #e0e0e0' }}>
+                            <div style={{ display: 'flex', width: '100%', justifyContent: 'space-between', alignItems: 'flex-start', fontSize: fontMetrics.detailSize, lineHeight: '1.2' }}>
+                              <div style={{ flex: '1 1 0%', textAlign: 'left', paddingRight: '4px' }}>
+                                <div style={{ fontWeight: 700, color: '#000000', fontSize: fontMetrics.detailSize }}>
+                                  {itemTitle}
+                                </div>
+                                {subDetail && (
+                                  <div style={{ fontSize: '8.5px', fontWeight: 600, color: '#555555', marginTop: '1px' }}>
+                                    {subDetail}
+                                  </div>
+                                )}
+                              </div>
+                              <div style={{ flexShrink: 0, textAlign: 'right', whiteSpace: 'nowrap' }}>
+                                <span style={{ color: '#444', fontSize: '10px' }}>{numQtyDisplay} × {qData.rateDisplay}</span>
+                                <span style={{ fontWeight: 750, marginLeft: '6px', fontSize: fontMetrics.detailSize }}>{qData.amountDisplay}</span>
+                              </div>
                             </div>
                           </div>
                         );
@@ -2272,9 +2323,9 @@ const Invoice = ({ bill: incomingBill, billData, onClose, onSave, onSettle, what
             <div style={{ height: '1.5px', backgroundColor: '#000000', margin: '5px 0', width: '100%', minHeight: '1.5px', flexShrink: 0 }}></div>
 
             {/* Items Header */}
-            <div className="flex pb-0.5" style={{ display: 'flex', width: '100%', alignItems: 'center', fontSize: fontMetrics.detailSize, fontWeight: 'normal' }}>
+            <div className="flex pb-0.5" style={{ display: 'flex', width: '100%', alignItems: 'center', fontSize: fontMetrics.detailSize, fontWeight: 700 }}>
               <div className="flex-1" style={{ flex: '1 1 0%', textAlign: 'left' }}>{t('Item')}</div>
-              <div className="w-10 text-center" style={{ width: '42px', textAlign: 'center', flexShrink: 0 }}>{t("Qty.")}</div>
+              <div className="w-12 text-center" style={{ width: '48px', textAlign: 'center', flexShrink: 0 }}>{t("Qty(Kg)")}</div>
               <div className="w-12 text-right" style={{ width: '52px', textAlign: 'right', flexShrink: 0 }}>{t("Price")}</div>
               <div className="w-16 text-right" style={{ width: '64px', textAlign: 'right', flexShrink: 0 }}>{t('Amount')}</div>
             </div>
@@ -2297,17 +2348,33 @@ const Invoice = ({ bill: incomingBill, billData, onClose, onSave, onSettle, what
                       {box.items.map((item, idx) => {
                         const activeQty = (item.quantity || 0) - (item.cancelledQuantity || 0);
                         if (activeQty <= 0) return null;
-                        const { displayName, cutType } = getItemCuttingDetails(item);
-                        const singleRowName = getSingleRowReceiptName(displayName, cutType);
+                        const { itemTitle, subDetail } = formatReceiptItem(item);
                         const qData = resolveItemQtyAndRate(item);
+                        const rawWeightVal = item.weightKg !== undefined ? item.weightKg : (item.enteredWeight !== undefined ? item.enteredWeight : item.quantity);
+                        const numQtyDisplay = qData.isKg ? Number(rawWeightVal || 0).toFixed(1).replace(/\.0$/, '') : qData.qtyDisplay;
                         return (
-                          <div key={idx} className="flex items-center mb-0.5 leading-tight" style={{ display: 'flex', width: '100%', alignItems: 'center', fontSize: fontMetrics.detailSize, padding: '1.5px 0', paddingLeft: '8px' }}>
-                            <div className="flex-1 pr-1 truncate" style={{ flex: '1 1 0%', textAlign: 'left', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', paddingRight: '4px', fontWeight: 600 }} title={displayName}>
-                              • {singleRowName}
+                          <div key={idx} style={{ padding: '2px 0 2px 4px', borderBottom: idx < box.items.length - 1 ? '1px dotted #ccc' : 'none' }}>
+                            <div style={{ display: 'flex', width: '100%', alignItems: 'flex-start', fontSize: fontMetrics.detailSize, lineHeight: '1.25' }}>
+                              <div style={{ flex: '1 1 0%', textAlign: 'left', paddingRight: '4px' }}>
+                                <div style={{ fontWeight: 700, color: '#000000', fontSize: fontMetrics.detailSize }}>
+                                  • {itemTitle}
+                                </div>
+                                {subDetail && (
+                                  <div style={{ fontSize: '9px', fontWeight: 600, color: '#4b5563', marginTop: '1px' }}>
+                                    {subDetail}
+                                  </div>
+                                )}
+                              </div>
+                              <div style={{ width: '48px', textAlign: 'center', flexShrink: 0, fontWeight: 700, fontSize: fontMetrics.detailSize }}>
+                                {numQtyDisplay}
+                              </div>
+                              <div style={{ width: '52px', textAlign: 'right', flexShrink: 0, fontWeight: 600, fontSize: fontMetrics.detailSize }}>
+                                {qData.rateDisplay}
+                              </div>
+                              <div style={{ width: '64px', textAlign: 'right', flexShrink: 0, fontWeight: 750, fontSize: fontMetrics.detailSize }}>
+                                {qData.amountDisplay}
+                              </div>
                             </div>
-                            <div className="w-10 text-center" style={{ width: '42px', textAlign: 'center', flexShrink: 0, fontWeight: 600 }}>{qData.qtyDisplay}</div>
-                            <div className="w-12 text-right" style={{ width: '52px', textAlign: 'right', flexShrink: 0 }}>{qData.rateDisplay}</div>
-                            <div className="w-16 text-right" style={{ width: '64px', textAlign: 'right', flexShrink: 0, fontWeight: 'bold' }}>{qData.amountDisplay}</div>
                           </div>
                         );
                       })}
@@ -2325,18 +2392,33 @@ const Invoice = ({ bill: incomingBill, billData, onClose, onSave, onSettle, what
                       {invoiceIndividualItems.map((item, idx) => {
                         const activeQty = (item.quantity || 0) - (item.cancelledQuantity || 0);
                         if (activeQty <= 0) return null;
-                        const { displayName, cutType, weightInfo } = getItemCuttingDetails(item);
-                        const singleRowName = getSingleRowReceiptName(displayName, cutType);
+                        const { itemTitle, subDetail } = formatReceiptItem(item);
                         const qData = resolveItemQtyAndRate(item);
+                        const rawWeightVal = item.weightKg !== undefined ? item.weightKg : (item.enteredWeight !== undefined ? item.enteredWeight : item.quantity);
+                        const numQtyDisplay = qData.isKg ? Number(rawWeightVal || 0).toFixed(1).replace(/\.0$/, '') : qData.qtyDisplay;
                         return (
-                          <div key={idx} className="flex items-center mb-0.5 leading-tight" style={{ display: 'flex', width: '100%', alignItems: 'center', fontSize: fontMetrics.itemSize, padding: '1.5px 0' }}>
-                            <div className="flex-1 pr-1 truncate" style={{ flex: '1 1 0%', textAlign: 'left', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', paddingRight: '4px', fontSize: fontMetrics.itemSize, fontWeight: 700 }} title={displayName}>
-                              {singleRowName}
-                              {!qData.isKg && weightInfo && <span style={{ fontSize: fontMetrics.detailSize, fontWeight: 'normal' }}> ({weightInfo})</span>}
+                          <div key={idx} style={{ padding: '2px 0 3px 0', borderBottom: '1px dashed #e5e5e5' }}>
+                            <div style={{ display: 'flex', width: '100%', alignItems: 'flex-start', fontSize: fontMetrics.detailSize, lineHeight: '1.25' }}>
+                              <div style={{ flex: '1 1 0%', textAlign: 'left', paddingRight: '4px' }}>
+                                <div style={{ fontWeight: 700, color: '#000000', fontSize: fontMetrics.detailSize }}>
+                                  {itemTitle}
+                                </div>
+                                {subDetail && (
+                                  <div style={{ fontSize: '9px', fontWeight: 600, color: '#4b5563', marginTop: '1px' }}>
+                                    {subDetail}
+                                  </div>
+                                )}
+                              </div>
+                              <div style={{ width: '48px', textAlign: 'center', flexShrink: 0, fontWeight: 700, fontSize: fontMetrics.detailSize }}>
+                                {numQtyDisplay}
+                              </div>
+                              <div style={{ width: '52px', textAlign: 'right', flexShrink: 0, fontWeight: 600, fontSize: fontMetrics.detailSize }}>
+                                {qData.rateDisplay}
+                              </div>
+                              <div style={{ width: '64px', textAlign: 'right', flexShrink: 0, fontWeight: 750, fontSize: fontMetrics.detailSize }}>
+                                {qData.amountDisplay}
+                              </div>
                             </div>
-                            <div className="w-10 text-center" style={{ width: '42px', textAlign: 'center', flexShrink: 0, fontSize: fontMetrics.itemSize, fontWeight: 600 }}>{qData.qtyDisplay}</div>
-                            <div className="w-12 text-right" style={{ width: '52px', textAlign: 'right', flexShrink: 0, fontSize: fontMetrics.itemSize }}>{qData.rateDisplay}</div>
-                            <div className="w-16 text-right" style={{ width: '64px', textAlign: 'right', flexShrink: 0, fontSize: fontMetrics.itemSize, fontWeight: 'bold' }}>{qData.amountDisplay}</div>
                           </div>
                         );
                       })}
