@@ -93,6 +93,7 @@ app.use("/api/expenses", expenseRoutes);
 app.use("/api/cash-log", cashLogRoutes);
 app.use("/api/credit-accounts", creditAccountRoutes);
 app.use("/api/customers", customerRoutes);
+app.use("/api/crm/customers", customerRoutes);
 app.use("/api/staff", staffRoutes);
 app.use("/api/vehicles", vehicleRoutes);
 app.use("/api/operations", depotOperationRoutes);

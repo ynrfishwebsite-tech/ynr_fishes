@@ -558,7 +558,7 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack, initi
       const [invRes, logsRes, crmRes, suppliersData, categoriesData, supplyLogsData, vehiclesData, menuCatalog] = await Promise.all([
         axios.get(`${getApiUrl()}/inventory`, { headers: getAuthHeader() }),
         axios.get(`${getApiUrl()}/inventory/logs`, { headers: getAuthHeader(), params: { limit: 200 } }),
-        axios.get(`${getApiUrl()}/crm/customers`, { headers: getAuthHeader() }).catch(() => ({ data: [] })),
+        axios.get(`${getApiUrl()}/customers`, { headers: getAuthHeader() }).catch(() => ({ data: [] })),
         getSuppliers().catch(() => []),
         getSupplyCategories().catch(() => []),
         getSupplyLogs().catch(() => []),
