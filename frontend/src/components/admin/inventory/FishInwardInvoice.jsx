@@ -268,54 +268,58 @@ export default function FishInwardInvoice({ data, onClose }) {
   const paymentMode = data.paymentMode || 'Cash';
   const notes = data.notes || '';
 
-  // Settlement itemized rows
+  // Settlement itemized rows (Strict: only populated if settlements are enabled and not hidden)
   const settlementDetails = data.settlements || {};
   const customSettlements = data.customSettlements || [];
 
   const settlementList = [];
-  if (isLocal) {
-    const ice = settlementDetails.ice;
-    const iceAmt = Number(ice?.amount !== undefined ? ice.amount : (ice || 0));
-    if (iceAmt > 0) settlementList.push({ label: 'Ice Charges', type: ice?.type || 'Dr', amount: iceAmt });
+  const areSettlementsEnabled = data.showSettlements !== false && (data.showSettlements === true || (data.showSettlements === undefined && (totalCr > 0 || totalDr > 0)));
 
-    const bx = settlementDetails.boxes;
-    const bxAmt = Number(bx?.amount !== undefined ? bx.amount : (bx || 0));
-    if (bxAmt > 0) settlementList.push({ label: 'Boxes Charges', type: bx?.type || 'Dr', amount: bxAmt });
+  if (areSettlementsEnabled) {
+    if (isLocal) {
+      const ice = settlementDetails.ice;
+      const iceAmt = Number(ice?.amount !== undefined ? ice.amount : (ice || 0));
+      if (iceAmt > 0 && ice?.isLocked !== true) settlementList.push({ label: 'Ice Charges', type: ice?.type || 'Dr', amount: iceAmt });
 
-    const tp = settlementDetails.tape;
-    const tpAmt = Number(tp?.amount !== undefined ? tp.amount : (tp || 0));
-    if (tpAmt > 0) settlementList.push({ label: 'Tape Charges', type: tp?.type || 'Dr', amount: tpAmt });
+      const bx = settlementDetails.boxes;
+      const bxAmt = Number(bx?.amount !== undefined ? bx.amount : (bx || 0));
+      if (bxAmt > 0 && bx?.isLocked !== true) settlementList.push({ label: 'Boxes Charges', type: bx?.type || 'Dr', amount: bxAmt });
 
-    const adv = settlementDetails.advance;
-    const advAmt = Number(adv?.amount !== undefined ? adv.amount : (adv || 0));
-    if (advAmt > 0) settlementList.push({ label: 'Advance Deducted', type: adv?.type || 'Dr', amount: advAmt });
-  } else if (isDam) {
-    const adv = settlementDetails.advance;
-    const advAmt = Number(adv?.amount !== undefined ? adv.amount : (adv || 0));
-    if (advAmt > 0) settlementList.push({ label: '1) Advance Deducted', type: adv?.type || 'Dr', amount: advAmt });
+      const tp = settlementDetails.tape;
+      const tpAmt = Number(tp?.amount !== undefined ? tp.amount : (tp || 0));
+      if (tpAmt > 0 && tp?.isLocked !== true) settlementList.push({ label: 'Tape Charges', type: tp?.type || 'Dr', amount: tpAmt });
 
-    const kht = settlementDetails.khata;
-    const khtAmt = Number(kht?.amount !== undefined ? kht.amount : (kht || 0));
-    if (khtAmt > 0) settlementList.push({ label: '2) Khata Deducted', type: kht?.type || 'Dr', amount: khtAmt });
+      const adv = settlementDetails.advance;
+      const advAmt = Number(adv?.amount !== undefined ? adv.amount : (adv || 0));
+      if (advAmt > 0 && adv?.isLocked !== true) settlementList.push({ label: 'Advance Deducted', type: adv?.type || 'Dr', amount: advAmt });
+    } else if (isDam) {
+      const adv = settlementDetails.advance;
+      const advAmt = Number(adv?.amount !== undefined ? adv.amount : (adv || 0));
+      if (advAmt > 0 && adv?.isLocked !== true) settlementList.push({ label: '1) Advance Deducted', type: adv?.type || 'Dr', amount: advAmt });
 
-    const odTr = settlementDetails.od || settlementDetails.transport;
-    const odAmt = Number(odTr?.amount !== undefined ? odTr.amount : (odTr || 0));
-    if (odAmt > 0) settlementList.push({ label: '3) OD / Transport', type: odTr?.type || 'Dr', amount: odAmt });
+      const kht = settlementDetails.khata;
+      const khtAmt = Number(kht?.amount !== undefined ? kht.amount : (kht || 0));
+      if (khtAmt > 0 && kht?.isLocked !== true) settlementList.push({ label: '2) Khata Deducted', type: kht?.type || 'Dr', amount: khtAmt });
 
-    const depExp = settlementDetails.expense || settlementDetails.depotExpense;
-    const depAmt = Number(depExp?.amount !== undefined ? depExp.amount : (depExp || 0));
-    if (depAmt > 0) settlementList.push({ label: '4) Depot Expense', type: depExp?.type || 'Dr', amount: depAmt });
+      const odTr = settlementDetails.od || settlementDetails.transport;
+      const odAmt = Number(odTr?.amount !== undefined ? odTr.amount : (odTr || 0));
+      if (odAmt > 0 && odTr?.isLocked !== true) settlementList.push({ label: '3) OD / Transport', type: odTr?.type || 'Dr', amount: odAmt });
 
-    const othExp = settlementDetails.festivalExpense || settlementDetails.otherExpense;
-    const othAmt = Number(othExp?.amount !== undefined ? othExp.amount : (othExp || 0));
-    if (othAmt > 0) settlementList.push({ label: '5) Other Expense', type: othExp?.type || 'Dr', amount: othAmt });
-  }
+      const depExp = settlementDetails.expense || settlementDetails.depotExpense;
+      const depAmt = Number(depExp?.amount !== undefined ? depExp.amount : (depExp || 0));
+      if (depAmt > 0 && depExp?.isLocked !== true) settlementList.push({ label: '4) Depot Expense', type: depExp?.type || 'Dr', amount: depAmt });
 
-  customSettlements.forEach(c => {
-    if (c.label && c.amount) {
-      settlementList.push({ label: c.label, type: c.type || 'Dr', amount: Number(c.amount) });
+      const othExp = settlementDetails.festivalExpense || settlementDetails.otherExpense;
+      const othAmt = Number(othExp?.amount !== undefined ? othExp.amount : (othExp || 0));
+      if (othAmt > 0 && othExp?.isLocked !== true) settlementList.push({ label: '5) Other Expense', type: othExp?.type || 'Dr', amount: othAmt });
     }
-  });
+
+    customSettlements.forEach(c => {
+      if (c.label && c.amount && c.isLocked !== true) {
+        settlementList.push({ label: c.label, type: c.type || 'Dr', amount: Number(c.amount) });
+      }
+    });
+  }
 
     // Printer Configurations loaded from backend
   const [printerConfigs, setPrinterConfigs] = useState([]);
@@ -1320,18 +1324,14 @@ export default function FishInwardInvoice({ data, onClose }) {
 
             {/* Financial Settlement & Net Payable Grid */}
             <div className="print-settlement-grid grid grid-cols-1 sm:grid-cols-12 border-2 border-slate-900 divide-y sm:divide-y-0 sm:divide-x divide-slate-900">
-              {/* Left: Deductions & Additions Breakdown */}
-              <div className="sm:col-span-7 p-2.5 space-y-1">
-                <div className="text-[10px] font-black uppercase tracking-wider text-slate-900 border-b border-slate-300 pb-0.5 flex items-center justify-between">
-                  <span>SETTLEMENT DEDUCTIONS & ADVANCE ADJUSTMENTS</span>
-                  <span className="text-[9px] text-slate-500 font-mono">(+Cr / -Dr Breakdown)</span>
-                </div>
-
-                {settlementList.length === 0 ? (
-                  <div className="text-[10px] text-slate-500 italic py-1.5">
-                    No advance deductions or extra charges applied to this unloading lot.
+              {/* Left: Deductions & Additions Breakdown (Only rendered when deductions exist) */}
+              {settlementList.length > 0 ? (
+                <div className="sm:col-span-7 p-2.5 space-y-1">
+                  <div className="text-[10px] font-black uppercase tracking-wider text-slate-900 border-b border-slate-300 pb-0.5 flex items-center justify-between">
+                    <span>SETTLEMENT DEDUCTIONS & ADVANCE ADJUSTMENTS</span>
+                    <span className="text-[9px] text-slate-500 font-mono">(+Cr / -Dr Breakdown)</span>
                   </div>
-                ) : (
+
                   <div className="space-y-0.5">
                     {settlementList.map((st, sIdx) => {
                       const isCredit = st.type === 'Cr';
@@ -1350,18 +1350,29 @@ export default function FishInwardInvoice({ data, onClose }) {
                       );
                     })}
                   </div>
-                )}
 
-                {notes && (
-                  <div className="mt-1 pt-1 border-t border-slate-200 text-[10px] text-slate-700">
-                    <span className="font-bold text-slate-950">Intake Notes: </span>
-                    <span>{notes}</span>
+                  {notes && (
+                    <div className="mt-1 pt-1 border-t border-slate-200 text-[10px] text-slate-700">
+                      <span className="font-bold text-slate-950">Intake Notes: </span>
+                      <span>{notes}</span>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                notes ? (
+                  <div className="sm:col-span-7 p-2.5 space-y-1">
+                    <div className="text-[10px] font-black uppercase tracking-wider text-slate-900 border-b border-slate-300 pb-0.5">
+                      INTAKE NOTES / REMARKS
+                    </div>
+                    <div className="text-[11px] text-slate-700 py-1">
+                      {notes}
+                    </div>
                   </div>
-                )}
-              </div>
+                ) : null
+              )}
 
               {/* Right: Net Settlement Totals Box */}
-              <div className="sm:col-span-5 p-2.5 bg-slate-50/70 flex flex-col justify-between space-y-2">
+              <div className={`${settlementList.length > 0 || notes ? 'sm:col-span-5' : 'sm:col-span-12'} p-2.5 bg-slate-50/70 flex flex-col justify-between space-y-2`}>
                 <div className="space-y-0.5 text-[11px] font-mono">
                   <div className="flex justify-between items-center text-slate-700">
                     <span>Gross Value:</span>

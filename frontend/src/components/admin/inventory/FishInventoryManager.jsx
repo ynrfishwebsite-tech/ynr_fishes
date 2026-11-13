@@ -44,7 +44,9 @@ import {
   Phone,
   Check,
   ChevronUp,
-  Users
+  Users,
+  Lock,
+  Unlock
 } from 'lucide-react';
 import BackButton from '../common/BackButton';
 import SearchableDropdown from '../../common/SearchableDropdown';
@@ -161,11 +163,12 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack, initi
     items: [
       { id: 1, menuItemId: '', itemName: '', sizeGrade: 'medium', sizeBracket: 'Medium', weightOption: '1 - 4 Kg', boxes: '', kgPerBox: 60, kg: '', grams: '', ratePerKg: '' }
     ],
+    showSettlements: false, // Default: Hidden & Excluded
     settlements: {
-      ice: { label: 'Ice Charges', type: 'Dr', amount: '' },
-      boxes: { label: 'Boxes Charges', type: 'Dr', amount: '' },
-      tape: { label: 'Tape Charges', type: 'Dr', amount: '' },
-      advance: { label: 'Advance Deducted', type: 'Dr', amount: '' }
+      ice: { label: 'Ice Charges', type: 'Dr', amount: '', isLocked: true },
+      boxes: { label: 'Boxes Charges', type: 'Dr', amount: '', isLocked: true },
+      tape: { label: 'Tape Charges', type: 'Dr', amount: '', isLocked: true },
+      advance: { label: 'Advance Deducted', type: 'Dr', amount: '', isLocked: true }
     },
     customSettlements: [],
     paymentMode: 'Cash',
@@ -184,12 +187,13 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack, initi
     tallyItems: [
       { id: 1, menuItemId: '', itemName: '', sizeGrade: 'medium', sizeBracket: 'Medium', weightOption: '1 - 4 Kg', boxes: '', kgPerBox: 60, kg: '', grams: '', price: '' }
     ],
+    showSettlements: false, // Default: Hidden & Excluded
     settlements: {
-      advance: { label: '1) Advance', type: 'Dr', amount: '' },
-      khata: { label: '2) Khata', type: 'Dr', amount: '' },
-      od: { label: '3) OD / Transport', type: 'Dr', amount: '' },
-      expense: { label: '4) Depot Expense', type: 'Dr', amount: '' },
-      festivalExpense: { label: '5) Other Expense', type: 'Dr', amount: '' }
+      advance: { label: '1) Advance', type: 'Dr', amount: '', isLocked: true },
+      khata: { label: '2) Khata', type: 'Dr', amount: '', isLocked: true },
+      od: { label: '3) OD / Transport', type: 'Dr', amount: '', isLocked: true },
+      expense: { label: '4) Depot Expense', type: 'Dr', amount: '', isLocked: true },
+      festivalExpense: { label: '5) Other Expense', type: 'Dr', amount: '', isLocked: true }
     },
     customSettlements: [],
     notes: ''
@@ -1343,7 +1347,7 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack, initi
       ...prev,
       customSettlements: [
         ...(prev.customSettlements || []),
-        { id: newId, label: 'Custom Charge', type: 'Dr', amount: '' }
+        { id: newId, label: 'Custom Charge', type: 'Dr', amount: '', isLocked: true }
       ]
     }));
   };
@@ -1361,7 +1365,7 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack, initi
       ...prev,
       customSettlements: [
         ...(prev.customSettlements || []),
-        { id: newId, label: 'Custom Deduction', type: 'Dr', amount: '' }
+        { id: newId, label: 'Custom Deduction', type: 'Dr', amount: '', isLocked: true }
       ]
     }));
   };
@@ -1393,16 +1397,21 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack, initi
 
     let totalCr = 0;
     let totalDr = 0;
-    Object.values(localStockInForm.settlements || {}).forEach(s => {
-      const amt = Number(s?.amount || 0);
-      if (s?.type === 'Cr') totalCr += amt;
-      else totalDr += amt;
-    });
-    (localStockInForm.customSettlements || []).forEach(s => {
-      const amt = Number(s?.amount || 0);
-      if (s?.type === 'Cr') totalCr += amt;
-      else totalDr += amt;
-    });
+    if (localStockInForm.showSettlements) {
+      Object.values(localStockInForm.settlements || {}).forEach(s => {
+        // Cr/Dr functionality only executes when field is explicitly unlocked
+        if (s?.isLocked !== false) return;
+        const amt = Number(s?.amount || 0);
+        if (s?.type === 'Cr') totalCr += amt;
+        else totalDr += amt;
+      });
+      (localStockInForm.customSettlements || []).forEach(s => {
+        if (s?.isLocked !== false) return;
+        const amt = Number(s?.amount || 0);
+        if (s?.type === 'Cr') totalCr += amt;
+        else totalDr += amt;
+      });
+    }
 
     const netPayable = Number((grossValue + totalCr - totalDr).toFixed(2));
 
@@ -1413,7 +1422,7 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack, initi
       totalDr: Number(totalDr.toFixed(2)),
       netPayable
     };
-  }, [localStockInForm.items, localStockInForm.settlements, localStockInForm.customSettlements]);
+  }, [localStockInForm.items, localStockInForm.settlements, localStockInForm.customSettlements, localStockInForm.showSettlements]);
 
   // ── DAM Consignment Realtime Multi-Item Calculations ──
   const damTotals = useMemo(() => {
@@ -1435,16 +1444,21 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack, initi
 
     let totalCr = 0;
     let totalDr = 0;
-    Object.values(damStockInForm.settlements || {}).forEach(s => {
-      const amt = Number(s?.amount || 0);
-      if (s?.type === 'Cr') totalCr += amt;
-      else totalDr += amt;
-    });
-    (damStockInForm.customSettlements || []).forEach(s => {
-      const amt = Number(s?.amount || 0);
-      if (s?.type === 'Cr') totalCr += amt;
-      else totalDr += amt;
-    });
+    if (damStockInForm.showSettlements) {
+      Object.values(damStockInForm.settlements || {}).forEach(s => {
+        // Cr/Dr functionality only executes when field is explicitly unlocked
+        if (s?.isLocked !== false) return;
+        const amt = Number(s?.amount || 0);
+        if (s?.type === 'Cr') totalCr += amt;
+        else totalDr += amt;
+      });
+      (damStockInForm.customSettlements || []).forEach(s => {
+        if (s?.isLocked !== false) return;
+        const amt = Number(s?.amount || 0);
+        if (s?.type === 'Cr') totalCr += amt;
+        else totalDr += amt;
+      });
+    }
 
     const netSettlement = Number((catchTotal + totalCr - totalDr).toFixed(2));
     return {
@@ -1454,7 +1468,7 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack, initi
       totalDr: Number(totalDr.toFixed(2)),
       netSettlement
     };
-  }, [damStockInForm.tallyItems, damStockInForm.settlements, damStockInForm.customSettlements]);
+  }, [damStockInForm.tallyItems, damStockInForm.settlements, damStockInForm.customSettlements, damStockInForm.showSettlements]);
 
   // ── Consumables & Supplies Realtime Calculations ──
   const supplyTotalCost = useMemo(() => {
@@ -1504,6 +1518,11 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack, initi
     try {
       setSubmitting(true);
       const vNo = generateVoucherNo('local');
+      const isSettlementsActive = Boolean(localStockInForm.showSettlements);
+      const activeCustomSettlements = isSettlementsActive
+        ? (localStockInForm.customSettlements || []).filter(c => c.isLocked === false)
+        : [];
+
       const payload = {
         invoiceNo: vNo,
         supplierName: localStockInForm.supplierName,
@@ -1512,11 +1531,12 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack, initi
         vehicleNumber: localStockInForm.vehicleNumber,
         harbor: localStockInForm.harbor,
         items: validRows,
-        settlements: localStockInForm.settlements,
-        customSettlements: localStockInForm.customSettlements,
-        iceCharges: Number(localStockInForm.settlements?.ice?.amount || 0),
-        boxTapeCharges: Number(localStockInForm.settlements?.boxes?.amount || 0) + Number(localStockInForm.settlements?.tape?.amount || 0),
-        advanceAmount: Number(localStockInForm.settlements?.advance?.amount || 0),
+        showSettlements: isSettlementsActive,
+        settlements: isSettlementsActive ? localStockInForm.settlements : {},
+        customSettlements: activeCustomSettlements,
+        iceCharges: isSettlementsActive && localStockInForm.settlements?.ice?.isLocked === false ? Number(localStockInForm.settlements?.ice?.amount || 0) : 0,
+        boxTapeCharges: isSettlementsActive ? ((localStockInForm.settlements?.boxes?.isLocked === false ? Number(localStockInForm.settlements?.boxes?.amount || 0) : 0) + (localStockInForm.settlements?.tape?.isLocked === false ? Number(localStockInForm.settlements?.tape?.amount || 0) : 0)) : 0,
+        advanceAmount: isSettlementsActive && localStockInForm.settlements?.advance?.isLocked === false ? Number(localStockInForm.settlements?.advance?.amount || 0) : 0,
         paymentMode: localStockInForm.paymentMode,
         notes: localStockInForm.notes
       };
@@ -1525,7 +1545,7 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack, initi
 
       setMessage({ text: res.data.message || 'Local Fish Intake successfully recorded!', type: 'success' });
       
-      // Open Professional A4 Inward Invoice with stable voucher no, real grade & clean vehicle
+      // Open Professional Inward Catch Invoice
       setInwardInvoiceModal({
         mode: 'local',
         invoiceNo: vNo,
@@ -1546,8 +1566,9 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack, initi
         totalDr: localTotals.totalDr,
         netPayable: localTotals.netPayable,
         paymentMode: localStockInForm.paymentMode || 'Cash',
-        settlements: localStockInForm.settlements,
-        customSettlements: localStockInForm.customSettlements,
+        showSettlements: isSettlementsActive,
+        settlements: isSettlementsActive ? localStockInForm.settlements : {},
+        customSettlements: activeCustomSettlements,
         notes: localStockInForm.notes,
         date: new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }),
         time: new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true })
@@ -1562,11 +1583,12 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack, initi
         items: [
           { id: 1, menuItemId: '', itemName: '', sizeGrade: 'medium', sizeBracket: 'Medium', weightOption: '1 - 4 Kg', boxes: '', kgPerBox: 60, kg: '', grams: '', ratePerKg: '' }
         ],
+        showSettlements: false,
         settlements: {
-          ice: { label: 'Ice Charges', type: 'Dr', amount: '' },
-          boxes: { label: 'Boxes Charges', type: 'Dr', amount: '' },
-          tape: { label: 'Tape Charges', type: 'Dr', amount: '' },
-          advance: { label: 'Advance Deducted', type: 'Dr', amount: '' }
+          ice: { label: 'Ice Charges', type: 'Dr', amount: '', isLocked: true },
+          boxes: { label: 'Boxes Charges', type: 'Dr', amount: '', isLocked: true },
+          tape: { label: 'Tape Charges', type: 'Dr', amount: '', isLocked: true },
+          advance: { label: 'Advance Deducted', type: 'Dr', amount: '', isLocked: true }
         },
         customSettlements: [],
         paymentMode: 'Cash',
@@ -1623,6 +1645,11 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack, initi
       const res = await axios.post(`${getApiUrl()}/inventory/dam-stock-in`, payload, { headers: getAuthHeader() });
 
       setMessage({ text: res.data.message || 'Dam Catch successfully recorded!', type: 'success' });
+      const isDamSettlementsActive = Boolean(damStockInForm.showSettlements);
+      const activeDamCustomSettlements = isDamSettlementsActive
+        ? (damStockInForm.customSettlements || []).filter(c => c.isLocked === false)
+        : [];
+
       const invoiceData = {
         mode: 'dam',
         invoiceNo: vNo,
@@ -1644,8 +1671,9 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack, initi
         totalDr: damTotals.totalDr,
         netPayable: damTotals.netSettlement,
         paymentMode: 'Consignment Settlement',
-        settlements: damStockInForm.settlements,
-        customSettlements: damStockInForm.customSettlements,
+        showSettlements: isDamSettlementsActive,
+        settlements: isDamSettlementsActive ? damStockInForm.settlements : {},
+        customSettlements: activeDamCustomSettlements,
         notes: damStockInForm.notes,
         date: new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }),
         time: new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true })
@@ -1668,12 +1696,13 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack, initi
         harbor: '',
         contractorCity: '',
         tallyItems: [{ id: 1, menuItemId: '', itemName: '', sizeGrade: 'medium', sizeBracket: 'Medium', weightOption: '1 - 4 Kg', boxes: '', kgPerBox: 60, kg: '', grams: '', price: '' }],
+        showSettlements: false,
         settlements: {
-          advance: { label: '1) Advance', type: 'Dr', amount: '' },
-          khata: { label: '2) Khata', type: 'Dr', amount: '' },
-          od: { label: '3) OD / Transport', type: 'Dr', amount: '' },
-          expense: { label: '4) Depot Expense', type: 'Dr', amount: '' },
-          festivalExpense: { label: '5) Other Expense', type: 'Dr', amount: '' }
+          advance: { label: '1) Advance', type: 'Dr', amount: '', isLocked: true },
+          khata: { label: '2) Khata', type: 'Dr', amount: '', isLocked: true },
+          od: { label: '3) OD / Transport', type: 'Dr', amount: '', isLocked: true },
+          expense: { label: '4) Depot Expense', type: 'Dr', amount: '', isLocked: true },
+          festivalExpense: { label: '5) Other Expense', type: 'Dr', amount: '' , isLocked: true }
         },
         customSettlements: [],
         notes: ''
@@ -1686,7 +1715,7 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack, initi
     }
   };
 
-  // ── Standalone A4 Invoice Preview Handlers (Available On-Demand Anytime) ──
+  // ── Standalone Inward Invoice Preview Handlers (Available On-Demand Anytime) ──
   const handlePrintLocalInvoice = () => {
     const validRows = (localStockInForm.items || []).filter(item => {
       const hasKg = Number(item.kg || 0) > 0 || Number(item.grams || 0) > 0;
@@ -1698,6 +1727,11 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack, initi
       return;
     }
     const vNo = generateVoucherNo('local');
+    const isSettlementsActive = Boolean(localStockInForm.showSettlements);
+    const activeCustomSettlements = isSettlementsActive
+      ? (localStockInForm.customSettlements || []).filter(c => c.isLocked === false)
+      : [];
+
     setInwardInvoiceModal({
       mode: 'local',
       invoiceNo: vNo,
@@ -1718,8 +1752,9 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack, initi
       totalDr: localTotals.totalDr,
       netPayable: localTotals.netPayable,
       paymentMode: localStockInForm.paymentMode || 'Cash',
-      settlements: localStockInForm.settlements,
-      customSettlements: localStockInForm.customSettlements,
+      showSettlements: isSettlementsActive,
+      settlements: isSettlementsActive ? localStockInForm.settlements : {},
+      customSettlements: activeCustomSettlements,
       notes: localStockInForm.notes,
       date: new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }),
       time: new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true })
@@ -1737,6 +1772,11 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack, initi
       return;
     }
     const vNo = generateVoucherNo('dam');
+    const isDamSettlementsActive = Boolean(damStockInForm.showSettlements);
+    const activeDamCustomSettlements = isDamSettlementsActive
+      ? (damStockInForm.customSettlements || []).filter(c => c.isLocked === false)
+      : [];
+
     setInwardInvoiceModal({
       mode: 'dam',
       invoiceNo: vNo,
@@ -1758,8 +1798,9 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack, initi
       totalDr: damTotals.totalDr,
       netPayable: damTotals.netSettlement,
       paymentMode: 'Consignment Settlement',
-      settlements: damStockInForm.settlements,
-      customSettlements: damStockInForm.customSettlements,
+      showSettlements: isDamSettlementsActive,
+      settlements: isDamSettlementsActive ? damStockInForm.settlements : {},
+      customSettlements: activeDamCustomSettlements,
       notes: damStockInForm.notes,
       date: new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }),
       time: new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true })
@@ -3976,155 +4017,268 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack, initi
                     )}
                   </div>
                 </div>
-                <div className="bg-[#FAF0E4]/60 p-4 rounded-xl border border-[#fed7aa]/80 space-y-3">
+                <div className="bg-[#FAF0E4]/60 p-3 sm:p-4 rounded-xl border border-[#fed7aa]/80 space-y-3">
                   <div className="flex items-center justify-between flex-wrap gap-2">
-                    <div className="text-[11px] sm:text-xs font-bold text-slate-800 uppercase tracking-wide">
-                      Settlement & Advance Deductions
+                    <div className="flex items-center gap-2.5">
+                      <div className="text-[11px] sm:text-xs font-bold text-slate-800 uppercase tracking-wide">
+                        Settlement & Advance Deductions
+                      </div>
+                      {/* TOGGLE SWITCH TO HIDE / SHOW THIS SECTION */}
+                      <button
+                        type="button"
+                        onClick={() => setLocalStockInForm(prev => ({ ...prev, showSettlements: !prev.showSettlements }))}
+                        className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                          localStockInForm.showSettlements ? 'bg-orange-600' : 'bg-slate-300'
+                        }`}
+                        title={localStockInForm.showSettlements ? 'Deductions Section Enabled. Click to hide completely' : 'Deductions Section Hidden by default. Click to show'}
+                      >
+                        <span
+                          className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out ${
+                            localStockInForm.showSettlements ? 'translate-x-4' : 'translate-x-0'
+                          }`}
+                        />
+                      </button>
+                      <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
+                        localStockInForm.showSettlements ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-200 text-slate-600'
+                      }`}>
+                        {localStockInForm.showSettlements ? 'Enabled' : 'Hidden (Excluded)'}
+                      </span>
                     </div>
-                    <button
-                      type="button"
-                      onClick={handleAddLocalCustomCategory}
-                      className="px-2 py-0.8 sm:px-2.5 sm:py-1 bg-white hover:bg-slate-50 border border-slate-300 rounded-lg text-[10.5px] sm:text-xs font-bold text-slate-700 flex items-center gap-1 shadow-2xs cursor-pointer transition-all hover:border-orange-400"
-                    >
-                      <Plus size={11} className="text-[#ea580c]" />
-                      <span>Add Category</span>
-                    </button>
+
+                    {localStockInForm.showSettlements && (
+                      <button
+                        type="button"
+                        onClick={handleAddLocalCustomCategory}
+                        className="px-2 py-0.8 sm:px-2.5 sm:py-1 bg-white hover:bg-slate-50 border border-slate-300 rounded-lg text-[10.5px] sm:text-xs font-bold text-slate-700 flex items-center gap-1 shadow-2xs cursor-pointer transition-all hover:border-orange-400"
+                      >
+                        <Plus size={11} className="text-[#ea580c]" />
+                        <span>Add Category</span>
+                      </button>
+                    )}
                   </div>
 
-                  <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-5 gap-2.5">
-                    {/* Default Categories: Ice, Boxes, Tape, Advance */}
-                    {[
-                      { key: 'ice', label: '1) Ice Charges' },
-                      { key: 'boxes', label: '2) Boxes Charges' },
-                      { key: 'tape', label: '3) Tape Charges' },
-                      { key: 'advance', label: '4) Advance Deducted' }
-                    ].map(item => {
-                      const entry = localStockInForm.settlements?.[item.key] || { type: 'Dr', amount: '' };
-                      const isCr = entry.type === 'Cr';
-                      return (
-                        <div key={item.key} className="bg-white p-2.5 rounded-xl border border-[#fed7aa] space-y-1.5 shadow-2xs">
-                          <div className="text-[11px] font-bold text-slate-700 truncate">{item.label}</div>
-                          <div className="grid grid-cols-2 gap-1 p-0.5 bg-slate-100 rounded-lg">
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setLocalStockInForm({
-                                  ...localStockInForm,
-                                  settlements: { ...localStockInForm.settlements, [item.key]: { ...entry, type: 'Cr' } }
-                                });
-                              }}
-                              className={`py-0.5 rounded text-[10px] font-black transition-all cursor-pointer ${
-                                isCr ? 'bg-emerald-600 text-white shadow-xs' : 'text-slate-500 hover:text-slate-900'
-                              }`}
-                            >
-                              + Cr
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setLocalStockInForm({
-                                  ...localStockInForm,
-                                  settlements: { ...localStockInForm.settlements, [item.key]: { ...entry, type: 'Dr' } }
-                                });
-                              }}
-                              className={`py-0.5 rounded text-[10px] font-black transition-all cursor-pointer ${
-                                !isCr ? 'bg-rose-600 text-white shadow-xs' : 'text-slate-500 hover:text-slate-900'
-                              }`}
-                            >
-                              - Dr
-                            </button>
-                          </div>
-                          <input
-                            type="number"
-                            min="0"
-                            placeholder="0"
-                            value={entry.amount}
-                            onChange={(e) => {
-                              setLocalStockInForm({
-                                ...localStockInForm,
-                                settlements: { ...localStockInForm.settlements, [item.key]: { ...entry, amount: e.target.value } }
-                              });
-                            }}
-                            className={`w-full p-1 bg-slate-50 border rounded-lg text-xs font-mono font-bold text-center ${
-                              isCr ? 'border-emerald-300 text-emerald-800' : 'border-rose-300 text-rose-800'
-                            }`}
-                          />
-                        </div>
-                      );
-                    })}
-
-                    {/* Custom Categories Added Dynamically */}
-                    {(localStockInForm.customSettlements || []).map((item, cIdx) => {
-                      const isCr = item.type === 'Cr';
-                      return (
-                        <div key={item.id || cIdx} className="bg-white p-2.5 rounded-xl border border-orange-300 bg-orange-50/20 space-y-1.5 shadow-2xs relative">
-                          <div className="flex items-center justify-between gap-1">
+                  {localStockInForm.showSettlements && (
+                    <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-5 gap-2.5">
+                      {/* Default Categories: Ice, Boxes, Tape, Advance */}
+                      {[
+                        { key: 'ice', label: '1) Ice Charges' },
+                        { key: 'boxes', label: '2) Boxes Charges' },
+                        { key: 'tape', label: '3) Tape Charges' },
+                        { key: 'advance', label: '4) Advance Deducted' }
+                      ].map(item => {
+                        const entry = localStockInForm.settlements?.[item.key] || { type: 'Dr', amount: '', isLocked: true };
+                        const isLocked = entry.isLocked !== false;
+                        const isCr = entry.type === 'Cr';
+                        return (
+                          <div key={item.key} className={`p-2.5 rounded-xl border space-y-1.5 shadow-2xs transition-all ${
+                            isLocked ? 'bg-slate-50/80 border-slate-200' : 'bg-white border-[#fed7aa]'
+                          }`}>
+                            <div className="flex items-center justify-between gap-1">
+                              <span className="text-[11px] font-bold text-slate-700 truncate">{item.label}</span>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const nextLocked = !isLocked;
+                                  setLocalStockInForm({
+                                    ...localStockInForm,
+                                    settlements: {
+                                      ...localStockInForm.settlements,
+                                      [item.key]: { ...entry, isLocked: nextLocked }
+                                    }
+                                  });
+                                }}
+                                className={`px-1.5 py-0.5 rounded cursor-pointer transition-all flex items-center gap-1 text-[9.5px] font-bold shrink-0 ${
+                                  isLocked
+                                    ? 'bg-slate-200 hover:bg-slate-300 text-slate-600'
+                                    : 'bg-emerald-100 hover:bg-emerald-200 text-emerald-700 border border-emerald-300'
+                                }`}
+                                title={isLocked ? 'Locked: Cr/Dr disabled. Click to unlock' : 'Unlocked: Cr/Dr active. Click to lock'}
+                              >
+                                {isLocked ? <Lock size={10} /> : <Unlock size={10} />}
+                                <span>{isLocked ? 'Lock' : 'Active'}</span>
+                              </button>
+                            </div>
+                            <div className="grid grid-cols-2 gap-1 p-0.5 bg-slate-100 rounded-lg">
+                              <button
+                                type="button"
+                                disabled={isLocked}
+                                onClick={() => {
+                                  if (isLocked) return;
+                                  setLocalStockInForm({
+                                    ...localStockInForm,
+                                    settlements: { ...localStockInForm.settlements, [item.key]: { ...entry, type: 'Cr' } }
+                                  });
+                                }}
+                                className={`py-0.5 rounded text-[10px] font-black transition-all ${
+                                  isLocked
+                                    ? 'text-slate-400 cursor-not-allowed opacity-50'
+                                    : isCr
+                                    ? 'bg-emerald-600 text-white shadow-xs cursor-pointer'
+                                    : 'text-slate-500 hover:text-slate-900 cursor-pointer'
+                                }`}
+                              >
+                                + Cr
+                              </button>
+                              <button
+                                type="button"
+                                disabled={isLocked}
+                                onClick={() => {
+                                  if (isLocked) return;
+                                  setLocalStockInForm({
+                                    ...localStockInForm,
+                                    settlements: { ...localStockInForm.settlements, [item.key]: { ...entry, type: 'Dr' } }
+                                  });
+                                }}
+                                className={`py-0.5 rounded text-[10px] font-black transition-all ${
+                                  isLocked
+                                    ? 'text-slate-400 cursor-not-allowed opacity-50'
+                                    : !isCr
+                                    ? 'bg-rose-600 text-white shadow-xs cursor-pointer'
+                                    : 'text-slate-500 hover:text-slate-900 cursor-pointer'
+                                }`}
+                              >
+                                - Dr
+                              </button>
+                            </div>
                             <input
-                              type="text"
-                              value={item.label}
-                              placeholder="Category Name"
+                              type="number"
+                              min="0"
+                              disabled={isLocked}
+                              placeholder={isLocked ? "Locked" : "0"}
+                              value={entry.amount}
                               onChange={(e) => {
-                                const updated = [...localStockInForm.customSettlements];
-                                updated[cIdx].label = e.target.value;
-                                setLocalStockInForm({ ...localStockInForm, customSettlements: updated });
+                                if (isLocked) return;
+                                setLocalStockInForm({
+                                  ...localStockInForm,
+                                  settlements: { ...localStockInForm.settlements, [item.key]: { ...entry, amount: e.target.value } }
+                                });
                               }}
-                              className="w-full text-[11px] font-bold text-slate-800 bg-transparent border-b border-dashed border-slate-300 focus:outline-none focus:border-orange-500 py-0.5"
+                              className={`w-full p-1 rounded-lg text-xs font-mono font-bold text-center transition-all ${
+                                isLocked
+                                  ? 'bg-slate-100 border border-slate-200 text-slate-400 cursor-not-allowed'
+                                  : isCr
+                                  ? 'bg-slate-50 border border-emerald-300 text-emerald-800'
+                                  : 'bg-slate-50 border border-rose-300 text-rose-800'
+                              }`}
                             />
-                            <button
-                              type="button"
-                              onClick={() => handleRemoveLocalCustomCategory(item.id)}
-                              className="text-slate-400 hover:text-rose-600 p-0.5 rounded cursor-pointer shrink-0"
-                              title="Remove category"
-                            >
-                              <Trash2 size={13} />
-                            </button>
                           </div>
-                          <div className="grid grid-cols-2 gap-1 p-0.5 bg-slate-100 rounded-lg">
-                            <button
-                              type="button"
-                              onClick={() => {
+                        );
+                      })}
+
+                      {/* Custom Categories Added Dynamically */}
+                      {(localStockInForm.customSettlements || []).map((item, cIdx) => {
+                        const isLocked = item.isLocked !== false;
+                        const isCr = item.type === 'Cr';
+                        return (
+                          <div key={item.id || cIdx} className={`p-2.5 rounded-xl border space-y-1.5 shadow-2xs relative transition-all ${
+                            isLocked ? 'bg-slate-50/80 border-slate-200' : 'bg-white border-orange-300 bg-orange-50/20'
+                          }`}>
+                            <div className="flex items-center justify-between gap-1">
+                              <input
+                                type="text"
+                                value={item.label}
+                                disabled={isLocked}
+                                placeholder="Category Name"
+                                onChange={(e) => {
+                                  if (isLocked) return;
+                                  const updated = [...localStockInForm.customSettlements];
+                                  updated[cIdx].label = e.target.value;
+                                  setLocalStockInForm({ ...localStockInForm, customSettlements: updated });
+                                }}
+                                className="w-full text-[11px] font-bold text-slate-800 bg-transparent border-b border-dashed border-slate-300 focus:outline-none focus:border-orange-500 py-0.5 disabled:opacity-50"
+                              />
+                              <div className="flex items-center gap-1 shrink-0">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const updated = [...localStockInForm.customSettlements];
+                                    updated[cIdx].isLocked = !isLocked;
+                                    setLocalStockInForm({ ...localStockInForm, customSettlements: updated });
+                                  }}
+                                  className={`px-1.5 py-0.5 rounded cursor-pointer transition-all flex items-center gap-0.5 text-[9.5px] font-bold ${
+                                    isLocked
+                                      ? 'bg-slate-200 hover:bg-slate-300 text-slate-600'
+                                      : 'bg-emerald-100 hover:bg-emerald-200 text-emerald-700 border border-emerald-300'
+                                  }`}
+                                  title={isLocked ? 'Locked: Cr/Dr disabled. Click to unlock' : 'Unlocked: Cr/Dr active. Click to lock'}
+                                >
+                                  {isLocked ? <Lock size={10} /> : <Unlock size={10} />}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleRemoveLocalCustomCategory(item.id)}
+                                  className="text-slate-400 hover:text-rose-600 p-0.5 rounded cursor-pointer shrink-0"
+                                  title="Remove category"
+                                >
+                                  <Trash2 size={13} />
+                                </button>
+                              </div>
+                            </div>
+                            <div className="grid grid-cols-2 gap-1 p-0.5 bg-slate-100 rounded-lg">
+                              <button
+                                type="button"
+                                disabled={isLocked}
+                                onClick={() => {
+                                  if (isLocked) return;
+                                  const updated = [...localStockInForm.customSettlements];
+                                  updated[cIdx].type = 'Cr';
+                                  setLocalStockInForm({ ...localStockInForm, customSettlements: updated });
+                                }}
+                                className={`py-0.5 rounded text-[10px] font-black transition-all ${
+                                  isLocked
+                                    ? 'text-slate-400 cursor-not-allowed opacity-50'
+                                    : isCr
+                                    ? 'bg-emerald-600 text-white shadow-xs cursor-pointer'
+                                    : 'text-slate-500 hover:text-slate-900 cursor-pointer'
+                                }`}
+                              >
+                                + Cr
+                              </button>
+                              <button
+                                type="button"
+                                disabled={isLocked}
+                                onClick={() => {
+                                  if (isLocked) return;
+                                  const updated = [...localStockInForm.customSettlements];
+                                  updated[cIdx].type = 'Dr';
+                                  setLocalStockInForm({ ...localStockInForm, customSettlements: updated });
+                                }}
+                                className={`py-0.5 rounded text-[10px] font-black transition-all ${
+                                  isLocked
+                                    ? 'text-slate-400 cursor-not-allowed opacity-50'
+                                    : !isCr
+                                    ? 'bg-rose-600 text-white shadow-xs cursor-pointer'
+                                    : 'text-slate-500 hover:text-slate-900 cursor-pointer'
+                                }`}
+                              >
+                                - Dr
+                              </button>
+                            </div>
+                            <input
+                              type="number"
+                              min="0"
+                              disabled={isLocked}
+                              placeholder={isLocked ? "Locked" : "0"}
+                              value={item.amount}
+                              onChange={(e) => {
+                                if (isLocked) return;
                                 const updated = [...localStockInForm.customSettlements];
-                                updated[cIdx].type = 'Cr';
+                                updated[cIdx].amount = e.target.value;
                                 setLocalStockInForm({ ...localStockInForm, customSettlements: updated });
                               }}
-                              className={`py-0.5 rounded text-[10px] font-black transition-all cursor-pointer ${
-                                isCr ? 'bg-emerald-600 text-white shadow-xs' : 'text-slate-500 hover:text-slate-900'
+                              className={`w-full p-1 rounded-lg text-xs font-mono font-bold text-center transition-all ${
+                                isLocked
+                                  ? 'bg-slate-100 border border-slate-200 text-slate-400 cursor-not-allowed'
+                                  : isCr
+                                  ? 'bg-slate-50 border border-emerald-300 text-emerald-800'
+                                  : 'bg-slate-50 border border-rose-300 text-rose-800'
                               }`}
-                            >
-                              + Cr
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                const updated = [...localStockInForm.customSettlements];
-                                updated[cIdx].type = 'Dr';
-                                setLocalStockInForm({ ...localStockInForm, customSettlements: updated });
-                              }}
-                              className={`py-0.5 rounded text-[10px] font-black transition-all cursor-pointer ${
-                                !isCr ? 'bg-rose-600 text-white shadow-xs' : 'text-slate-500 hover:text-slate-900'
-                              }`}
-                            >
-                              - Dr
-                            </button>
+                            />
                           </div>
-                          <input
-                            type="number"
-                            min="0"
-                            placeholder="0"
-                            value={item.amount}
-                            onChange={(e) => {
-                              const updated = [...localStockInForm.customSettlements];
-                              updated[cIdx].amount = e.target.value;
-                              setLocalStockInForm({ ...localStockInForm, customSettlements: updated });
-                            }}
-                            className={`w-full p-1 bg-slate-50 border rounded-lg text-xs font-mono font-bold text-center ${
-                              isCr ? 'border-emerald-300 text-emerald-800' : 'border-rose-300 text-rose-800'
-                            }`}
-                          />
-                        </div>
-                      );
-                    })}
-                  </div>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-2.5 items-end">
@@ -4973,153 +5127,267 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack, initi
                 </div>
                 <div className="bg-[#FAF0E4]/60 p-3 sm:p-4 rounded-xl border border-[#fed7aa]/80 space-y-2.5 sm:space-y-3">
                   <div className="flex items-center justify-between flex-wrap gap-2">
-                    <div className="text-[11px] sm:text-xs font-bold text-slate-800 uppercase tracking-wide">
-                      Settlement & Advance Deductions
+                    <div className="flex items-center gap-2.5">
+                      <div className="text-[11px] sm:text-xs font-bold text-slate-800 uppercase tracking-wide">
+                        Settlement & Advance Deductions
+                      </div>
+                      {/* TOGGLE SWITCH TO HIDE / SHOW THIS SECTION */}
+                      <button
+                        type="button"
+                        onClick={() => setDamStockInForm(prev => ({ ...prev, showSettlements: !prev.showSettlements }))}
+                        className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                          damStockInForm.showSettlements ? 'bg-blue-600' : 'bg-slate-300'
+                        }`}
+                        title={damStockInForm.showSettlements ? 'Deductions Section Enabled. Click to hide completely' : 'Deductions Section Hidden by default. Click to show'}
+                      >
+                        <span
+                          className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out ${
+                            damStockInForm.showSettlements ? 'translate-x-4' : 'translate-x-0'
+                          }`}
+                        />
+                      </button>
+                      <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
+                        damStockInForm.showSettlements ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-200 text-slate-600'
+                      }`}>
+                        {damStockInForm.showSettlements ? 'Enabled' : 'Hidden (Excluded)'}
+                      </span>
                     </div>
-                    <button
-                      type="button"
-                      onClick={handleAddDamCustomCategory}
-                      className="px-2 py-0.8 sm:px-2.5 sm:py-1 bg-white hover:bg-slate-50 border border-slate-300 rounded-lg text-[10.5px] sm:text-xs font-bold text-slate-700 flex items-center gap-1 shadow-2xs cursor-pointer transition-all hover:border-blue-400"
-                    >
-                      <Plus size={11} className="text-blue-600" />
-                      <span>Add Category</span>
-                    </button>
+
+                    {damStockInForm.showSettlements && (
+                      <button
+                        type="button"
+                        onClick={handleAddDamCustomCategory}
+                        className="px-2 py-0.8 sm:px-2.5 sm:py-1 bg-white hover:bg-slate-50 border border-slate-300 rounded-lg text-[10.5px] sm:text-xs font-bold text-slate-700 flex items-center gap-1 shadow-2xs cursor-pointer transition-all hover:border-blue-400"
+                      >
+                        <Plus size={11} className="text-blue-600" />
+                        <span>Add Category</span>
+                      </button>
+                    )}
                   </div>
-                  <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-5 gap-2.5">
-                    {[
-                      { key: 'advance', label: '1) Advance' },
-                      { key: 'khata', label: '2) Khata' },
-                      { key: 'od', label: '3) OD / Transport' },
-                      { key: 'expense', label: '4) Depot Expense' },
-                      { key: 'festivalExpense', label: '5) Other Expense' }
-                    ].map(item => {
-                      const entry = damStockInForm.settlements?.[item.key] || { type: 'Dr', amount: '' };
-                      const isCr = entry.type === 'Cr';
 
-                      return (
-                        <div key={item.key} className="bg-white p-2.5 rounded-xl border border-[#fed7aa] space-y-1.5 shadow-2xs">
-                          <div className="text-[11px] font-bold text-slate-700 truncate">{item.label}</div>
-                          <div className="grid grid-cols-2 gap-1 p-0.5 bg-slate-100 rounded-lg">
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setDamStockInForm({
-                                  ...damStockInForm,
-                                  settlements: { ...damStockInForm.settlements, [item.key]: { ...entry, type: 'Cr' } }
-                                });
-                              }}
-                              className={`py-0.5 rounded text-[10px] font-black transition-all cursor-pointer ${
-                                isCr ? 'bg-emerald-600 text-white shadow-xs' : 'text-slate-500 hover:text-slate-900'
-                              }`}
-                            >
-                              + Cr
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setDamStockInForm({
-                                  ...damStockInForm,
-                                  settlements: { ...damStockInForm.settlements, [item.key]: { ...entry, type: 'Dr' } }
-                                });
-                              }}
-                              className={`py-0.5 rounded text-[10px] font-black transition-all cursor-pointer ${
-                                !isCr ? 'bg-rose-600 text-white shadow-xs' : 'text-slate-500 hover:text-slate-900'
-                              }`}
-                            >
-                              - Dr
-                            </button>
-                          </div>
-                          <input
-                            type="number"
-                            min="0"
-                            placeholder="0"
-                            value={entry.amount}
-                            onChange={(e) => {
-                              setDamStockInForm({
-                                ...damStockInForm,
-                                settlements: { ...damStockInForm.settlements, [item.key]: { ...entry, amount: e.target.value } }
-                              });
-                            }}
-                            className={`w-full p-1 bg-slate-50 border rounded-lg text-xs font-mono font-bold text-center ${
-                              isCr ? 'border-emerald-300 text-emerald-800' : 'border-rose-300 text-rose-800'
-                            }`}
-                          />
-                        </div>
-                      );
-                    })}
+                  {damStockInForm.showSettlements && (
+                    <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-5 gap-2.5">
+                      {[
+                        { key: 'advance', label: '1) Advance' },
+                        { key: 'khata', label: '2) Khata' },
+                        { key: 'od', label: '3) OD / Transport' },
+                        { key: 'expense', label: '4) Depot Expense' },
+                        { key: 'festivalExpense', label: '5) Other Expense' }
+                      ].map(item => {
+                        const entry = damStockInForm.settlements?.[item.key] || { type: 'Dr', amount: '', isLocked: true };
+                        const isLocked = entry.isLocked !== false;
+                        const isCr = entry.type === 'Cr';
 
-                    {/* Custom Categories Added Dynamically */}
-                    {(damStockInForm.customSettlements || []).map((item, cIdx) => {
-                      const isCr = item.type === 'Cr';
-                      return (
-                        <div key={item.id || cIdx} className="bg-white p-2.5 rounded-xl border border-blue-300 bg-blue-50/20 space-y-1.5 shadow-2xs relative">
-                          <div className="flex items-center justify-between gap-1">
+                        return (
+                          <div key={item.key} className={`p-2.5 rounded-xl border space-y-1.5 shadow-2xs transition-all ${
+                            isLocked ? 'bg-slate-50/80 border-slate-200' : 'bg-white border-[#fed7aa]'
+                          }`}>
+                            <div className="flex items-center justify-between gap-1">
+                              <span className="text-[11px] font-bold text-slate-700 truncate">{item.label}</span>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const nextLocked = !isLocked;
+                                  setDamStockInForm({
+                                    ...damStockInForm,
+                                    settlements: {
+                                      ...damStockInForm.settlements,
+                                      [item.key]: { ...entry, isLocked: nextLocked }
+                                    }
+                                  });
+                                }}
+                                className={`px-1.5 py-0.5 rounded cursor-pointer transition-all flex items-center gap-1 text-[9.5px] font-bold shrink-0 ${
+                                  isLocked
+                                    ? 'bg-slate-200 hover:bg-slate-300 text-slate-600'
+                                    : 'bg-emerald-100 hover:bg-emerald-200 text-emerald-700 border border-emerald-300'
+                                }`}
+                                title={isLocked ? 'Locked: Cr/Dr disabled. Click to unlock' : 'Unlocked: Cr/Dr active. Click to lock'}
+                              >
+                                {isLocked ? <Lock size={10} /> : <Unlock size={10} />}
+                                <span>{isLocked ? 'Lock' : 'Active'}</span>
+                              </button>
+                            </div>
+                            <div className="grid grid-cols-2 gap-1 p-0.5 bg-slate-100 rounded-lg">
+                              <button
+                                type="button"
+                                disabled={isLocked}
+                                onClick={() => {
+                                  if (isLocked) return;
+                                  setDamStockInForm({
+                                    ...damStockInForm,
+                                    settlements: { ...damStockInForm.settlements, [item.key]: { ...entry, type: 'Cr' } }
+                                  });
+                                }}
+                                className={`py-0.5 rounded text-[10px] font-black transition-all ${
+                                  isLocked
+                                    ? 'text-slate-400 cursor-not-allowed opacity-50'
+                                    : isCr
+                                    ? 'bg-emerald-600 text-white shadow-xs cursor-pointer'
+                                    : 'text-slate-500 hover:text-slate-900 cursor-pointer'
+                                }`}
+                              >
+                                + Cr
+                              </button>
+                              <button
+                                type="button"
+                                disabled={isLocked}
+                                onClick={() => {
+                                  if (isLocked) return;
+                                  setDamStockInForm({
+                                    ...damStockInForm,
+                                    settlements: { ...damStockInForm.settlements, [item.key]: { ...entry, type: 'Dr' } }
+                                  });
+                                }}
+                                className={`py-0.5 rounded text-[10px] font-black transition-all ${
+                                  isLocked
+                                    ? 'text-slate-400 cursor-not-allowed opacity-50'
+                                    : !isCr
+                                    ? 'bg-rose-600 text-white shadow-xs cursor-pointer'
+                                    : 'text-slate-500 hover:text-slate-900 cursor-pointer'
+                                }`}
+                              >
+                                - Dr
+                              </button>
+                            </div>
                             <input
-                              type="text"
-                              value={item.label}
-                              placeholder="Category Name"
+                              type="number"
+                              min="0"
+                              disabled={isLocked}
+                              placeholder={isLocked ? "Locked" : "0"}
+                              value={entry.amount}
                               onChange={(e) => {
-                                const updated = [...damStockInForm.customSettlements];
-                                updated[cIdx].label = e.target.value;
-                                setDamStockInForm({ ...damStockInForm, customSettlements: updated });
+                                if (isLocked) return;
+                                setDamStockInForm({
+                                  ...damStockInForm,
+                                  settlements: { ...damStockInForm.settlements, [item.key]: { ...entry, amount: e.target.value } }
+                                });
                               }}
-                              className="w-full text-[11px] font-bold text-slate-800 bg-transparent border-b border-dashed border-slate-300 focus:outline-none focus:border-blue-500 py-0.5"
+                              className={`w-full p-1 rounded-lg text-xs font-mono font-bold text-center transition-all ${
+                                isLocked
+                                  ? 'bg-slate-100 border border-slate-200 text-slate-400 cursor-not-allowed'
+                                  : isCr
+                                  ? 'bg-slate-50 border border-emerald-300 text-emerald-800'
+                                  : 'bg-slate-50 border border-rose-300 text-rose-800'
+                              }`}
                             />
-                            <button
-                              type="button"
-                              onClick={() => handleRemoveDamCustomCategory(item.id)}
-                              className="text-slate-400 hover:text-rose-600 p-0.5 rounded cursor-pointer shrink-0"
-                              title="Remove category"
-                            >
-                              <Trash2 size={13} />
-                            </button>
                           </div>
-                          <div className="grid grid-cols-2 gap-1 p-0.5 bg-slate-100 rounded-lg">
-                            <button
-                              type="button"
-                              onClick={() => {
+                        );
+                      })}
+
+                      {/* Custom Categories Added Dynamically */}
+                      {(damStockInForm.customSettlements || []).map((item, cIdx) => {
+                        const isLocked = item.isLocked !== false;
+                        const isCr = item.type === 'Cr';
+                        return (
+                          <div key={item.id || cIdx} className={`p-2.5 rounded-xl border space-y-1.5 shadow-2xs relative transition-all ${
+                            isLocked ? 'bg-slate-50/80 border-slate-200' : 'bg-white border-blue-300 bg-blue-50/20'
+                          }`}>
+                            <div className="flex items-center justify-between gap-1">
+                              <input
+                                type="text"
+                                value={item.label}
+                                disabled={isLocked}
+                                placeholder="Category Name"
+                                onChange={(e) => {
+                                  if (isLocked) return;
+                                  const updated = [...damStockInForm.customSettlements];
+                                  updated[cIdx].label = e.target.value;
+                                  setDamStockInForm({ ...damStockInForm, customSettlements: updated });
+                                }}
+                                className="w-full text-[11px] font-bold text-slate-800 bg-transparent border-b border-dashed border-slate-300 focus:outline-none focus:border-blue-500 py-0.5 disabled:opacity-50"
+                              />
+                              <div className="flex items-center gap-1 shrink-0">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const updated = [...damStockInForm.customSettlements];
+                                    updated[cIdx].isLocked = !isLocked;
+                                    setDamStockInForm({ ...damStockInForm, customSettlements: updated });
+                                  }}
+                                  className={`px-1.5 py-0.5 rounded cursor-pointer transition-all flex items-center gap-0.5 text-[9.5px] font-bold ${
+                                    isLocked
+                                      ? 'bg-slate-200 hover:bg-slate-300 text-slate-600'
+                                      : 'bg-emerald-100 hover:bg-emerald-200 text-emerald-700 border border-emerald-300'
+                                  }`}
+                                  title={isLocked ? 'Locked: Cr/Dr disabled. Click to unlock' : 'Unlocked: Cr/Dr active. Click to lock'}
+                                >
+                                  {isLocked ? <Lock size={10} /> : <Unlock size={10} />}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleRemoveDamCustomCategory(item.id)}
+                                  className="text-slate-400 hover:text-rose-600 p-0.5 rounded cursor-pointer shrink-0"
+                                  title="Remove category"
+                                >
+                                  <Trash2 size={13} />
+                                </button>
+                              </div>
+                            </div>
+                            <div className="grid grid-cols-2 gap-1 p-0.5 bg-slate-100 rounded-lg">
+                              <button
+                                type="button"
+                                disabled={isLocked}
+                                onClick={() => {
+                                  if (isLocked) return;
+                                  const updated = [...damStockInForm.customSettlements];
+                                  updated[cIdx].type = 'Cr';
+                                  setDamStockInForm({ ...damStockInForm, customSettlements: updated });
+                                }}
+                                className={`py-0.5 rounded text-[10px] font-black transition-all ${
+                                  isLocked
+                                    ? 'text-slate-400 cursor-not-allowed opacity-50'
+                                    : isCr
+                                    ? 'bg-emerald-600 text-white shadow-xs cursor-pointer'
+                                    : 'text-slate-500 hover:text-slate-900 cursor-pointer'
+                                }`}
+                              >
+                                + Cr
+                              </button>
+                              <button
+                                type="button"
+                                disabled={isLocked}
+                                onClick={() => {
+                                  if (isLocked) return;
+                                  const updated = [...damStockInForm.customSettlements];
+                                  updated[cIdx].type = 'Dr';
+                                  setDamStockInForm({ ...damStockInForm, customSettlements: updated });
+                                }}
+                                className={`py-0.5 rounded text-[10px] font-black transition-all ${
+                                  isLocked
+                                    ? 'text-slate-400 cursor-not-allowed opacity-50'
+                                    : !isCr
+                                    ? 'bg-rose-600 text-white shadow-xs cursor-pointer'
+                                    : 'text-slate-500 hover:text-slate-900 cursor-pointer'
+                                }`}
+                              >
+                                - Dr
+                              </button>
+                            </div>
+                            <input
+                              type="number"
+                              min="0"
+                              disabled={isLocked}
+                              placeholder={isLocked ? "Locked" : "0"}
+                              value={item.amount}
+                              onChange={(e) => {
+                                if (isLocked) return;
                                 const updated = [...damStockInForm.customSettlements];
-                                updated[cIdx].type = 'Cr';
+                                updated[cIdx].amount = e.target.value;
                                 setDamStockInForm({ ...damStockInForm, customSettlements: updated });
                               }}
-                              className={`py-0.5 rounded text-[10px] font-black transition-all cursor-pointer ${
-                                isCr ? 'bg-emerald-600 text-white shadow-xs' : 'text-slate-500 hover:text-slate-900'
+                              className={`w-full p-1 rounded-lg text-xs font-mono font-bold text-center transition-all ${
+                                isLocked
+                                  ? 'bg-slate-100 border border-slate-200 text-slate-400 cursor-not-allowed'
+                                  : isCr
+                                  ? 'bg-slate-50 border border-emerald-300 text-emerald-800'
+                                  : 'bg-slate-50 border border-rose-300 text-rose-800'
                               }`}
-                            >
-                              + Cr
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                const updated = [...damStockInForm.customSettlements];
-                                updated[cIdx].type = 'Dr';
-                                setDamStockInForm({ ...damStockInForm, customSettlements: updated });
-                              }}
-                              className={`py-0.5 rounded text-[10px] font-black transition-all cursor-pointer ${
-                                !isCr ? 'bg-rose-600 text-white shadow-xs' : 'text-slate-500 hover:text-slate-900'
-                              }`}
-                            >
-                              - Dr
-                            </button>
+                            />
                           </div>
-                          <input
-                            type="number"
-                            min="0"
-                            placeholder="0"
-                            value={item.amount}
-                            onChange={(e) => {
-                              const updated = [...damStockInForm.customSettlements];
-                              updated[cIdx].amount = e.target.value;
-                              setDamStockInForm({ ...damStockInForm, customSettlements: updated });
-                            }}
-                            className={`w-full p-1 bg-slate-50 border rounded-lg text-xs font-mono font-bold text-center ${
-                              isCr ? 'border-emerald-300 text-emerald-800' : 'border-rose-300 text-rose-800'
-                            }`}
-                          />
-                        </div>
-                      );
-                    })}
-                  </div>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
 
                 <div>
