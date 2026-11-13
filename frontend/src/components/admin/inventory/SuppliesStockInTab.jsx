@@ -789,3 +789,4 @@ const SuppliesStockInTab = ({
 };
 
 export default SuppliesStockInTab;
+

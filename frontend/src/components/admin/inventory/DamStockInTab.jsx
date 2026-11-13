@@ -48,6 +48,7 @@ const DamStockInTab = ({
 }) => {
   const [damSelectorMode, setDamSelectorMode] = useState('ring');
   const [damSpeciesFilter, setDamSpeciesFilter] = useState('all');
+  const [damWeighMode, setDamWeighMode] = useState('box'); // 'box' | 'kg'
   const [showDamSpeciesMenu, setShowDamSpeciesMenu] = useState(false);
   const [damSpeciesMenuCoords, setDamSpeciesMenuCoords] = useState({ top: 0, left: 0 });
   const damSpeciesBtnRef = useRef(null);
@@ -179,6 +180,33 @@ const DamStockInTab = ({
                   Table
                 </button>
               </div>
+
+              {/* Weigh Mode Toggle: Box-based vs KG-based */}
+              <div className="inline-flex items-center p-0.5 bg-white rounded-md border border-[#fed7aa] shadow-2xs shrink-0" title="Weighing mode for new rows">
+                <button
+                  type="button"
+                  onClick={() => setDamWeighMode('box')}
+                  className={`px-2 py-0.5 rounded text-[10px] sm:text-[11px] font-bold transition-all cursor-pointer ${
+                    damWeighMode === 'box'
+                      ? 'bg-amber-600 text-white shadow-2xs font-black'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  📦 Box
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDamWeighMode('kg')}
+                  className={`px-2 py-0.5 rounded text-[10px] sm:text-[11px] font-bold transition-all cursor-pointer ${
+                    damWeighMode === 'kg'
+                      ? 'bg-teal-600 text-white shadow-2xs font-black'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  ⚖️ KG
+                </button>
+              </div>
+
             </div>
 
             {/* Right: Species Filter Pill */}
@@ -265,10 +293,11 @@ const DamStockInTab = ({
               <thead className="bg-[#FDFBF7] text-slate-700 font-black border-b border-[#fed7aa]/50 text-[11px] sm:text-xs uppercase tracking-wider">
                 <tr>
                   <th className="py-2.5 px-2.5 text-center w-8">#</th>
+                  <th className="py-2.5 px-2 min-w-[130px] text-left">Date / Time</th>
                   <th className="py-2.5 px-2.5 min-w-[200px]">Fish Variety</th>
                   <th className="py-2.5 px-2.5 min-w-[140px]">Grade</th>
-                  <th className="py-2.5 px-2.5 text-center min-w-[80px]">Boxes</th>
-                  <th className="py-2.5 px-2.5 text-center min-w-[130px]">Kg / Box</th>
+                  {damWeighMode === 'box' && <th className="py-2.5 px-2.5 text-center min-w-[80px]">Boxes</th>}
+                  {damWeighMode === 'box' && <th className="py-2.5 px-2.5 text-center min-w-[130px]">Kg / Box</th>}
                   <th className="py-2.5 px-2.5 text-center min-w-[130px]">Scale Wt (Kg)</th>
                   <th className="py-2.5 px-2.5 text-right min-w-[90px]">Rate (₹)</th>
                   <th className="py-2.5 px-2.5 text-right min-w-[100px]">Total (₹)</th>
@@ -293,6 +322,19 @@ const DamStockInTab = ({
                         <span className="h-9 flex items-center justify-center font-mono text-slate-500 text-xs font-bold">
                           {idx + 1}
                         </span>
+                      </td>
+                      {/* Date / Time picker per row */}
+                      <td className="py-2 px-2 align-middle">
+                        <input
+                          type="datetime-local"
+                          value={row.date || new Date().toISOString().slice(0, 16)}
+                          onChange={(e) => {
+                            const updated = [...damStockInForm.tallyItems];
+                            updated[idx] = { ...updated[idx], date: e.target.value };
+                            setDamStockInForm({ ...damStockInForm, tallyItems: updated });
+                          }}
+                          className="h-9 w-full min-w-[130px] bg-white border border-[#E8DCCB] rounded-lg px-1.5 text-[10px] font-mono text-slate-700 focus:outline-none focus:border-blue-500 cursor-pointer"
+                        />
                       </td>
                       <td className="py-2 px-2.5 align-middle">
                         <SearchableDropdown
@@ -382,6 +424,8 @@ const DamStockInTab = ({
                           );
                         })()}
                       </td>
+                      {/* Boxes — hidden in KG-only mode */}
+                      {(row.weighMode || damWeighMode) !== 'kg' && (
                       <td className="py-2 px-2.5 align-middle">
                         <input
                           type="number"
@@ -409,6 +453,9 @@ const DamStockInTab = ({
                           className="w-full h-9 bg-white border border-[#E8DCCB] rounded-lg px-2 text-xs text-center font-mono font-bold text-slate-800 focus:outline-none focus:border-blue-500"
                         />
                       </td>
+                      )}
+                      {/* Kg/Box — hidden in KG-only mode */}
+                      {(row.weighMode || damWeighMode) !== 'kg' && (
                       <td className="py-2 px-2.5 align-middle">
                         {(() => {
                           const kpbParts = splitKgPerBoxParts(row);
@@ -458,6 +505,7 @@ const DamStockInTab = ({
                           );
                         })()}
                       </td>
+                      )}
                       <td className="py-2 px-2.5 align-middle">
                         <div className="flex items-center justify-center gap-1 h-9">
                           <input
@@ -546,7 +594,57 @@ const DamStockInTab = ({
                   );
                 })}
               </tbody>
+              {/* Totals Row */}
+              {(() => {
+                const totalKgAll = damStockInForm.tallyItems.reduce((acc, r) => {
+                  const rKg = Number(r.kg || 0);
+                  const rGm = Number(r.grams || 0);
+                  const b = Number(r.boxes || 0);
+                  const kpb = Number(r.kgPerBox || 60);
+                  if (rKg > 0 || rGm > 0) return acc + rKg + rGm / 1000;
+                  if (b > 0 && kpb > 0) return acc + b * kpb;
+                  return acc;
+                }, 0);
+                const totalKgInt = Math.floor(totalKgAll);
+                const totalGmInt = Math.round((totalKgAll - totalKgInt) * 1000);
+                const colSpanBoxes = damWeighMode === 'box' ? 2 : 0;
+                return (
+                  <tfoot>
+                    <tr className="bg-blue-50/80 border-t-2 border-blue-200 font-black">
+                      <td colSpan={4 + colSpanBoxes} className="py-2.5 px-2.5 text-right text-[11px] uppercase tracking-wider text-slate-600 font-black">
+                        TOTAL KGS
+                      </td>
+                      <td className="py-2.5 px-2.5 text-center">
+                        <span className="inline-flex items-center gap-1 bg-blue-100 border border-blue-300 rounded-lg px-2 py-1 text-xs font-black text-blue-900">
+                          {totalKgInt} Kg {totalGmInt > 0 ? `${totalGmInt} Gm` : ''}
+                        </span>
+                      </td>
+                      <td colSpan={3} />
+                    </tr>
+                  </tfoot>
+                );
+              })()}
             </table>
+          </div>
+          {/* Add Row Button */}
+          <div className="px-3 pb-3 pt-1.5 flex justify-start">
+            <button
+              type="button"
+              onClick={() => {
+                const now = new Date().toISOString().slice(0, 16);
+                setDamStockInForm(prev => ({
+                  ...prev,
+                  tallyItems: [
+                    ...prev.tallyItems,
+                    { id: Date.now(), menuItemId: '', itemName: '', sizeGrade: 'medium', sizeBracket: 'Medium', weightOption: '1 - 4 Kg', boxes: '', kgPerBox: 60, kg: '', grams: '', price: '', date: now, weighMode: damWeighMode }
+                  ]
+                }));
+              }}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-dashed border-blue-500/60 bg-blue-50 hover:bg-blue-100 text-blue-700 text-xs font-bold transition-colors cursor-pointer"
+            >
+              <Plus size={12} />
+              Add Row
+            </button>
           </div>
         </div>
 
@@ -1190,6 +1288,7 @@ const DamStockInTab = ({
               <div className={`text-sm sm:text-base font-black font-mono leading-tight mt-0.5 ${damTotals.netSettlement >= 0 ? 'text-blue-700' : 'text-rose-700'}`}>
                 ₹{Math.abs(damTotals.netSettlement).toLocaleString('en-IN')}
               </div>
+
             </div>
 
             <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
@@ -1220,3 +1319,4 @@ const DamStockInTab = ({
 };
 
 export default DamStockInTab;
+
