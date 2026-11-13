@@ -154,7 +154,17 @@ export const generateESCPOSBillReceipt80mm = async (bill, printerConfig = {}, re
     totalQty += qty;
     const price = qData.rateDisplay;
     const amount = qData.amountDisplay;
-    const name = (item.name || item.itemName || 'Unknown Item').trim();
+    let name = (item.name || item.itemName || 'Unknown Item').trim();
+    const langPref = (s.receiptItemLanguage || '').toLowerCase();
+    if (langPref === 'telugu') {
+      const teluguMatch = name.match(/[\(\[]?([\u0C00-\u0C7F\s]+)[\)\]]?/);
+      if (teluguMatch && teluguMatch[1].trim()) {
+        name = teluguMatch[1].trim();
+      }
+    } else if (langPref === 'english') {
+      name = name.replace(/\s*\([\u0C00-\u0C7F\s]+\)/g, '').replace(/[\u0C00-\u0C7F]+/g, '').trim();
+      if (name.includes('/')) name = name.split('/')[0].trim();
+    }
 
     const maxLen = 18;
     const itemLines = wrapTextLines(name, maxLen);

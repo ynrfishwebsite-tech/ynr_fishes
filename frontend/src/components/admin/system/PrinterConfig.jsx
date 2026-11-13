@@ -1793,9 +1793,9 @@ const PrinterConfig = ({ onNavigate, onGoBack, user }) => {
                 )}
                 <LiveReceiptPreview
                   settings={{
+                    ...JSON.parse(localStorage.getItem('restaurantSettings') || '{}'),
                     printFormat: formData.paperWidth,
-                    receiptFontFamily: 'arial',
-                    receiptFontSize: 'medium',
+                    receiptItemLanguage: localStorage.getItem('receiptItemLanguage') || 'both',
                     restaurantName: 'YNR FISHES',
                     logo: ynrLogo,
                     upiId: 'ynrfishes@upi'

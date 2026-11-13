@@ -10,6 +10,7 @@ import api from '../../../api/system/axios';
 import { formatTime12 } from '../../../utils/formatters/timeFormat';
 import { getReceiptFontMetrics, findReceiptFont } from '../../../utils/formatters/receiptFonts';
 import { renderElementToESCPOSRaster, renderElementToPNGBase64, autoTrimCanvasBottom } from '../../../utils/formatters/escposRaster';
+import { formatReceiptItemName } from '../../../utils/formatters/billItemFormatters';
 import ClothUnrollReceipt from './ClothUnrollReceipt';
 import { getBillTotalWeightKg, resolveItemQtyAndRate } from './BillHistory';
 
@@ -76,70 +77,19 @@ const Invoice = ({ bill: incomingBill, billData, onClose, onSave, onSettle, what
 
   const formatReceiptItem = useCallback((item) => {
     const rawName = item?.name || 'Item';
-    let cut = item?.cutType || item?.cuttingStyle || '';
-
-    // Extract Cut if present in name
-    const parenCut = rawName.match(/\((Whole|Cleaned|Curry Cut|Fry Cut|Boneless|Curry|Fry)\s*-\s*[^)]+\)/i)
-      || rawName.match(/\b(Whole|Cleaned|Curry Cut|Fry Cut|Boneless|Curry|Fry)\b/i);
-    if (parenCut && !cut) {
-      cut = parenCut[1];
-    }
-    if (cut) {
-      const cLower = cut.toLowerCase();
-      if (cLower.includes('curry')) cut = 'Curry Cut';
-      else if (cLower.includes('fry')) cut = 'Fry Cut';
-      else if (cLower.includes('bone')) cut = 'Boneless';
-      else if (cLower.includes('clean')) cut = 'Cleaned';
-      else if (cLower.includes('whole')) cut = 'Whole';
-    }
-
-    // Extract Telugu script inside parentheses or brackets, e.g. (తిలాపియా), (బంగారుతీగ), (కరీమీన్), (కొర్రమీను)
-    let telugu = '';
-    const teluguMatch = rawName.match(/[\(\[]?([\u0C00-\u0C7F\s]+)[\)\]]?/);
-    if (teluguMatch && teluguMatch[1].trim()) {
-      telugu = teluguMatch[1].trim();
-    }
-
-    // Extract Grade e.g. (MEDIUM), (SMALL), (LARGE)
-    let grade = '';
-    const gradeMatch = rawName.match(/\((SMALL|MEDIUM|LARGE|BIG|EXTRA LARGE|XL|S|M|L)\)/i);
-    if (gradeMatch) {
-      const g = gradeMatch[1].toUpperCase();
-      grade = g === 'MEDIUM' ? 'Medium' : g === 'SMALL' ? 'Small' : g === 'LARGE' ? 'Large' : g;
-    }
-
-    // Clean English Name: take primary part before slash
-    let engName = rawName
-      .replace(/\s*\([\u0C00-\u0C7F\s]+\)/g, '')
-      .replace(/[\u0C00-\u0C7F]+/g, '')
-      .replace(/\s*\((?:Whole|Cleaned|Curry Cut|Fry Cut|Boneless|Curry|Fry)\s*-\s*[^)]+\)/i, '')
-      .replace(/\s*\((?:SMALL|MEDIUM|LARGE|BIG|EXTRA LARGE|XL|S|M|L)\)/i, '')
-      .trim();
-
-    if (engName.includes('/')) {
-      engName = engName.split('/')[0].trim();
-    }
-    engName = engName.replace(/\s+/g, ' ').trim() || 'Item';
-
-    // Main Title: English + Telugu
-    const itemTitle = telugu ? `${engName} (${telugu})` : engName;
-
-    // SubDetail: Grade at bottom section of each item + Cut if custom
-    let subDetail = '';
-    if (grade) subDetail = `Grade: ${grade}`;
-    if (cut && cut.toLowerCase() !== 'whole') {
+    const lang = activeSettings?.receiptItemLanguage || localStorage.getItem('receiptItemLanguage') || 'both';
+    const res = formatReceiptItemName(rawName, lang);
+    let cut = item?.cutType || item?.cuttingStyle || res.cut;
+    let subDetail = res.subDetail;
+    if (cut && cut.toLowerCase() !== 'whole' && !subDetail.includes('Cut:')) {
       subDetail = subDetail ? `${subDetail} • Cut: ${cut}` : `Cut: ${cut}`;
     }
-
     return {
-      engName,
-      telugu,
-      grade,
+      ...res,
       cut,
-      itemTitle,
       subDetail
     };
-  }, []);
+  }, [activeSettings?.receiptItemLanguage]);
 
   const getItemCuttingDetails = useCallback((item) => {
     let cut = item?.cutType || item?.cuttingStyle || '';

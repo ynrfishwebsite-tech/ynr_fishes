@@ -10,7 +10,7 @@ import BackButton from '../common/BackButton';
 import WhatsAppConnectModal from '../communication/WhatsAppConnectModal';
 import CustomTimePicker from '../common/CustomTimePicker';
 import { RECEIPT_FONT_STYLES, RECEIPT_FONT_SIZES, findReceiptFont, getReceiptFontMetrics } from '../../../utils/formatters/receiptFonts';
-import { Type, Check, UtensilsCrossed, ReceiptIndianRupee, LayoutGrid, CircleDot } from 'lucide-react';
+import { Type, Check, UtensilsCrossed, ReceiptIndianRupee, LayoutGrid, CircleDot, Languages } from 'lucide-react';
 import { getMenuItems } from '../../../api/catalog/menu';
 import LiveReceiptPreview from '../billing/LiveReceiptPreview';
 
@@ -60,6 +60,7 @@ const Settings = ({ user, setUser, onNavigate, onGoBack }) => {
     printFormat: '80mm',
     receiptFontSize: 'medium',
     receiptFontFamily: 'Arial, Helvetica, sans-serif',
+    receiptItemLanguage: localStorage.getItem('receiptItemLanguage') || 'both',
     enableGeoFencing: false,
     geoFencingRadius: 50,
     latitude: '',
@@ -385,11 +386,14 @@ const Settings = ({ user, setUser, onNavigate, onGoBack }) => {
         ...prev,
         [field]: value
       };
-      if (field === 'receiptFontFamily' || field === 'receiptFontSize' || field === 'printFormat') {
+      if (field === 'receiptFontFamily' || field === 'receiptFontSize' || field === 'printFormat' || field === 'receiptItemLanguage') {
         try {
           const currentLocal = JSON.parse(localStorage.getItem('restaurantSettings') || '{}');
           const merged = { ...currentLocal, ...updated, [field]: value };
           localStorage.setItem('restaurantSettings', JSON.stringify(merged));
+          if (field === 'receiptItemLanguage') {
+            localStorage.setItem('receiptItemLanguage', value);
+          }
           window.dispatchEvent(new CustomEvent('settingsUpdated', { detail: merged }));
         } catch (e) { }
       }
@@ -942,6 +946,59 @@ const Settings = ({ user, setUser, onNavigate, onGoBack }) => {
                     <p className="text-[11px] text-text-muted">
                       {t("Selected font applies cleanly across both 58mm & 80mm slips with high thermal legibility.")}
                     </p>
+                  </div>
+
+                  {/* Receipt Item Language Setting */}
+                  <div className="space-y-2 pt-2 border-t border-border mt-4">
+                    <div className="flex items-center justify-between">
+                      <label className="text-sm font-semibold text-text-main flex items-center gap-2">
+                        <Languages size={16} className="text-primary" />
+                        <span>{t("Receipt Item Language")}</span>
+                      </label>
+                      <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-primary/10 text-primary">
+                        {(settings.receiptItemLanguage === 'telugu')
+                          ? 'తెలుగు మాత్రమే'
+                          : (settings.receiptItemLanguage === 'english')
+                            ? 'English Only'
+                            : 'English + తెలుగు'}
+                      </span>
+                    </div>
+
+                    <p className="text-[11px] text-text-muted">
+                      {t("Select language for item names on printed receipts & live previews. If Telugu is chosen and unavailable for an item, English will be used as automatic fallback.")}
+                    </p>
+
+                    <div className="grid grid-cols-3 gap-2 pt-1">
+                      {[
+                        { id: 'telugu', label: 'Telugu (తెలుగు)', sub: 'తెలుగు (fallback English)' },
+                        { id: 'english', label: 'English', sub: 'English only' },
+                        { id: 'both', label: 'Both (ద్విభాష)', sub: 'English (తెలుగు)' }
+                      ].map((opt) => {
+                        const isSelected = (settings.receiptItemLanguage || 'both') === opt.id;
+                        return (
+                          <button
+                            key={opt.id}
+                            type="button"
+                            onClick={() => {
+                              handleInputChange('receiptItemLanguage', opt.id);
+                              localStorage.setItem('receiptItemLanguage', opt.id);
+                              setToast({
+                                message: t(`Receipt items language set to ${opt.label}`),
+                                type: 'success'
+                              });
+                            }}
+                            className={`p-2.5 rounded-xl border text-center transition-all cursor-pointer flex flex-col items-center justify-center gap-1 ${
+                              isSelected
+                                ? 'bg-primary/10 border-primary text-primary font-bold shadow-sm'
+                                : 'bg-background border-border text-text-main hover:border-primary/50'
+                            }`}
+                          >
+                            <span className="text-xs font-bold leading-tight">{opt.label}</span>
+                            <span className={`text-[10px] leading-tight ${isSelected ? 'text-primary/80 font-medium' : 'text-text-muted'}`}>{opt.sub}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
 
                   {/* Silent Printing */}

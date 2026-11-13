@@ -1,12 +1,13 @@
 import React from 'react';
 import { QRCodeCanvas } from 'qrcode.react';
-import { resolveItemQtyAndRate } from '../../../utils/formatters/billItemFormatters';
+import { resolveItemQtyAndRate, formatReceiptItemName } from '../../../utils/formatters/billItemFormatters';
 import { findReceiptFont, getReceiptFontMetrics, RECEIPT_FONT_SIZES } from '../../../utils/formatters/receiptFonts';
 
 const LiveReceiptPreview = ({ settings, previewTab, t, user, menuPreviewItems, onChangeFormat }) => {
   const previewFont = findReceiptFont(settings.receiptFontFamily);
   const previewMetrics = getReceiptFontMetrics(settings.receiptFontSize || 'medium', settings.printFormat || '80mm');
   const fmt = settings.printFormat || '80mm';
+  const langPref = settings.receiptItemLanguage || localStorage.getItem('receiptItemLanguage') || 'both';
   
   const paperWidth = fmt === '58mm' ? 210 : fmt === 'A4' ? 360 : 280;
   const previewLabel = fmt === '58mm' ? '58mm Thermal' : fmt === 'A4' ? 'A4 / Full Page' : '80mm Thermal';
@@ -14,13 +15,18 @@ const LiveReceiptPreview = ({ settings, previewTab, t, user, menuPreviewItems, o
   const sampleItems = (menuPreviewItems && menuPreviewItems.length > 0)
     ? menuPreviewItems.slice(0, 3).map((item, idx) => ({
         name: item.name,
-        price: Number(item.price || (idx === 0 ? 2999 : 2799)),
-        quantity: idx === 0 ? 1 : 1,
-        specialNote: idx === 0 ? 'Extra spicy' : ''
+        price: Number(item.price || (idx === 0 ? 390 : 650)),
+        pricePerKg: Number(item.price || (idx === 0 ? 390 : 650)),
+        quantity: idx === 0 ? 2 : (idx === 1 ? 1 : 1.5),
+        weightKg: idx === 0 ? 2 : (idx === 1 ? 1 : 1.5),
+        enteredWeight: idx === 0 ? 2 : (idx === 1 ? 1 : 1.5),
+        sellingUnit: 'Kg',
+        total: idx === 0 ? 780 : (idx === 1 ? 650 : 300)
       }))
     : [
-        { name: 'Black Pomfret (Halva)', price: 390, pricePerKg: 390, quantity: 2, weightKg: 2, enteredWeight: 2, sellingUnit: 'Kg', total: 780, specialNote: 'Fresh Catch' },
-        { name: 'Tiger Prawns (Large)', price: 650, pricePerKg: 650, quantity: 1, weightKg: 1, enteredWeight: 1, sellingUnit: 'Kg', total: 650, specialNote: 'Cleaned' }
+        { name: 'Black Pomfret / నల్ల చందువ (Halva) (MEDIUM)', price: 390, pricePerKg: 390, quantity: 2, weightKg: 2, enteredWeight: 2, sellingUnit: 'Kg', total: 780 },
+        { name: 'Tiger Prawns / పెద్ద రొయ్యలు (LARGE)', price: 650, pricePerKg: 650, quantity: 1, weightKg: 1, enteredWeight: 1, sellingUnit: 'Kg', total: 650 },
+        { name: 'Wallago / వాలగ (ఆల) (SMALL)', price: 200, pricePerKg: 200, quantity: 1.5, weightKg: 1.5, enteredWeight: 1.5, sellingUnit: 'Kg', total: 300 }
       ];
 
   const totalWeightKg = sampleItems.reduce((sum, it) => sum + (it.weightKg || it.quantity || 1), 0);
@@ -323,14 +329,14 @@ const LiveReceiptPreview = ({ settings, previewTab, t, user, menuPreviewItems, o
             <div style={{ height: '1.5px', backgroundColor: '#000000', margin: '5px 0', width: '100%' }}></div>
 
             {fmt === '58mm' ? (
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold', fontSize: previewMetrics.detailSize, paddingBottom: '2px' }}>
-                <span>ITEM</span>
-                <span>AMT</span>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700, fontSize: previewMetrics.detailSize, paddingBottom: '2px' }}>
+                <span>{t("ITEM")}</span>
+                <span>{t("AMT")}</span>
               </div>
             ) : (
-              <div style={{ display: 'flex', width: '100%', alignItems: 'center', fontSize: previewMetrics.detailSize, fontWeight: 'bold', paddingBottom: '2px' }}>
+              <div style={{ display: 'flex', width: '100%', alignItems: 'center', fontSize: previewMetrics.detailSize, fontWeight: 700, paddingBottom: '2px' }}>
                 <div style={{ flex: '1 1 0%', textAlign: 'left' }}>{t("Item")}</div>
-                <div style={{ width: '42px', textAlign: 'center', flexShrink: 0 }}>{t("Qty.")}</div>
+                <div style={{ width: '48px', textAlign: 'center', flexShrink: 0 }}>{t("Qty(Kg)")}</div>
                 <div style={{ width: '52px', textAlign: 'right', flexShrink: 0 }}>{t("Price")}</div>
                 <div style={{ width: '64px', textAlign: 'right', flexShrink: 0 }}>{t("Amount")}</div>
               </div>
@@ -340,25 +346,47 @@ const LiveReceiptPreview = ({ settings, previewTab, t, user, menuPreviewItems, o
 
             <div style={{ marginBottom: '4px' }}>
               {sampleItems.map((item, idx) => {
+                const { itemTitle, subDetail } = formatReceiptItemName(item.name, langPref);
                 const qData = resolveItemQtyAndRate(item);
+                const rawWeightVal = item.weightKg !== undefined ? item.weightKg : (item.enteredWeight !== undefined ? item.enteredWeight : item.quantity);
+                const numQtyDisplay = qData.isKg ? Number(rawWeightVal || 0).toFixed(1).replace(/\.0$/, '') : qData.qtyDisplay;
+
                 return fmt === '58mm' ? (
                   <div key={idx} style={{ marginBottom: '4px', paddingBottom: '2px', borderBottom: '1px dashed #e0e0e0' }}>
-                    <div style={{ fontWeight: 'bold', fontSize: previewMetrics.itemSize, textAlign: 'left', lineHeight: '1.2' }}>
-                      {item.name}
+                    <div style={{ fontWeight: 700, fontSize: previewMetrics.detailSize, textAlign: 'left', lineHeight: '1.2', color: '#000000' }}>
+                      {itemTitle}
                     </div>
+                    {subDetail && (
+                      <div style={{ fontSize: '9px', fontWeight: 600, color: '#4b5563', marginTop: '1px' }}>
+                        {subDetail}
+                      </div>
+                    )}
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: previewMetrics.detailSize, marginTop: '1.5px' }}>
-                      <span>[{qData.rateDisplay}{qData.isKg ? '/kg' : ''}] × {qData.qtyDisplay}</span>
-                      <span style={{ fontWeight: 'bold' }}>{qData.amountDisplay}</span>
+                      <span style={{ color: '#444', fontSize: '10px' }}>{numQtyDisplay}kg × {qData.rateDisplay}</span>
+                      <span style={{ fontWeight: 700 }}>{qData.amountDisplay}</span>
                     </div>
                   </div>
                 ) : (
-                  <div key={idx} style={{ display: 'flex', width: '100%', alignItems: 'flex-start', marginBottom: '4px', fontSize: previewMetrics.itemSize }}>
-                    <div style={{ flex: '1 1 0%', textAlign: 'left', wordBreak: 'break-word', paddingRight: '4px' }}>
-                      {item.name}
+                  <div key={idx} style={{ display: 'flex', width: '100%', alignItems: 'flex-start', padding: '2px 0 3px 0', borderBottom: '1px dashed #e5e5e5', fontSize: previewMetrics.detailSize, lineHeight: '1.25' }}>
+                    <div style={{ flex: '1 1 0%', textAlign: 'left', paddingRight: '4px' }}>
+                      <div style={{ fontWeight: 700, color: '#000000', fontSize: previewMetrics.detailSize }}>
+                        {itemTitle}
+                      </div>
+                      {subDetail && (
+                        <div style={{ fontSize: '9px', fontWeight: 600, color: '#4b5563', marginTop: '1px' }}>
+                          {subDetail}
+                        </div>
+                      )}
                     </div>
-                    <div style={{ width: '42px', textAlign: 'center', flexShrink: 0, fontWeight: 600 }}>{qData.qtyDisplay}</div>
-                    <div style={{ width: '52px', textAlign: 'right', flexShrink: 0 }}>{qData.rateDisplay}</div>
-                    <div style={{ width: '64px', textAlign: 'right', flexShrink: 0, fontWeight: 'bold' }}>{qData.amountDisplay}</div>
+                    <div style={{ width: '48px', textAlign: 'center', flexShrink: 0, fontWeight: 700, fontSize: previewMetrics.detailSize }}>
+                      {numQtyDisplay}
+                    </div>
+                    <div style={{ width: '52px', textAlign: 'right', flexShrink: 0, fontWeight: 600, fontSize: previewMetrics.detailSize }}>
+                      {qData.rateDisplay}
+                    </div>
+                    <div style={{ width: '64px', textAlign: 'right', flexShrink: 0, fontWeight: 700, fontSize: previewMetrics.detailSize }}>
+                      {qData.amountDisplay}
+                    </div>
                   </div>
                 );
               })}

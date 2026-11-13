@@ -88,3 +88,83 @@ export const resolveItemQtyAndRate = (item) => {
   };
 };
 
+/**
+ * Format receipt item name with dynamic language support (Telugu, English, Both)
+ * and extract Grade to be placed neatly at the bottom section.
+ */
+export const formatReceiptItemName = (rawName = '', languagePreference = 'both') => {
+  if (!rawName) return { itemTitle: 'Item', subDetail: '', engName: 'Item', telugu: '', grade: '', cut: '' };
+
+  let cut = '';
+  // Check for cut pattern
+  const parenCut = rawName.match(/\((Whole|Cleaned|Curry Cut|Fry Cut|Boneless|Curry|Fry)\s*-\s*[^)]+\)/i)
+    || rawName.match(/\b(Whole|Cleaned|Curry Cut|Fry Cut|Boneless|Curry|Fry)\b/i);
+  if (parenCut) {
+    const cLower = parenCut[1].toLowerCase();
+    if (cLower.includes('curry')) cut = 'Curry Cut';
+    else if (cLower.includes('fry')) cut = 'Fry Cut';
+    else if (cLower.includes('bone')) cut = 'Boneless';
+    else if (cLower.includes('clean')) cut = 'Cleaned';
+    else if (cLower.includes('whole')) cut = 'Whole';
+  }
+
+  // Extract Telugu script (Unicode range \u0C00-\u0C7F)
+  let telugu = '';
+  const teluguMatch = rawName.match(/[\(\[]?([\u0C00-\u0C7F\s]+)[\)\]]?/);
+  if (teluguMatch && teluguMatch[1].trim()) {
+    telugu = teluguMatch[1].trim();
+  }
+
+  // Extract Grade e.g. (SMALL), (MEDIUM), (LARGE), (XL)
+  let grade = '';
+  const gradeMatch = rawName.match(/\((SMALL|MEDIUM|LARGE|BIG|EXTRA LARGE|XL|S|M|L)\)/i);
+  if (gradeMatch) {
+    const g = gradeMatch[1].toUpperCase();
+    grade = g === 'MEDIUM' ? 'Medium' : g === 'SMALL' ? 'Small' : g === 'LARGE' ? 'Large' : g;
+  }
+
+  // Extract clean English name
+  let engName = rawName
+    .replace(/\s*\([\u0C00-\u0C7F\s]+\)/g, '')
+    .replace(/[\u0C00-\u0C7F]+/g, '')
+    .replace(/\s*\((?:Whole|Cleaned|Curry Cut|Fry Cut|Boneless|Curry|Fry)\s*-\s*[^)]+\)/i, '')
+    .replace(/\s*\((?:SMALL|MEDIUM|LARGE|BIG|EXTRA LARGE|XL|S|M|L)\)/i, '')
+    .trim();
+
+  if (engName.includes('/')) {
+    engName = engName.split('/')[0].trim();
+  }
+  engName = engName.replace(/\s+/g, ' ').trim() || 'Item';
+
+  // Dynamic language routing:
+  let itemTitle = engName;
+  const pref = (languagePreference || 'both').toLowerCase();
+  if (pref === 'telugu') {
+    // If Telugu name is available, reflect only in Telugu; otherwise fallback to English
+    itemTitle = telugu || engName;
+  } else if (pref === 'english') {
+    // Reflect only in English
+    itemTitle = engName;
+  } else {
+    // 'both' (default)
+    itemTitle = telugu ? `${engName} (${telugu})` : engName;
+  }
+
+  // SubDetail: Grade at bottom + Cut if custom
+  let subDetail = '';
+  if (grade) subDetail = `Grade: ${grade}`;
+  if (cut && cut.toLowerCase() !== 'whole') {
+    subDetail = subDetail ? `${subDetail} • Cut: ${cut}` : `Cut: ${cut}`;
+  }
+
+  return {
+    itemTitle,
+    subDetail,
+    engName,
+    telugu,
+    grade,
+    cut
+  };
+};
+
+
