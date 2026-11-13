@@ -611,8 +611,8 @@ export default function MainEntranceDashboard({
     // 25. Dedicated Supplier Directory (Admin & Manager)
     ...(isFullAdmin || user?.role === 'manager' ? [{
       id: 'suppliers',
-      title: 'Supplier Directory',
-      subtitle: 'Harbors & Vendors',
+      title: 'Suppliers SRM Hub',
+      subtitle: 'Fishermen, Dam & Khata',
       category: 'Operations',
       icon: Users,
       iconColor: '#ea580c',

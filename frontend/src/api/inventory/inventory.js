@@ -45,8 +45,8 @@ export const deleteRecipe = async (id) => {
   return response.data;
 };
 
-export const getInventoryLogs = async () => {
-  const response = await api.get('/inventory/logs');
+export const getInventoryLogs = async (params = {}) => {
+  const response = await api.get('/inventory/logs', { params });
   return response.data;
 };
 

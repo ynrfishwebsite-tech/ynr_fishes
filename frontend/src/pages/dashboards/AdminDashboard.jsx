@@ -35,6 +35,7 @@ import SecuritySettings from '../../components/admin/system/SecuritySettings';
 import AdminPanel from '../../components/admin/system/AdminPanel';
 import EditedBills from '../../components/admin/billing/EditedBills';
 import SupplierManagement from '../../components/admin/operations/SupplierManagement';
+import SupplierHub from '../../components/admin/operations/SupplierHub';
 import GlobalSearchBar from '../../components/admin/common/GlobalSearchBar';
 import NotificationPanel from '../../components/admin/communication/NotificationPanel';
 import NotificationsPage from '../../components/admin/communication/NotificationsPage';
@@ -74,7 +75,7 @@ export default function AdminDashboard() {
     'retail-bill-history', 'wholesale-bill-history', 'export-bill-history',
     'menu', 'inventory', 'local-stockin', 'dam-stockin', 'supplies-stockin', 'day-book', 'khata', 'expenses', 'vehicles', 'analytics',
     'crm', 'staff', 'printer', 'operations', 'discount', 'security', 'settings',
-    'notifications', 'suppliers'
+    'notifications', 'suppliers', 'local-suppliers', 'dam-suppliers', 'supplies-vendors'
   ];
 
   const { notifications, unreadCount, markAllAsRead, clearNotification } = useNotifications(user?.role || 'Admin');
@@ -103,8 +104,8 @@ export default function AdminDashboard() {
     if (['retail-bill-history', 'wholesale-bill-history', 'export-bill-history'].includes(pageId)) {
       return userPermitted.includes('bill-history');
     }
-    if (['inventory', 'local-stockin', 'dam-stockin', 'supplies-stockin'].includes(pageId)) {
-      return userPermitted.includes('inventory');
+    if (['inventory', 'local-stockin', 'dam-stockin', 'supplies-stockin', 'suppliers', 'local-suppliers', 'dam-suppliers', 'supplies-vendors'].includes(pageId)) {
+      return userPermitted.includes('inventory') || userPermitted.includes('suppliers');
     }
     return userPermitted.includes(pageId);
   };
@@ -1091,9 +1092,16 @@ export default function AdminDashboard() {
             />
           )}
 
-          {/* Dedicated Admin Supplier Directory Management */}
-          {currentView === 'suppliers' && (
-            <SupplierManagement
+          {/* Dedicated Admin Supplier Relationship Management (SRM Hub) */}
+          {['suppliers', 'local-suppliers', 'dam-suppliers', 'supplies-vendors'].includes(currentView) && (
+            <SupplierHub
+              channel={
+                currentView === 'local-suppliers' ? 'Local' :
+                currentView === 'dam-suppliers' ? 'DAM' :
+                currentView === 'supplies-vendors' ? 'Consumables' : 'All'
+              }
+              user={user}
+              onNavigate={navigateTo}
               onGoBack={goBack}
             />
           )}

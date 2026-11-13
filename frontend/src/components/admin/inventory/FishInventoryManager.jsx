@@ -43,23 +43,25 @@ import {
   EyeOff,
   Phone,
   Check,
-  ChevronUp
+  ChevronUp,
+  Users
 } from 'lucide-react';
 import BackButton from '../common/BackButton';
 import SearchableDropdown from '../../common/SearchableDropdown';
 import FishInwardInvoice from './FishInwardInvoice';
 import FishIntakeOrbitalDial from './FishIntakeOrbitalDial';
+import SupplierHub from '../operations/SupplierHub';
 import { getMenuItems } from '../../../api/catalog/menu';
 import { formatImageUrl } from '../catalog/MenuGrid';
 
 export default function FishInventoryManager({ user, onNavigate, onGoBack, initialTab, initialSubTab, dedicatedMode }) {
   const [activeTab, setActiveTab] = useState(() => {
-    if (initialTab && ['overview', 'procurement', 'logs'].includes(initialTab)) {
+    if (initialTab && ['overview', 'procurement', 'logs', 'srm'].includes(initialTab)) {
       return initialTab;
     }
     try {
       const saved = localStorage.getItem('inventory_active_tab');
-      if (saved && ['overview', 'procurement', 'logs'].includes(saved)) {
+      if (saved && ['overview', 'procurement', 'logs', 'srm'].includes(saved)) {
         return saved;
       }
     } catch (e) {}
@@ -97,7 +99,7 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack, initi
 
   // Watch for external navigation prop updates:
   useEffect(() => {
-    if (initialTab && ['overview', 'procurement', 'logs'].includes(initialTab)) {
+    if (initialTab && ['overview', 'procurement', 'logs', 'srm'].includes(initialTab)) {
       setActiveTab(initialTab);
     }
   }, [initialTab]);
@@ -2239,12 +2241,12 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack, initi
               <div className="flex items-center gap-1.5 flex-nowrap">
                 <h1 className="text-xs sm:text-sm font-black text-slate-900 tracking-tight leading-tight m-0 whitespace-nowrap">
                   {currentDedicatedMode === 'local'
-                    ? (activeTab === 'procurement' ? 'Local Stock-In' : (activeTab === 'overview' ? 'Local Stock Ledger' : 'Local Audit Trail'))
+                    ? (activeTab === 'srm' ? 'Local Fishermen SRM' : (activeTab === 'procurement' ? 'Local Stock-In' : (activeTab === 'overview' ? 'Local Stock Ledger' : 'Local Audit Trail')))
                     : (currentDedicatedMode === 'dam'
-                        ? (activeTab === 'procurement' ? 'Dam Stock-In' : (activeTab === 'overview' ? 'Dam Stock Ledger' : 'Dam Audit Trail'))
+                        ? (activeTab === 'srm' ? 'Dam Contractors SRM' : (activeTab === 'procurement' ? 'Dam Stock-In' : (activeTab === 'overview' ? 'Dam Stock Ledger' : 'Dam Audit Trail')))
                         : (currentDedicatedMode === 'supplies'
-                            ? (activeTab === 'procurement' ? 'Supplies Stock-In' : (activeTab === 'logs' ? 'Supplies Audit Trail' : 'Supplies Stock Ledger'))
-                            : (activeTab === 'logs' ? 'Audit Trail' : (activeTab === 'supplies' ? 'Supplies & Boxes' : 'Stock Catch Ledger'))))}
+                            ? (activeTab === 'srm' ? 'Supplies Vendors SRM' : (activeTab === 'procurement' ? 'Supplies Stock-In' : (activeTab === 'logs' ? 'Supplies Audit Trail' : 'Supplies Stock Ledger')))
+                            : (activeTab === 'logs' ? 'Audit Trail' : (activeTab === 'supplies' ? 'Supplies & Boxes' : (activeTab === 'srm' ? 'Suppliers SRM' : 'Stock Catch Ledger')))))}
                 </h1>
                 <span className={`text-[8.5px] sm:text-[9.5px] font-black px-1.5 py-0.2 rounded-full border shrink-0 ${
                   currentDedicatedMode === 'local'
@@ -2266,23 +2268,29 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack, initi
               </div>
               <p className="text-[10px] text-slate-500 font-medium m-0 mt-0.5 truncate hidden sm:block">
                 {currentDedicatedMode === 'local'
-                  ? (activeTab === 'procurement'
-                      ? 'Local harbor landings & fishermen catch weighment'
-                      : (activeTab === 'overview'
-                          ? 'Live cold storage inventory from local harbor landings'
-                          : 'Recorded local harbor catch intake vouchers & movements'))
-                  : (currentDedicatedMode === 'dam'
-                      ? (activeTab === 'procurement'
-                          ? 'Dam syndicate & reservoir multi-variety consignment intake'
+                  ? (activeTab === 'srm'
+                      ? 'Local harbor fishermen directory, supplier khata & inward catch vouchers'
+                      : (activeTab === 'procurement'
+                          ? 'Local harbor landings & fishermen catch weighment'
                           : (activeTab === 'overview'
-                              ? 'Live cold storage inventory from dam syndicate consignments'
-                              : 'Recorded dam consignment vouchers & settlements'))
+                              ? 'Live cold storage inventory from local harbor landings'
+                              : 'Recorded local harbor catch intake vouchers & movements')))
+                  : (currentDedicatedMode === 'dam'
+                      ? (activeTab === 'srm'
+                          ? 'Dam reservoir contractor syndicates, supplier khata & consignment vouchers'
+                          : (activeTab === 'procurement'
+                              ? 'Dam syndicate & reservoir multi-variety consignment intake'
+                              : (activeTab === 'overview'
+                                  ? 'Live cold storage inventory from dam syndicate consignments'
+                                  : 'Recorded dam consignment vouchers & settlements')))
                       : (currentDedicatedMode === 'supplies'
-                          ? (activeTab === 'procurement'
-                              ? 'Packaging, thermocol boxes, ice & consumables intake'
-                              : (activeTab === 'logs'
-                                  ? 'Recorded supplies intake vouchers & movements'
-                                  : 'Live inventory of depot packaging, ice & consumables'))
+                          ? (activeTab === 'srm'
+                              ? 'Packaging, boxes & ice vendors directory, supplier khata & inward bills'
+                              : (activeTab === 'procurement'
+                                  ? 'Packaging, thermocol boxes, ice & consumables intake'
+                                  : (activeTab === 'logs'
+                                      ? 'Recorded supplies intake vouchers & movements'
+                                      : 'Live inventory of depot packaging, ice & consumables')))
                           : 'Current cold storage inventory, catch unloading, and movements'))}
               </p>
             </div>
@@ -2477,6 +2485,20 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack, initi
                 <span className="sm:hidden">Local Audit</span>
                 <span className="hidden sm:inline">Local Audit Trail</span>
               </button>
+
+              <button
+                type="button"
+                onClick={() => { setActiveTab('srm'); setStockInSubTab('local'); }}
+                className={`flex items-center gap-1 px-2.5 sm:px-3 py-1 rounded-xl font-bold text-xs transition-all cursor-pointer shrink-0 ${
+                  activeTab === 'srm'
+                    ? 'bg-gradient-to-r from-orange-500 to-[#ea580c] text-white shadow-xs font-black'
+                    : 'bg-white text-slate-700 hover:bg-[#F5E8D8] border border-[#E8DCCB]'
+                }`}
+              >
+                <Users size={12} />
+                <span className="sm:hidden">Fishermen</span>
+                <span className="hidden sm:inline">Local Fishermen SRM</span>
+              </button>
             </>
           ) : currentDedicatedMode === 'dam' ? (
             /* Dedicated Dam Mode Tabs: Strictly Dam Intake, Dam Ledger, Dam Audit */
@@ -2530,6 +2552,20 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack, initi
                 <span className="sm:hidden">Dam Audit</span>
                 <span className="hidden sm:inline">Dam Audit Trail</span>
               </button>
+
+              <button
+                type="button"
+                onClick={() => { setActiveTab('srm'); setStockInSubTab('dam'); }}
+                className={`flex items-center gap-1 px-2.5 sm:px-3 py-1 rounded-xl font-bold text-xs transition-all cursor-pointer shrink-0 ${
+                  activeTab === 'srm'
+                    ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-xs font-black'
+                    : 'bg-white text-slate-700 hover:bg-[#F5E8D8] border border-[#E8DCCB]'
+                }`}
+              >
+                <Users size={12} />
+                <span className="sm:hidden">Contractors</span>
+                <span className="hidden sm:inline">Dam Contractors SRM</span>
+              </button>
             </>
           ) : currentDedicatedMode === 'supplies' ? (
             /* Dedicated Supplies Mode Tabs: Strictly Supplies Intake, Supplies Stock, Supplies Audit */
@@ -2581,6 +2617,20 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack, initi
                 <History size={12} />
                 <span className="sm:hidden">Audit</span>
                 <span className="hidden sm:inline">Supplies Audit Trail</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => { setActiveTab('srm'); setStockInSubTab('supplies'); }}
+                className={`flex items-center gap-1 px-2.5 sm:px-3 py-1 rounded-xl font-bold text-xs transition-all cursor-pointer shrink-0 ${
+                  activeTab === 'srm'
+                    ? 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-xs font-black'
+                    : 'bg-white text-slate-700 hover:bg-[#F5E8D8] border border-[#E8DCCB]'
+                }`}
+              >
+                <Users size={12} />
+                <span className="sm:hidden">Vendors</span>
+                <span className="hidden sm:inline">Supplies Vendors SRM</span>
               </button>
             </>
           ) : (
@@ -6438,6 +6488,18 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack, initi
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* ── TAB 4: Supplier Relationship Management (SRM Hub) ── */}
+      {activeTab === 'srm' && (
+        <div className="w-full">
+          <SupplierHub
+            channel={currentDedicatedMode === 'dam' ? 'DAM' : (currentDedicatedMode === 'supplies' ? 'Consumables' : 'Local')}
+            user={user}
+            onNavigate={onNavigate}
+            onGoBack={() => setActiveTab('procurement')}
+          />
         </div>
       )}
 
