@@ -200,10 +200,9 @@ export default function FishIntakeOrbitalDial({
       }
     }
 
-    const b = Number(boxes || 1);
-    const totKg = b * defaultKpb;
-    setScaleKg(String(Math.floor(totKg)));
-    setScaleGrams(String(Math.round((totKg - Math.floor(totKg)) * 1000)));
+    // Default scale weight must be 1 Kg by default (not 60 kg)
+    setScaleKg('1');
+    setScaleGrams('0');
   }, [currentFish]);
 
   // Sync scale weight whenever boxes or kgPerBox change
@@ -1219,7 +1218,7 @@ export default function FishIntakeOrbitalDial({
                 <div>
                   <div className="text-[9.5px] font-bold text-slate-400 uppercase tracking-wider mb-1">Quick Weight Presets</div>
                   <div className="flex flex-wrap items-center gap-1.5">
-                    {[10, 20, 40, 50, 60, 70, 100].map(val => (
+                    {[1, 5, 10, 20, 40, 50, 60, 70, 100].map(val => (
                       <button
                         key={val}
                         type="button"
