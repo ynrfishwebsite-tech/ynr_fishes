@@ -2262,15 +2262,14 @@ export default function WholesaleOrderWizardModal({
                 {/* Phone Input */}
                 <div>
                   <label className="block text-[11px] font-bold text-slate-600 uppercase tracking-wider mb-1">
-                    PHONE NUMBER (10 DIGITS) *
+                    PHONE NUMBER (10 DIGITS)
                   </label>
                   <input
                     type="tel"
-                    required
                     maxLength={10}
                     value={newCustPhone}
                     onChange={(e) => setNewCustPhone(e.target.value.replace(/\D/g, ''))}
-                    placeholder="e.g. 9582425359"
+                    placeholder="e.g. 9582425359 (Optional)"
                     className="w-full bg-[#FAF0E4]/60 border border-[#E8DCCB] rounded-xl px-3 py-2 text-xs font-bold font-mono text-slate-900 focus:outline-none focus:border-[#ea580c] focus:bg-white transition-all"
                   />
                 </div>

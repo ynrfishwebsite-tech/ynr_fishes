@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import {
+  Plus,
   Boxes,
   Package,
   Search,
@@ -18,6 +19,7 @@ import {
   ChevronRight
 } from 'lucide-react';
 import SearchableDropdown from '../../common/SearchableDropdown';
+import FlashSupplierModal from '../operations/FlashSupplierModal';
 
 const SuppliesStockInTab = ({
   suppliesForm,
@@ -35,6 +37,7 @@ const SuppliesStockInTab = ({
   isCreatingCategory,
   handleCreateCategory,
   registeredSuppliers = [],
+  setRegisteredSuppliers,
   fleetVehicles = [],
   suppliesSupplierOptions = [],
   suppliesVehicleOptions = [],
@@ -48,6 +51,7 @@ const SuppliesStockInTab = ({
 }) => {
   const [suppliesVendorSearch, setSuppliesVendorSearch] = useState('');
   const [isSuppliesManualDetailsOpen, setIsSuppliesManualDetailsOpen] = useState(false);
+  const [isAddSupplierOpen, setIsAddSupplierOpen] = useState(false);
 
   const filteredSuppliesVendors = useMemo(() => {
     const query = suppliesVendorSearch.trim().toLowerCase();
@@ -196,25 +200,38 @@ const SuppliesStockInTab = ({
               </p>
             </div>
 
-            {/* Search Bar */}
-            <div className="relative flex items-center w-full sm:w-64">
-              <Search size={13} className="absolute left-2.5 text-slate-400 pointer-events-none" />
-              <input
-                type="text"
-                placeholder="Search vendor, shop name, phone..."
-                value={suppliesVendorSearch}
-                onChange={(e) => setSuppliesVendorSearch(e.target.value)}
-                className="w-full pl-7 pr-7 py-1.5 bg-white border border-[#E8DCCB] rounded-xl text-xs font-medium text-slate-800 placeholder-slate-400 focus:outline-none focus:border-emerald-500 shadow-2xs"
-              />
-              {suppliesVendorSearch && (
-                <button
-                  type="button"
-                  onClick={() => setSuppliesVendorSearch('')}
-                  className="absolute right-2 text-slate-400 hover:text-slate-600 cursor-pointer"
-                >
-                  <X size={12} />
-                </button>
-              )}
+            {/* Search Bar & Flash Add Vendor Button */}
+            <div className="flex items-center gap-2 w-full sm:w-auto">
+              <div className="relative flex items-center w-full sm:w-64">
+                <Search size={13} className="absolute left-2.5 text-slate-400 pointer-events-none" />
+                <input
+                  type="text"
+                  placeholder="Search vendor, shop name, phone..."
+                  value={suppliesVendorSearch}
+                  onChange={(e) => setSuppliesVendorSearch(e.target.value)}
+                  className="w-full pl-7 pr-7 py-1.5 bg-white border border-[#E8DCCB] rounded-xl text-xs font-medium text-slate-800 placeholder-slate-400 focus:outline-none focus:border-emerald-500 shadow-2xs"
+                />
+                {suppliesVendorSearch && (
+                  <button
+                    type="button"
+                    onClick={() => setSuppliesVendorSearch('')}
+                    className="absolute right-2 text-slate-400 hover:text-slate-600 cursor-pointer"
+                  >
+                    <X size={12} />
+                  </button>
+                )}
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setIsAddSupplierOpen(true)}
+                className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-xl text-xs font-bold shadow-xs hover:shadow-md transition-all cursor-pointer active:scale-95"
+                title="Add New Packaging & Supplies Vendor"
+              >
+                <Plus size={14} />
+                <span className="hidden sm:inline">Add Vendor</span>
+                <span className="sm:hidden">Add</span>
+              </button>
             </div>
           </div>
 
@@ -784,6 +801,18 @@ const SuppliesStockInTab = ({
           )}
         </div>
       </div>
+      {/* Flash Vendor Add Modal */}
+      <FlashSupplierModal
+        isOpen={isAddSupplierOpen}
+        onClose={() => setIsAddSupplierOpen(false)}
+        supplierType="Consumables"
+        fleetVehicles={fleetVehicles}
+        onSupplierCreated={(newSupp) => {
+          setRegisteredSuppliers?.(prev => [newSupp, ...(prev || [])]);
+          handleSelectSuppliesVendorCard(newSupp);
+          setIsAddSupplierOpen(false);
+        }}
+      />
     </div>
   );
 };

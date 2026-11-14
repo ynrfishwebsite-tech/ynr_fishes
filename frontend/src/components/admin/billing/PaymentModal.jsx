@@ -144,8 +144,8 @@ const PaymentModal = ({
                       : 'bg-background border-border text-text-muted hover:bg-surface-hover hover:text-text-main'
                   }`}
                   onClick={() => {
-                    if ((m === 'Unpaid' || m === 'Partial') && (!customerPhone || !customerName)) {
-                      alert(t("Customer Name and Phone are required for Unpaid/Partial (Khata) bills. Please close and link customer first."));
+                    if ((m === 'Unpaid' || m === 'Partial') && !customerName) {
+                      alert(t("Customer Name is required for Unpaid/Partial (Khata) bills. Please close and link customer first."));
                       return;
                     }
                     setMode(m);

@@ -231,9 +231,13 @@ export default function PredefinedCustomerBar({
   // Quick Add submit
   const handleQuickAddSubmit = async (e) => {
     e.preventDefault();
-    const clean = quickAddData.phone.replace(/\D/g, '').slice(-10);
-    if (clean.length !== 10) {
-      alert(t('Please enter a valid 10-digit phone number'));
+    const clean = quickAddData.phone ? quickAddData.phone.replace(/\D/g, '').slice(-10) : '';
+    if (clean && clean.length !== 10) {
+      alert(t('Please enter a valid 10-digit phone number if provided'));
+      return;
+    }
+    if (!quickAddData.name || !quickAddData.name.trim()) {
+      alert(t('Please enter customer/dealer name'));
       return;
     }
 
@@ -625,13 +629,12 @@ export default function PredefinedCustomerBar({
               {/* Phone */}
               <div>
                 <label className="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-1">
-                  {t('Phone (10 Digits) *')}
+                  {t('Phone (10 Digits)')}
                 </label>
                 <input
                   type="tel"
-                  required
                   maxLength={10}
-                  placeholder="9876543210"
+                  placeholder="9876543210 (Optional)"
                   value={quickAddData.phone}
                   onChange={(e) => setQuickAddData(prev => ({ ...prev, phone: e.target.value.replace(/\D/g, '') }))}
                   className="w-full px-3 py-2 bg-[#F7EFE2] border border-[#E8DCCB] rounded-xl text-sm font-bold text-slate-800 font-mono focus:outline-none focus:border-[#ea580c]"

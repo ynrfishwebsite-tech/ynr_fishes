@@ -498,9 +498,13 @@ export default function ChannelHub({
   // ── Customer Add / Edit Submission ───────────────────────────────────────────
   const handleSaveCustomer = async (e) => {
     e.preventDefault();
-    const clean = customerModal.data.phone.replace(/\D/g, '').slice(-10);
-    if (clean.length !== 10) {
-      setToast({ message: t('Please enter a valid 10-digit phone number'), type: 'error' });
+    const clean = customerModal.data.phone ? customerModal.data.phone.replace(/\D/g, '').slice(-10) : '';
+    if (clean && clean.length !== 10) {
+      setToast({ message: t('Please enter a valid 10-digit phone number if provided'), type: 'error' });
+      return;
+    }
+    if (!customerModal.data.name || !customerModal.data.name.trim()) {
+      setToast({ message: t('Customer name is required'), type: 'error' });
       return;
     }
 
@@ -1942,18 +1946,17 @@ export default function ChannelHub({
               {/* Phone Input */}
               <div>
                 <label className="block text-[11px] font-bold text-text-muted uppercase tracking-wider mb-1">
-                  {t('Phone Number (10 Digits)')} *
+                  {t('Phone Number (10 Digits)')}
                 </label>
                 <input
                   type="tel"
-                  required
                   maxLength={10}
                   value={customerModal.data.phone || ''}
                   onChange={(e) => setCustomerModal(prev => ({
                     ...prev,
                     data: { ...prev.data, phone: e.target.value.replace(/\D/g, '') }
                   }))}
-                  placeholder="e.g. 9582425359"
+                  placeholder="e.g. 9582425359 (Optional)"
                   className="w-full bg-background border border-border rounded-xl px-3 py-2 text-xs font-bold font-mono text-text-main focus:outline-none focus:border-[#ea580c]"
                 />
               </div>

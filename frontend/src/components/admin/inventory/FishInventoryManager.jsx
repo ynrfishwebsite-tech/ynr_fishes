@@ -1563,7 +1563,7 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack, initi
       supplierPhone: firstLog.supplierPhone || regSupplier?.phone || '',
       companyName: firstLog.companyName || regSupplier?.companyName || '',
       vehicleNumber: firstLog.vehicleNumber || regSupplier?.vehicleNumber || '',
-      harbor: firstLog.harbor || regSupplier?.harbor || (isDam ? 'Inland Reservoir' : 'Harbor Landing'),
+      harbor: firstLog.harbor || regSupplier?.harbor || '',
       date: new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }),
       time: new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true }),
       items: combinedItems,
@@ -1797,11 +1797,11 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack, initi
       setInwardInvoiceModal({
         mode: 'local',
         invoiceNo: vNo,
-        supplierName: localStockInForm.supplierName?.trim() || 'Local Fisherman',
+        supplierName: localStockInForm.supplierName?.trim() || '',
         supplierPhone: localStockInForm.supplierPhone?.trim() || '',
         companyName: localStockInForm.companyName?.trim() || '',
         vehicleNumber: localStockInForm.vehicleNumber?.trim() || '',
-        harbor: localStockInForm.harbor?.trim() || 'Harbor',
+        harbor: localStockInForm.harbor?.trim() || '',
         status: (localStockInForm.paymentMode === 'Credit' || localStockInForm.paymentMode === 'Unpaid') ? 'Unpaid' : (localStockInForm.paymentMode === 'Partial' ? 'Partially Paid' : 'Paid'),
         items: validRows.map(r => ({
           ...r,
@@ -1920,12 +1920,12 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack, initi
       const invoiceData = {
         mode: 'dam',
         invoiceNo: vNo,
-        supplierName: damStockInForm.contractorName?.trim() || 'DAM Contractor',
-        contractorName: damStockInForm.contractorName?.trim() || 'DAM Contractor',
+        supplierName: damStockInForm.contractorName?.trim() || '',
+        contractorName: damStockInForm.contractorName?.trim() || '',
         supplierPhone: damStockInForm.contractorPhone?.trim() || '',
         companyName: damStockInForm.companyName?.trim() || '',
         vehicleNumber: damStockInForm.vehicleNumber?.trim() || '',
-        harbor: damStockInForm.harbor?.trim() || 'Inland Reservoir',
+        harbor: damStockInForm.harbor?.trim() || '',
         status: (damStockInForm.paymentMode === 'Credit' || damStockInForm.paymentMode === 'Unpaid') ? 'Unpaid' : (damStockInForm.paymentMode === 'Partial' ? 'Partially Paid' : 'Paid'),
         items: validRows.map(r => ({
           ...r,
@@ -2013,11 +2013,11 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack, initi
     setInwardInvoiceModal({
       mode: 'local',
       invoiceNo: vNo,
-      supplierName: localStockInForm.supplierName?.trim() || 'Local Fisherman',
+      supplierName: localStockInForm.supplierName?.trim() || '',
       supplierPhone: localStockInForm.supplierPhone?.trim() || '',
       companyName: localStockInForm.companyName?.trim() || '',
       vehicleNumber: localStockInForm.vehicleNumber?.trim() || '',
-      harbor: localStockInForm.harbor?.trim() || 'Harbor',
+      harbor: localStockInForm.harbor?.trim() || '',
       status: 'Paid',
       items: validRows.map(r => ({
         ...r,
@@ -2058,12 +2058,12 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack, initi
     setInwardInvoiceModal({
       mode: 'dam',
       invoiceNo: vNo,
-      supplierName: damStockInForm.contractorName?.trim() || 'DAM Contractor',
-      contractorName: damStockInForm.contractorName?.trim() || 'DAM Contractor',
+      supplierName: damStockInForm.contractorName?.trim() || '',
+      contractorName: damStockInForm.contractorName?.trim() || '',
       supplierPhone: damStockInForm.contractorPhone?.trim() || '',
       companyName: damStockInForm.companyName?.trim() || '',
       vehicleNumber: damStockInForm.vehicleNumber?.trim() || '',
-      harbor: damStockInForm.harbor?.trim() || 'Inland Reservoir',
+      harbor: damStockInForm.harbor?.trim() || '',
       status: 'Paid',
       items: validRows.map(r => ({
         ...r,
@@ -2201,13 +2201,13 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack, initi
     const resolvedPhone = log.supplierPhone || saved?.supplierPhone || regSupplier?.phone || '';
     const resolvedCompany = log.companyName || saved?.companyName || regSupplier?.companyName || '';
     const resolvedVehicle = log.vehicleNumber || saved?.vehicleNumber || regSupplier?.vehicleNumber || '';
-    const resolvedHarbor = log.harbor || saved?.harbor || regSupplier?.harbor || (isDam ? 'Inland Reservoir' : 'Harbor');
+    const resolvedHarbor = log.harbor || saved?.harbor || regSupplier?.harbor || '';
 
     setInwardInvoiceModal({
       mode: isDam ? 'dam' : 'local',
       invoiceNo: saved?.invoiceNo || vNo,
-      supplierName: log.supplierName || 'Depot Inward Supplier',
-      contractorName: log.supplierName || 'Depot Inward Supplier',
+      supplierName: log.supplierName || '',
+      contractorName: log.supplierName || '',
       supplierPhone: resolvedPhone,
       companyName: resolvedCompany,
       vehicleNumber: resolvedVehicle,
@@ -2239,11 +2239,11 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack, initi
     setInwardInvoiceModal({
       mode: 'supplies',
       invoiceNo: vNo,
-      supplierName: suppliesForm.supplierName?.trim() || 'Packaging Vendor',
+      supplierName: suppliesForm.supplierName?.trim() || '',
       supplierPhone: suppliesForm.supplierPhone?.trim() || '',
       companyName: suppliesForm.companyName?.trim() || '',
       vehicleNumber: suppliesForm.vehicleNumber?.trim() || '',
-      harbor: suppliesForm.harbor?.trim() || 'Kadapa Depot',
+      harbor: suppliesForm.harbor?.trim() || '',
       status: isPaidInFull ? 'Paid' : (Number(suppliesForm.paidAmount || 0) > 0 ? 'Partial' : 'Pending'),
       items: [
         {
@@ -2340,11 +2340,11 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack, initi
       setInwardInvoiceModal({
         mode: 'supplies',
         invoiceNo: vNo,
-        supplierName: payload.supplierName || 'Packaging Vendor',
+        supplierName: payload.supplierName || '',
         supplierPhone: payload.supplierPhone || '',
         companyName: payload.companyName || '',
         vehicleNumber: payload.vehicleNumber || '',
-        harbor: payload.harbor || 'Kadapa Depot',
+        harbor: payload.harbor || '',
         status: isPaidInFull ? 'Paid' : (payload.paidAmount > 0 ? 'Partial' : 'Pending'),
         items: [
           {
@@ -2561,11 +2561,11 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack, initi
               <div className="flex items-center gap-1.5 flex-nowrap">
                 <h1 className="text-xs sm:text-sm font-black text-slate-900 tracking-tight leading-tight m-0 whitespace-nowrap">
                   {currentDedicatedMode === 'local'
-                    ? (activeTab === 'srm' ? 'Local Fishermen SRM' : (activeTab === 'procurement' ? 'Local Stock-In' : (activeTab === 'overview' ? 'Local Stock Ledger' : 'Local Audit Trail')))
+                    ? (activeTab === 'srm' ? 'Local Fish SRM' : (activeTab === 'procurement' ? 'Local Intake' : (activeTab === 'overview' ? 'Local Stock Ledger' : 'Local Stock-In History')))
                     : (currentDedicatedMode === 'dam'
-                        ? (activeTab === 'srm' ? 'Dam Contractors SRM' : (activeTab === 'procurement' ? 'Dam Stock-In' : (activeTab === 'overview' ? 'Dam Stock Ledger' : 'Dam Audit Trail')))
+                        ? (activeTab === 'srm' ? 'Dam Fish SRM' : (activeTab === 'procurement' ? 'Dam Intake' : (activeTab === 'overview' ? 'Dam Stock Ledger' : 'Dam Stock-In History')))
                         : (currentDedicatedMode === 'supplies'
-                            ? (activeTab === 'srm' ? 'Supplies Vendors SRM' : (activeTab === 'procurement' ? 'Supplies Stock-In' : (activeTab === 'logs' ? 'Supplies Audit Trail' : 'Supplies Stock Ledger')))
+                            ? (activeTab === 'srm' ? 'Supplies Vendors SRM' : (activeTab === 'procurement' ? 'Supplies Intake' : (activeTab === 'logs' ? 'Supplies Stock-In History' : 'Supplies Stock Ledger')))
                             : (activeTab === 'logs' ? 'Audit Trail' : (activeTab === 'supplies' ? 'Supplies & Boxes' : (activeTab === 'srm' ? 'Suppliers SRM' : 'Stock Catch Ledger')))))}
                 </h1>
                 <span className={`text-[8.5px] sm:text-[9.5px] font-black px-1.5 py-0.2 rounded-full border shrink-0 ${
@@ -2754,8 +2754,9 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack, initi
         {/* Navigation Tabs */}
         <div className="flex items-center gap-1 sm:gap-1.5 overflow-x-auto scrollbar-none py-0.5">
           {currentDedicatedMode === 'local' ? (
-            /* Dedicated Local Mode Tabs: Strictly Local Intake, Local Ledger, Local Audit */
+            /* Dedicated Local Mode Tabs: Strictly Local Intake, Local Stock-In History, Local Stock Ledger, Local Fish SRM */
             <>
+              {/* 1. Local Intake */}
               <button
                 type="button"
                 onClick={() => { setActiveTab('procurement'); setStockInSubTab('local'); }}
@@ -2774,6 +2775,22 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack, initi
                 </span>
               </button>
 
+              {/* 2. Local Stock-In History */}
+              <button
+                type="button"
+                onClick={() => setActiveTab('logs')}
+                className={`flex items-center gap-1 px-2.5 sm:px-3 py-1 rounded-xl font-bold text-xs transition-all cursor-pointer shrink-0 ${
+                  activeTab === 'logs'
+                    ? 'bg-gradient-to-r from-orange-500 to-[#ea580c] text-white shadow-xs font-black'
+                    : 'bg-white text-slate-700 hover:bg-[#F5E8D8] border border-[#E8DCCB]'
+                }`}
+              >
+                <History size={12} />
+                <span className="sm:hidden">Stock-In History</span>
+                <span className="hidden sm:inline">Local Stock-In History</span>
+              </button>
+
+              {/* 3. Local Stock Ledger */}
               <button
                 type="button"
                 onClick={() => {
@@ -2788,24 +2805,11 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack, initi
                 }`}
               >
                 <Package size={12} />
-                <span className="sm:hidden">Local Ledger</span>
+                <span className="sm:hidden">Stock Ledger</span>
                 <span className="hidden sm:inline">Local Stock Ledger</span>
               </button>
 
-              <button
-                type="button"
-                onClick={() => setActiveTab('logs')}
-                className={`flex items-center gap-1 px-2.5 sm:px-3 py-1 rounded-xl font-bold text-xs transition-all cursor-pointer shrink-0 ${
-                  activeTab === 'logs'
-                    ? 'bg-gradient-to-r from-orange-500 to-[#ea580c] text-white shadow-xs font-black'
-                    : 'bg-white text-slate-700 hover:bg-[#F5E8D8] border border-[#E8DCCB]'
-                }`}
-              >
-                <History size={12} />
-                <span className="sm:hidden">Local Audit</span>
-                <span className="hidden sm:inline">Local Audit Trail</span>
-              </button>
-
+              {/* 4. Local Fish SRM */}
               <button
                 type="button"
                 onClick={() => { setActiveTab('srm'); setStockInSubTab('local'); }}
@@ -2816,13 +2820,14 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack, initi
                 }`}
               >
                 <Users size={12} />
-                <span className="sm:hidden">Fishermen</span>
-                <span className="hidden sm:inline">Local Fishermen SRM</span>
+                <span className="sm:hidden">Fish SRM</span>
+                <span className="hidden sm:inline">Local Fish SRM</span>
               </button>
             </>
           ) : currentDedicatedMode === 'dam' ? (
-            /* Dedicated Dam Mode Tabs: Strictly Dam Intake, Dam Ledger, Dam Audit */
+            /* Dedicated Dam Mode Tabs: Strictly Dam Intake, Dam Stock-In History, Dam Stock Ledger, Dam Fish SRM */
             <>
+              {/* 1. Dam Intake */}
               <button
                 type="button"
                 onClick={() => { setActiveTab('procurement'); setStockInSubTab('dam'); }}
@@ -2841,6 +2846,22 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack, initi
                 </span>
               </button>
 
+              {/* 2. Dam Stock-In History */}
+              <button
+                type="button"
+                onClick={() => setActiveTab('logs')}
+                className={`flex items-center gap-1 px-2.5 sm:px-3 py-1 rounded-xl font-bold text-xs transition-all cursor-pointer shrink-0 ${
+                  activeTab === 'logs'
+                    ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-xs font-black'
+                    : 'bg-white text-slate-700 hover:bg-[#F5E8D8] border border-[#E8DCCB]'
+                }`}
+              >
+                <History size={12} />
+                <span className="sm:hidden">Stock-In History</span>
+                <span className="hidden sm:inline">Dam Stock-In History</span>
+              </button>
+
+              {/* 3. Dam Stock Ledger */}
               <button
                 type="button"
                 onClick={() => {
@@ -2855,24 +2876,11 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack, initi
                 }`}
               >
                 <Package size={12} />
-                <span className="sm:hidden">Dam Ledger</span>
+                <span className="sm:hidden">Stock Ledger</span>
                 <span className="hidden sm:inline">Dam Stock Ledger</span>
               </button>
 
-              <button
-                type="button"
-                onClick={() => setActiveTab('logs')}
-                className={`flex items-center gap-1 px-2.5 sm:px-3 py-1 rounded-xl font-bold text-xs transition-all cursor-pointer shrink-0 ${
-                  activeTab === 'logs'
-                    ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-xs font-black'
-                    : 'bg-white text-slate-700 hover:bg-[#F5E8D8] border border-[#E8DCCB]'
-                }`}
-              >
-                <History size={12} />
-                <span className="sm:hidden">Dam Audit</span>
-                <span className="hidden sm:inline">Dam Audit Trail</span>
-              </button>
-
+              {/* 4. Dam Fish SRM */}
               <button
                 type="button"
                 onClick={() => { setActiveTab('srm'); setStockInSubTab('dam'); }}
@@ -2883,13 +2891,14 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack, initi
                 }`}
               >
                 <Users size={12} />
-                <span className="sm:hidden">Contractors</span>
-                <span className="hidden sm:inline">Dam Contractors SRM</span>
+                <span className="sm:hidden">Fish SRM</span>
+                <span className="hidden sm:inline">Dam Fish SRM</span>
               </button>
             </>
           ) : currentDedicatedMode === 'supplies' ? (
-            /* Dedicated Supplies Mode Tabs: Strictly Supplies Intake, Supplies Stock, Supplies Audit */
+            /* Dedicated Supplies Mode Tabs: Strictly Supplies Intake, Supplies Stock-In History, Supplies Stock Ledger, Supplies Vendors SRM */
             <>
+              {/* 1. Supplies Intake */}
               <button
                 type="button"
                 onClick={() => { setActiveTab('procurement'); setStockInSubTab('supplies'); }}
@@ -2909,6 +2918,22 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack, initi
                 </span>
               </button>
 
+              {/* 2. Supplies Stock-In History */}
+              <button
+                type="button"
+                onClick={() => setActiveTab('logs')}
+                className={`flex items-center gap-1 px-2.5 sm:px-3 py-1 rounded-xl font-bold text-xs transition-all cursor-pointer shrink-0 ${
+                  activeTab === 'logs'
+                    ? 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-xs font-black'
+                    : 'bg-white text-slate-700 hover:bg-[#F5E8D8] border border-[#E8DCCB]'
+                }`}
+              >
+                <History size={12} />
+                <span className="sm:hidden">Stock-In History</span>
+                <span className="hidden sm:inline">Supplies Stock-In History</span>
+              </button>
+
+              {/* 3. Supplies Stock Ledger */}
               <button
                 type="button"
                 onClick={() => {
@@ -2921,24 +2946,11 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack, initi
                 }`}
               >
                 <Package size={12} />
-                <span className="sm:hidden">Stock</span>
-                <span className="hidden sm:inline">Supplies Inventory</span>
+                <span className="sm:hidden">Stock Ledger</span>
+                <span className="hidden sm:inline">Supplies Stock Ledger</span>
               </button>
 
-              <button
-                type="button"
-                onClick={() => setActiveTab('logs')}
-                className={`flex items-center gap-1 px-2.5 sm:px-3 py-1 rounded-xl font-bold text-xs transition-all cursor-pointer shrink-0 ${
-                  activeTab === 'logs'
-                    ? 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-xs font-black'
-                    : 'bg-white text-slate-700 hover:bg-[#F5E8D8] border border-[#E8DCCB]'
-                }`}
-              >
-                <History size={12} />
-                <span className="sm:hidden">Audit</span>
-                <span className="hidden sm:inline">Supplies Audit Trail</span>
-              </button>
-
+              {/* 4. Supplies Vendors SRM */}
               <button
                 type="button"
                 onClick={() => { setActiveTab('srm'); setStockInSubTab('supplies'); }}
@@ -2949,7 +2961,7 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack, initi
                 }`}
               >
                 <Users size={12} />
-                <span className="sm:hidden">Vendors</span>
+                <span className="sm:hidden">Vendors SRM</span>
                 <span className="hidden sm:inline">Supplies Vendors SRM</span>
               </button>
             </>
@@ -3551,6 +3563,7 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack, initi
               fishList={fishList}
               fishOptions={fishOptions}
               registeredSuppliers={registeredSuppliers}
+              setRegisteredSuppliers={setRegisteredSuppliers}
               fleetVehicles={fleetVehicles}
               crmCustomers={crmCustomers}
               localSupplierOptions={localSupplierOptions}
@@ -3577,6 +3590,7 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack, initi
               fishList={fishList}
               fishOptions={fishOptions}
               registeredSuppliers={registeredSuppliers}
+              setRegisteredSuppliers={setRegisteredSuppliers}
               fleetVehicles={fleetVehicles}
               crmCustomers={crmCustomers}
               damContractorOptions={damContractorOptions}
@@ -3606,6 +3620,7 @@ export default function FishInventoryManager({ user, onNavigate, onGoBack, initi
               isCreatingCategory={isCreatingCategory}
               handleCreateCategory={handleCreateCategory}
               registeredSuppliers={registeredSuppliers}
+              setRegisteredSuppliers={setRegisteredSuppliers}
               fleetVehicles={fleetVehicles}
               suppliesSupplierOptions={suppliesSupplierOptions}
               suppliesVehicleOptions={suppliesVehicleOptions}

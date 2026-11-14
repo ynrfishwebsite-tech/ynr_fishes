@@ -432,16 +432,23 @@ export const createOrUpdateCustomer = async (req, res) => {
       orderType
     } = req.body;
 
-    if (!phone || !phone.trim()) {
-      return res.status(400).json({ message: 'Phone number is required' });
+    const cleanName = name ? name.trim() : '';
+    const cleanPhone = phone ? phone.trim().replace(/\D/g, '').slice(-10) : '';
+
+    if (!cleanName && !cleanPhone) {
+      return res.status(400).json({ message: 'Customer name is required' });
     }
-    const cleanPhone = phone.trim().replace(/\D/g, '').slice(-10);
-    if (cleanPhone.length !== 10) {
-      return res.status(400).json({ message: 'Valid 10-digit phone number is required' });
+    if (cleanPhone && cleanPhone.length !== 10) {
+      return res.status(400).json({ message: 'Valid 10-digit phone number is required if provided' });
     }
 
     const Customer = getTenantModel(req, 'Customer', CustomerSchema);
-    let customer = await Customer.findOne({ phone: cleanPhone });
+    let customer = null;
+    if (cleanPhone) {
+      customer = await Customer.findOne({ phone: cleanPhone });
+    } else if (cleanName) {
+      customer = await Customer.findOne({ name: { $regex: new RegExp(`^${cleanName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') } });
+    }
 
     const determinedCategory = ['Retail', 'Wholesale', 'Export'].includes(category)
       ? category

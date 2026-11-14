@@ -33,14 +33,32 @@ import { useLanguage } from '../../../context/LanguageContext';
 export default function GlobalSearchBar({
   onNavigate,
   onOpenWhatsApp,
-  isPermitted
+  isPermitted,
+  className = "relative flex-1 max-w-md lg:max-w-lg mx-2 lg:mx-4",
+  placeholder,
+  onSearchChange
 }) {
   const { t } = useLanguage();
   const [query, setQuery] = useState('');
+  const [debouncedQuery, setDebouncedQuery] = useState('');
   const [isOpen, setIsOpen] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const containerRef = useRef(null);
   const inputRef = useRef(null);
+
+  // Debounce search query (200ms) for high performance & smooth typing
+  useEffect(() => {
+    if (!query.trim()) {
+      setDebouncedQuery('');
+      if (onSearchChange) onSearchChange('');
+      return;
+    }
+    const timer = setTimeout(() => {
+      setDebouncedQuery(query);
+      if (onSearchChange) onSearchChange(query);
+    }, 200);
+    return () => clearTimeout(timer);
+  }, [query, onSearchChange]);
 
   // Keyboard shortcut Ctrl+K / Cmd+K to focus search input from ANY page
   useEffect(() => {
@@ -60,7 +78,7 @@ export default function GlobalSearchBar({
     return () => window.removeEventListener('keydown', handleGlobalKeyDown);
   }, [isOpen]);
 
-  // Click outside to close dropdown
+  // Click/touch outside to close dropdown
   useEffect(() => {
     const handleClickOutside = (e) => {
       if (containerRef.current && !containerRef.current.contains(e.target)) {
@@ -68,7 +86,11 @@ export default function GlobalSearchBar({
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
+    document.addEventListener('touchstart', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('touchstart', handleClickOutside);
+    };
   }, []);
 
   // Complete Registry of searchable features across the entire system
@@ -434,9 +456,11 @@ export default function GlobalSearchBar({
     }
   ], []);
 
-  // Filter features based on search query and user permissions
+  const effectiveQuery = debouncedQuery.trim() || query.trim();
+
+  // Filter features based on search query and user permissions (Debounced)
   const matchingFeatures = useMemo(() => {
-    const q = query.trim().toLowerCase();
+    const q = effectiveQuery.toLowerCase();
     if (!q) return [];
 
     return ALL_FEATURES.filter(item => {
@@ -445,10 +469,11 @@ export default function GlobalSearchBar({
 
       const matchTitle = item.title.toLowerCase().includes(q);
       const matchSubtitle = (item.subtitle || '').toLowerCase().includes(q);
+      const matchCategory = (item.category || '').toLowerCase().includes(q);
       const matchKeywords = item.keywords?.some(k => k.toLowerCase().includes(q));
-      return matchTitle || matchSubtitle || matchKeywords;
+      return matchTitle || matchSubtitle || matchCategory || matchKeywords;
     }).slice(0, 8); // Top 8 relevant matches
-  }, [query, ALL_FEATURES, isPermitted]);
+  }, [effectiveQuery, ALL_FEATURES, isPermitted]);
 
   // Keep selected index within bounds
   useEffect(() => {
@@ -459,6 +484,8 @@ export default function GlobalSearchBar({
     if (!item) return;
     setIsOpen(false);
     setQuery('');
+    setDebouncedQuery('');
+    if (onSearchChange) onSearchChange('');
     inputRef.current?.blur();
 
     if (item.isWhatsApp) {
@@ -487,7 +514,7 @@ export default function GlobalSearchBar({
   };
 
   return (
-    <div ref={containerRef} className="relative flex-1 max-w-md lg:max-w-lg mx-2 lg:mx-4">
+    <div ref={containerRef} className={className}>
       {/* Search Input Box */}
       <div className="relative flex items-center">
         <div className="absolute left-3 flex items-center pointer-events-none text-slate-400">
@@ -505,7 +532,7 @@ export default function GlobalSearchBar({
             setIsOpen(true);
           }}
           onKeyDown={handleKeyDown}
-          placeholder={t("Search features... (e.g., New Order, Stock, Reports)")}
+          placeholder={placeholder || t("Search features... (e.g., New Order, Stock, Reports)")}
           className="w-full pl-8.5 pr-16 py-1.5 sm:py-2 rounded-xl bg-white border border-[#E8DCCB] text-slate-800 placeholder-slate-400 text-xs sm:text-[13px] font-medium focus:outline-none focus:ring-2 focus:ring-[#7c3f1d]/20 focus:border-[#7c3f1d] shadow-2xs transition-all"
         />
 
@@ -515,6 +542,8 @@ export default function GlobalSearchBar({
               type="button"
               onClick={() => {
                 setQuery('');
+                setDebouncedQuery('');
+                if (onSearchChange) onSearchChange('');
                 setIsOpen(false);
                 inputRef.current?.focus();
               }}
@@ -532,12 +561,13 @@ export default function GlobalSearchBar({
       </div>
 
       {/* Autocomplete / Instant Navigation Dropdown */}
-      {isOpen && query.trim() && (
-        <div className="absolute top-[calc(100%+6px)] left-0 w-full bg-white border border-[#E8DCCB] rounded-xl shadow-xl z-50 overflow-hidden max-h-[360px] overflow-y-auto animate-fadeIn">
+      {isOpen && (query.trim() || debouncedQuery.trim()) && (
+        <div className="absolute top-[calc(100%+6px)] left-0 w-full bg-white border border-[#E8DCCB] rounded-xl shadow-2xl z-[9999] overflow-hidden max-h-[360px] overflow-y-auto animate-fadeIn">
           {matchingFeatures.length > 0 ? (
             <div className="p-1.5 space-y-0.5">
-              <div className="px-2 py-1 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-                {t("Quick Jump (Press Enter to Open)")}
+              <div className="px-2 py-1 text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center justify-between">
+                <span>{t("Quick Jump (Press Enter to Open)")}</span>
+                <span className="text-[9px] font-mono font-normal lowercase">{matchingFeatures.length} found</span>
               </div>
 
               {matchingFeatures.map((item, index) => {
@@ -549,6 +579,14 @@ export default function GlobalSearchBar({
                     key={item.id}
                     type="button"
                     onClick={() => handleSelectFeature(item)}
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      handleSelectFeature(item);
+                    }}
+                    onTouchStart={(e) => {
+                      e.preventDefault();
+                      handleSelectFeature(item);
+                    }}
                     onMouseEnter={() => setSelectedIndex(index)}
                     className={`w-full flex items-center justify-between p-2 rounded-lg text-left transition-colors cursor-pointer ${
                       isSelected

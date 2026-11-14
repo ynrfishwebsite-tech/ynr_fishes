@@ -5039,18 +5039,17 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
               {/* Phone Input */}
               <div>
                 <label className="block text-[11px] font-bold text-slate-600 uppercase tracking-wider mb-1">
-                  {t('PHONE NUMBER (10 DIGITS)')} *
+                  {t('PHONE NUMBER (10 DIGITS)')}
                 </label>
                 <div className="relative">
                   <input
                     type="tel"
-                    required
                     maxLength={10}
                     value={tempCustomerPhone}
                     onChange={(e) => handleCrmPhoneChange(e.target.value)}
                     onFocus={() => { if (crmSuggestions.length > 0) setShowCrmSuggestions(true); }}
                     onBlur={() => setTimeout(() => setShowCrmSuggestions(false), 200)}
-                    placeholder="e.g. 9582425359"
+                    placeholder="e.g. 9582425359 (Optional)"
                     className="w-full bg-[#FAF0E4]/60 border border-[#E8DCCB] rounded-xl px-3 py-2 text-xs font-bold font-mono text-slate-900 focus:outline-none focus:border-[#ea580c] focus:bg-white transition-all"
                   />
                   {showCrmSuggestions && crmSuggestions.length > 0 && (

@@ -207,11 +207,11 @@ export default function SupplierHub({
         groupedCatch[vNo] = {
           id: vNo,
           invoiceNo: vNo,
-          supplierName: log.supplierName || log.companyName || 'Local Catch Supplier',
+          supplierName: log.supplierName || log.companyName || '',
           companyName: log.companyName || '',
           supplierPhone: log.supplierPhone || '',
           vehicleNumber: log.vehicleNumber || '',
-          harbor: log.harbor || (intakeMode === 'dam' ? 'Inland Reservoir' : 'Harbor'),
+          harbor: log.harbor || '',
           intakeMode: intakeMode,
           date: log.createdAt ? new Date(log.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '',
           time: log.createdAt ? new Date(log.createdAt).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true }) : '',
@@ -588,9 +588,9 @@ export default function SupplierHub({
       return;
     }
 
-    const cleanPhone = formData.phone.replace(/\D/g, '');
-    if (!cleanPhone || cleanPhone.length !== 10) {
-      setToast({ message: 'Phone number must be exactly 10 digits', type: 'error' });
+    const cleanPhone = formData.phone ? formData.phone.replace(/\D/g, '') : '';
+    if (cleanPhone && cleanPhone.length !== 10) {
+      setToast({ message: 'Phone number must be exactly 10 digits if provided', type: 'error' });
       return;
     }
 
@@ -1628,14 +1628,13 @@ export default function SupplierHub({
                   />
                 </div>
                 <div>
-                  <label className="font-bold text-text-main block mb-1">{t('Phone Number (10 digits)')} *</label>
+                  <label className="font-bold text-text-main block mb-1">{t('Phone Number (10 digits)')}</label>
                   <input
                     type="tel"
-                    required
                     maxLength={10}
                     value={formData.phone}
                     onChange={(e) => setFormData({ ...formData, phone: e.target.value.replace(/\D/g, '') })}
-                    placeholder="9848012345"
+                    placeholder="9848012345 (Optional)"
                     className="w-full bg-background border border-border rounded-xl px-3 py-1.5 font-bold focus:border-[#ea580c] focus:outline-none"
                   />
                 </div>

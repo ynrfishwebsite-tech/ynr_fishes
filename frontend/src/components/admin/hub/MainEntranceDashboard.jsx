@@ -37,6 +37,7 @@ import {
   Anchor
 } from 'lucide-react';
 import { useLanguage } from '../../../context/LanguageContext';
+import GlobalSearchBar from '../common/GlobalSearchBar';
 
 const STORAGE_KEY = 'ynr_dashboard_cards_order_v3';
 
@@ -771,37 +772,20 @@ export default function MainEntranceDashboard({
         ========================================================================
       */}
       <div className="w-full px-2.5 sm:px-4 md:px-5 pt-2.5 sm:pt-3 md:pt-4 mb-2 sm:mb-3">
-        {/* Mobile-Only Search Input Bar (On Desktop & Tablet, Global Search Bar is in the Top Nav Header) */}
-        <div className="md:hidden relative flex items-center mb-2.5">
-          <div className="absolute left-3.5 flex items-center pointer-events-none text-slate-400">
-            <Search size={15} />
-          </div>
-
-          <input
-            ref={searchInputRef}
-            type="text"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            onKeyDown={handleSearchKeyDown}
+        {/* Mobile Search Bar with Quick-Jump Dropdown & Debounced Auto-Filtering */}
+        <div className="md:hidden relative mb-2.5 w-full">
+          <GlobalSearchBar
+            onNavigate={onNavigate}
+            onOpenWhatsApp={onOpenWhatsApp}
+            isPermitted={(featureId) => {
+              if (isFullAdmin) return true;
+              if (!user?.permissions) return true;
+              return user.permissions[featureId] !== false;
+            }}
+            className="relative w-full mx-0"
             placeholder={t("Search features (e.g., POS, Stock, CRM)...")}
-            className="w-full pl-9 pr-14 py-2 rounded-xl bg-white border border-[#E8DCCB] text-slate-800 placeholder-slate-400 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-[#7c3f1d]/20 focus:border-[#7c3f1d] shadow-2xs transition-all"
+            onSearchChange={(val) => setSearchQuery(val)}
           />
-
-          <div className="absolute right-2.5 flex items-center">
-            {searchQuery && (
-              <button
-                type="button"
-                onClick={() => {
-                  setSearchQuery('');
-                  searchInputRef.current?.focus();
-                }}
-                className="p-1 rounded-md text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer"
-                title="Clear Search"
-              >
-                <X size={14} />
-              </button>
-            )}
-          </div>
         </div>
 
         {/* Action Controls & Category Filter Tags */}

@@ -3,8 +3,9 @@ import mongoose from 'mongoose';
 const customerSchema = new mongoose.Schema({
   phone: {
     type: String,
-    required: true,
-    unique: true
+    default: '',
+    trim: true,
+    index: true
   },
   name: {
     type: String,

@@ -30,6 +30,7 @@ import {
 } from 'lucide-react';
 import SearchableDropdown from '../../common/SearchableDropdown';
 import FishIntakeOrbitalDial from './FishIntakeOrbitalDial';
+import FlashSupplierModal from '../operations/FlashSupplierModal';
 import {
   splitKgPerBoxParts,
   buildUpdatedRowsWithKpb,
@@ -53,6 +54,7 @@ const LocalStockInTab = ({
   fishList = [],
   fishOptions = [],
   registeredSuppliers = [],
+  setRegisteredSuppliers,
   fleetVehicles = [],
   crmCustomers = [],
   localSupplierOptions = [],
@@ -63,6 +65,7 @@ const LocalStockInTab = ({
   const [localSelectorMode, setLocalSelectorMode] = useState('ring');
   const [localSpeciesFilter, setLocalSpeciesFilter] = useState('all');
   const [localWeighMode, setLocalWeighMode] = useState('kg'); // 'box' | 'kg' (Default: kg)
+  const [isAddSupplierOpen, setIsAddSupplierOpen] = useState(false);
   const [calcRowIdx, setCalcRowIdx] = useState(null);
   const [calcExpression, setCalcExpression] = useState('');
   const itemsTableRef = useRef(null);
@@ -477,11 +480,11 @@ const LocalStockInTab = ({
             </div>
           </div>
 
-          {/* Desktop Split View: Ring LEFT + Table RIGHT | Mobile/Tablet: Stacked View */}
-          <div className={localSelectorMode === 'ring' ? 'xl:flex xl:items-start xl:gap-0' : ''}>
-            {/* 3D Ring Dial Mode for Local Catch (LEFT on desktop) */}
+          {/* Desktop Split View: Table LEFT + Ring RIGHT | Mobile/Tablet: Stacked View */}
+          <div className={localSelectorMode === 'ring' ? 'flex flex-col xl:flex-row xl:items-start xl:gap-0' : ''}>
+            {/* 3D Ring Dial Mode for Local Catch (RIGHT on desktop, TOP on mobile) */}
             {localSelectorMode === 'ring' && (
-              <div className="xl:w-[380px] 2xl:w-[410px] xl:shrink-0 xl:border-r border-b xl:border-b-0 border-[#fed7aa]/60 p-1.5 sm:p-2 bg-gradient-to-b from-[#FAF3E8]/70 via-white to-[#FAF0E4]/30">
+              <div className="order-1 xl:order-2 xl:w-[380px] 2xl:w-[410px] xl:shrink-0 xl:border-l xl:border-r-0 border-b xl:border-b-0 border-[#fed7aa]/60 p-1.5 sm:p-2 bg-gradient-to-b from-[#FAF3E8]/70 via-white to-[#FAF0E4]/30 xl:sticky xl:top-2">
                 <FishIntakeOrbitalDial
                   items={masterFishList.length > 0 ? masterFishList : fishList}
                   onAddFishLot={handleAddLocalLotFromDial}
@@ -492,8 +495,8 @@ const LocalStockInTab = ({
               </div>
             )}
 
-            {/* Table Area (RIGHT on desktop) */}
-            <div ref={itemsTableRef} className="flex-1 min-w-0 p-1 sm:p-1.5 space-y-2">
+            {/* Table Area (LEFT on desktop, BOTTOM on mobile) */}
+            <div ref={itemsTableRef} className="order-2 xl:order-1 flex-1 min-w-0 p-1 sm:p-1.5 space-y-2">
               {dateGroups.map((group, gIdx) => {
                 const dateKey = group.dateKey;
                 const colSpanBoxes = localWeighMode === 'box' ? 2 : 0;
@@ -1346,25 +1349,38 @@ const LocalStockInTab = ({
               </p>
             </div>
 
-            {/* Search Bar */}
-            <div className="relative flex items-center w-full sm:w-64">
-              <Search size={13} className="absolute left-2.5 text-slate-400 pointer-events-none" />
-              <input
-                type="text"
-                placeholder="Search supplier, boat, phone..."
-                value={localSupplierSearch}
-                onChange={(e) => setLocalSupplierSearch(e.target.value)}
-                className="w-full pl-7 pr-7 py-1.5 bg-white border border-[#E8DCCB] rounded-xl text-xs font-medium text-slate-800 placeholder-slate-400 focus:outline-none focus:border-[#ea580c] shadow-2xs"
-              />
-              {localSupplierSearch && (
-                <button
-                  type="button"
-                  onClick={() => setLocalSupplierSearch('')}
-                  className="absolute right-2 text-slate-400 hover:text-slate-600 cursor-pointer"
-                >
-                  <X size={12} />
-                </button>
-              )}
+            {/* Search Bar & Flash Add Supplier Button */}
+            <div className="flex items-center gap-2 w-full sm:w-auto">
+              <div className="relative flex items-center w-full sm:w-64">
+                <Search size={13} className="absolute left-2.5 text-slate-400 pointer-events-none" />
+                <input
+                  type="text"
+                  placeholder="Search supplier, boat, phone..."
+                  value={localSupplierSearch}
+                  onChange={(e) => setLocalSupplierSearch(e.target.value)}
+                  className="w-full pl-7 pr-7 py-1.5 bg-white border border-[#E8DCCB] rounded-xl text-xs font-medium text-slate-800 placeholder-slate-400 focus:outline-none focus:border-[#ea580c] shadow-2xs"
+                />
+                {localSupplierSearch && (
+                  <button
+                    type="button"
+                    onClick={() => setLocalSupplierSearch('')}
+                    className="absolute right-2 text-slate-400 hover:text-slate-600 cursor-pointer"
+                  >
+                    <X size={12} />
+                  </button>
+                )}
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setIsAddSupplierOpen(true)}
+                className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-orange-500 to-[#ea580c] hover:from-orange-600 hover:to-[#c2410c] text-white rounded-xl text-xs font-bold shadow-xs hover:shadow-md transition-all cursor-pointer active:scale-95"
+                title="Add New Fisherman"
+              >
+                <Plus size={14} />
+                <span className="hidden sm:inline">Add Fisherman</span>
+                <span className="sm:hidden">Add</span>
+              </button>
             </div>
           </div>
 
@@ -2378,6 +2394,19 @@ const LocalStockInTab = ({
           </div>
         </div>
       </form>
+
+      {/* Flash Supplier Add Modal */}
+      <FlashSupplierModal
+        isOpen={isAddSupplierOpen}
+        onClose={() => setIsAddSupplierOpen(false)}
+        supplierType="Local"
+        fleetVehicles={fleetVehicles}
+        onSupplierCreated={(newSupp) => {
+          setRegisteredSuppliers?.(prev => [newSupp, ...(prev || [])]);
+          handleSelectLocalSupplierCard(newSupp);
+          setIsAddSupplierOpen(false);
+        }}
+      />
     </div>
   );
 };
