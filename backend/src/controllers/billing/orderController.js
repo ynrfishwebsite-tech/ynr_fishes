@@ -399,6 +399,13 @@ export const getActiveOrder = asyncHandler(async (req, res, next) => {
       const dCharge = Number(order.deliveryCharge) || 0;
       const cCharge = Number(order.containerCharge) || 0;
       const cutCharge = Number(order.cuttingCharge) || 0;
+      const iceCharge = Number(order.iceCharges) || 0;
+      const boxCharge = Number(order.boxCharges) || 0;
+      const transCharge = Number(order.transportCharges) || 0;
+      const netAddCharges = (Array.isArray(order.additionalCharges) ? order.additionalCharges : []).reduce((sum, c) => {
+        const amt = Number(c?.amount || 0);
+        return c?.type === 'Dr' ? sum - amt : sum + amt;
+      }, 0);
       order.tax = taxRate;
       const boxSummary = computeBoxesSummary(order.items);
       order.boxes = boxSummary.boxes;
@@ -410,8 +417,7 @@ export const getActiveOrder = asyncHandler(async (req, res, next) => {
       order.deliveryCharge = dCharge;
       order.containerCharge = cCharge;
       order.cuttingCharge = cutCharge;
-      order.cuttingCharge = cutCharge;
-      order.total = Math.round(taxable + taxAmount + dCharge + cCharge + cutCharge);
+      order.total = Math.round(taxable + taxAmount + dCharge + cCharge + cutCharge + iceCharge + boxCharge + transCharge + netAddCharges);
     }
   }
 
@@ -778,7 +784,17 @@ export const saveOrder = async (req, res) => {
       const dCharge = deliveryCharge !== undefined ? (Number(deliveryCharge) || 0) : (Number(order.deliveryCharge) || 0);
       const cCharge = containerCharge !== undefined ? (Number(containerCharge) || 0) : (Number(order.containerCharge) || 0);
       const cutCharge = cuttingCharge !== undefined ? (Number(cuttingCharge) || 0) : (Number(order.cuttingCharge) || 0);
-      const calculatedTotal = Math.round(taxableAmount + calculatedTax + dCharge + cCharge + cutCharge);
+      const iceCharge = req.body.iceCharges !== undefined ? (Number(req.body.iceCharges) || 0) : (Number(order.iceCharges) || 0);
+      const boxCharge = req.body.boxCharges !== undefined ? (Number(req.body.boxCharges) || 0) : (Number(order.boxCharges) || 0);
+      const transCharge = req.body.transportCharges !== undefined ? (Number(req.body.transportCharges) || 0) : (Number(order.transportCharges) || 0);
+      const addChargesArr = req.body.additionalCharges !== undefined 
+        ? (Array.isArray(req.body.additionalCharges) ? req.body.additionalCharges : [])
+        : (Array.isArray(order.additionalCharges) ? order.additionalCharges : []);
+      const netAddCharges = addChargesArr.reduce((sum, c) => {
+        const amt = Number(c?.amount || 0);
+        return c?.type === 'Dr' ? sum - amt : sum + amt;
+      }, 0);
+      const calculatedTotal = Math.round(taxableAmount + calculatedTax + dCharge + cCharge + cutCharge + iceCharge + boxCharge + transCharge + netAddCharges);
 
       // Check if actual items, quantities, or prices changed compared to the previous state
       const cleanOldItems = (order.items || [])
@@ -797,6 +813,9 @@ export const saveOrder = async (req, res) => {
         Math.abs((order.deliveryCharge || 0) - dCharge) > 0.01 ||
         Math.abs((order.containerCharge || 0) - cCharge) > 0.01 ||
         Math.abs((order.cuttingCharge || 0) - cutCharge) > 0.01 ||
+        Math.abs((order.boxCharges || 0) - boxCharge) > 0.01 ||
+        Math.abs((order.iceCharges || 0) - iceCharge) > 0.01 ||
+        Math.abs((order.transportCharges || 0) - transCharge) > 0.01 ||
         Math.abs((order.discount || 0) - calculatedDiscount) > 0.01;
 
       // An order is recorded in editHistory if it was ALREADY BILLED (locked) AND items OR charges/discounts changed!
@@ -809,6 +828,10 @@ export const saveOrder = async (req, res) => {
           deliveryCharge: order.deliveryCharge || 0,
           containerCharge: order.containerCharge || 0,
           cuttingCharge: order.cuttingCharge || 0,
+          iceCharges: order.iceCharges || 0,
+          boxCharges: order.boxCharges || 0,
+          transportCharges: order.transportCharges || 0,
+          additionalCharges: order.additionalCharges || [],
           total: order.total || 0,
           discountType: order.discountType || 'flat',
           discountValue: order.discountValue || 0
@@ -822,6 +845,10 @@ export const saveOrder = async (req, res) => {
           deliveryCharge: dCharge,
           containerCharge: cCharge,
           cuttingCharge: cutCharge,
+          iceCharges: iceCharge,
+          boxCharges: boxCharge,
+          transportCharges: transCharge,
+          additionalCharges: addChargesArr,
           total: calculatedTotal,
           discountType: dType,
           discountValue: dValue
@@ -906,10 +933,6 @@ export const saveOrder = async (req, res) => {
       }
       if (req.body.paidAmount !== undefined) order.paidAmount = Number(req.body.paidAmount) || 0;
       if (req.body.dueAmount !== undefined) order.dueAmount = Number(req.body.dueAmount) || 0;
-      if (req.body.total !== undefined && (req.body.netAdjustment !== undefined || req.body.iceCharges !== undefined || req.body.boxCharges !== undefined || req.body.transportCharges !== undefined)) {
-        order.total = Number(req.body.total);
-      }
-
       const boxSummary = computeBoxesSummary(updatedItems);
       order.boxes = boxSummary.boxes;
       order.totalBoxes = boxSummary.totalBoxes;
@@ -922,7 +945,12 @@ export const saveOrder = async (req, res) => {
         sgst: Number(((subtotal * (tRate / 2)) / 100).toFixed(2)),
         igst: 0
       };
-      order.total = calculatedTotal;
+      // Keep total accurate with taxable + tax + delivery + container + cutting + ice + box + transport + additional charges
+      if (req.body.total !== undefined && Number(req.body.total) >= calculatedTotal && Number(req.body.total) > 0) {
+        order.total = Number(req.body.total);
+      } else {
+        order.total = calculatedTotal;
+      }
       if (order.status !== 'Billed' && order.status !== 'Paid') {
         order.status = 'Open';
       }
@@ -987,6 +1015,10 @@ export const saveOrder = async (req, res) => {
               deliveryCharge: dCharge,
               containerCharge: cCharge,
               cuttingCharge: cutCharge,
+              iceCharges: iceCharge,
+              boxCharges: boxCharge,
+              transportCharges: transCharge,
+              additionalCharges: addChargesArr,
               total: calculatedTotal,
               status: 'Open'
             };
@@ -1039,7 +1071,15 @@ export const saveOrder = async (req, res) => {
       const dChargeNew = Number(deliveryCharge) || 0;
       const cChargeNew = Number(containerCharge) || 0;
       const cutChargeNew = Number(cuttingCharge) || 0;
-      const calculatedTotal = Math.round(taxableAmount + calculatedTax + dChargeNew + cChargeNew + cutChargeNew);
+      const iceChargeNew = Number(req.body.iceCharges) || 0;
+      const boxChargeNew = Number(req.body.boxCharges) || 0;
+      const transChargeNew = Number(req.body.transportCharges) || 0;
+      const addChargesNew = Array.isArray(req.body.additionalCharges) ? req.body.additionalCharges : [];
+      const netAddChargesNew = addChargesNew.reduce((sum, c) => {
+        const amt = Number(c?.amount || 0);
+        return c?.type === 'Dr' ? sum - amt : sum + amt;
+      }, 0);
+      const calculatedTotal = Math.round(taxableAmount + calculatedTax + dChargeNew + cChargeNew + cutChargeNew + iceChargeNew + boxChargeNew + transChargeNew + netAddChargesNew);
 
       let nextQueueNo = 1;
       try {
@@ -1067,9 +1107,9 @@ export const saveOrder = async (req, res) => {
         deliveryCharge: dChargeNew,
         containerCharge: cChargeNew,
         cuttingCharge: cutChargeNew,
-        iceCharges: Number(req.body.iceCharges) || 0,
-        boxCharges: Number(req.body.boxCharges) || 0,
-        transportCharges: Number(req.body.transportCharges) || 0,
+        iceCharges: iceChargeNew,
+        boxCharges: boxChargeNew,
+        transportCharges: transChargeNew,
         additionalCharges: Array.isArray(req.body.additionalCharges)
           ? req.body.additionalCharges.filter(c => Number(c?.amount) > 0)
           : [],
@@ -1078,7 +1118,7 @@ export const saveOrder = async (req, res) => {
         partialPaymentHistory: req.body.partialPaymentHistory || [],
         paidAmount: Number(req.body.paidAmount) || 0,
         dueAmount: Number(req.body.dueAmount) || 0,
-        total: req.body.total !== undefined ? Number(req.body.total) : calculatedTotal,
+        total: (req.body.total !== undefined && Number(req.body.total) >= calculatedTotal && Number(req.body.total) > 0) ? Number(req.body.total) : calculatedTotal,
         status: 'Open',
         billType: billType || 'Retail',
         customerName: resolvedCustomerName || customerName,
@@ -1252,11 +1292,18 @@ export const generateBill = async (req, res) => {
         acc + (i.isCancelled ? 0 : (Number(i.price || 0) * Math.max(0, Number(i.quantity || 0) - Number(i.cancelledQuantity || 0)))), 0);
     }
 
-    // Calculate final total with delivery & container charges
+    // Calculate final total with delivery, container, cutting, ice, box, transport, and additional charges
     const taxableAmount = Math.max(0, (order.subtotal || 0) - (order.discount || 0));
     const taxAmount = (taxableAmount * (order.tax || 0)) / 100;
-    const computedTotal = Math.round(taxableAmount + taxAmount + (Number(order.deliveryCharge) || 0) + (Number(order.containerCharge) || 0) + (Number(order.cuttingCharge) || 0));
-    order.total = (req.body.total !== undefined && Number(req.body.total) > 0) ? Number(req.body.total) : computedTotal;
+    const iceChargeBill = Number(order.iceCharges || 0);
+    const boxChargeBill = Number(order.boxCharges || 0);
+    const transChargeBill = Number(order.transportCharges || 0);
+    const netAddChargesBill = (Array.isArray(order.additionalCharges) ? order.additionalCharges : []).reduce((sum, c) => {
+      const amt = Number(c?.amount || 0);
+      return c?.type === 'Dr' ? sum - amt : sum + amt;
+    }, 0);
+    const computedTotal = Math.round(taxableAmount + taxAmount + (Number(order.deliveryCharge) || 0) + (Number(order.containerCharge) || 0) + (Number(order.cuttingCharge) || 0) + iceChargeBill + boxChargeBill + transChargeBill + netAddChargesBill);
+    order.total = (req.body.total !== undefined && Number(req.body.total) >= computedTotal && Number(req.body.total) > 0) ? Number(req.body.total) : computedTotal;
 
     const amountChanged = Math.abs(prevTotal - order.total) > 0.01 ||
       Math.abs(prevDeliveryCharge - (Number(order.deliveryCharge) || 0)) > 0.01 ||
@@ -1488,10 +1535,19 @@ export const settleBill = async (req, res) => {
       order.subtotal = (order.items || []).reduce((acc, i) =>
         acc + (i.isCancelled ? 0 : (Number(i.price || 0) * Math.max(0, Number(i.quantity || 0) - Number(i.cancelledQuantity || 0)))), 0);
     }
-    if (!order.total || order.total <= 0) {
-      const taxable = Math.max(0, (order.subtotal || 0) - (order.discount || 0));
-      const taxAmt = (taxable * (order.tax || 0)) / 100;
-      order.total = Math.round(taxable + taxAmt + (Number(order.deliveryCharge) || 0) + (Number(order.containerCharge) || 0) + (Number(order.cuttingCharge) || 0));
+    const taxable = Math.max(0, (order.subtotal || 0) - (order.discount || 0));
+    const taxAmt = (taxable * (order.tax || 0)) / 100;
+    const iceChargePay = Number(order.iceCharges || 0);
+    const boxChargePay = Number(order.boxCharges || 0);
+    const transChargePay = Number(order.transportCharges || 0);
+    const netAddChargesPay = (Array.isArray(order.additionalCharges) ? order.additionalCharges : []).reduce((sum, c) => {
+      const amt = Number(c?.amount || 0);
+      return c?.type === 'Dr' ? sum - amt : sum + amt;
+    }, 0);
+    const computedExpectedTotal = Math.round(taxable + taxAmt + (Number(order.deliveryCharge) || 0) + (Number(order.containerCharge) || 0) + (Number(order.cuttingCharge) || 0) + iceChargePay + boxChargePay + transChargePay + netAddChargesPay);
+
+    if (!order.total || order.total <= 0 || (computedExpectedTotal > 0 && order.total < computedExpectedTotal)) {
+      order.total = computedExpectedTotal;
     }
 
     // Set status to 'Paid', 'Unpaid', or 'Partial' - this makes it appear in billing history

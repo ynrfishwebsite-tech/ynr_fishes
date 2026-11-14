@@ -1996,7 +1996,6 @@ const Invoice = ({ bill: incomingBill, billData, onClose, onSave, onSettle, what
                 const sub = Number(bill.subtotal || bill.items?.reduce((acc, curr) => acc + ((curr.price || 0) * (curr.quantity || 1)), 0) || 0);
                 const disc = Number(bill.discount || 0);
                 const taxable = Math.max(0, sub - disc);
-                let finalTotal = Number(bill.total);
 
                 const cRate = activeTaxSettings.enableCgst !== false ? (activeTaxSettings.cgstRate !== undefined ? Number(activeTaxSettings.cgstRate) : 2.5) : 0;
                 const sRate = activeTaxSettings.enableSgst !== false ? (activeTaxSettings.sgstRate !== undefined ? Number(activeTaxSettings.sgstRate) : 2.5) : 0;
@@ -2005,13 +2004,31 @@ const Invoice = ({ bill: incomingBill, billData, onClose, onSave, onSettle, what
                 const taxRupees = bill.tax !== undefined && bill.tax !== null && Number(bill.tax) > 0
                   ? (Number(bill.tax) <= 100 ? (taxable * Number(bill.tax)) / 100 : Number(bill.tax))
                   : (totRate > 0 ? (taxable * totRate) / 100 : 0);
-                const addCharges = Number(bill.deliveryCharge || 0) + Number(bill.containerCharge || 0) + Number(bill.cuttingCharge || 0);
-                if (!finalTotal || isNaN(finalTotal) || (finalTotal <= 0 && sub > 0)) {
-                  finalTotal = taxable + taxRupees + addCharges;
+
+                const rawCharges = Array.isArray(bill.additionalCharges) && bill.additionalCharges.length > 0
+                  ? bill.additionalCharges
+                  : (bill.items || []).flatMap(it => Array.isArray(it.additionalCharges) ? it.additionalCharges : []);
+                const ice = Number(bill.iceCharges || 0);
+                const trans = Number(bill.transportCharges || 0);
+                const box = Number(bill.boxCharges || 0);
+                const netCustom = rawCharges.filter(c => {
+                  if (!c || !c.amount || Number(c.amount) <= 0) return false;
+                  const n = (c.name || '').toLowerCase();
+                  if (n === 'ice' && ice > 0) return false;
+                  if (n.startsWith('trans') && trans > 0) return false;
+                  if (n.startsWith('box') && box > 0) return false;
+                  return true;
+                }).reduce((sum, c) => c.type === 'Dr' ? sum - Number(c.amount || 0) : sum + Number(c.amount || 0), 0);
+
+                const addCharges = Number(bill.deliveryCharge || 0) + Number(bill.containerCharge || 0) + Number(bill.cuttingCharge || 0) + ice + trans + box + netCustom;
+                const expectedTotal = taxable + taxRupees + addCharges;
+                let finalTotal = Number(bill.total);
+                if (!finalTotal || isNaN(finalTotal) || (finalTotal <= 0 && sub > 0) || Math.abs(finalTotal - expectedTotal) > 0.5) {
+                  finalTotal = expectedTotal;
                 }
                 const roundedTotal = Math.round(finalTotal);
                 const roundOff = roundedTotal - finalTotal;
-                if (roundOff === 0) return null;
+                if (Math.abs(roundOff) < 0.009) return null;
                 return (
                   <div style={{ display: 'flex', justifyContent: 'space-between', padding: '1px 0' }}>
                     <span>{t("Round off:")}</span>
@@ -2026,7 +2043,6 @@ const Invoice = ({ bill: incomingBill, billData, onClose, onSave, onSettle, what
 
             {/* Grand Total */}
             {(() => {
-              let finalTotal = Number(bill.total);
               const sub = Number(bill.subtotal || bill.items?.reduce((acc, curr) => acc + ((curr.price || 0) * (curr.quantity || 1)), 0) || 0);
               const disc = Number(bill.discount || 0);
               const taxable = Math.max(0, sub - disc);
@@ -2037,9 +2053,27 @@ const Invoice = ({ bill: incomingBill, billData, onClose, onSave, onSettle, what
               const taxRupees = bill.tax !== undefined && bill.tax !== null && Number(bill.tax) > 0
                 ? (Number(bill.tax) <= 100 ? (taxable * Number(bill.tax)) / 100 : Number(bill.tax))
                 : (totRate > 0 ? (taxable * totRate) / 100 : 0);
-              const addCharges = Number(bill.deliveryCharge || 0) + Number(bill.containerCharge || 0) + Number(bill.cuttingCharge || 0);
-              if (!finalTotal || isNaN(finalTotal) || (finalTotal <= 0 && sub > 0)) {
-                finalTotal = taxable + taxRupees + addCharges;
+
+              const rawCharges = Array.isArray(bill.additionalCharges) && bill.additionalCharges.length > 0
+                ? bill.additionalCharges
+                : (bill.items || []).flatMap(it => Array.isArray(it.additionalCharges) ? it.additionalCharges : []);
+              const ice = Number(bill.iceCharges || 0);
+              const trans = Number(bill.transportCharges || 0);
+              const box = Number(bill.boxCharges || 0);
+              const netCustom = rawCharges.filter(c => {
+                if (!c || !c.amount || Number(c.amount) <= 0) return false;
+                const n = (c.name || '').toLowerCase();
+                if (n === 'ice' && ice > 0) return false;
+                if (n.startsWith('trans') && trans > 0) return false;
+                if (n.startsWith('box') && box > 0) return false;
+                return true;
+              }).reduce((sum, c) => c.type === 'Dr' ? sum - Number(c.amount || 0) : sum + Number(c.amount || 0), 0);
+
+              const addCharges = Number(bill.deliveryCharge || 0) + Number(bill.containerCharge || 0) + Number(bill.cuttingCharge || 0) + ice + trans + box + netCustom;
+              const expectedTotal = taxable + taxRupees + addCharges;
+              let finalTotal = Number(bill.total);
+              if (!finalTotal || isNaN(finalTotal) || (finalTotal <= 0 && sub > 0) || Math.abs(finalTotal - expectedTotal) > 0.5) {
+                finalTotal = expectedTotal;
               }
               const roundedTotal = Math.round(finalTotal);
 
@@ -2475,22 +2509,37 @@ const Invoice = ({ bill: incomingBill, billData, onClose, onSave, onSettle, what
                 const sub = Number(bill.subtotal || bill.items?.reduce((acc, curr) => acc + ((curr.price || 0) * (curr.quantity || 1)), 0) || 0);
                 const disc = Number(bill.discount || 0);
                 const taxable = Math.max(0, sub - disc);
-                let finalTotal = Number(bill.total);
 
                 const cRate = activeTaxSettings.enableCgst !== false ? (activeTaxSettings.cgstRate !== undefined ? Number(activeTaxSettings.cgstRate) : 2.5) : 0;
                 const sRate = activeTaxSettings.enableSgst !== false ? (activeTaxSettings.sgstRate !== undefined ? Number(activeTaxSettings.sgstRate) : 2.5) : 0;
                 const gRate = activeTaxSettings.enableGst === true ? (activeTaxSettings.gstRate !== undefined ? Number(activeTaxSettings.gstRate) : 5) : 0;
                 const totRate = cRate + sRate + gRate;
-
                 const taxRupees = bill.tax !== undefined && bill.tax !== null && Number(bill.tax) > 0
                   ? (Number(bill.tax) <= 100 ? (taxable * Number(bill.tax)) / 100 : Number(bill.tax))
                   : (totRate > 0 ? (taxable * totRate) / 100 : 0);
 
-                const addCharges = Number(bill.deliveryCharge || 0) + Number(bill.containerCharge || 0) + Number(bill.cuttingCharge || 0);
+                const rawCharges = Array.isArray(bill.additionalCharges) && bill.additionalCharges.length > 0
+                  ? bill.additionalCharges
+                  : (bill.items || []).flatMap(it => Array.isArray(it.additionalCharges) ? it.additionalCharges : []);
+                const ice = Number(bill.iceCharges || 0);
+                const trans = Number(bill.transportCharges || 0);
+                const box = Number(bill.boxCharges || 0);
+                const netCustom = rawCharges.filter(c => {
+                  if (!c || !c.amount || Number(c.amount) <= 0) return false;
+                  const n = (c.name || '').toLowerCase();
+                  if (n === 'ice' && ice > 0) return false;
+                  if (n.startsWith('trans') && trans > 0) return false;
+                  if (n.startsWith('box') && box > 0) return false;
+                  return true;
+                }).reduce((sum, c) => c.type === 'Dr' ? sum - Number(c.amount || 0) : sum + Number(c.amount || 0), 0);
 
-                // Safeguard: If bill.total is missing, 0, NaN or <= 0 while sub > 0, compute dynamically
-                if (!finalTotal || isNaN(finalTotal) || (finalTotal <= 0 && sub > 0)) {
-                  finalTotal = taxable + taxRupees + addCharges;
+                const addCharges = Number(bill.deliveryCharge || 0) + Number(bill.containerCharge || 0) + Number(bill.cuttingCharge || 0) + ice + trans + box + netCustom;
+                const expectedTotal = taxable + taxRupees + addCharges;
+                let finalTotal = Number(bill.total);
+
+                // Safeguard: If bill.total is missing, 0, NaN, <= 0 or missing packaging/extra charges, compute dynamically
+                if (!finalTotal || isNaN(finalTotal) || (finalTotal <= 0 && sub > 0) || Math.abs(finalTotal - expectedTotal) > 0.5) {
+                  finalTotal = expectedTotal;
                 }
 
                 const roundedTotal = Math.round(finalTotal);
@@ -2534,6 +2583,22 @@ const Invoice = ({ bill: incomingBill, billData, onClose, onSave, onSettle, what
                         <span style={{ textAlign: 'right', flexShrink: 0, minWidth: '48px' }}>+{Number(bill.boxCharges).toFixed(2)}</span>
                       </div>
                     )}
+                    {(() => {
+                      const custom = rawCharges.filter(c => {
+                        if (!c || !c.amount || Number(c.amount) <= 0) return false;
+                        const n = (c.name || '').toLowerCase();
+                        if (n === 'ice' && ice > 0) return false;
+                        if (n.startsWith('trans') && trans > 0) return false;
+                        if (n.startsWith('box') && box > 0) return false;
+                        return true;
+                      });
+                      return custom.map((c, i) => (
+                        <div key={i} style={{ display: 'flex', width: '100%', justifyContent: 'space-between', alignItems: 'center', fontWeight: 'bold' }}>
+                          <span style={{ textAlign: 'left', flex: 1 }}>{c.name}</span>
+                          <span style={{ textAlign: 'right', flexShrink: 0, minWidth: '48px' }}>{c.type === 'Dr' ? '-' : '+'}{Number(c.amount).toFixed(2)}</span>
+                        </div>
+                      ));
+                    })()}
                     {roundOff !== 0 && (
                       <div style={{ display: 'flex', width: '100%', justifyContent: 'space-between', alignItems: 'center' }}>
                         <span style={{ textAlign: 'left', flex: 1 }}>{t("Round off")}</span>

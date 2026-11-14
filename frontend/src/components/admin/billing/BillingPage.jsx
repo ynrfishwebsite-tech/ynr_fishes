@@ -2891,7 +2891,7 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
         discountType: itemPayload.discountType || 'flat',
         discountValue: itemPayload.discountValue !== undefined ? itemPayload.discountValue : totalOrderDiscount,
         subtotal: subtotal,
-        total: Math.max(0, subtotal + netAdditional - totalOrderDiscount)
+        total: Math.max(0, subtotal + newIce + newBox + newTrans + netAdditional - totalOrderDiscount)
       });
     } else {
       // New customer today: Generate new sequential bill number (e.g. WS-01 or EXP-01)
@@ -5552,10 +5552,43 @@ const BillingPage = ({ initialTable, initialAction, initialFishMode = 'individua
 
           <div style={{ borderTop: '2px solid #000', margin: '8px 0' }}></div>
 
-          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '16px', fontWeight: 'bold' }}>
-            <span>Grand Total</span>
-            <span>₹{Number(offscreenBill.total || 0).toFixed(2)}</span>
-          </div>
+          {(() => {
+            const sub = Number(offscreenBill.subtotal || (offscreenBill.items || []).reduce((acc, curr) => acc + ((curr.price || curr.pricePerKg || 0) * (curr.quantity || curr.weightKg || 1)), 0) || 0);
+            const disc = Number(offscreenBill.discount || 0);
+            const taxable = Math.max(0, sub - disc);
+            const taxRupees = offscreenBill.tax !== undefined && offscreenBill.tax !== null && Number(offscreenBill.tax) > 0
+              ? (Number(offscreenBill.tax) <= 100 ? (taxable * Number(offscreenBill.tax)) / 100 : Number(offscreenBill.tax))
+              : 0;
+            const ice = Number(offscreenBill.iceCharges || 0);
+            const trans = Number(offscreenBill.transportCharges || 0);
+            const box = Number(offscreenBill.boxCharges || 0);
+            const deliv = Number(offscreenBill.deliveryCharge || 0);
+            const cut = Number(offscreenBill.cuttingCharge || 0);
+            const rawCharges = Array.isArray(offscreenBill.additionalCharges) && offscreenBill.additionalCharges.length > 0
+              ? offscreenBill.additionalCharges
+              : (offscreenBill.items || []).flatMap(it => Array.isArray(it.additionalCharges) ? it.additionalCharges : []);
+            const netCustom = rawCharges.filter(c => {
+              if (!c || !c.amount || Number(c.amount) <= 0) return false;
+              const n = (c.name || '').toLowerCase();
+              if (n === 'ice' && ice > 0) return false;
+              if (n.startsWith('trans') && trans > 0) return false;
+              if (n.startsWith('box') && box > 0) return false;
+              return true;
+            }).reduce((sum, c) => c.type === 'Dr' ? sum - Number(c.amount || 0) : sum + Number(c.amount || 0), 0);
+
+            const allExtra = deliv + cut + ice + trans + box + netCustom;
+            const expected = taxable + taxRupees + allExtra;
+            let displayTotal = Number(offscreenBill.total || 0);
+            if (!displayTotal || isNaN(displayTotal) || (displayTotal <= 0 && sub > 0) || Math.abs(displayTotal - expected) > 0.5) {
+              displayTotal = expected;
+            }
+            return (
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '16px', fontWeight: 'bold' }}>
+                <span>Grand Total</span>
+                <span>₹{Math.round(displayTotal).toFixed(2)}</span>
+              </div>
+            );
+          })()}
 
           <div style={{ borderTop: '1px dashed #000', margin: '8px 0' }}></div>
 

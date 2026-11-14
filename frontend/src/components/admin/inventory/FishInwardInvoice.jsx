@@ -264,7 +264,6 @@ export default function FishInwardInvoice({ data, onClose }) {
   const grossValue = Number(data.grossValue || data.catchTotal || data.totalValue || 0);
   const totalCr = Number(data.totalCr || 0);
   const totalDr = Number(data.totalDr || 0);
-  const netPayable = Number(data.netPayable !== undefined ? data.netPayable : (data.netSettlement !== undefined ? data.netSettlement : grossValue));
   const paymentMode = data.paymentMode === 'Partial' && data.partialMethod ? `Partial (${data.partialMethod})` : (data.paymentMode || 'Cash');
   const notes = data.notes || '';
 
@@ -320,6 +319,15 @@ export default function FishInwardInvoice({ data, onClose }) {
       }
     });
   }
+
+  const calculatedDr = settlementList.filter(s => s.type === 'Dr').reduce((acc, s) => acc + Number(s.amount || 0), 0);
+  const calculatedCr = settlementList.filter(s => s.type === 'Cr').reduce((acc, s) => acc + Number(s.amount || 0), 0);
+  const calculatedNet = grossValue + (totalCr > 0 ? totalCr : calculatedCr) - (totalDr > 0 ? totalDr : calculatedDr);
+
+  const rawNetPayable = data.netPayable !== undefined ? Number(data.netPayable) : (data.netSettlement !== undefined ? Number(data.netSettlement) : grossValue);
+  const netPayable = (settlementList.length > 0 && Math.abs(rawNetPayable - calculatedNet) > 0.5)
+    ? calculatedNet
+    : rawNetPayable;
 
     // Printer Configurations loaded from backend
   const [printerConfigs, setPrinterConfigs] = useState([]);
@@ -874,8 +882,8 @@ export default function FishInwardInvoice({ data, onClose }) {
                 <div className="pt-0.5 space-y-0.2">
                   {settlementList.map((st, i) => (
                     <div key={i} className="flex justify-between text-slate-700" style={{ fontSize: fontMetrics.detailSize }}>
-                      <span>- {st.label}:</span>
-                      <span>-₹{st.amount.toLocaleString()}</span>
+                      <span>{st.type === 'Cr' ? '+' : '-'} {st.label}:</span>
+                      <span>{st.type === 'Cr' ? '+' : '-'}₹{st.amount.toLocaleString()}</span>
                     </div>
                   ))}
                 </div>
@@ -1062,9 +1070,9 @@ export default function FishInwardInvoice({ data, onClose }) {
                 <div className="pt-1 space-y-0.5 border-t border-slate-200">
                   <div className="font-bold text-slate-600 uppercase" style={{ fontSize: fontMetrics.detailSize }}>Settlement Deductions:</div>
                   {settlementList.map((st, i) => (
-                    <div key={i} className="flex justify-between text-rose-700" style={{ fontSize: fontMetrics.detailSize }}>
-                      <span>- {st.label}</span>
-                      <span>-₹{st.amount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+                    <div key={i} className={`flex justify-between ${st.type === 'Cr' ? 'text-emerald-700' : 'text-rose-700'}`} style={{ fontSize: fontMetrics.detailSize }}>
+                      <span>{st.type === 'Cr' ? '+' : '-'} {st.label}</span>
+                      <span>{st.type === 'Cr' ? '+' : '-'}₹{st.amount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
                     </div>
                   ))}
                 </div>

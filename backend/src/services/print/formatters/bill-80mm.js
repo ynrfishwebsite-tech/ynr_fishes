@@ -246,11 +246,39 @@ export const generateESCPOSBillReceipt80mm = async (bill, printerConfig = {}, re
   if (Number(bill.containerCharge || 0) > 0) {
     totalsContent += formatTwoCols('Container Charge:', Number(bill.containerCharge).toFixed(2), width) + CMD.LINE_FEED;
   }
+  if (Number(bill.cuttingCharge || 0) > 0) {
+    totalsContent += formatTwoCols('Cutting Charge:', Number(bill.cuttingCharge).toFixed(2), width) + CMD.LINE_FEED;
+  }
+  if (Number(bill.iceCharges || 0) > 0) {
+    totalsContent += formatTwoCols('Ice Charges:', `+${Number(bill.iceCharges).toFixed(2)}`, width) + CMD.LINE_FEED;
+  }
+  if (Number(bill.transportCharges || 0) > 0) {
+    totalsContent += formatTwoCols('Transport Charges:', `+${Number(bill.transportCharges).toFixed(2)}`, width) + CMD.LINE_FEED;
+  }
+  if (Number(bill.boxCharges || 0) > 0) {
+    totalsContent += formatTwoCols('Box/Packaging:', `+${Number(bill.boxCharges).toFixed(2)}`, width) + CMD.LINE_FEED;
+  }
 
+  const rawCharges = Array.isArray(bill.additionalCharges) && bill.additionalCharges.length > 0
+    ? bill.additionalCharges
+    : (bill.items || []).flatMap(it => Array.isArray(it.additionalCharges) ? it.additionalCharges : []);
+  const iceVal = Number(bill.iceCharges || 0);
+  const transVal = Number(bill.transportCharges || 0);
+  const boxVal = Number(bill.boxCharges || 0);
+  const netCustomCharges = rawCharges.filter(c => {
+    if (!c || !c.amount || Number(c.amount) <= 0) return false;
+    const n = (c.name || '').toLowerCase();
+    if (n === 'ice' && iceVal > 0) return false;
+    if (n.startsWith('trans') && transVal > 0) return false;
+    if (n.startsWith('box') && boxVal > 0) return false;
+    return true;
+  }).reduce((sum, c) => c.type === 'Dr' ? sum - Number(c.amount || 0) : sum + Number(c.amount || 0), 0);
+
+  const addCharges = Number(bill.deliveryCharge || 0) + Number(bill.containerCharge || 0) + Number(bill.cuttingCharge || 0) + iceVal + transVal + boxVal + netCustomCharges;
+  const expectedTotal = taxable + computedTaxRupees + addCharges;
   let finalTotal = Number(bill.total || 0);
-  const addCharges = Number(bill.deliveryCharge || 0) + Number(bill.containerCharge || 0) + Number(bill.cuttingCharge || 0);
-  if (!finalTotal || isNaN(finalTotal) || (finalTotal <= 0 && sub > 0)) {
-    finalTotal = taxable + computedTaxRupees + addCharges;
+  if (!finalTotal || isNaN(finalTotal) || (finalTotal <= 0 && sub > 0) || Math.abs(finalTotal - expectedTotal) > 0.5) {
+    finalTotal = expectedTotal;
   }
   const roundedTotal = Math.round(finalTotal);
   const roundOff = roundedTotal - finalTotal;
