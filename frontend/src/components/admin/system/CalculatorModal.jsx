@@ -38,8 +38,9 @@ class ErrorBoundary extends Component {
 
 const CalculatorModalInner = ({ isOpen, onClose }) => {
   const { t } = useLanguage();
-  const [display, setDisplay] = useState('0');
-  const [equation, setEquation] = useState('');
+  const [expression, setExpression] = useState('');
+  const [result, setResult] = useState('0');
+  const [isEvaluated, setIsEvaluated] = useState(false);
   const [aiInput, setAiInput] = useState('');
   const [aiResult, setAiResult] = useState('');
   const [isListening, setIsListening] = useState(false);
@@ -60,10 +61,64 @@ const CalculatorModalInner = ({ isOpen, onClose }) => {
   const audioContextRef = React.useRef(null);
   const recognitionRef = React.useRef(null);
 
+  // Draggable floating state
+  const [position, setPosition] = useState({ x: 0, y: 0 });
+  const isDragging = React.useRef(false);
+  const dragStart = React.useRef({ x: 0, y: 0 });
+
+  const handleMouseDown = (e) => {
+    if (e.target.closest('button, input, select, form')) return;
+    isDragging.current = true;
+    dragStart.current = { x: e.clientX - position.x, y: e.clientY - position.y };
+  };
+
+  const handleTouchStart = (e) => {
+    if (e.target.closest('button, input, select, form')) return;
+    const touch = e.touches[0];
+    isDragging.current = true;
+    dragStart.current = { x: touch.clientX - position.x, y: touch.clientY - position.y };
+  };
+
+  useEffect(() => {
+    const handleMove = (clientX, clientY) => {
+      if (isDragging.current) {
+        setPosition({
+          x: clientX - dragStart.current.x,
+          y: clientY - dragStart.current.y
+        });
+      }
+    };
+
+    const handleMouseMove = (e) => handleMove(e.clientX, e.clientY);
+    const handleTouchMove = (e) => {
+      if (isDragging.current) {
+        const touch = e.touches[0];
+        handleMove(touch.clientX, touch.clientY);
+      }
+    };
+
+    const handleEnd = () => {
+      isDragging.current = false;
+    };
+
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleEnd);
+    window.addEventListener('touchmove', handleTouchMove, { passive: true });
+    window.addEventListener('touchend', handleEnd);
+
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleEnd);
+      window.removeEventListener('touchmove', handleTouchMove);
+      window.removeEventListener('touchend', handleEnd);
+    };
+  }, []);
+
   // Fetch history & reset listening when modal opens/closes
   useEffect(() => {
     if (isOpen) {
       loadHistory();
+      setPosition({ x: 0, y: 0 });
     } else {
       cancelListening();
     }
@@ -96,75 +151,223 @@ const CalculatorModalInner = ({ isOpen, onClose }) => {
     }
   };
 
+  // Safely evaluate a math expression strictly adhering to BODMAS rules
+  const evaluateBodmas = (rawExpr) => {
+    if (!rawExpr || !String(rawExpr).trim()) return 0;
+    let clean = String(rawExpr)
+      .replace(/×/g, '*')
+      .replace(/x/g, '*')
+      .replace(/÷/g, '/')
+      .replace(/−/g, '-')
+      .trim();
+
+    // Strip trailing operator symbols and spaces for live preview
+    clean = clean.replace(/[+\-*/\s]+$/, '').trim();
+    if (!clean) return 0;
+
+    // 1. % followed by a number: e.g. 58%9 or 58% 9 -> ((58/100) * 9)
+    clean = clean.replace(/(\d+(?:\.\d+)?)%\s*(\d+(?:\.\d+)?)/g, '(($1 / 100) * $2)');
+
+    // 2. Base + % or Base - %: e.g. 1000 - 10% or 500 + 500 - 10%
+    let loopCount = 0;
+    while (/([+-])\s*(\d+(?:\.\d+)?)%/.test(clean) && loopCount < 10) {
+      loopCount++;
+      const match = clean.match(/(.+?)\s*([+-])\s*(\d+(?:\.\d+)?)%/);
+      if (!match) break;
+      const [full, base, op, pct] = match;
+      clean = clean.replace(full, '(' + base + ' ' + op + ' ((' + base + ') * (' + pct + ' / 100)))');
+    }
+
+    // 3. Standalone percentage: e.g. 50% or 100 * 10%
+    clean = clean.replace(/(\d+(?:\.\d+)?)%/g, '($1 / 100)');
+
+    // Clean trailing operators if any created
+    clean = clean.replace(/[+\-*/\s]+$/, '').trim();
+    if (!clean) return 0;
+
+    // Validate characters to ensure strictly safe math characters only
+    if (!/^[\d\s+\-*/().]+$/.test(clean)) {
+      throw new Error('Invalid characters');
+    }
+
+    // Protect against division by zero
+    if (/\/0(?!\d|\.)/.test(clean.replace(/\s+/g, ''))) {
+      throw new Error('Division by zero');
+    }
+
+    const res = new Function('return ' + clean)();
+    if (!isFinite(res) || isNaN(res)) throw new Error('Math error');
+    return Number(res.toFixed(4));
+  };
+
+  const updateLiveResult = (expr) => {
+    try {
+      const val = evaluateBodmas(expr);
+      setResult(String(Number(val.toFixed(2))));
+    } catch (_) {
+      // If incomplete or invalid during typing, keep previous result
+    }
+  };
+
   const handleNumber = (num) => {
-    setDisplay((prev) => prev === '0' ? num : prev + num);
+    let nextExpr = '';
+    if (isEvaluated) {
+      nextExpr = num === '.' ? '0.' : num;
+      setIsEvaluated(false);
+    } else {
+      if (num === '.') {
+        const tokens = expression.split(/[\s+−×÷*/-]+/);
+        const lastToken = tokens[tokens.length - 1] || '';
+        if (lastToken.includes('.')) return;
+        if (!lastToken || /[+−×÷*/%\s]$/.test(expression)) {
+          nextExpr = expression ? `${expression}0.` : '0.';
+        } else {
+          nextExpr = expression + '.';
+        }
+      } else {
+        if (!expression || expression === '0') {
+          nextExpr = num;
+        } else {
+          nextExpr = expression + num;
+        }
+      }
+    }
+    setExpression(nextExpr);
+    updateLiveResult(nextExpr);
   };
 
   const handleOperator = (op) => {
-    const opSymbol = op === '*' ? 'x' : op;
-    setEquation(display + ' ' + opSymbol + ' ');
-    setDisplay('0');
+    const opSymbol = op === '*' ? '×' : (op === '/' ? '÷' : (op === '-' ? '−' : op));
+    let nextExpr = '';
+
+    if (isEvaluated) {
+      // Continue chaining from previous result
+      nextExpr = `${result} ${opSymbol} `;
+      setIsEvaluated(false);
+    } else if (!expression) {
+      if (opSymbol === '−') {
+        nextExpr = '−';
+      } else {
+        nextExpr = `${result} ${opSymbol} `;
+      }
+    } else if (/\s*[+−×÷]\s*$/.test(expression)) {
+      // Consecutive operator pressed: swap the trailing operator smoothly!
+      nextExpr = expression.replace(/\s*[+−×÷]\s*$/, ` ${opSymbol} `);
+    } else {
+      // Normal accumulation: append operator
+      nextExpr = `${expression} ${opSymbol} `;
+    }
+
+    setExpression(nextExpr);
+    updateLiveResult(nextExpr);
   };
 
   const handlePercent = () => {
-    const val = parseFloat(display) || 0;
-    setDisplay(String(val / 100));
+    let nextExpr = '';
+    if (isEvaluated) {
+      nextExpr = `${result}%`;
+      setIsEvaluated(false);
+    } else if (!expression) {
+      return;
+    } else if (/\s*[+−×÷]\s*$/.test(expression)) {
+      return;
+    } else if (expression.endsWith('%')) {
+      return;
+    } else {
+      nextExpr = `${expression}%`;
+    }
+
+    setExpression(nextExpr);
+    updateLiveResult(nextExpr);
   };
 
   const handleEqual = async () => {
+    if (!expression || isEvaluated) return;
+
     try {
-      const fullExpr = `${equation}${display}`;
-      const evalExpr = fullExpr.replace(/x/g, '*').replace(/×/g, '*');
-      const resultVal = new Function('return ' + evalExpr)();
+      const resultVal = evaluateBodmas(expression);
       const formattedRes = String(Number(resultVal.toFixed(2)));
-      
-      setDisplay(formattedRes);
-      setEquation('');
+
+      setResult(formattedRes);
+      setExpression(`${expression} =`);
+      setIsEvaluated(true);
       setAiResult('');
 
-      if (fullExpr.trim()) {
-        const displayExpr = fullExpr.replace(/\*/g, ' x ');
-        const saved = await saveCalculationEntry(displayExpr, formattedRes);
+      if (expression.trim()) {
+        const saved = await saveCalculationEntry(expression, formattedRes);
         setHistoryList((prev) => [saved, ...prev.filter(h => (h._id || h.id) !== (saved._id || saved.id))]);
       }
     } catch (e) {
-      setDisplay('Error');
-      setEquation('');
+      setResult('Error');
+      setIsEvaluated(true);
     }
   };
 
   const handleClear = () => {
-    setDisplay('0');
-    setEquation('');
+    setExpression('');
+    setResult('0');
+    setIsEvaluated(false);
     setAiInput('');
     setAiResult('');
   };
 
   const handleDelete = () => {
-    setDisplay((prev) => prev.length > 1 ? prev.slice(0, -1) : '0');
+    if (isEvaluated) {
+      setIsEvaluated(false);
+      setExpression(result);
+      return;
+    }
+
+    if (!expression || expression.length <= 1) {
+      setExpression('');
+      setResult('0');
+      return;
+    }
+
+    let nextExpr = '';
+    // If expression ends with operator with spaces, e.g. " + ", remove the whole operator unit
+    if (/\s[+−×÷]\s$/.test(expression)) {
+      nextExpr = expression.replace(/\s[+−×÷]\s$/, '');
+    } else if (/\s$/.test(expression)) {
+      nextExpr = expression.trimEnd();
+    } else {
+      nextExpr = expression.slice(0, -1);
+    }
+
+    setExpression(nextExpr);
+    if (!nextExpr) {
+      setResult('0');
+    } else {
+      updateLiveResult(nextExpr);
+    }
   };
 
   const addCash = (amount) => {
-    const current = parseFloat(display) || 0;
-    setDisplay(String(current + amount));
+    const current = parseFloat(result) || 0;
+    const newTotal = String(Number((current + amount).toFixed(2)));
+    const expr = `${current} + ${amount} =`;
+    setExpression(expr);
+    setResult(newTotal);
+    setIsEvaluated(true);
   };
 
   const applyPercentage = async (percent, isAdd) => {
-    const current = parseFloat(display) || 0;
+    const current = parseFloat(result) || 0;
     const modifier = current * (percent / 100);
     const resultVal = isAdd ? current + modifier : current - modifier;
-    const expr = `${current} ${isAdd ? '+' : '-'} ${percent}%`;
+    const expr = `${current} ${isAdd ? '+' : '−'} ${percent}% =`;
     const formattedRes = String(Number(resultVal.toFixed(2)));
 
-    setEquation(`${expr} = `);
-    setDisplay(formattedRes);
+    setExpression(expr);
+    setResult(formattedRes);
+    setIsEvaluated(true);
 
-    const saved = await saveCalculationEntry(expr, formattedRes);
+    const saved = await saveCalculationEntry(`${current} ${isAdd ? '+' : '−'} ${percent}%`, formattedRes);
     setHistoryList((prev) => [saved, ...prev.filter(h => (h._id || h.id) !== (saved._id || saved.id))]);
   };
 
   const handleCopy = () => {
-    navigator.clipboard.writeText(display);
+    navigator.clipboard.writeText(result);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
@@ -278,14 +481,16 @@ const CalculatorModalInner = ({ isOpen, onClose }) => {
 
     if (finalValue !== null) {
       const formattedRes = String(Number(finalValue.toFixed(2)));
-      setDisplay(formattedRes);
-      const saveExpr = inputToParse.replace(/\*/g, ' x ');
-      const formattedResultText = resultText.replace(/\*/g, ' x ');
+      setResult(formattedRes);
+      const saveExpr = inputToParse.replace(/\*/g, ' × ');
+      setExpression(`${saveExpr} =`);
+      setIsEvaluated(true);
+      const formattedResultText = resultText.replace(/\*/g, ' × ');
       saveCalculationEntry(saveExpr, formattedRes, formattedResultText).then(saved => {
         setHistoryList((prev) => [saved, ...prev.filter(h => (h._id || h.id) !== (saved._id || saved.id))]);
       }).catch(() => {});
     }
-    setAiResult(resultText.replace(/\*/g, ' x '));
+    setAiResult(resultText.replace(/\*/g, ' × '));
   };
 
   const initWorker = () => {
@@ -359,7 +564,7 @@ const CalculatorModalInner = ({ isOpen, onClose }) => {
     }
   };
 
-  const cancelListening = () => {
+  function cancelListening() {
     setIsListening(false);
     setAiInput('');
     transcriptRef.current = '';
@@ -535,37 +740,55 @@ const CalculatorModalInner = ({ isOpen, onClose }) => {
         handleDelete();
       } else if (key === 'Escape') {
         e.preventDefault();
-        handleClear();
+        if (result === '0' && !expression) {
+          if (onClose) onClose();
+        } else {
+          handleClear();
+        }
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, display, equation]);
+  }, [isOpen, expression, result, isEvaluated, onClose]);
 
   const isElectron = navigator.userAgent.toLowerCase().includes('electron');
 
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-[99999] flex items-center justify-center p-2 sm:p-4 overflow-y-auto custom-scrollbar">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 pointer-events-none">
+      {/* Clean backdrop: clicking outside closes */}
       <div
-        className="fixed inset-0 bg-black/70 backdrop-blur-sm"
-        onClick={onClose} />
+        className="fixed inset-0 bg-black/70 backdrop-blur-xs pointer-events-auto"
+        onClick={onClose}
+        title={t("Click outside to close calculator")}
+      />
 
-      <div className="relative bg-[#FDFBF7] rounded-2xl sm:rounded-3xl shadow-2xl w-full max-w-sm sm:max-w-md md:max-w-2xl overflow-hidden flex flex-col md:flex-row-reverse my-auto border border-[#E8DCCB] animate-in fade-in zoom-in-95 duration-200">
+      <div
+        style={{
+          transform: `translate(${position.x}px, ${position.y}px)`
+        }}
+        className="pointer-events-auto relative bg-[#FDFBF7] rounded-2xl sm:rounded-3xl shadow-2xl w-full max-w-sm sm:max-w-md md:max-w-xl lg:max-w-2xl overflow-hidden flex flex-col md:flex-row-reverse border border-[#E8DCCB] animate-in fade-in zoom-in-95 duration-150 ring-1 ring-black/5"
+      >
         {/* Top (Mobile) / Right Screen (Desktop): Header, Voice AI & Result Display */}
         <div className="w-full md:w-3/5 bg-[#F7EFE2] text-[#1e293b] flex flex-col relative overflow-hidden shadow-xl z-30 shrink-0 md:border-l md:border-[#E8DCCB]">
           <div className="absolute -top-32 -left-32 w-64 h-64 bg-primary/20 rounded-full blur-3xl opacity-50 pointer-events-none" />
           
-          <div className="px-3 sm:px-6 py-2 sm:py-4 flex justify-between items-center relative z-10 border-b border-[#E8DCCB] shrink-0">
-            <h3 className="font-black text-sm sm:text-lg flex items-center gap-1.5 sm:gap-2 text-[#7c3f1d] whitespace-nowrap">
+          <div
+            onMouseDown={handleMouseDown}
+            onTouchStart={handleTouchStart}
+            className="px-3 sm:px-6 py-2 sm:py-4 flex justify-between items-center relative z-10 border-b border-[#E8DCCB] shrink-0 cursor-move select-none touch-none"
+            title={t("Drag anywhere to move calculator")}
+          >
+            <h3 className="font-black text-sm sm:text-lg flex items-center gap-1.5 sm:gap-2 text-[#7c3f1d] whitespace-nowrap cursor-move">
+              <span className="text-slate-400 text-xs">⋮⋮</span>
               <span>{t("Smart Calculator")}</span>
             </h3>
 
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5 sm:gap-2">
               {/* Toggle Keypad / History */}
-              <div className="flex items-center gap-1 bg-white border border-[#E8DCCB] p-1 rounded-xl border border-[#E8DCCB]">
+              <div className="flex items-center gap-1 bg-white border border-[#E8DCCB] p-1 rounded-xl">
                 <button
                   type="button"
                   onClick={() => setShowHistory(false)}
@@ -581,14 +804,19 @@ const CalculatorModalInner = ({ isOpen, onClose }) => {
                   <History size={12} />
                   <span>{t("History")}</span>
                   {historyList.length > 0 && (
-                    <span className="w-4 h-4 rounded-full bg-white/20 text-[#1e293b] text-[9px] font-extrabold flex items-center justify-center">
+                    <span className="w-4 h-4 rounded-full bg-[#ea580c] text-white text-[9px] font-extrabold flex items-center justify-center">
                       {historyList.length}
                     </span>
                   )}
                 </button>
               </div>
 
-              <button onClick={onClose} className="p-1 sm:p-2 hover:bg-[#FAF0E4] rounded-full text-slate-500 hover:text-[#1e293b] transition-colors touch-target flex items-center justify-center">
+              <button
+                type="button"
+                onClick={onClose}
+                className="p-1 sm:p-2 hover:bg-[#FAF0E4] rounded-full text-slate-500 hover:text-[#1e293b] transition-colors touch-target flex items-center justify-center cursor-pointer"
+                title={t("Close")}
+              >
                 <X size={18} className="sm:w-5 sm:h-5" />
               </button>
             </div>
@@ -602,7 +830,7 @@ const CalculatorModalInner = ({ isOpen, onClose }) => {
                   value={aiInput}
                   onChange={(e) => setAiInput(e.target.value)}
                   placeholder={t("e.g. 500 + 1000 - 5% discount")}
-                  className={`w-full bg-white border border-[#E8DCCB] border border-[#E8DCCB] rounded-lg sm:rounded-xl py-1.5 sm:py-2.5 px-3 sm:px-3.5 text-[11px] sm:text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary text-[#1e293b] placeholder-slate-400 transition-all font-medium ${
+                  className={`w-full bg-white border border-[#E8DCCB] rounded-lg sm:rounded-xl py-1.5 sm:py-2.5 px-3 sm:px-3.5 text-[11px] sm:text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary text-[#1e293b] placeholder-slate-400 transition-all font-medium ${
                     isListening ? 'pr-28 sm:pr-36' : 'pr-20 sm:pr-24'
                   }`} />
                 
@@ -627,7 +855,7 @@ const CalculatorModalInner = ({ isOpen, onClose }) => {
                       <button
                         type="button"
                         onClick={cancelListening}
-                        className="absolute right-13 sm:right-16 top-1/2 -translate-y-1/2 p-1 sm:p-1.5 rounded-lg bg-red-500/30 text-red-300 hover:bg-red-500 hover:text-[#1e293b] transition-colors flex items-center justify-center z-10"
+                        className="absolute right-13 sm:right-16 top-1/2 -translate-y-1/2 p-1 sm:p-1.5 rounded-lg bg-red-500/30 text-red-700 hover:bg-red-500 hover:text-white transition-colors flex items-center justify-center z-10"
                         title={t("Cancel Mic / Voice Input")}>
                         <MicOff size={13} className="sm:w-[15px] sm:h-[15px]" />
                       </button>
@@ -653,7 +881,7 @@ const CalculatorModalInner = ({ isOpen, onClose }) => {
             </form>
 
             {isListening && (
-              <div className="mt-1.5 sm:mt-2 text-[10px] sm:text-[11px] font-medium text-amber-300 bg-amber-500/15 p-1.5 sm:p-2 rounded-lg border border-amber-500/30 flex items-center justify-between gap-1.5">
+              <div className="mt-1.5 sm:mt-2 text-[10px] sm:text-[11px] font-medium text-amber-900 bg-amber-500/15 p-1.5 sm:p-2 rounded-lg border border-amber-500/30 flex items-center justify-between gap-1.5">
                 <span className="leading-tight flex items-center gap-1.5">
                   <span className="w-2 h-2 rounded-full bg-red-500 animate-ping inline-block shrink-0" />
                   {aiResult || `Listening (${micLang === 'te-IN' ? 'Telugu' : micLang === 'hi-IN' ? 'Hindi' : 'English'})...`}
@@ -661,7 +889,7 @@ const CalculatorModalInner = ({ isOpen, onClose }) => {
                 <button
                   type="button"
                   onClick={cancelListening}
-                  className="px-2 py-0.5 bg-red-500/30 text-red-200 hover:bg-red-600 hover:text-[#1e293b] rounded text-[9px] font-bold transition-colors whitespace-nowrap cursor-pointer shrink-0"
+                  className="px-2 py-0.5 bg-red-500/20 text-red-800 hover:bg-red-600 hover:text-white rounded text-[9px] font-bold transition-colors whitespace-nowrap cursor-pointer shrink-0"
                 >
                   {t("Cancel Mic")}
                 </button>
@@ -669,12 +897,12 @@ const CalculatorModalInner = ({ isOpen, onClose }) => {
             )}
 
             {!isListening && aiResult && !modelLoading &&
-              <div className="mt-1.5 sm:mt-2 text-[10px] sm:text-[11px] font-medium text-emerald-400 bg-emerald-500/10 p-1.5 sm:p-2 rounded-lg border border-emerald-500/20 flex items-start gap-1.5">
+              <div className="mt-1.5 sm:mt-2 text-[10px] sm:text-[11px] font-medium text-emerald-800 bg-emerald-500/10 p-1.5 sm:p-2 rounded-lg border border-emerald-500/20 flex items-start gap-1.5">
                 <span className="leading-tight">{aiResult}</span>
               </div>
             }
             {modelLoading &&
-              <div className="mt-1.5 sm:mt-2 text-[10px] sm:text-[11px] font-medium text-amber-400 bg-amber-500/10 p-1.5 sm:p-2 rounded-lg border border-amber-500/20 flex items-start gap-1.5">
+              <div className="mt-1.5 sm:mt-2 text-[10px] sm:text-[11px] font-medium text-amber-800 bg-amber-500/10 p-1.5 sm:p-2 rounded-lg border border-amber-500/20 flex items-start gap-1.5">
                 <span className="leading-tight animate-pulse">{modelProgress || "Initializing offline voice model..."}</span>
               </div>
             }
@@ -688,17 +916,19 @@ const CalculatorModalInner = ({ isOpen, onClose }) => {
 
           {/* Calculator Screen / Display */}
           <div className="p-3 sm:p-6 flex-1 flex flex-col items-end justify-end relative z-10 min-h-[55px] sm:min-h-[120px]">
-            <div className="text-slate-400 text-[11px] sm:text-base font-mono h-4 sm:h-6">{equation}</div>
+            <div className="text-slate-400 text-[11px] sm:text-base font-mono tracking-wide h-4 sm:h-6 overflow-x-auto w-full text-right hide-scrollbar">
+              {/[+−×÷%=]/.test(expression) ? expression : '\u00A0'}
+            </div>
             <div className="text-2xl sm:text-5xl font-black font-mono tracking-tight overflow-x-auto w-full text-right hide-scrollbar text-[#ea580c]">
-              {display}
+              {result}
             </div>
             
             <button
               onClick={handleCopy}
-              className={`mt-2 sm:mt-4 px-2.5 py-1 sm:px-4 sm:py-2 rounded-lg sm:rounded-xl flex items-center gap-1.5 text-[11px] sm:text-xs font-bold transition-all touch-target ${
+              className={`mt-2 sm:mt-4 px-2.5 py-1 sm:px-4 sm:py-2 rounded-lg sm:rounded-xl flex items-center gap-1.5 text-[11px] sm:text-xs font-bold transition-all touch-target cursor-pointer ${
                 copied ?
-                'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' :
-                'bg-white/10 text-slate-300 hover:text-[#1e293b] hover:bg-white/20 border border-[#E8DCCB]'
+                'bg-emerald-500/20 text-emerald-800 border border-emerald-500/30' :
+                'bg-white text-slate-700 hover:text-[#1e293b] hover:bg-[#FAF0E4] border border-[#E8DCCB] shadow-2xs'
               }`}>
               {copied ? <Check size={12} className="sm:w-[14px] sm:h-[14px]" /> : <Copy size={12} className="sm:w-[14px] sm:h-[14px]" />}
               <span>{copied ? t('Copied!') : t('Copy Amount')}</span>
@@ -750,8 +980,9 @@ const CalculatorModalInner = ({ isOpen, onClose }) => {
                       <div
                         className="flex justify-between items-start text-xs cursor-pointer"
                         onClick={() => {
-                          setDisplay(String(item.result));
-                          setEquation(item.expression ? `${item.expression.replace(/\*/g, ' x ')} = ` : '');
+                          setResult(String(item.result));
+                          setExpression(item.expression ? `${item.expression.replace(/\*/g, ' × ')} =` : '');
+                          setIsEvaluated(true);
                           setShowHistory(false);
                         }}
                       >
@@ -829,7 +1060,7 @@ const CalculatorModalInner = ({ isOpen, onClose }) => {
 
                 <button onClick={() => handleNumber('0')} className="col-span-2 p-2 sm:p-3 bg-white border border-slate-200 text-slate-800 font-black rounded-lg sm:rounded-xl hover:bg-slate-100 transition-colors text-sm sm:text-xl shadow-xs touch-target">0</button>
                 <button onClick={() => handleNumber('.')} className="p-2 sm:p-3 bg-white border border-slate-200 text-slate-800 font-black rounded-lg sm:rounded-xl hover:bg-slate-100 transition-colors text-sm sm:text-xl shadow-xs touch-target">.</button>
-                <button onClick={handleEqual} className="p-2 sm:p-3 bg-primary text-[#1e293b] font-black rounded-lg sm:rounded-xl hover:bg-primary-hover transition-colors text-base sm:text-2xl shadow-md touch-target">=</button>
+                <button onClick={handleEqual} className="p-2 sm:p-3 bg-primary text-white font-black rounded-lg sm:rounded-xl hover:bg-primary-hover transition-colors text-base sm:text-2xl shadow-md touch-target">=</button>
               </div>
             </>
           )}
