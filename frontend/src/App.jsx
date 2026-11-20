@@ -170,6 +170,7 @@ function AppLayout() {
       {/* Floating Action Buttons (only on customer pages) */}
       {!isDashboardOrLogin && (
         <div
+          className="floating-action-buttons"
           style={{
             position: 'fixed',
             bottom: '30px',

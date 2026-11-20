@@ -69,7 +69,7 @@ export default function CartDrawer() {
             <div style={{ color: '#8AA4B8', textAlign: 'center', marginTop: '3rem', padding: '2rem' }}>
               <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>🐟</div>
               <p style={{ margin: 0, fontSize: '1.05rem', fontWeight: 600 }}>Your cart is empty.</p>
-              <p style={{ fontSize: '0.85rem', color: '#64748b', marginTop: '0.5rem' }}>Add fresh catch in individual Kg or Wholesale Boxes!</p>
+              <p style={{ fontSize: '0.85rem', color: '#64748b', marginTop: '0.5rem' }}>Add fresh catch directly from Kadapa Depot!</p>
             </div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
