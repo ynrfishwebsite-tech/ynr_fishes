@@ -432,9 +432,6 @@ export default function ProductsSection() {
                             <span className="product-price-val">₹{product.price}</span>
                             <span className="product-price-unit">/{product.sellingUnit || 'kg'} (Whole)</span>
                           </div>
-                          <span style={{ fontSize: '0.75rem', color: '#8AA4B8', background: 'rgba(3,24,44,0.7)', padding: '2px 8px', borderRadius: '6px', border: '1px solid rgba(61,192,204,0.2)' }}>
-                            📦 Box: ₹{product.boxRate} ({product.boxPackingKg}kg)
-                          </span>
                         </div>
 
                         <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center' }}>
